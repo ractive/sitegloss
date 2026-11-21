@@ -30,9 +30,16 @@ import { caseMarkdown } from "../src/lib/markdown.ts";
 import type { AnnotationMatch } from "../src/lib/messages.ts";
 import { type AnnotationDraft, type Crop, saveCase } from "../src/lib/save.ts";
 import { MemoryStore } from "../src/lib/store.ts";
+import { keepsLoaded } from "../src/sidepanel/ai-open.ts";
 import { findsOn } from "../src/sidepanel/follow.ts";
 import { newCase } from "../src/sidepanel/fresh.ts";
-import { markTargets, shortAddress } from "../src/sidepanel/mark-link.ts";
+import {
+	linkStep,
+	markTargets,
+	type PendingShow,
+	shortAddress,
+	tryShow,
+} from "../src/sidepanel/mark-link.ts";
 import { pageView } from "../src/worker/tools.ts";
 import { validateCase as validateCase030 } from "./case-0-3-0.ts";
 import caseFile from "./case-file.json" with { type: "json" };
@@ -40,6 +47,7 @@ import { putCase, sampleCase } from "./fixtures.ts";
 
 const HOME = "https://shop.example/";
 const SEARCH = "https://shop.example/search";
+const CART_ELSEWHERE = "http://localhost:3000/cart";
 const NOW = "2026-11-21T10:00:00.000Z";
 
 const shot = (id: string, url: string, query?: string, width = 1280): Shot => ({
@@ -510,5 +518,99 @@ describe("two sites' home pages in one case (review of DEC-050)", () => {
 		expect(pageView(c, pay, HOME).onThisPage).toBe(false);
 		expect(pageView(c, shop, "http://localhost:3000/").onThisPage).toBe(true);
 		expect(pageView(c, pay, "http://localhost:3000/").onThisPage).toBe(false);
+	});
+});
+
+describe("a mark's link waits for its page (review of DEC-050, 6 and 7)", () => {
+	const p: PendingShow = {
+		tabId: 4,
+		caseId: "c_shop",
+		annotationId: "a2",
+		mark: "key",
+		url: `${SEARCH}?q=shoes`,
+		until: 1000,
+	};
+	const match = (status: AnnotationMatch["status"]): AnnotationMatch => ({
+		annotationId: "a2",
+		number: 2,
+		status,
+		score: 0.9,
+		current: 0,
+		candidates: [],
+	});
+	const drawn = (status: AnnotationMatch["status"], settling = false) => ({
+		tabId: 4,
+		caseId: "c_shop",
+		url: `${SEARCH}?q=shoes`,
+		matches: new Map([["a2", match(status)]]),
+		settling,
+	});
+
+	test("a page busy with a mark, or one that does not answer, keeps the wait; the next draw shows it", async () => {
+		const asked: string[] = [];
+		const busy = await tryShow(p, drawn("found"), 10, async () => {
+			asked.push("busy");
+			return { error: "Sitegloss is saving on this page; try again." };
+		});
+		expect(busy).toEqual({ keep: true });
+		const silent = await tryShow(p, drawn("found"), 20, async () => {
+			asked.push("silent");
+			throw new Error("Could not establish connection");
+		});
+		expect(silent).toEqual({ keep: true });
+		const gone = await tryShow(p, drawn("found"), 30, async () => {
+			asked.push("not held");
+			return null;
+		});
+		expect(gone).toEqual({ keep: true });
+		const shown = await tryShow(p, drawn("found"), 40, async () =>
+			match("found"),
+		);
+		expect(shown).toEqual({ keep: false, shown: match("found") });
+		expect(asked).toEqual(["busy", "silent", "not held"]);
+	});
+
+	test("it waits for its tab, page and mark; gives up after its time", async () => {
+		const never = async () => {
+			throw new Error("not asked");
+		};
+		expect(await tryShow(p, undefined, 10, never)).toEqual({ keep: true });
+		expect(
+			await tryShow(p, { ...drawn("found"), tabId: 9 }, 10, never),
+		).toEqual({ keep: true });
+		expect(
+			await tryShow(p, { ...drawn("found"), url: CART_ELSEWHERE }, 10, never),
+		).toEqual({ keep: true });
+		// Not found yet while the draw looks again.
+		expect(await tryShow(p, drawn("lost", true), 10, never)).toEqual({
+			keep: true,
+		});
+		expect(await tryShow(p, drawn("found"), 1001, never)).toEqual({
+			keep: false,
+		});
+		expect(await tryShow(undefined, drawn("found"), 10, never)).toEqual({
+			keep: false,
+		});
+	});
+
+	test("at the very address the page is never loaded again: shown where the page holds the case, drawn where not", () => {
+		const url = `${SEARCH}?q=shoes`;
+		// An AI app's load_case drew the case: the panel's own draw knows nothing.
+		expect(linkStep(url, url, "c_shop", "c_shop")).toBe("show");
+		expect(linkStep(url, url, "c_shop", undefined)).toBe("draw");
+		expect(linkStep(url, url, "c_shop", "c_other")).toBe("draw");
+		expect(linkStep(`${SEARCH}?q=boots`, url, "c_shop", "c_shop")).toBe(
+			"navigate",
+		);
+		expect(linkStep(undefined, url, "c_shop", undefined)).toBe("navigate");
+	});
+});
+
+describe("open_case and what the panel knew of a draw (review of DEC-050, 8)", () => {
+	test("only a draw of that case on that tab stays; the same case on another tab is dropped", () => {
+		expect(keepsLoaded({ caseId: "c_a", tabId: 2 }, "c_a", 2)).toBe(true);
+		expect(keepsLoaded({ caseId: "c_a", tabId: 1 }, "c_a", 2)).toBe(false);
+		expect(keepsLoaded({ caseId: "c_b", tabId: 2 }, "c_a", 2)).toBe(false);
+		expect(keepsLoaded(undefined, "c_a", 2)).toBe(false);
 	});
 });

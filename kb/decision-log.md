@@ -2770,7 +2770,12 @@ that is kept").
   this tab") that opens that address in the tab in front, keeps the case open, and,
   once the page has loaded and its marks are drawn, brings the mark into view and
   outlines it (`case:show`, as Show does); it waits while the draw still looks for a mark
-  not found yet, and gives up after two minutes (a sign-in in between). With the case
+  not found yet, and while the page is busy (making a mark) or does not answer, and is
+  used up only once the page showed the mark or after two minutes (a sign-in in
+  between: `tryShow`). With the tab at that very address the page is never loaded
+  again (its fields and scroll would go): where it holds the case, an AI app's
+  `load_case` too, the mark is shown at once, else the case is drawn there
+  (`linkStep`). With the case
   open on another origin than the mark's, "Open on <origin>" sends the mark's path, kept
   query and hash route to the origin it names: the host with its port, and the scheme
   too where host and port are the mark's (`Open on http://shop.example`), so it is never
@@ -2787,7 +2792,8 @@ that is kept").
   panel does exactly what a person's clicks do: "← All cases" on the case it shows
   (`leaveCase`: its toolbars end, an untouched new case goes, DEC-026), a click on the
   case, whose marks are then drawn on the tab in front by path and follow the tab
-  (DEC-022). The tool reports that draw. It asks the user first (`consequentialHint`:
+  (DEC-022). The tool reports that draw; what the panel knew of a draw of another case,
+  or of the same case on another tab, is dropped first (`keepsLoaded`). It asks the user first (`consequentialHint`:
   "Always allow" and "Allow all changes" cover it as any other, DEC-043); its question
   names the case and the page in front (its address as kept). **Nothing a person typed
   is ever lost to it:** while the case shown has a mark's form open, its title or link
@@ -2814,6 +2820,8 @@ that is kept").
   `test/view.test.ts` (the offer and its order, the link's texts and names),
   `test/tools.test.ts` (`address`, `onThisPage` on localhost's home page, `open_case`,
   its refusals and its question), `test/ai-open.test.ts` (every refusal),
+  `test/address.test.ts` (the link's wait, a busy page, the very address; the draw
+  `open_case` keeps),
   `test/browser.test.ts` (`fromBackground`), two sites' home pages in
   `test/address.test.ts` (`findsOn`, `pageView` on each site and a third host),
   `test/compat-0-3-0.test.ts` (the sync, 0.3.0 beside it), in Chromium

@@ -7,10 +7,12 @@
 import {
 	type Annotation,
 	type Case,
+	exactPage,
 	hashRoute,
 	isWebPage,
 	markAddress,
 } from "../lib/case.ts";
+import type { AnnotationMatch } from "../lib/messages.ts";
 
 export interface MarkTargets {
 	/** Where the mark was made: its screenshot's address with its query. */
@@ -63,4 +65,77 @@ export function shortAddress(address: string): string {
 	} catch {
 		return address;
 	}
+}
+
+/**
+ * A mark's link was clicked: once the tab has loaded `url` and its marks are
+ * drawn there, that mark is brought into view and outlined; held until
+ * `until` (a page that never comes, a sign-in in between).
+ */
+export interface PendingShow {
+	tabId: number;
+	caseId: string;
+	annotationId: string;
+	/** `markKey`: the mark meant, whatever number it has by then. */
+	mark: string;
+	url: string;
+	until: number;
+}
+
+/** What the panel's draw found on a tab, as `showPending` reads it. */
+export interface DrawnOn {
+	tabId: number;
+	caseId: string;
+	url: string;
+	matches: ReadonlyMap<string, AnnotationMatch>;
+	settling?: boolean;
+}
+
+/**
+ * Try to show the mark a link waits for, after a draw (`loaded`): `keep`
+ * while it may still come (not that tab or page yet, the mark not found
+ * while the draw looks again, the page busy or not answering `case:show`);
+ * given up once `until` has passed; done once the page showed it (`shown`,
+ * the page's word for the mark now). `show` asks the page.
+ */
+export async function tryShow(
+	p: PendingShow | undefined,
+	loaded: DrawnOn | undefined,
+	now: number,
+	show: (p: PendingShow) => Promise<AnnotationMatch | { error: string } | null>,
+): Promise<{ keep: boolean; shown?: AnnotationMatch }> {
+	if (p === undefined || now > p.until) return { keep: false };
+	if (
+		loaded === undefined ||
+		loaded.tabId !== p.tabId ||
+		loaded.caseId !== p.caseId ||
+		!exactPage(loaded.url, p.url)
+	)
+		return { keep: true };
+	const m = loaded.matches.get(p.annotationId);
+	if (m === undefined) return { keep: true };
+	const found = m.status !== "lost" && m.status !== "no-element";
+	if (!found && m.status !== "no-element" && loaded.settling)
+		return { keep: true };
+	const shown = await show(p).catch(() => null);
+	// Busy with a mark, or no answer: the next draw tries again.
+	if (shown === null || "error" in shown) return { keep: true };
+	return { keep: false, shown };
+}
+
+/**
+ * What a mark's link does on the tab (`tabUrl`, and the case its page
+ * shows, `pageCase`): at another address it goes there (`navigate`); at that
+ * very address it never loads the page again (its form fields and scroll
+ * would go): it shows the mark where the page holds the case (`show`, also
+ * when an AI app's load_case drew it), else draws the case there (`draw`).
+ */
+export function linkStep(
+	tabUrl: string | undefined,
+	url: string,
+	caseId: string,
+	pageCase: string | undefined,
+): "navigate" | "show" | "draw" {
+	if (tabUrl !== url) return "navigate";
+	return pageCase === caseId ? "show" : "draw";
 }

@@ -16,7 +16,6 @@ import {
 	casePages,
 	cleanLink,
 	cleanTitle,
-	exactPage,
 	linkProblem,
 	MARK_CHANGED,
 	MAX_COMMENT,
@@ -68,7 +67,7 @@ import {
 import { IdbStore } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
-import { aiOpenRefusal } from "./ai-open.ts";
+import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { byId, isWebPage, sitePattern } from "./dom.ts";
@@ -87,7 +86,12 @@ import {
 } from "./follow.ts";
 import { isUntouched, mayHold, newCase, type TabAnswer } from "./fresh.ts";
 import { CaseHints } from "./hints.ts";
-import { markTargets } from "./mark-link.ts";
+import {
+	linkStep,
+	markTargets,
+	type PendingShow,
+	tryShow,
+} from "./mark-link.ts";
 import { markAsked } from "./picked.ts";
 import { cssSize, onScreen, type Size, sameSize, windowFor } from "./size.ts";
 import {
@@ -274,16 +278,7 @@ let pendingLoad: { tabId: number; caseId: string } | undefined;
  * Held for a while only: a page that never comes (a sign-in in between)
  * shows nothing later on.
  */
-let pendingShow:
-	| {
-			tabId: number;
-			caseId: string;
-			annotationId: string;
-			mark: string;
-			url: string;
-			until: number;
-	  }
-	| undefined;
+let pendingShow: PendingShow | undefined;
 
 /** How long a mark's link waits for its page and the marks on it. */
 const SHOW_WAIT_MS = 120_000;
@@ -295,31 +290,17 @@ const SHOW_WAIT_MS = 120_000;
  */
 async function showPending(): Promise<void> {
 	const p = pendingShow;
-	const loaded = state.loaded;
-	if (p === undefined || loaded === undefined) return;
-	if (Date.now() > p.until) {
-		pendingShow = undefined;
-		return;
-	}
-	if (
-		loaded.tabId !== p.tabId ||
-		loaded.caseId !== p.caseId ||
-		!exactPage(loaded.url, p.url)
-	)
-		return;
-	const m = loaded.matches.get(p.annotationId);
-	if (m === undefined) return;
-	if (!isFound(m) && m.status !== "no-element" && loaded.settling) return;
-	pendingShow = undefined;
-	const shown = (await chrome.tabs
-		.sendMessage(p.tabId, {
+	const { keep, shown } = await tryShow(p, state.loaded, Date.now(), (q) =>
+		chrome.tabs.sendMessage(q.tabId, {
 			type: "case:show",
-			caseId: p.caseId,
-			annotationId: p.annotationId,
-			mark: p.mark,
-		})
-		.catch(() => null)) as AnnotationMatch | { error: string } | null;
-	if (shown === null || "error" in shown) return;
+			caseId: q.caseId,
+			annotationId: q.annotationId,
+			mark: q.mark,
+		}),
+	);
+	// Consumed once shown or given up; a newer click meanwhile is its own.
+	if (!keep && pendingShow === p) pendingShow = undefined;
+	if (p === undefined || shown === undefined) return;
 	update((s) => {
 		if (s.loaded?.tabId === p.tabId && s.loaded.caseId === p.caseId)
 			s.loaded.matches.set(p.annotationId, shown);
@@ -1749,13 +1730,30 @@ const actions: Actions = {
 			};
 			// Asked for by name: a Hide on that tab holds no longer.
 			if (hiddenOn.has(tabId)) update(() => hiddenOn.delete(tabId));
-			// Already there, with the marks drawn: shown at once.
-			if (
-				tab.url === url &&
-				state.loaded?.tabId === tabId &&
-				state.loaded.caseId === c.id
-			) {
-				await showPending();
+			// At that very address the page is never loaded again: what it
+			// shows decides (an AI app's load_case may have drawn the case).
+			const step = linkStep(
+				tab.url,
+				url,
+				c.id,
+				tab.url === url ? (await overlayState(tabId))?.loadedCase : undefined,
+			);
+			if (step === "show") {
+				const p = pendingShow;
+				const shown = (await chrome.tabs
+					.sendMessage(tabId, {
+						type: "case:show",
+						caseId: c.id,
+						annotationId: a.id,
+						mark: p.mark,
+					})
+					.catch(() => null)) as AnnotationMatch | { error: string } | null;
+				if (shown !== null && !("error" in shown) && pendingShow === p)
+					pendingShow = undefined;
+				return;
+			}
+			if (step === "draw") {
+				void follow();
 				return;
 			}
 			// The case stays open; its marks follow the tab once it has loaded
@@ -2672,6 +2670,12 @@ function openForAi(
 		}
 		// Asked for by name: a Hide on that tab holds no longer.
 		if (hiddenOn.has(tabId)) update(() => hiddenOn.delete(tabId));
+		// A draw of another case, or of this one on another tab, says nothing
+		// of the tab the AI app opened it on: `drawnFor` waits for that one.
+		update((s) => {
+			if (s.loaded !== undefined && !keepsLoaded(s.loaded, caseId, tabId))
+				s.loaded = undefined;
+		});
 		if (showing(caseId)) void follow();
 		else openCase(caseId);
 		sendResponse({

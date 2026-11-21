@@ -66,3 +66,20 @@ export function aiOpenRefusal(
 		return { reason: "adding", caseId: here };
 	return undefined;
 }
+
+/**
+ * Whether what the panel knows of a draw (`loaded`) still says what the
+ * page shows once `open_case` opens `caseId` on tab `tabId`: only a draw of
+ * that case on that tab. Of another case, or of the same case on another
+ * tab, it is dropped, or the panel would show that tab's statuses and "This
+ * tab" line for the one the AI app opened it on.
+ */
+export function keepsLoaded(
+	loaded: { caseId: string; tabId: number } | undefined,
+	caseId: string,
+	tabId: number,
+): boolean {
+	return (
+		loaded !== undefined && loaded.caseId === caseId && loaded.tabId === tabId
+	);
+}
