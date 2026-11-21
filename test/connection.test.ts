@@ -869,25 +869,55 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(w.last().fill).toBeUndefined();
 	});
 
-	test("pairing is held on for a fill, and pairing.start is not sent again while the panel shows the code (client 0.19 sends it at every call)", async () => {
+	test("pairing is held on for a fill; a yes sends pairing.start also while the panel shows the code, and the code the card shows is filled in", async () => {
 		const start = spyOn(TabMcp.prototype, "startPairing");
 		try {
 			const { w } = await connected({ fillCode: true });
 			w.send({ type: "pair", on: true });
 			await until(() => w.last().code !== undefined);
+			const shown = w.last().code as string;
 			expect(start).toHaveBeenCalledTimes(1);
 			await w.connection.pageLoaded(7, PAGE);
 			await until(() => w.last().fill !== undefined);
 			w.send({ type: "fill", id: w.last().fill?.id, yes: true });
 			await until(() => fake.filled.length > 0, 15_000);
-			expect(start).toHaveBeenCalledTimes(1);
+			// The relay answers the second pairing.start with the code it
+			// shows; that one is filled in, at once.
+			expect(start).toHaveBeenCalledTimes(2);
+			expect(fake.filled).toEqual([shown]);
 			// The panel's pairing view closes: the fill holds pairing on.
 			w.send({ type: "pair", on: false });
 			await Bun.sleep(50);
 			expect(w.last().code).toBeDefined();
-			expect(start).toHaveBeenCalledTimes(1);
 		} finally {
 			start.mockRestore();
+		}
+	});
+
+	test("Review of #29, 1: a panel's pairing view from before a relay switch does not keep a yes from turning pairing on with the new relay", async () => {
+		const other = startTestRelay({ maxSessionsPerIp: 50 });
+		try {
+			const { w } = await connected({ fillCode: true });
+			w.send({ type: "pair", on: true });
+			await until(() => w.last().code !== undefined);
+			// The relay changes; the panel's flag is still set (its own
+			// pair off has not come yet).
+			w.send({ type: "set-relay", relay: other.url });
+			await until(() => w.last().relay === other.url);
+			w.send({ type: "connect" });
+			await until(() => w.last().state === "connected");
+			expect(w.last().pairing).toBe(true);
+			expect(w.last().code).toBeUndefined();
+			await w.connection.pageLoaded(7, PAGE);
+			await until(() => w.last().fill !== undefined);
+			w.send({ type: "fill", id: w.last().fill?.id, yes: true });
+			// Without pairing on the new relay no code would come, and after
+			// 10 s the panel would say it could not fill in the code.
+			await until(() => fake.filled.length > 0, 5_000);
+			expect(fake.filled).toEqual([w.last().code as string]);
+			expect(w.last().fillProblem).toBeUndefined();
+		} finally {
+			await other.stop();
 		}
 	});
 

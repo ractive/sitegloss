@@ -64,7 +64,14 @@ export class FillQuestion {
 	readonly #askMs: number;
 	readonly #problemMs: number;
 	#question: Question | undefined;
-	#problem: { text: string; timer: ReturnType<typeof setTimeout> } | undefined;
+	/**
+	 * What the panel says, and the tab it is about: a code that comes for a
+	 * tab clears only that tab's (an earlier failed fill there), never a
+	 * page in another tab that was not asked about.
+	 */
+	#problem:
+		| { text: string; tabId: number; timer: ReturnType<typeof setTimeout> }
+		| undefined;
 	/** The tabs whose code is being fetched for a fill (the library's `FillContext`). */
 	readonly #fetching: number[] = [];
 	#holding = false;
@@ -114,6 +121,7 @@ export class FillQuestion {
 			// keeps Sitegloss busy, a question or a code on its way.
 			this.#setProblem(
 				`${fillAppLabel(view)} also opened the relay's page. Sitegloss asks about one at a time: answer the question above first, then reload that page; or type the code there.`,
+				tabId,
 				this.#askMs,
 			);
 			return Promise.resolve("busy");
@@ -121,6 +129,7 @@ export class FillQuestion {
 		if (this.#fetching.some((id) => id !== tabId)) {
 			this.#setProblem(
 				`${fillAppLabel(view)} also opened the relay's page while Sitegloss was filling in the code on another one. Reload that page in a moment to be asked, or type the code there.`,
+				tabId,
 			);
 			return Promise.resolve("busy");
 		}
@@ -161,6 +170,7 @@ export class FillQuestion {
 		if (why === "busy") return;
 		this.#setProblem(
 			`Sitegloss could not fill in the code for the AI app at ${this.#host.visible(context.client.host)}. Type the code from the AI app card on the relay's page.`,
+			context.tabId,
 		);
 	}
 
@@ -192,7 +202,8 @@ export class FillQuestion {
 			if (this.#release === undefined) this.#letGo();
 			return undefined;
 		}
-		this.#setProblem(undefined);
+		// Only this tab's: another tab's page that was not asked about stays said.
+		if (this.#problem?.tabId === tabId) this.#clearProblem();
 		clearTimeout(this.#release);
 		this.#release = setTimeout(() => {
 			this.#release = undefined;
@@ -221,7 +232,7 @@ export class FillQuestion {
 	 */
 	withdraw(): void {
 		this.#end("deny");
-		this.#setProblem(undefined);
+		this.#clearProblem();
 		clearTimeout(this.#release);
 		this.#release = undefined;
 		this.#letGo();
@@ -243,18 +254,25 @@ export class FillQuestion {
 		this.#host.hold(false);
 	}
 
-	#setProblem(text: string | undefined, ms = this.#problemMs): void {
+	/** Say `text` about tab `tabId` for `ms`; it replaces what was said. */
+	#setProblem(text: string, tabId: number, ms = this.#problemMs): void {
 		clearTimeout(this.#problem?.timer);
-		this.#problem =
-			text === undefined
-				? undefined
-				: {
-						text,
-						timer: setTimeout(() => {
-							this.#problem = undefined;
-							this.#host.changed();
-						}, ms),
-					};
+		const problem = {
+			text,
+			tabId,
+			timer: setTimeout(() => {
+				if (this.#problem !== problem) return;
+				this.#problem = undefined;
+				this.#host.changed();
+			}, ms),
+		};
+		this.#problem = problem;
+		this.#host.changed();
+	}
+
+	#clearProblem(): void {
+		clearTimeout(this.#problem?.timer);
+		this.#problem = undefined;
 		this.#host.changed();
 	}
 }

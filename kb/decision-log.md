@@ -2627,7 +2627,11 @@ the user sees does not change.
     went to a page; at once when no code went and no earlier fill's 30 s still run; at
     once on the library's `release()` (the AI app connected, or a fill ended without its
     code and no other needs pairing), which may come with nothing held and is then
-    ignored; `pairing.start` is not sent again while a panel shows the code;
+    ignored. A yes always turns pairing on with the connection of now, also while a
+    panel shows the code: a panel's flag can still be about the relay before a switch
+    until the panel, which shows no code while not connected, turns it off and on again.
+    Sent again, `pairing.start` is answered with the code that shows (relay 0.13.0's
+    `PairingCodes.start`), which `takeCode` does not take for the next one;
   - the setting "Fill in the code for me", its own, off by default, also with access to
     all sites, and the relay's site asked for with its click and given back when it is
     turned off (`settleFillCode` as before); the script is put in only while it is on,
@@ -2650,7 +2654,10 @@ the user sees does not change.
     else the next one the relay sends (the same code sent again counts only if its
     expiry now leaves 5 s), else the current one after 10 s.
   - *Nothing dropped unseen*: `ask` may answer `busy`, and the library reports it
-    (`failed("busy", context)`); Sitegloss says it in `ask`, where it knows why.
+    (`failed("busy", context)`); Sitegloss says it in `ask`, where it knows why. What
+    the panel says is about one tab: a code that comes for a tab clears only what was
+    said about that tab (a fill that failed there), not that a page in another tab was
+    not asked about; that stays until its own time runs out or something replaces it.
   - *Only the hosted relay*: `relayOrigin()` gives the hosted relay's origin only, as
     before.
 - **A fault of 0.3.1 fixed on the way.** In 0.3.1 a yes cleared the hold of a fill

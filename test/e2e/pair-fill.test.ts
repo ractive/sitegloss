@@ -19,6 +19,7 @@ import {
 	newNotification,
 	notifications,
 	openSidePanel,
+	setRelay,
 } from "./ai.ts";
 import type { Page } from "./browser.ts";
 import { browserBinary, type Harness, startHarness } from "./harness.ts";
@@ -228,6 +229,35 @@ describe.skipIf(browserBinary === undefined)(
 			await Bun.sleep(1500);
 			expect(await panel.eval(`${ASK}.hidden`)).toBe(true);
 			await close(tab);
+		});
+
+		test("Review of #29, 1: the pairing view open across a relay switch shows the new relay's code (the panel turns pairing off and on again)", async () => {
+			// A code, not the placeholder the card shows while there is none.
+			const CODE = `/^[A-Z]{4}-[A-Z]{4}$/.test(${byId("pair-code")}.textContent)`;
+			/** Another relay in the Relay field, then Turn on AI access once the switch shows. */
+			const switchTo = async (url: string) => {
+				await setRelay(panel, url);
+				await panel.waitFor(
+					`document.documentElement.dataset.aiState !== "connected" && !${byId("connect")}.hidden`,
+					10_000,
+				);
+				await panel.eval(`${byId("connect")}.click()`);
+				await panel.waitFor(
+					`${byId("pair-address")}.textContent.startsWith(${JSON.stringify(url)})`,
+					10_000,
+				);
+			};
+			await panel.waitFor(CODE, 10_000);
+			const other = startTestRelay();
+			try {
+				await switchTo(other.url);
+				// A code comes only from the connection of now: pairing is on
+				// with the new relay, as the panel asked once it connected.
+				await panel.waitFor(CODE, 10_000);
+			} finally {
+				await switchTo(relay.url);
+				await other.stop();
+			}
 		});
 	},
 );

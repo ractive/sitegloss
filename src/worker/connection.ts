@@ -1057,13 +1057,14 @@ export class Connection {
 			notify: (view: FillView | undefined) => this.#fillNotice(view),
 			changed: () => this.#changed(),
 			visible,
-			// Not again while a panel shows the code: pairing is on already,
-			// and client 0.19 sends the relay `pairing.start` at every call.
+			// Always on the connection of now, also while a panel shows the
+			// code: a panel's flag may still be about the relay before a
+			// switch. Sent again, `pairing.start` is answered with the code
+			// that shows, which `takeCode` does not take for the next one.
 			hold: (on: boolean) => {
 				this.#fillPairing = on;
-				if (!on) this.#pairingOff();
-				else if (![...this.#panels].some((p) => p.pairing))
-					this.#mcp.startPairing();
+				if (on) this.#mcp.startPairing();
+				else this.#pairingOff();
 			},
 			codes: () => pairingCodes(this.#mcp),
 			now: () => Date.now(),

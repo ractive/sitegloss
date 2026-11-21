@@ -470,6 +470,69 @@ describe("the question and the fill", () => {
 		expect(second.submitted).toEqual([]);
 	});
 
+	test("Review of #29, 2: a code that comes for one tab leaves what the panel says about a page in another tab that was not asked about; it clears only its own tab's", async () => {
+		const BUSY_FETCHING =
+			"An AI app at second.example (it calls itself “Claude”) also opened the relay's page while Sitegloss was filling in the code on another one. Reload that page in a moment to be asked, or type the code there.";
+		const BUSY_QUESTION =
+			"An AI app at third.example (it calls itself “Claude”) also opened the relay's page. Sitegloss asks about one at a time: answer the question above first, then reload that page; or type the code there.";
+		// A code on its way to tab 1; tab 2 is told it was not asked about.
+		const f = setup();
+		f.setCode(undefined);
+		const first = f.load(1, PAGE, pairingPage({ host: "first.example" }));
+		await turns();
+		f.question.answer(f.question.question?.id as string, true);
+		await turns();
+		f.load(2, PAGE, pairingPage({ host: "second.example" }));
+		await turns();
+		expect(f.question.problem).toBe(BUSY_FETCHING);
+		f.sendCode({
+			code: "BCDF-GHJK",
+			expiresAt: new Date(f.now + 60_000).toISOString(),
+		});
+		await turns();
+		expect(first.submitted).toEqual(["BCDF-GHJK"]);
+		expect(f.question.problem).toBe(BUSY_FETCHING);
+
+		// A question waits in tab 1; tab 3 is told so; tab 1's yes fills in.
+		const g = setup();
+		const one = g.load(1, PAGE, pairingPage({ host: "first.example" }));
+		await turns();
+		g.load(3, PAGE, pairingPage({ host: "third.example" }));
+		await turns();
+		expect(g.question.problem).toBe(BUSY_QUESTION);
+		g.question.answer(g.question.question?.id as string, true);
+		await turns();
+		expect(one.submitted).toEqual(["BCDF-GHJK"]);
+		expect(g.question.problem).toBe(BUSY_QUESTION);
+
+		// An earlier failed fill in tab 1 is cleared by tab 1's code.
+		const h = setup();
+		h.question.failed("no-code", {
+			tabId: 1,
+			client: { name: "Claude", host: "first.example" },
+		});
+		expect(h.question.problem).toContain("could not fill in the code");
+		h.load(1, PAGE, pairingPage({ host: "first.example" }));
+		await turns();
+		h.question.answer(h.question.question?.id as string, true);
+		await turns();
+		expect(h.question.problem).toBeUndefined();
+	});
+
+	test("a busy notice still goes after its own time", async () => {
+		const f = setup({ problemMs: 30 });
+		f.setCode(undefined);
+		f.load(1, PAGE, pairingPage({ host: "first.example" }));
+		await turns();
+		f.question.answer(f.question.question?.id as string, true);
+		await turns();
+		f.load(2, PAGE, pairingPage({ host: "second.example" }));
+		await turns();
+		expect(f.question.problem).toBeDefined();
+		await Bun.sleep(60);
+		expect(f.question.problem).toBeUndefined();
+	});
+
 	test("Review 6: pairing is held on from the yes until a while after the fill, also when Connect's post leaves the page; the AI app connecting lets it go at once", async () => {
 		const f = setup({ holdMs: 40, grants: [] });
 		const t = f.load(1, PAGE, pairingPage());
