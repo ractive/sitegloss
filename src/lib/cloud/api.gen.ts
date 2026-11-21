@@ -425,7 +425,7 @@ export interface components {
 					shot: {
 						id: components["schemas"]["Id"];
 						url: string;
-						/** @description The query of the address the screenshot was taken at, without the leading `?`. The server keeps what `keptQuery` (DEC-023) keeps of it: pieces whose name says secret (token, key, code, session, email and the like) or whose value looks like one (an e-mail address, a JWT, a long opaque value) are dropped, and a query longer than 1024 characters after that is dropped whole. Never refused for what it holds; a client should filter it the same way before sending. */
+						/** @description The query of the address the screenshot was taken at, without the leading `?`. The server keeps what `keptQuery` (DEC-023) keeps of it: pieces whose name says secret (token, key, code, session, email and the like) or whose value looks like one (an e-mail address, a JWT, a long opaque value) are dropped, and a query longer than 1024 characters after that is dropped whole. Never refused for what it holds; only one longer than 8000 UTF-16 units, the most a whole address holds, makes the request invalid, which a client that filters first never sends. A client should filter it the same way before sending. */
 						query?: string;
 						image: components["schemas"]["ImageRef"];
 						scrollX: number;

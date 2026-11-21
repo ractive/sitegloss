@@ -1,0 +1,1076 @@
+{
+	"about": "A case as the server holds it (GET /api/v1/teams/{teamId}/cases/{caseId}) and the case.json of its download (GET …/export) in the extension's format sitegloss/1 (DEC-022). The server's caseFileOf (apps/app/src/server/case-file.ts) gives caseJson for server; the extension's mapping of a server case (mergeCase in src/lib/cloud/wire.ts) has to give the same, and its validateCase has to keep it as it is. Mark 1's element and mark 3's start carry a look (DEC-021), with entries the extension's lookOf drops: a custom property, a value that names a URL, a backdrop's false image and out-of-range depth, a sibling at offset 0. caseMdLookLines: the \"- Look:\" lines the extension's caseMarkdown writes in case.md for caseJson, in order. Screenshot sh_cart has a query (DEC-023): the file's s1 carries it as shots[].query, as the server sends it; sh_pay has none and s2 has no query key. caseMdQueryLines: the lines of case.md that name an address with its query (a mark's \"- Page:\" and the screenshot's \"is of\" line, with the query put back before any hash), in order. singlePageServer, singlePageCaseJson, singlePageCaseMdPageLines: a case with one page and two screenshots of it, sh_results with a query and sh_plain without. The server's caseFileOf gives singlePageCaseJson for singlePageServer, as above. singlePageCaseMdPageLines: every line of its case.md that starts with \"- Page:\" or \"Screenshot \", in order: the case's page, plain; mark 1's page with its screenshot's query; the screenshot with a query and what it is of. Mark 2 and screenshot s2, without a query, name no page, as in a single-page case today (DEC-023).",
+	"server": {
+		"id": "c_vector",
+		"teamId": "t_vector",
+		"title": "Checkout: two pages, every kind of mark",
+		"link": "https://tickets.example/SG-12",
+		"summary": "Fix the button contrast; the total is right.",
+		"summaryBy": {
+			"at": "2026-11-20T10:30:00.000Z",
+			"user": {
+				"id": "u_tess",
+				"name": "Tess Tester"
+			}
+		},
+		"pages": [
+			{
+				"url": "https://shop.example/cart",
+				"title": "Cart",
+				"lang": "en"
+			},
+			{
+				"url": "https://shop.example/#/pay",
+				"title": "Pay",
+				"lang": "en_US"
+			}
+		],
+		"client": {
+			"viewport": {
+				"width": 1280,
+				"height": 800,
+				"dpr": 2
+			},
+			"userAgent": "Mozilla/5.0 (Macintosh) Chrome/142",
+			"lang": "en"
+		},
+		"lastNumber": 6,
+		"importedAt": null,
+		"closed": {
+			"at": "2026-11-20T12:00:00.000Z",
+			"user": {
+				"id": "u_tess",
+				"name": "Tess Tester"
+			},
+			"app": {
+				"id": "https://claude.ai/oauth/claude-code",
+				"name": "Claude Code",
+				"host": "claude.ai",
+				"verified": true
+			}
+		},
+		"createdBy": {
+			"id": "u_tess",
+			"name": "Tess Tester"
+		},
+		"createdAt": "2026-11-20T09:00:00.000Z",
+		"updatedAt": "2026-11-20T12:00:00.000Z",
+		"rev": 40,
+		"shots": [
+			{
+				"id": "sh_cart",
+				"caseId": "c_vector",
+				"url": "https://shop.example/cart",
+				"query": "step=2&ref=newsletter",
+				"image": {
+					"sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+					"width": 2560,
+					"height": 1600,
+					"bytes": 120000
+				},
+				"scrollX": 0,
+				"scrollY": 240,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 2
+				},
+				"capturedAt": "2026-11-20T09:01:00.000Z",
+				"rev": 2
+			},
+			{
+				"id": "sh_pay",
+				"caseId": "c_vector",
+				"url": "https://shop.example/#/pay",
+				"image": {
+					"sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+					"width": 2560,
+					"height": 1600,
+					"bytes": 98000
+				},
+				"scrollX": 0,
+				"scrollY": 0,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 2
+				},
+				"capturedAt": "2026-11-20T09:05:00.000Z",
+				"rev": 5
+			}
+		],
+		"marks": [
+			{
+				"id": "m_contrast",
+				"caseId": "c_vector",
+				"number": 1,
+				"shotId": "sh_cart",
+				"comment": "Pale text on yellow.",
+				"author": "user",
+				"shape": {
+					"kind": "element",
+					"rect": {
+						"x": 100,
+						"y": 300,
+						"width": 200,
+						"height": 40
+					}
+				},
+				"crop": {
+					"sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+					"width": 480,
+					"height": 160,
+					"bytes": 9000
+				},
+				"element": {
+					"tag": "button",
+					"testId": "checkout",
+					"role": "button",
+					"name": "Check out",
+					"classes": [
+						"Button_primary",
+						"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+					],
+					"attributes": {
+						"type": "submit",
+						"data-x": "dropped"
+					},
+					"heading": "Your cart",
+					"landmark": "main",
+					"ancestors": ["form.Cart_form", "main"],
+					"rect": {
+						"x": 100,
+						"y": 540,
+						"width": 200,
+						"height": 40
+					},
+					"page": {
+						"width": 1280,
+						"height": 2400
+					},
+					"selector": "form.Cart_form > button",
+					"styles": {
+						"color": "rgb(255, 255, 255)",
+						"background-color": "rgb(0, 102, 204)",
+						"font-size": "14px",
+						"line-height": "20px",
+						"font-weight": "600",
+						"font-family": "Inter, sans-serif",
+						"display": "inline-flex",
+						"--brand": "rgb(0, 102, 204)",
+						"background-image": "url(\"https://cdn.example/x.png\")"
+					},
+					"backdrop": {
+						"color": "rgb(0, 102, 204)",
+						"depth": 0,
+						"image": false
+					},
+					"siblings": [
+						{
+							"offset": -1,
+							"tag": "a",
+							"rect": {
+								"x": 20,
+								"y": 540,
+								"width": 60,
+								"height": 40
+							}
+						},
+						{
+							"offset": 0,
+							"tag": "span",
+							"rect": {
+								"x": 0,
+								"y": 0,
+								"width": 1,
+								"height": 1
+							}
+						},
+						{
+							"offset": 1,
+							"tag": "p",
+							"rect": {
+								"x": 320,
+								"y": 540,
+								"width": 80,
+								"height": 40
+							}
+						}
+					]
+				},
+				"resolution": {
+					"kind": "fixed",
+					"note": "Token restored.",
+					"at": "2026-11-20T10:00:00.000Z",
+					"app": {
+						"id": "https://claude.ai/oauth/claude-code",
+						"name": "Claude Code",
+						"host": "claude.ai",
+						"verified": true
+					},
+					"user": {
+						"id": "u_dana",
+						"name": "Dana Developer"
+					},
+					"verified": {
+						"at": "2026-11-20T11:00:00.000Z",
+						"user": {
+							"id": "u_tess",
+							"name": "Tess Tester"
+						}
+					}
+				},
+				"reopens": [],
+				"findings": [
+					{
+						"id": "f_1",
+						"text": "`.Button_primary` overrides `--button-text`.",
+						"app": {
+							"id": "https://claude.ai/oauth/claude-code",
+							"name": "Claude Code",
+							"host": "claude.ai",
+							"verified": true
+						},
+						"at": "2026-11-20T09:50:00.000Z",
+						"user": {
+							"id": "u_dana",
+							"name": "Dana Developer"
+						}
+					}
+				],
+				"status": "verified",
+				"createdBy": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				},
+				"createdAt": "2026-11-20T09:02:00.000Z",
+				"updatedAt": "2026-11-20T11:00:00.000Z",
+				"rev": 30
+			},
+			{
+				"id": "m_total",
+				"caseId": "c_vector",
+				"number": 3,
+				"shotId": "sh_pay",
+				"comment": "Total differs from the cart.",
+				"author": "user",
+				"shape": {
+					"kind": "arrow",
+					"from": {
+						"x": 50,
+						"y": 60
+					},
+					"to": {
+						"x": 400,
+						"y": 300
+					}
+				},
+				"crop": {
+					"sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+					"width": 700,
+					"height": 480,
+					"bytes": 15000
+				},
+				"element": {
+					"tag": "td",
+					"text": "CHF 45",
+					"classes": ["Prices_amount"],
+					"attributes": {},
+					"ancestors": [],
+					"rect": {
+						"x": 380,
+						"y": 280,
+						"width": 60,
+						"height": 30
+					},
+					"page": {
+						"width": 1280,
+						"height": 1200
+					},
+					"selector": "td.Prices_amount"
+				},
+				"ends": {
+					"start": {
+						"tag": "p",
+						"text": "Total CHF 49",
+						"classes": [],
+						"attributes": {},
+						"ancestors": ["main"],
+						"rect": {
+							"x": 40,
+							"y": 50,
+							"width": 120,
+							"height": 20
+						},
+						"page": {
+							"width": 1280,
+							"height": 1200
+						},
+						"selector": "main > p",
+						"styles": {
+							"color": "rgb(68, 68, 68)"
+						},
+						"backdrop": {
+							"color": "rgba(0, 0, 0, 0.5)",
+							"depth": 1001
+						}
+					},
+					"end": null
+				},
+				"resolution": null,
+				"reopens": [
+					{
+						"note": "The mail still says 45.",
+						"at": "2026-11-20T11:30:00.000Z",
+						"user": {
+							"id": "u_tess",
+							"name": "Tess Tester"
+						},
+						"was": {
+							"kind": "fixed",
+							"note": "Table says 49.",
+							"at": "2026-11-20T11:10:00.000Z",
+							"user": {
+								"id": "u_dana",
+								"name": "Dana Developer"
+							}
+						}
+					}
+				],
+				"findings": [],
+				"status": "open",
+				"createdBy": null,
+				"commentBy": {
+					"at": "2026-11-20T09:20:00.000Z",
+					"user": {
+						"id": "u_pat",
+						"name": "Pat Product"
+					}
+				},
+				"createdAt": "2026-11-20T09:06:00.000Z",
+				"updatedAt": "2026-11-20T11:30:00.000Z",
+				"rev": 34
+			},
+			{
+				"id": "m_focus",
+				"caseId": "c_vector",
+				"number": 6,
+				"shotId": "sh_pay",
+				"comment": "No focus ring on Pay.",
+				"author": "ai",
+				"shape": {
+					"kind": "box",
+					"rect": {
+						"x": 600,
+						"y": 250,
+						"width": 160,
+						"height": 60
+					}
+				},
+				"crop": {
+					"sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+					"width": 2560,
+					"height": 1600,
+					"bytes": 98000
+				},
+				"element": null,
+				"resolution": {
+					"kind": "wontfix",
+					"note": "Redesign next month.",
+					"at": "2026-11-20T11:40:00.000Z",
+					"user": {
+						"id": "u_tess",
+						"name": "Tess Tester"
+					}
+				},
+				"reopens": [],
+				"findings": [],
+				"status": "wontfix",
+				"createdBy": {
+					"id": "u_dana",
+					"name": "Dana Developer"
+				},
+				"createdVia": {
+					"id": "https://claude.ai/oauth/claude-code",
+					"name": "Claude Code",
+					"host": "claude.ai",
+					"verified": true
+				},
+				"createdAt": "2026-11-20T11:35:00.000Z",
+				"updatedAt": "2026-11-20T11:40:00.000Z",
+				"rev": 38
+			}
+		],
+		"comments": [
+			{
+				"id": "k_1",
+				"caseId": "c_vector",
+				"markId": "m_contrast",
+				"text": "Fixed in pull request #42.",
+				"user": {
+					"id": "u_dana",
+					"name": "Dana Developer"
+				},
+				"app": {
+					"id": "https://claude.ai/oauth/claude-code",
+					"name": "Claude Code",
+					"host": "claude.ai",
+					"verified": true
+				},
+				"at": "2026-11-20T10:01:00.000Z",
+				"rev": 31
+			},
+			{
+				"id": "k_2",
+				"caseId": "c_vector",
+				"markId": "m_deleted",
+				"text": "About a mark deleted since.",
+				"user": null,
+				"at": "2026-11-20T10:05:00.000Z",
+				"edited": {
+					"at": "2026-11-20T10:06:00.000Z",
+					"user": {
+						"id": "u_tess",
+						"name": "Tess Tester"
+					}
+				},
+				"rev": 32
+			},
+			{
+				"id": "k_3",
+				"caseId": "c_vector",
+				"markId": null,
+				"text": "Closing: the rest waits for the redesign.",
+				"user": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				},
+				"at": "2026-11-20T11:59:00.000Z",
+				"rev": 39
+			}
+		]
+	},
+	"caseJson": {
+		"format": "sitegloss/1",
+		"id": "c_vector",
+		"title": "Checkout: two pages, every kind of mark",
+		"createdAt": "2026-11-20T09:00:00.000Z",
+		"updatedAt": "2026-11-20T12:00:00.000Z",
+		"page": {
+			"url": "https://shop.example/cart",
+			"title": "Cart",
+			"lang": "en",
+			"viewport": {
+				"width": 1280,
+				"height": 800,
+				"dpr": 2
+			},
+			"userAgent": "Mozilla/5.0 (Macintosh) Chrome/142"
+		},
+		"pages": [
+			{
+				"url": "https://shop.example/cart",
+				"title": "Cart",
+				"lang": "en"
+			},
+			{
+				"url": "https://shop.example/#/pay",
+				"title": "Pay",
+				"lang": ""
+			}
+		],
+		"shots": [
+			{
+				"id": "s1",
+				"image": "shots/s1.webp",
+				"scrollX": 0,
+				"scrollY": 240,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 2
+				},
+				"capturedAt": "2026-11-20T09:01:00.000Z",
+				"url": "https://shop.example/cart",
+				"query": "step=2&ref=newsletter"
+			},
+			{
+				"id": "s2",
+				"image": "shots/s2.webp",
+				"scrollX": 0,
+				"scrollY": 0,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 2
+				},
+				"capturedAt": "2026-11-20T09:05:00.000Z",
+				"url": "https://shop.example/#/pay"
+			}
+		],
+		"annotations": [
+			{
+				"id": "a1",
+				"number": 1,
+				"shot": "s1",
+				"comment": "Pale text on yellow.",
+				"author": "user",
+				"shape": {
+					"kind": "element",
+					"rect": {
+						"x": 100,
+						"y": 300,
+						"width": 200,
+						"height": 40
+					}
+				},
+				"crop": "crops/a1.webp",
+				"element": {
+					"tag": "button",
+					"testId": "checkout",
+					"role": "button",
+					"name": "Check out",
+					"classes": [
+						"Button_primary",
+						"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+					],
+					"attributes": {
+						"type": "submit"
+					},
+					"heading": "Your cart",
+					"landmark": "main",
+					"ancestors": ["form.Cart_form", "main"],
+					"rect": {
+						"x": 100,
+						"y": 540,
+						"width": 200,
+						"height": 40
+					},
+					"page": {
+						"width": 1280,
+						"height": 2400
+					},
+					"selector": "form.Cart_form > button",
+					"styles": {
+						"color": "rgb(255, 255, 255)",
+						"background-color": "rgb(0, 102, 204)",
+						"font-size": "14px",
+						"line-height": "20px",
+						"font-weight": "600",
+						"font-family": "Inter, sans-serif",
+						"display": "inline-flex"
+					},
+					"backdrop": {
+						"color": "rgb(0, 102, 204)",
+						"depth": 0
+					},
+					"siblings": [
+						{
+							"offset": -1,
+							"tag": "a",
+							"rect": {
+								"x": 20,
+								"y": 540,
+								"width": 60,
+								"height": 40
+							}
+						},
+						{
+							"offset": 1,
+							"tag": "p",
+							"rect": {
+								"x": 320,
+								"y": 540,
+								"width": 80,
+								"height": 40
+							}
+						}
+					]
+				},
+				"createdBy": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				},
+				"resolution": {
+					"kind": "fixed",
+					"note": "Token restored.",
+					"at": "2026-11-20T10:00:00.000Z",
+					"app": {
+						"id": "https://claude.ai/oauth/claude-code",
+						"name": "Claude Code",
+						"host": "claude.ai"
+					},
+					"verified": {
+						"at": "2026-11-20T11:00:00.000Z",
+						"user": {
+							"id": "u_tess",
+							"name": "Tess Tester"
+						}
+					},
+					"user": {
+						"id": "u_dana",
+						"name": "Dana Developer"
+					}
+				},
+				"findings": [
+					{
+						"id": "f_1",
+						"text": "`.Button_primary` overrides `--button-text`.",
+						"app": {
+							"id": "https://claude.ai/oauth/claude-code",
+							"name": "Claude Code",
+							"host": "claude.ai"
+						},
+						"at": "2026-11-20T09:50:00.000Z",
+						"user": {
+							"id": "u_dana",
+							"name": "Dana Developer"
+						}
+					}
+				]
+			},
+			{
+				"id": "a3",
+				"number": 3,
+				"shot": "s2",
+				"comment": "Total differs from the cart.",
+				"author": "user",
+				"shape": {
+					"kind": "arrow",
+					"from": {
+						"x": 50,
+						"y": 60
+					},
+					"to": {
+						"x": 400,
+						"y": 300
+					}
+				},
+				"crop": "crops/a3.webp",
+				"element": {
+					"tag": "td",
+					"text": "CHF 45",
+					"classes": ["Prices_amount"],
+					"attributes": {},
+					"ancestors": [],
+					"rect": {
+						"x": 380,
+						"y": 280,
+						"width": 60,
+						"height": 30
+					},
+					"page": {
+						"width": 1280,
+						"height": 1200
+					},
+					"selector": "td.Prices_amount"
+				},
+				"ends": {
+					"start": {
+						"tag": "p",
+						"text": "Total CHF 49",
+						"classes": [],
+						"attributes": {},
+						"ancestors": ["main"],
+						"rect": {
+							"x": 40,
+							"y": 50,
+							"width": 120,
+							"height": 20
+						},
+						"page": {
+							"width": 1280,
+							"height": 1200
+						},
+						"selector": "main > p",
+						"styles": {
+							"color": "rgb(68, 68, 68)"
+						},
+						"backdrop": {
+							"color": "rgba(0, 0, 0, 0.5)"
+						}
+					},
+					"end": null
+				},
+				"reopens": [
+					{
+						"note": "The mail still says 45.",
+						"at": "2026-11-20T11:30:00.000Z",
+						"was": {
+							"kind": "fixed",
+							"note": "Table says 49.",
+							"at": "2026-11-20T11:10:00.000Z",
+							"user": {
+								"id": "u_dana",
+								"name": "Dana Developer"
+							}
+						},
+						"user": {
+							"id": "u_tess",
+							"name": "Tess Tester"
+						}
+					}
+				],
+				"commentBy": {
+					"at": "2026-11-20T09:20:00.000Z",
+					"user": {
+						"id": "u_pat",
+						"name": "Pat Product"
+					}
+				}
+			},
+			{
+				"id": "a6",
+				"number": 6,
+				"shot": "s2",
+				"comment": "No focus ring on Pay.",
+				"author": "ai",
+				"shape": {
+					"kind": "box",
+					"rect": {
+						"x": 600,
+						"y": 250,
+						"width": 160,
+						"height": 60
+					}
+				},
+				"crop": "crops/a6.webp",
+				"element": null,
+				"createdBy": {
+					"id": "u_dana",
+					"name": "Dana Developer"
+				},
+				"resolution": {
+					"kind": "wontfix",
+					"note": "Redesign next month.",
+					"at": "2026-11-20T11:40:00.000Z",
+					"user": {
+						"id": "u_tess",
+						"name": "Tess Tester"
+					}
+				},
+				"createdVia": {
+					"id": "https://claude.ai/oauth/claude-code",
+					"name": "Claude Code",
+					"host": "claude.ai"
+				}
+			}
+		],
+		"verdict": "Fix the button contrast; the total is right.",
+		"link": "https://tickets.example/SG-12",
+		"lastNumber": 6,
+		"closed": {
+			"at": "2026-11-20T12:00:00.000Z",
+			"user": {
+				"id": "u_tess",
+				"name": "Tess Tester"
+			},
+			"app": {
+				"id": "https://claude.ai/oauth/claude-code",
+				"name": "Claude Code",
+				"host": "claude.ai"
+			}
+		},
+		"comments": [
+			{
+				"id": "k_1",
+				"mark": "a1",
+				"text": "Fixed in pull request #42.",
+				"at": "2026-11-20T10:01:00.000Z",
+				"user": {
+					"id": "u_dana",
+					"name": "Dana Developer"
+				},
+				"app": {
+					"id": "https://claude.ai/oauth/claude-code",
+					"name": "Claude Code",
+					"host": "claude.ai"
+				}
+			},
+			{
+				"id": "k_2",
+				"markGone": true,
+				"text": "About a mark deleted since.",
+				"at": "2026-11-20T10:05:00.000Z",
+				"writerGone": true,
+				"edited": {
+					"at": "2026-11-20T10:06:00.000Z",
+					"user": {
+						"id": "u_tess",
+						"name": "Tess Tester"
+					}
+				}
+			},
+			{
+				"id": "k_3",
+				"text": "Closing: the rest waits for the redesign.",
+				"at": "2026-11-20T11:59:00.000Z",
+				"user": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				}
+			}
+		],
+		"summaryBy": {
+			"at": "2026-11-20T10:30:00.000Z",
+			"user": {
+				"id": "u_tess",
+				"name": "Tess Tester"
+			}
+		}
+	},
+	"caseMdLookLines": [
+		"- Look: rgb(255, 255, 255) on rgb(0, 102, 204), contrast 5.57:1 · 14px/20px 600 Inter · inline-flex"
+	],
+	"caseMdQueryLines": [
+		"- Page: <https://shop.example/cart?step=2&ref=newsletter>",
+		"Screenshot s1 is of <https://shop.example/cart?step=2&ref=newsletter>, in a window of 1280×800 CSS pixels."
+	],
+	"singlePageServer": {
+		"id": "c_single",
+		"teamId": "t_vector",
+		"title": "Search results in the wrong order",
+		"link": null,
+		"summary": null,
+		"pages": [
+			{
+				"url": "https://shop.example/search",
+				"title": "Search",
+				"lang": "en"
+			}
+		],
+		"client": {
+			"viewport": {
+				"width": 1280,
+				"height": 800,
+				"dpr": 1
+			},
+			"lang": "en"
+		},
+		"lastNumber": 2,
+		"importedAt": null,
+		"closed": null,
+		"createdBy": {
+			"id": "u_tess",
+			"name": "Tess Tester"
+		},
+		"createdAt": "2026-11-21T09:00:00.000Z",
+		"updatedAt": "2026-11-21T09:05:00.000Z",
+		"rev": 6,
+		"shots": [
+			{
+				"id": "sh_results",
+				"caseId": "c_single",
+				"url": "https://shop.example/search",
+				"query": "q=shoes&sort=price",
+				"image": {
+					"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					"width": 1280,
+					"height": 800,
+					"bytes": 50000
+				},
+				"scrollX": 0,
+				"scrollY": 0,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 1
+				},
+				"capturedAt": "2026-11-21T09:01:00.000Z",
+				"rev": 1
+			},
+			{
+				"id": "sh_plain",
+				"caseId": "c_single",
+				"url": "https://shop.example/search",
+				"image": {
+					"sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					"width": 1280,
+					"height": 800,
+					"bytes": 50000
+				},
+				"scrollX": 0,
+				"scrollY": 0,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 1
+				},
+				"capturedAt": "2026-11-21T09:03:00.000Z",
+				"rev": 3
+			}
+		],
+		"marks": [
+			{
+				"id": "m_order",
+				"caseId": "c_single",
+				"number": 1,
+				"shotId": "sh_results",
+				"comment": "Cheapest is not first.",
+				"author": "user",
+				"shape": {
+					"kind": "note",
+					"at": {
+						"x": 10,
+						"y": 20
+					}
+				},
+				"crop": {
+					"sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+					"width": 200,
+					"height": 100,
+					"bytes": 4000
+				},
+				"element": null,
+				"resolution": null,
+				"reopens": [],
+				"findings": [],
+				"status": "open",
+				"createdBy": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				},
+				"createdAt": "2026-11-21T09:02:00.000Z",
+				"updatedAt": "2026-11-21T09:02:00.000Z",
+				"rev": 3
+			},
+			{
+				"id": "m_plain",
+				"caseId": "c_single",
+				"number": 2,
+				"shotId": "sh_plain",
+				"comment": "Filter chips overlap.",
+				"author": "user",
+				"shape": {
+					"kind": "note",
+					"at": {
+						"x": 10,
+						"y": 20
+					}
+				},
+				"crop": {
+					"sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+					"width": 200,
+					"height": 100,
+					"bytes": 4000
+				},
+				"element": null,
+				"resolution": null,
+				"reopens": [],
+				"findings": [],
+				"status": "open",
+				"createdBy": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				},
+				"createdAt": "2026-11-21T09:02:00.000Z",
+				"updatedAt": "2026-11-21T09:02:00.000Z",
+				"rev": 4
+			}
+		],
+		"comments": []
+	},
+	"singlePageCaseJson": {
+		"format": "sitegloss/1",
+		"id": "c_single",
+		"title": "Search results in the wrong order",
+		"createdAt": "2026-11-21T09:00:00.000Z",
+		"updatedAt": "2026-11-21T09:05:00.000Z",
+		"page": {
+			"url": "https://shop.example/search",
+			"title": "Search",
+			"lang": "en",
+			"viewport": {
+				"width": 1280,
+				"height": 800,
+				"dpr": 1
+			},
+			"userAgent": ""
+		},
+		"pages": [
+			{
+				"url": "https://shop.example/search",
+				"title": "Search",
+				"lang": "en"
+			}
+		],
+		"shots": [
+			{
+				"id": "s1",
+				"image": "shots/s1.webp",
+				"scrollX": 0,
+				"scrollY": 0,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 1
+				},
+				"capturedAt": "2026-11-21T09:01:00.000Z",
+				"url": "https://shop.example/search",
+				"query": "q=shoes&sort=price"
+			},
+			{
+				"id": "s2",
+				"image": "shots/s2.webp",
+				"scrollX": 0,
+				"scrollY": 0,
+				"viewport": {
+					"width": 1280,
+					"height": 800,
+					"dpr": 1
+				},
+				"capturedAt": "2026-11-21T09:03:00.000Z",
+				"url": "https://shop.example/search"
+			}
+		],
+		"annotations": [
+			{
+				"id": "a1",
+				"number": 1,
+				"shot": "s1",
+				"comment": "Cheapest is not first.",
+				"author": "user",
+				"shape": {
+					"kind": "note",
+					"at": {
+						"x": 10,
+						"y": 20
+					}
+				},
+				"crop": "crops/a1.webp",
+				"element": null,
+				"createdBy": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				}
+			},
+			{
+				"id": "a2",
+				"number": 2,
+				"shot": "s2",
+				"comment": "Filter chips overlap.",
+				"author": "user",
+				"shape": {
+					"kind": "note",
+					"at": {
+						"x": 10,
+						"y": 20
+					}
+				},
+				"crop": "crops/a2.webp",
+				"element": null,
+				"createdBy": {
+					"id": "u_tess",
+					"name": "Tess Tester"
+				}
+			}
+		],
+		"verdict": null,
+		"lastNumber": 2
+	},
+	"singlePageCaseMdPageLines": [
+		"- Page: <https://shop.example/search>",
+		"- Page: <https://shop.example/search?q=shoes&sort=price>",
+		"Screenshot s1 is of <https://shop.example/search?q=shoes&sort=price>, in a window of 1280×800 CSS pixels."
+	]
+}

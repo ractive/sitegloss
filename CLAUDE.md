@@ -141,7 +141,9 @@ with `kb/design/overview.md` and `kb/iterations/`.
   Whether a mark is drawn on the page in front is `pathKey` (a home page on any host),
   and Home's offer `exactPage` (DEC-050). What a screenshot keeps of its query is
   `keptQuery` in `src/lib/query.ts`, the server's too: `test/kept-query.json` is a copy
-  of its `packages/api/vectors/kept-query.json`, held the same way.
+  of its `packages/api/vectors/kept-query.json`, held the same way; so is
+  `test/case-file.json` (the server's member download, which `validateCase` and
+  case.md have to match).
 - Commands: `bun run verify` (Biome CI, type check, tests) before every commit;
   `bun run fix` to format; `bun run build`, `bun run zip`.
 - Firefox: `bun scripts/build.ts --firefox` (`--test`, `--store --zip`) builds it from the

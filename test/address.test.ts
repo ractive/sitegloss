@@ -33,6 +33,7 @@ import { findsOn } from "../src/sidepanel/follow.ts";
 import { newCase } from "../src/sidepanel/fresh.ts";
 import { markTargets, shortAddress } from "../src/sidepanel/mark-link.ts";
 import { validateCase as validateCase030 } from "./case-0-3-0.ts";
+import caseFile from "./case-file.json" with { type: "json" };
 import { putCase, sampleCase } from "./fixtures.ts";
 
 const HOME = "https://shop.example/";
@@ -430,6 +431,33 @@ describe("a mark's link", () => {
 		expect(shortAddress(`${HOME}?lang=de`)).toBe("shop.example/?lang=de");
 		expect(shortAddress("https://app.example/?tab=2#/list")).toBe(
 			"app.example/?tab=2#/list",
+		);
+	});
+});
+
+describe("the server's member download (its vectors/case-file.json)", () => {
+	// test/case-file.json is sitegloss.dev's packages/api/vectors/case-file.json.
+	const lines = (c: Case, pick: (line: string) => boolean) =>
+		caseMarkdown(validateCase(c)).split("\n").filter(pick);
+	const pageLine = (l: string) =>
+		l.startsWith("- Page:") || l.startsWith("Screenshot ");
+
+	test("validateCase keeps the server's case.json as it is, the query too", () => {
+		expect(validateCase(caseFile.caseJson)).toEqual(caseFile.caseJson as never);
+		expect(validateCase(caseFile.singlePageCaseJson)).toEqual(
+			caseFile.singlePageCaseJson as never,
+		);
+	});
+
+	test("case.md names an address with its query as the server's does, in a case of one page too", () => {
+		expect(
+			lines(caseFile.caseJson as never, (l) => pageLine(l) && l.includes("?")),
+		).toEqual(caseFile.caseMdQueryLines);
+		expect(
+			lines(caseFile.caseJson as never, (l) => l.startsWith("- Look:")),
+		).toEqual(caseFile.caseMdLookLines);
+		expect(lines(caseFile.singlePageCaseJson as never, pageLine)).toEqual(
+			caseFile.singlePageCaseMdPageLines,
 		);
 	});
 });

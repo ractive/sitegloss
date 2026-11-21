@@ -14,6 +14,15 @@
 /** The longest query kept, in code points. A longer one is dropped whole, never cut. */
 export const MAX_QUERY = 1024;
 
+/**
+ * The longest `search` looked at, in UTF-16 units: the most a whole address
+ * may hold (`MAX_URL`). A longer one gives "" before anything is parsed.
+ */
+export const QUERY_INPUT_LIMIT = 8000;
+
+/** How many times a value is percent-decoded for the tests on it: `%2540` is an `@` too. */
+const DECODE_ROUNDS = 3;
+
 /** A piece is dropped when one of its name's words is one of these. */
 export const SECRET_WORDS: readonly string[] = [
 	"token",
@@ -86,10 +95,13 @@ export const SECRET_NAMES: readonly string[] = [
 const WORDS = new Set(SECRET_WORDS);
 const NAMES = new Set(SECRET_NAMES);
 
+// Every expression here runs in linear time on any input: anchored, of a
+// fixed width, or one class repeated with nothing after it to backtrack into.
+
 /** A value made only of these, 40 characters or more, is a long opaque value. */
 const OPAQUE = /^[A-Za-z0-9_\-.~+/=]{40,}$/;
-/** A JWT: `eyJ` (a JSON header in base64url), then two dots. */
-const JWT = /eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\./;
+/** The runs of characters a JWT is made of (base64url and its dots). */
+const RUNS = /[A-Za-z0-9_.-]+/g;
 
 /** The length of `text` in code points. */
 function codePoints(text: string): number {
@@ -109,14 +121,14 @@ function decoded(text: string): string | undefined {
 
 /**
  * A name's words: split before an upper-case letter after a lower-case one
- * or a digit, between an upper-case run and an upper-case letter followed by
- * a lower-case one, then at every character that is no ASCII letter or
- * digit; lowercased.
+ * or a digit, and after an upper-case letter followed by an upper-case and a
+ * lower-case one (`APIKey`), then at every character that is no ASCII letter
+ * or digit; lowercased.
  */
 export function nameWords(name: string): string[] {
 	return name
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+		.replace(/([A-Z])(?=[A-Z][a-z])/g, "$1 ")
 		.split(/[^A-Za-z0-9]+/)
 		.filter((word) => word !== "")
 		.map((word) => word.toLowerCase());
@@ -127,9 +139,42 @@ const saysSecret = (name: string): boolean => {
 	return words.some((word) => WORDS.has(word)) || NAMES.has(words.join(""));
 };
 
+/**
+ * A JWT: `eyJ` (a JSON header in base64url), then two dots, within one run
+ * of base64url characters and dots. Each run is looked at once, from its
+ * first `eyJ`, which has the most after it.
+ */
+function holdsJwt(text: string): boolean {
+	for (const run of text.match(RUNS) ?? []) {
+		const at = run.indexOf("eyJ");
+		if (at < 0) continue;
+		let dots = 0;
+		for (let i = at + 3; i < run.length && dots < 2; i++)
+			if (run[i] === ".") dots++;
+		if (dots >= 2) return true;
+	}
+	return false;
+}
+
 /** An e-mail address, a JWT, a long opaque value. */
-const looksSecret = (text: string): boolean =>
-	text.includes("@") || JWT.test(text) || OPAQUE.test(text);
+const looksSecretOnce = (text: string): boolean =>
+	text.includes("@") || holdsJwt(text) || OPAQUE.test(text);
+
+/**
+ * The tests on a decoded text, and on it decoded again, up to
+ * `DECODE_ROUNDS` in all: a round that changes nothing, or fails, ends them.
+ */
+function looksSecret(once: string): boolean {
+	let text = once;
+	for (let round = 1; round <= DECODE_ROUNDS; round++) {
+		if (looksSecretOnce(text)) return true;
+		if (round === DECODE_ROUNDS) break;
+		const next = decoded(text);
+		if (next === undefined || next === text) break;
+		text = next;
+	}
+	return false;
+}
 
 /** Whether a piece `name=value` of a query is kept. */
 function keptPiece(piece: string): boolean {
@@ -138,6 +183,7 @@ function keptPiece(piece: string): boolean {
 	const at = piece.indexOf("=");
 	const name = decoded(at < 0 ? piece : piece.slice(0, at));
 	const value = at < 0 ? "" : decoded(piece.slice(at + 1));
+	// Malformed only when the first decoding fails; later rounds just end.
 	if (name === undefined || value === undefined) return false;
 	// A piece without `=` is a name alone, which can be a token itself.
 	return !saysSecret(name) && !looksSecret(name) && !looksSecret(value);
@@ -150,10 +196,12 @@ function keptPiece(piece: string): boolean {
  * opaque value) dropped, and those with a malformed escape; the rest as
  * they are, byte for byte, in their order. Empty when nothing is kept, and
  * when what is kept is longer than `MAX_QUERY` code points: a query cut
- * short opens another page than the one marked. Never throws.
+ * short opens another page than the one marked. A `search` longer than
+ * `QUERY_INPUT_LIMIT` gives "" at once. Linear in its length; never throws.
  */
 export function keptQuery(search: string): string {
 	try {
+		if (search.length > QUERY_INPUT_LIMIT) return "";
 		const kept = search
 			.replace(/^\?+/, "")
 			.split("&")
@@ -189,13 +237,14 @@ export function queryOf(href: string): string | undefined {
 /**
  * A plain address (`plainUrl`) with a kept query, to open the page as it
  * was: `https://shop.example/search?q=shoes`, before a hash route
- * (`https://app.example/?tab=2#/list`). An address with a query already
- * stays as it is.
+ * (`https://app.example/?tab=2#/list`). As the server's `withQuery`: an
+ * address with a query of its own gets the kept one after it, with `&`.
  */
 export function withQuery(plain: string, query: string | undefined): string {
 	if (query === undefined || query === "") return plain;
 	const hash = plain.indexOf("#");
 	const base = hash < 0 ? plain : plain.slice(0, hash);
-	if (base.includes("?")) return plain;
-	return `${base}?${query}${hash < 0 ? "" : plain.slice(hash)}`;
+	const rest = hash < 0 ? "" : plain.slice(hash);
+	if (base.endsWith("?") || base.endsWith("&")) return `${base}${query}${rest}`;
+	return `${base}${base.includes("?") ? "&" : "?"}${query}${rest}`;
 }

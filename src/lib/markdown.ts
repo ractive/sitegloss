@@ -20,11 +20,11 @@ import {
 	markAddress,
 	markStatus,
 	marksByPage,
-	markUrl,
 	pageKey,
 	RESOLUTION_LABEL,
 	type Resolution,
 	type ShapeKind,
+	type Shot,
 	STATUS_LABEL,
 	shotAddress,
 	shotImage,
@@ -200,6 +200,14 @@ function countsLine(c: Case): string {
 	return `- Marks: ${parts.length > 0 ? parts.join(", ") : "none"}`;
 }
 
+/**
+ * Whether a screenshot's page is written out, with its query, for it and its
+ * marks: in a case of several pages, or when it has a query (DEC-050; the
+ * server's case.md has the same rule, `packages/api/vectors/case-file.json`).
+ */
+const namesPage = (several: boolean, shot: Shot | undefined): boolean =>
+	several || shot?.query !== undefined;
+
 /** A mark; `page`: its page's address, said where the case has several. */
 function annotation(a: Annotation, page: string | undefined): string {
 	const lines = [
@@ -306,11 +314,14 @@ export function caseMarkdown(c: Case): string {
 		...[...c.annotations]
 			.sort((a, b) => a.number - b.number)
 			// Where it was made, with its query (DEC-050): in a case of one
-			// page only where a query says more than the first lines.
+			// page only where its screenshot has a query.
 			.map((a) =>
 				annotation(
 					a,
-					several || markAddress(c, a) !== markUrl(c, a)
+					namesPage(
+						several,
+						c.shots.find((s) => s.id === a.shot),
+					)
 						? markAddress(c, a)
 						: undefined,
 				),
@@ -333,8 +344,9 @@ export function caseMarkdown(c: Case): string {
 					isSafeId(s.id) ? shotImage(s.id) : undefined,
 				)}\n${
 					// Which page it is of and in what window, where the case has
-					// several (DEC-038): the first lines say it for a case of one.
-					several
+					// several (DEC-038) or the screenshot a query (DEC-050): the
+					// first lines say it for a case of one.
+					namesPage(several, s)
 						? `\nScreenshot ${inline(s.id)} is of ${address(shotAddress(c, s))}, in a window of ${s.viewport.width}×${s.viewport.height} CSS pixels.\n`
 						: ""
 				}`,

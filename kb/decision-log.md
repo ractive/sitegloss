@@ -2719,11 +2719,16 @@ that is kept").
   vectors and word lists, which this one passes, as `page-key.json` is held. A piece is
   dropped when a word of its name says secret (token, key, code, session, email and the
   rest of the lists) or the words joined are a known name (`apiKey`, `PHPSESSID`), when
-  its name or value has an `@`, looks like a JWT or is 40 or more characters of
-  `A-Za-z0-9_-.~+/=`, when it holds a raw `#` or a malformed escape; the rest is kept as
-  it was, in order; a result over 1024 code points is dropped whole, never cut (a cut
-  query opens another page). `countryCode` is dropped (the word `code`), and so is a
-  slug of 40 or more such characters: a wrong keep is worse than a wrong drop.
+  its name or value has an `@`, holds a JWT or is 40 or more characters of
+  `A-Za-z0-9_-.~+/=` (tested on the decoded text and on up to two more decodings, so
+  `%2540` is an `@` too), when it holds a raw `#` or a malformed escape; the rest is kept
+  as it was, in order; a result over 1024 code points is dropped whole, never cut (a cut
+  query opens another page), and an input over 8000 units gives nothing before it is
+  parsed. Linear on any input (no expression that backtracks). `countryCode` is dropped
+  (the word `code`), and so is a slug of 40 or more such characters: a wrong keep is
+  worse than a wrong drop. The server took the decodings, the input limit and the
+  linear JWT test after its review (its d63a0af); the vectors changed with them, and
+  this follows them.
   - **Where a screenshot is made it records `query` beside the plain `url`**: the
     toolbar's marks and `add_annotation` both through `saveCase`, which takes it from the
     address the screenshot was taken on and never from a `query` the sender put on it;
@@ -2750,6 +2755,12 @@ that is kept").
     a hash route (`#/search?q=shoes`), which `hashRoute` cuts as before; the query of a
     link inside an element (DEC-009) and the tab in front's address in `capture` and
     `load_case`'s `url` (no screenshot of a case).
+  - **case.md** writes a screenshot's page, with its query, for it and its marks in a
+    case of several pages as before, and now also where the screenshot has a query, in
+    a case of one page too; the case's own `- Page:` line and the list stay plain. The
+    server's member download writes the same: `test/case-file.json` is a copy of its
+    `packages/api/vectors/case-file.json`, and `validateCase` keeps its `case.json` as it
+    is.
 - **A link on each mark.** In the panel each mark says "Marked on <its address with the
   query>", a link (a button, named for screen readers "Open …, where mark N was made, in
   this tab") that opens that address in the tab in front, keeps the case open, and,
@@ -2779,9 +2790,10 @@ that is kept").
   to `pageKey`. Two sites' home pages in one case are both "the home page" on a third
   host; the one of the same site wins on either of them.
 - **Tested** in `test/query.test.ts` (the contract's table, the server's vectors and
-  lists, what a screenshot keeps), `test/address.test.ts` (`exactPage`, `pathKey`, the
-  offer, the page in front, a draw on localhost's home page, the toolbar's save, a file
-  read and written, an import, 0.3.0 reading the file, case.md, the mark's link),
+  lists, hostile input in linear time, what a screenshot keeps), `test/address.test.ts`
+  (`exactPage`, `pathKey`, the offer, the page in front, a draw on localhost's home page,
+  the toolbar's save, a file read and written, an import, 0.3.0 reading the file,
+  case.md and the server's case file, the mark's link),
   `test/view.test.ts` (the offer and its order, the link's texts and names),
   `test/tools.test.ts` (`address`, `onThisPage` on localhost's home page, `open_case`
   and its question), `test/compat-0-3-0.test.ts` (the sync, 0.3.0 beside it), and in

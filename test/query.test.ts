@@ -145,3 +145,27 @@ describe("what a screenshot keeps", () => {
 		);
 	});
 });
+
+describe("keptQuery on hostile input", () => {
+	test("linear: the vectors' longest entries take a few milliseconds each", () => {
+		const long = vectors.vectors.filter((v) => v.in.length >= 4000);
+		expect(long.length).toBeGreaterThan(2);
+		for (const v of long) {
+			const start = performance.now();
+			expect(keptQuery(v.in)).toBe(v.out);
+			expect(performance.now() - start).toBeLessThan(50);
+		}
+	});
+
+	test("an e-mail address or a JWT encoded twice or three times is found; four times is a known limit", () => {
+		expect(keptQuery("x=jane%2540example.com&q=1")).toBe("q=1");
+		expect(keptQuery("x=jane%252540example.com&q=1")).toBe("q=1");
+		expect(keptQuery("x=jane%25252540example.com")).toBe(
+			"x=jane%25252540example.com",
+		);
+		// A later decoding that fails only ends the rounds.
+		expect(keptQuery("q=100%2525")).toBe("q=100%2525");
+		// Longer than an address may be: nothing is parsed.
+		expect(keptQuery(`q=${"a".repeat(8000)}`)).toBe("");
+	});
+});
