@@ -59,7 +59,7 @@ declare const SITEGLOSS_FIREFOX: boolean | undefined;
 const NEW_ADDRESS_ARMED_MS = 4000;
 /** The pairing code's place while there is none: as long as a code, `XXXX-XXXX`. */
 const CODE_PLACEHOLDER = "––––-––––";
-/** The button that disconnects every AI app (the library's `newAddress()`). */
+/** The button that disconnects every AI app (the library's `disconnectAll()`). */
 const DISCONNECT_ALL = "Disconnect all apps";
 
 /** How long the panel waits for the worker's Blur form fields before it starts an overlay. */

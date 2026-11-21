@@ -911,7 +911,7 @@ export class Connection {
 	}
 
 	/**
-	 * "Disconnect all apps" (the library's `newAddress()`). The address the
+	 * "Disconnect all apps" (the library's `disconnectAll()`). The address the
 	 * AI apps are added with stays: it names the app (DEC-042). What is new is
 	 * the secret behind it, the page the relay knows. The library first takes
 	 * the old page back, connected or not, taken over or not, so the relay
@@ -920,7 +920,7 @@ export class Connection {
 	 * After a takeover AI access is off, and a new worker's library knows
 	 * nothing of the takeover: it connects, so the card shows the address and
 	 * a code to pair again. Once the secret is new, the takeover notice goes,
-	 * also when connecting with it fails (`addressChanged`, which still names
+	 * also when connecting with it fails (`secretChanged`, which still names
 	 * the secret's change).
 	 */
 	async #newAddress(): Promise<void> {
@@ -929,7 +929,7 @@ export class Connection {
 		this.#changed();
 		try {
 			// "connected" turns AI access on.
-			await this.#mcp.newAddress();
+			await this.#mcp.disconnectAll();
 			// The secret is new: no longer the one taken over, also should
 			// the connect after it fail.
 			await this.#setReplaced(undefined);
@@ -939,7 +939,7 @@ export class Connection {
 			this.#problem = message(error);
 			// The secret changed, and only connecting with it failed (the
 			// library connects itself after a takeover it saw).
-			if ((error as { addressChanged?: unknown }).addressChanged === true)
+			if ((error as { secretChanged?: unknown }).secretChanged === true)
 				await this.#setReplaced(undefined).catch(() => {});
 		}
 		this.#changed();
