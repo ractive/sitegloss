@@ -585,7 +585,7 @@ describe("Review 4: which code is filled in, by Sitegloss's clock", () => {
 		expect(t.submitted).toEqual(["BBBB-BBBB"]);
 	});
 
-	test("Bug 1 of 0.19.0-rc.1 gone: the same code sent again (the relay's answer to pairing.start) is not the next one; the next code is", async () => {
+	test("the same code sent again (the relay's answer to pairing.start) is not the next one; the next code is", async () => {
 		const f = setup();
 		const ending = {
 			code: "AAAA-AAAA",
@@ -660,7 +660,7 @@ describe("Review 4: which code is filled in, by Sitegloss's clock", () => {
 	});
 });
 
-describe("client 0.19.0-rc.2: what was raised against rc.1", () => {
+describe("the library's filler as Sitegloss needs it (raised against its release candidate)", () => {
 	test("Point 3: code and failed say which page, its tab and AI app; a second tab while a code is on its way is told so, the same tab is asked", async () => {
 		const f = setup();
 		f.setCode(undefined);
