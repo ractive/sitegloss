@@ -13,7 +13,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import { pairingPage } from "../pair-fill-page.ts";
-import { byId, connectAi, openSidePanel } from "./ai.ts";
+import {
+	byId,
+	connectAi,
+	newNotification,
+	notifications,
+	openSidePanel,
+} from "./ai.ts";
 import type { Page } from "./browser.ts";
 import { browserBinary, type Harness, startHarness } from "./harness.ts";
 import { worker } from "./steps.ts";
@@ -173,6 +179,46 @@ describe.skipIf(browserBinary === undefined)(
 			expect(posted).toHaveLength(1);
 			await close(other);
 			await close(elsewhere);
+		});
+
+		test("Stop AI access withdraws the question at once", async () => {
+			const tab = await h.browser.newPage(`${origin}/authorize?r=7`);
+			await panel.waitFor(`!${ASK}.hidden`, 10_000);
+			await panel.eval(`${byId("stop-ai")}.click()`);
+			await panel.waitFor(`${ASK}.hidden`, 10_000);
+			await panel.eval(`${byId("connect")}.click()`);
+			await panel.waitFor(
+				`document.documentElement.dataset.aiState === "connected"`,
+				10_000,
+			);
+			await Bun.sleep(500);
+			expect(await panel.eval(`${ASK}.hidden`)).toBe(true);
+			expect(posted).toHaveLength(1);
+			await close(tab);
+		});
+
+		test("with the panel covered, a notification asks to answer in the panel; it goes with the question", async () => {
+			const cover = (hidden: boolean) =>
+				panel.eval(`(() => {
+					Object.defineProperty(document, "visibilityState", {
+						configurable: true,
+						get: () => ${JSON.stringify(hidden ? "hidden" : "visible")},
+					});
+					document.dispatchEvent(new Event("visibilitychange"));
+				})()`);
+			await cover(true);
+			try {
+				const tab = await h.browser.newPage(`${origin}/authorize?r=8`);
+				expect(await newNotification(h)).toBe("sitegloss-fill");
+				await panel.eval(`${byId("pair-fill-no")}.click()`);
+				const end = Date.now() + 10_000;
+				while ((await notifications(h)).length > 0 && Date.now() < end)
+					await Bun.sleep(100);
+				expect(await notifications(h)).toEqual([]);
+				await close(tab);
+			} finally {
+				await cover(false);
+			}
 		});
 
 		test("Stop filling in the code: no question any more", async () => {
