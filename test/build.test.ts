@@ -167,6 +167,7 @@ describe("build", () => {
 		for (const file of [
 			"background.js",
 			"content.js",
+			"pairing.js",
 			"sidepanel/index.html",
 			"offscreen/index.html",
 			"icons/icon-16.png",
@@ -180,6 +181,10 @@ describe("build", () => {
 		expect(manifest.key).toBe(await readKey());
 		const content = await Bun.file(join(outdir, "content.js")).text();
 		expect(isWrappedScript(content)).toBe(true);
+		// The relay pairing page's script (DEC-044): the library's, small.
+		const pairing = await Bun.file(join(outdir, "pairing.js")).text();
+		expect(isWrappedScript(pairing)).toBe(true);
+		expect(Bun.gzipSync(pairing).length).toBeLessThan(1200);
 	});
 
 	test("no bundle loads code later: no dynamic import(), one script per page", async () => {
@@ -187,7 +192,7 @@ describe("build", () => {
 		await build({ outdir });
 		// A service worker refuses import(); the content script is a plain
 		// script. Both are bundled whole, the client's lazy chunks included.
-		for (const file of ["background.js", "content.js"])
+		for (const file of ["background.js", "content.js", "pairing.js"])
 			expect(await Bun.file(join(outdir, file)).text()).not.toMatch(
 				/\bimport\s*\(/,
 			);
@@ -323,6 +328,7 @@ describe("build", () => {
 		for (const file of [
 			"background.js",
 			"content.js",
+			"pairing.js",
 			"sidepanel/index.html",
 			"icons/icon-128.png",
 			NOTICES_FILE,

@@ -3,7 +3,7 @@
  * library itself and a relay in this process: the events and states the
  * connection (`connection.ts`) and Keep AI access on (`keep-on.ts`) follow,
  * what `revoke()` answers, who sees the tools, the address, and what
- * `newAddress()` ("Disconnect all apps") does after a takeover. The fakes in `keep-on.test.ts` send the same
+ * `disconnectAll()` ("Disconnect all apps") does after a takeover. The fakes in `keep-on.test.ts` send the same
  * shapes; this is where a change of the library shows.
  */
 
@@ -97,8 +97,8 @@ describe("the library's state, as the worker reads it", () => {
 			expect(on({ state: "disconnected", reason }, true)).toBeUndefined();
 		}
 		// Taken over (the `replaced` event turns it off), Disconnect all apps
-		// (`new_address`): unchanged, as before.
-		for (const reason of ["replaced", "new_address"] as const)
+		// (`disconnect_all`): unchanged, as before.
+		for (const reason of ["replaced", "disconnect_all"] as const)
 			expect(on({ state: "disconnected", reason })).toBeUndefined();
 		// A failed connect, reconnecting, connecting: unchanged.
 		expect(on({ state: "disconnected" })).toBeUndefined();
@@ -397,7 +397,7 @@ describe("tab-mcp client 0.18 with a relay", () => {
 			// Another installation (another secret): the same address.
 			expect((await two.mcp.connect()).address).toBe(address);
 			two.mcp.disconnect();
-			await one.mcp.newAddress();
+			await one.mcp.disconnectAll();
 			expect(one.mcp.session?.address).toBe(address);
 		} finally {
 			one.mcp.disconnect();
@@ -405,7 +405,7 @@ describe("tab-mcp client 0.18 with a relay", () => {
 		}
 	});
 
-	test("taken over, newAddress() takes the connection back itself, also in a page that never saw the takeover", async () => {
+	test("taken over, disconnectAll() takes the connection back itself, also in a page that never saw the takeover", async () => {
 		const storage = new Map<string, string>();
 		const a = page(relay.url, storage);
 		const b = page(relay.url, storage);
@@ -423,7 +423,7 @@ describe("tab-mcp client 0.18 with a relay", () => {
 			});
 			// A new worker's library: same secret, nothing heard of it.
 			const fresh = page(relay.url, storage);
-			await fresh.mcp.newAddress();
+			await fresh.mcp.disconnectAll();
 			// It was off: it stays off, so the worker connects after it.
 			expect(fresh.mcp.state).toBe("disconnected");
 			expect(fresh.heard.some((d) => d.state === "connected")).toBe(false);

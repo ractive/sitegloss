@@ -231,7 +231,7 @@ describe("the library keeps them, and asks Sitegloss only for the rest", () => {
 		try {
 			s.always.setAll(s.claude, true);
 			s.always.addTool(s.other, "set_summary");
-			await s.mcp.newAddress();
+			await s.mcp.disconnectAll();
 			expect(s.always.entry(s.claude)).toEqual({ all: false, tools: [] });
 			expect(s.always.entry(s.other)).toEqual({ all: false, tools: [] });
 		} finally {

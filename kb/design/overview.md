@@ -126,8 +126,9 @@ the page's origin and never touches it directly.
   `activeTab` or `<all_urls>`, not a single site's permission. One site of it is asked for
   by itself: `https://tab-mcp.ractive.ch/*`, with the click on "Fill in the code for me"
   under the pairing code (a setting of its own, off by default, also with all sites), to
-  fill in the code on the hosted relay's pairing page after asking (DEC-044); "Stop filling
-  in the code" gives it back. Nothing is required at install.
+  fill in the code on the hosted relay's pairing page after asking (DEC-044; the client
+  library's filler since DEC-049); "Stop filling in the code" gives it back. Nothing is
+  required at install.
 
 No JavaScript from an AI app or a server ever runs: the tools are fixed (Chrome Web Store
 rules on remote code, and safety).

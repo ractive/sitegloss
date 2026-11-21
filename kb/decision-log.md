@@ -2592,3 +2592,83 @@ siblings", to find the cause of a contrast or alignment issue without building t
   by 0.3.0), `test/tools.test.ts`, `test/markdown.test.ts`, and in Chromium on the demo
   page (`test/e2e/capture.test.ts`: the low-contrast Book link's colour and amber
   background, its neighbours, no look on a stroke's ends).
+
+## DEC-049: The pairing-code fill-in takes the client library's filler (owner)
+
+2026-11-21. The owner decided that Sitegloss moves to `CodeFiller` of
+`@ractive-ch/tab-mcp-client/extension` (tab-mcp's DEC-206), with client 0.19.0 and, for
+the tests, relay 0.13.0. Sitegloss tried 0.19.0-rc.1 and rc.2 first; its seven points
+against rc.1 (the same code sent again taken for the next one, no way to turn off the
+unasked second fill, no tab or AI app in `code` and `failed`, no origin check after the
+page's hello, the once-per-document mark on the global, no word when a fill ends
+without its code, a rename the type check misses) are fixed in 0.19.0. What DEC-044 says
+the user sees does not change.
+
+- **What goes.** `src/worker/code-filler.ts` and most of `pair-fill.ts`: the worker no
+  longer reads the page and types the code itself with `scripting.executeScript`. It
+  puts the library's content script (`src/content/pairing.ts`, built as `pairing.js`)
+  into the pairing page's top frame; the script reads the form's hooks, opens a port of
+  its own with a nonce of this page load, and fills in only the code that comes back on
+  that port with that nonce. The port is taken at the worker's top level (the library
+  needs its first message), but only a script the worker put in opens one, so no page
+  load wakes the worker; the tabs listener stays the connection's.
+- **`retry: false`.** By default the library fills the same request's page once more
+  without asking when the relay brings it back after a wrong code. Built with
+  `retry: false`, that page is asked about like any other: one page load, one question;
+  one yes, one fill; never without a yes (DEC-044's "after review").
+- **What stays Sitegloss's** (`src/worker/fill-question.ts`, the library's `FillHost`):
+  - the question in the panel and its texts, the verified host first, the wait before
+    a yes counting from the panel in front (`armed`);
+  - one question at a time: a page in another tab while a question waits, or while a
+    code is on its way to another tab, is answered `busy` and the panel says which (the
+    tab comes from the library's `FillContext`);
+  - the notification while no panel is on screen;
+  - holding pairing on: a flag, not a count, from the yes until 30 s after the last code
+    went to a page; at once when no code went and no earlier fill's 30 s still run; at
+    once on the library's `release()` (the AI app connected, or a fill ended without its
+    code and no other needs pairing), which may come with nothing held and is then
+    ignored. A yes always turns pairing on with the connection of now, also while a
+    panel shows the code: a panel's flag can still be about the relay before a switch
+    until the panel, which shows no code while not connected, turns it off and on again.
+    Sent again, `pairing.start` is answered with the code that shows (relay 0.13.0's
+    `PairingCodes.start`), which `takeCode` does not take for the next one;
+  - the setting "Fill in the code for me", its own, off by default, also with access to
+    all sites, and the relay's site asked for with its click and given back when it is
+    turned off (`settleFillCode` as before); the script is put in only while it is on,
+    AI access is connected and the relay is the hosted one.
+- **DEC-044's rules after review, in the library:**
+  - *Bound to the request*: one port per document; the sender is checked (this
+    extension's script, a tab, the top frame, exactly the relay's origin with its port,
+    `/authorize`) when the port comes, after the page's hello, after the answer and once
+    the code is there; the hello must name `sitegloss` and carry the relay's
+    `request_id`. The code goes only to that port and nonce, so a tab that moved on (a new
+    document, a new port) gets nothing: this replaces the page's own re-check of its
+    `location` and `window.top`.
+  - *Withdrawn at once*: `withdrawAll()` (Stop AI access, the setting off, AI access no
+    longer connected) and `reset()` (another relay) abort a waiting question and a code
+    on its way; the setting, AI access and the sender are checked again before the code
+    is sent. Sitegloss still calls them on receipt, before the panel's queue.
+  - *One page, one question, one fill*: one hello per port, one question per page load,
+    the content script fills once per page load, and `retry: false`.
+  - *Which code*: `takeCode`, as before: the current code with 5 s left by this clock,
+    else the next one the relay sends (the same code sent again counts only if its
+    expiry now leaves 5 s), else the current one after 10 s.
+  - *Nothing dropped unseen*: `ask` may answer `busy`, and the library reports it
+    (`failed("busy", context)`); Sitegloss says it in `ask`, where it knows why. What
+    the panel says is about one tab: a code that comes for a tab clears only what was
+    said about that tab (a fill that failed there), not that a page in another tab was
+    not asked about; that stays until its own time runs out or something replaces it.
+  - *Only the hosted relay*: `relayOrigin()` gives the hosted relay's origin only, as
+    before.
+- **A fault of 0.3.1 fixed on the way.** In 0.3.1 a yes cleared the hold of a fill
+  before it: a second fill (another tab, after the first had filled in its code) that
+  then ended without a code turned pairing off at once, while the relay could still be
+  checking the first code. The hold now runs out on its own time.
+- **The rest of the bump**: `newAddress()` is `disconnectAll()`, a rejection's
+  `addressChanged` is `secretChanged`, the reason `new_address` is `disconnect_all`.
+- Tested in `test/pair-fill.test.ts` (the library's real content script and
+  `CodeFiller` with Chrome-like ports, built as the connection builds it: every rule
+  above, the seven points, the hold), `test/connection.test.ts` and in Chromium
+  (`test/e2e/pair-fill.test.ts`, `test/e2e/connection.test.ts`). Not tested: a whole
+  pairing end to end (the testing package's relay cannot show its form for a test
+  client), and the fill-in in Firefox (its suite has no test of it, as before).

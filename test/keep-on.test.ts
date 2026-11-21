@@ -114,7 +114,7 @@ describe("KeepOn", () => {
 		expect(connection.calls).toEqual([]);
 	});
 
-	test.each(["user", "replaced", "new_address"] as const)(
+	test.each(["user", "replaced", "disconnect_all"] as const)(
 		"leaves a session that ended as %s alone",
 		(reason) => {
 			connection.state = "connected";

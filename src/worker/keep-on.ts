@@ -14,14 +14,14 @@ const KEEP_ON_DELAYS_MS = [5000, 10_000, 20_000, 40_000, 60_000];
 
 /**
  * Why a session ended, in the user's words, for every reason nobody here
- * chose (`user`, `new_address`, a takeover) that is not the end of an idle
+ * chose (`user`, `disconnect_all`, a takeover) that is not the end of an idle
  * or old session either. The last three come only without the library's
  * reconnecting, which Sitegloss leaves on.
  */
 const ENDED: Record<
 	Exclude<
 		DisconnectReason,
-		"user" | "new_address" | "replaced" | "idle" | "expired"
+		"user" | "disconnect_all" | "replaced" | "idle" | "expired"
 	>,
 	string
 > = {
@@ -56,7 +56,7 @@ export type KeptConnection = Pick<
  * expired session, and goes on trying after a connect that failed or a
  * session the relay ended for another reason, saying why (`problem`) also
  * when not wanted. It leaves alone what the user or another tab ended
- * (`disconnect()`, `replaced`, `new_address`).
+ * (`disconnect()`, `replaced`, `disconnect_all`).
  */
 export class KeepOn {
 	/** Why the last try failed; `undefined` once connected or stopped. */
