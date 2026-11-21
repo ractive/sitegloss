@@ -4,7 +4,12 @@
  * view.ts draws it (DEC-011).
  */
 
-import { BROWSER, FIREFOX, requestPermissions } from "../lib/browser.ts";
+import {
+	BROWSER,
+	FIREFOX,
+	fromBackground,
+	requestPermissions,
+} from "../lib/browser.ts";
 import {
 	type Annotation,
 	type Case,
@@ -63,6 +68,7 @@ import {
 import { IdbStore } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
+import { aiOpenRefusal } from "./ai-open.ts";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { byId, isWebPage, sitePattern } from "./dom.ts";
@@ -969,19 +975,28 @@ async function endToolbars(
  * it does not answer in time.
  */
 async function askAllTabs(): Promise<TabAnswer[]> {
+	return [...(await askTabsById()).values()];
+}
+
+/** `askAllTabs`, by tab id. */
+async function askTabsById(): Promise<Map<number, TabAnswer>> {
 	const tabs = await chrome.tabs.query({}).catch(() => []);
-	return Promise.all(
-		tabs.map(async ({ id }): Promise<TabAnswer> => {
-			if (id === undefined) return "none";
-			return Promise.race([
-				chrome.tabs.sendMessage(id, { type: "overlay:state" }).then(
-					(s) => (s as OverlayState | undefined) ?? "unsure",
-					() => "none" as const,
-				),
-				sleep(ASK_TAB_MS).then(() => "unsure" as const),
-			]);
+	const answers = await Promise.all(
+		tabs.map(async ({ id }): Promise<[number, TabAnswer]> => {
+			if (id === undefined) return [-1, "none"];
+			return [
+				id,
+				await Promise.race([
+					chrome.tabs.sendMessage(id, { type: "overlay:state" }).then(
+						(s) => (s as OverlayState | undefined) ?? "unsure",
+						() => "none" as const,
+					),
+					sleep(ASK_TAB_MS).then(() => "unsure" as const),
+				]),
+			];
 		}),
 	);
+	return new Map(answers);
 }
 
 /**
@@ -2598,20 +2613,23 @@ chrome.runtime.onMessage.addListener(
 		// From a page's content script only: an extension page has no tab.
 		if (isMarkRequest(news))
 			return answerMark(news, sender.tab?.id, sendResponse);
-		// From the worker only (an AI app's open_case): a page has a tab.
+		// From the background only (an AI app's open_case): not a page's
+		// content script, not another extension page (DEC-050).
 		if (isOpenCaseRequest(news))
-			return sender.tab === undefined && openForAi(news, sendResponse);
+			return fromBackground(sender) && openForAi(news, sendResponse);
 		return hear(news, sender);
 	},
 );
 
 /**
- * An AI app's `open_case` (DEC-050), which the user allowed: the page shows
- * the case's marks already (the worker loaded it), and the panel of that
- * window opens the case as a click on it would, taking up what the page
- * found (as `adoptLoaded` does). Not while the toolbar there adds marks to
- * another case: that one stays (DEC-023). Another window's panel says
- * nothing.
+ * An AI app's `open_case` (DEC-050), which the user allowed: the panel of
+ * that window opens the case exactly as a person's clicks would: "← All
+ * cases" on the case it shows (`leaveCase`: its toolbars end, an untouched
+ * new case goes, DEC-026), then a click on the case, whose marks follow the
+ * tab in front (DEC-022). Never at the cost of anything typed or a decision
+ * a person has to make (`aiOpenRefusal`): then it says why and stays.
+ * Answers once the draw on that tab has found the marks. Another window's
+ * panel says nothing.
  */
 function openForAi(
 	request: OpenCaseRequest,
@@ -2626,33 +2644,67 @@ function openForAi(
 			sendResponse({ opened: false, reason: "no-panel" });
 			return;
 		}
-		const page = await overlayState(tabId);
-		const toolbar = page?.visible ? page.target?.caseId : undefined;
-		if (toolbar !== undefined && toolbar !== caseId) {
-			const other = await store.getCase(toolbar);
+		const refused = aiOpenRefusal(state, caseId, tabId, await askTabsById());
+		if (refused !== undefined) {
+			const title = (await store.getCase(refused.caseId))?.title;
 			sendResponse({
 				opened: false,
-				reason: "adding",
-				...(other ? { title: other.title } : {}),
+				reason: refused.reason,
+				...(title === undefined ? {} : { title }),
+				...(refused.reason === "busy" ? { why: refused.why } : {}),
 			});
 			return;
 		}
-		// The page's marks are the panel's from now on: they follow the case.
-		drawn = { tabId, caseId };
+		const before = state.view.kind === "case" ? state.view.id : undefined;
+		if (before !== undefined && before !== caseId) {
+			await leaveCase();
+			// Something came up while leaving (a mark not in the case yet):
+			// the person decides, not the AI app.
+			if (state.view.kind !== "home") {
+				sendResponse({
+					opened: false,
+					reason: "busy",
+					...(state.current ? { title: state.current.title } : {}),
+					why: "closing it needs the user's decision",
+				});
+				return;
+			}
+		}
+		// Asked for by name: a Hide on that tab holds no longer.
 		if (hiddenOn.has(tabId)) update(() => hiddenOn.delete(tabId));
-		if (!showing(caseId)) openCase(caseId);
-		// What the panel knew of a draw there is older than the worker's load.
-		update((s) => {
-			if (
-				s.loaded !== undefined &&
-				(s.loaded.caseId !== caseId || s.loaded.tabId === tabId)
-			)
-				s.loaded = undefined;
+		if (showing(caseId)) void follow();
+		else openCase(caseId);
+		sendResponse({
+			opened: true,
+			...((await drawnFor(caseId, tabId)) ?? {}),
 		});
-		void readLoaded(c, tabId);
-		sendResponse({ opened: true });
 	})();
 	return true;
+}
+
+/** How long `open_case` waits for the panel's draw of the case to find its marks. */
+const AI_DRAW_WAIT_MS = 20_000;
+
+/** What the panel's draw of the case on the tab found, once it has; none in time. */
+async function drawnFor(
+	caseId: string,
+	tabId: number,
+): Promise<{ result: LoadResult } | undefined> {
+	const end = Date.now() + AI_DRAW_WAIT_MS;
+	while (Date.now() < end) {
+		const loaded = state.loaded;
+		if (loaded?.caseId === caseId && loaded.tabId === tabId)
+			return {
+				result: {
+					caseId,
+					url: loaded.url,
+					matches: [...loaded.matches.values()],
+				},
+			};
+		if (!showing(caseId)) return undefined;
+		await sleep(100);
+	}
+	return undefined;
 }
 
 /** News from the pages and the worker: nothing is answered. */

@@ -169,3 +169,34 @@ describe("keptQuery on hostile input", () => {
 		expect(keptQuery(`q=${"a".repeat(8000)}`)).toBe("");
 	});
 });
+
+describe("a query inside a value (amendment 5)", () => {
+	test("a secret in a return address's own query drops the piece", () => {
+		for (const piece of [
+			"next=%2Freset%3Ftoken%3Dabc123def",
+			"returnUrl=/reset?token=abc123",
+			"redirect=https%3A%2F%2Fx.com%2Fcb%3Faccess_token%3Dabc",
+			"next=%252Fcb%253Fsession%253Dxyz",
+			"back=/a;sig=1",
+		])
+			expect(keptQuery(`${piece}&q=1`)).toBe("q=1");
+		// A plain value with an = stays, and a return address without a secret.
+		expect(keptQuery("q=a=b&filter=price=10&next=%2Fcart%3Fstep%3D2")).toBe(
+			"q=a=b&filter=price=10&next=%2Fcart%3Fstep%3D2",
+		);
+	});
+
+	test("still linear: nested queries of the longest allowed length take a few milliseconds", () => {
+		for (const hostile of [
+			`x=${"a=b&".repeat(1999)}`,
+			`x=${"%3Fa%3Db".repeat(999)}`,
+			`x=${"?=".repeat(3999)}`,
+			`x=${"%253D%2526".repeat(799)}`,
+		]) {
+			expect(hostile.length).toBeLessThanOrEqual(8000);
+			const start = performance.now();
+			keptQuery(hostile);
+			expect(performance.now() - start).toBeLessThan(50);
+		}
+	});
+});

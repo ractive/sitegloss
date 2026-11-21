@@ -15,13 +15,22 @@ import {
 export interface MarkTargets {
 	/** Where the mark was made: its screenshot's address with its query. */
 	made: string;
-	/** The same path, query and hash route on the host of the tab in front. */
+	/** The same path, query and hash route on the origin of the tab in front. */
 	here?: string;
-	/** That host, to name it (`localhost:3000`). */
+	/**
+	 * That origin as the link names it, never to be taken for the mark's
+	 * own: the host with its port (`localhost:3000`), and the scheme too
+	 * where host and port are the mark's (`http://shop.example`).
+	 */
 	host?: string;
 }
 
-/** Where a mark's link may go; none for a mark of no web page (an imported file's). */
+/**
+ * Where a mark's link may go; none for a mark of no web page (an imported
+ * file's). The second target is offered on any web page in front, also one
+ * that is none of the case's: opening a case elsewhere is deliberate, and a
+ * developer on `localhost:3000/` goes to the case's `/cart` there (DEC-050).
+ */
 export function markTargets(
 	c: Case,
 	a: Annotation,
@@ -36,7 +45,8 @@ export function markTargets(
 	return {
 		made,
 		here: `${front.origin}${at.pathname}${at.search}${at.hash}`,
-		host: front.host,
+		host:
+			front.host === at.host ? `${front.protocol}//${front.host}` : front.host,
 	};
 }
 

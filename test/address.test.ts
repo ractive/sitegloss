@@ -12,6 +12,7 @@ import {
 	exactPage,
 	isOfferedOn,
 	markAddress,
+	onPageInFront,
 	pageAt,
 	pageInFront,
 	pageKey,
@@ -32,6 +33,7 @@ import { MemoryStore } from "../src/lib/store.ts";
 import { findsOn } from "../src/sidepanel/follow.ts";
 import { newCase } from "../src/sidepanel/fresh.ts";
 import { markTargets, shortAddress } from "../src/sidepanel/mark-link.ts";
+import { pageView } from "../src/worker/tools.ts";
 import { validateCase as validateCase030 } from "./case-0-3-0.ts";
 import caseFile from "./case-file.json" with { type: "json" };
 import { putCase, sampleCase } from "./fixtures.ts";
@@ -459,5 +461,54 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 		expect(lines(caseFile.singlePageCaseJson as never, pageLine)).toEqual(
 			caseFile.singlePageCaseMdPageLines,
 		);
+	});
+});
+
+describe("two sites' home pages in one case (review of DEC-050)", () => {
+	const PAY = "https://pay.example/";
+	const lost = (n: number): AnnotationMatch => ({
+		annotationId: `a${n}`,
+		number: n,
+		status: "lost",
+		score: 0,
+		current: 0,
+		candidates: [],
+	});
+	const twoHomes = (): Case => ({
+		...shopCase(),
+		pages: [
+			{ url: HOME, title: "Shop", lang: "en" },
+			{ url: PAY, title: "Pay", lang: "en" },
+		],
+		shots: [shot("s1", HOME), shot("s2", PAY)],
+		annotations: [mark(1, "s1"), mark(2, "s2")],
+	});
+
+	test("a mark is the page's own only when its page is the one pageInFront picks: on each site its own, on a third host the first", () => {
+		const c = twoHomes();
+		const [shop, pay] = c.annotations as [Annotation, Annotation];
+		for (const [url, own] of [
+			[HOME, [1]],
+			[PAY, [2]],
+			["http://localhost:3000/", [1]],
+		] as const) {
+			const found = findsOn(c, [lost(1), lost(2)], url);
+			expect(found.own.map((m) => m.number)).toEqual([...own]);
+			expect(found.elsewhere).toBe(1);
+			expect(onPageInFront(c, shop, url)).toBe(own[0] === 1);
+			expect(onPageInFront(c, pay, url)).toBe(own[0] === 2);
+		}
+	});
+
+	test("the AI tools' onThisPage says the same, and otherPageNote for the other site's mark", () => {
+		const c = twoHomes();
+		const [shop, pay] = c.annotations as [Annotation, Annotation];
+		expect(pageView(c, shop, PAY).onThisPage).toBe(false);
+		expect(pageView(c, shop, PAY)).toHaveProperty("otherPageNote");
+		expect(pageView(c, pay, PAY).onThisPage).toBe(true);
+		expect(pageView(c, shop, HOME).onThisPage).toBe(true);
+		expect(pageView(c, pay, HOME).onThisPage).toBe(false);
+		expect(pageView(c, shop, "http://localhost:3000/").onThisPage).toBe(true);
+		expect(pageView(c, pay, "http://localhost:3000/").onThisPage).toBe(false);
 	});
 });

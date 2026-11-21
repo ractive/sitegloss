@@ -2556,13 +2556,21 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 		expect(c.shots.at(-1)?.query).toBe("q=shoes");
 	});
 
-	test("open_case draws the marks on the tab in front, asks the panel of that window to open the case, and says what it did", async () => {
+	test("open_case: the panel of that window opens the case and draws its marks; the tool reports that draw and draws nothing itself", async () => {
 		await queried();
 		const asked: unknown[] = [];
+		const drawn = {
+			caseId: "c_1",
+			url: "http://localhost:3000/search",
+			matches: [
+				{ ...foundMatch, annotationId: "a1", number: 1 },
+				{ ...foundMatch, annotationId: "a2", number: 2 },
+			],
+		};
 		build({
 			openInPanel: async (request) => {
 				asked.push(request);
-				return { opened: true };
+				return { opened: true, result: drawn };
 			},
 		});
 		tab.url = "http://localhost:3000/search";
@@ -2573,14 +2581,32 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 		expect(
 			opened.marks.map((m: { onThisPage: boolean }) => m.onThisPage),
 		).toEqual([false, true]);
-		// It loaded the case onto the page and navigated nowhere.
-		expect(tab.loaded).toBe("c_1");
-		expect(tab.sent.map((r) => r.type)).toEqual(["case:load"]);
+		// The panel drew; the tool sent the page nothing and navigated nowhere.
+		expect(tab.sent).toEqual([]);
 		expect(tab.url).toBe("http://localhost:3000/search");
+		// Opened, but not drawn yet (Sitegloss may not run there yet).
+		build({ openInPanel: async () => ({ opened: true }) });
+		const waiting = json(await call("open_case", { caseId: "c_1" }));
+		expect(waiting.panel).toBe("opened");
+		expect(waiting.marks).toEqual([]);
+		expect(waiting.note).toContain("has not drawn the marks on this tab yet");
 	});
 
-	test("open_case without a side panel, or with the toolbar adding to another case, says so", async () => {
+	test("open_case without a side panel draws the marks itself; a busy panel or a toolbar adding to another case: nothing is drawn, and the error says why", async () => {
 		await queried();
+		build({
+			openInPanel: async () => {
+				throw new Error("Could not establish connection");
+			},
+		});
+		const alone = json(await call("open_case", { caseId: "c_1" }));
+		expect(alone.panel).toContain("no side panel is open in that window");
+		expect(tab.loaded).toBe("c_1");
+		build();
+		expect(json(await call("open_case", { caseId: "c_1" })).panel).toContain(
+			"no side panel is open in that window",
+		);
+		tab.sent = [];
 		build({
 			openInPanel: async () => ({
 				opened: false,
@@ -2588,21 +2614,22 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 				title: "Other",
 			}),
 		});
-		expect(json(await call("open_case", { caseId: "c_1" })).panel).toBe(
+		await expect(call("open_case", { caseId: "c_1" })).rejects.toThrow(
 			"not opened: the toolbar on that tab is adding marks to “Other”, and the panel stays on it",
 		);
 		build({
-			openInPanel: async () => {
-				throw new Error("Could not establish connection");
-			},
+			openInPanel: async () => ({
+				opened: false,
+				reason: "busy",
+				title: "Checkout",
+				why: "a mark's form is open there, with what is typed in it",
+			}),
 		});
-		expect(json(await call("open_case", { caseId: "c_1" })).panel).toContain(
-			"no side panel is open in that window",
+		await expect(call("open_case", { caseId: "c_1" })).rejects.toThrow(
+			"not opened: the panel is busy with “Checkout”: a mark's form is open there, with what is typed in it.",
 		);
-		build();
-		expect(json(await call("open_case", { caseId: "c_1" })).panel).toContain(
-			"no side panel is open in that window",
-		);
+		// Nothing was loaded over the case the panel shows.
+		expect(tab.sent.filter((r) => r.type === "case:load")).toEqual([]);
 		await expect(call("open_case", { caseId: "c_none" })).rejects.toThrow(
 			"No case with id c_none",
 		);

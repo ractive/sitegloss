@@ -322,12 +322,21 @@ export interface OpenCaseRequest {
 
 /** A panel's answer to `OpenCaseRequest`. */
 export type OpenCaseAnswer =
-	| { opened: true }
+	| {
+			opened: true;
+			/** What the panel's draw on that tab found; none: it has not drawn yet. */
+			result?: LoadResult;
+	  }
 	| {
 			opened: false;
-			/** `no-panel`: none answered; `adding`: the toolbar there adds to another case (`title`). */
-			reason: "no-panel" | "adding";
+			/**
+			 * `no-panel`: none answered; `adding`: the toolbar there adds to
+			 * another case (`title`); `busy`: the case open in the panel
+			 * (`title`) is in the middle of something a person does (`why`).
+			 */
+			reason: "no-panel" | "adding" | "busy";
 			title?: string;
+			why?: string;
 	  };
 
 export type Broadcast =

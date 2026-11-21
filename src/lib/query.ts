@@ -96,7 +96,8 @@ const WORDS = new Set(SECRET_WORDS);
 const NAMES = new Set(SECRET_NAMES);
 
 // Every expression here runs in linear time on any input: anchored, of a
-// fixed width, or one class repeated with nothing after it to backtrack into.
+// fixed width, or one class repeated with nothing after it to backtrack into
+// (OPAQUE, RUNS, INNER, the camelCase steps, the split into words, the `?`s).
 
 /** A value made only of these, 40 characters or more, is a long opaque value. */
 const OPAQUE = /^[A-Za-z0-9_\-.~+/=]{40,}$/;
@@ -160,14 +161,36 @@ function holdsJwt(text: string): boolean {
 const looksSecretOnce = (text: string): boolean =>
 	text.includes("@") || holdsJwt(text) || OPAQUE.test(text);
 
+/** Where a query inside a value is cut: a return address's own parameters. */
+const INNER = /[?&;#]/;
+
+/**
+ * A query inside a value (`next=/reset?token=abc`, amendment 5): a decoded
+ * value with an `=` is cut at every `?`, `&`, `;` and `#`, and each cut with
+ * an `=` is a name and a value of its own. Secret when such a name says
+ * secret or such a value looks like one. One level: the next decoding cuts
+ * again.
+ */
+function holdsSecretQuery(text: string): boolean {
+	if (!text.includes("=")) return false;
+	for (const cut of text.split(INNER)) {
+		const at = cut.indexOf("=");
+		if (at < 0) continue;
+		if (saysSecret(cut.slice(0, at)) || looksSecretOnce(cut.slice(at + 1)))
+			return true;
+	}
+	return false;
+}
+
 /**
  * The tests on a decoded text, and on it decoded again, up to
  * `DECODE_ROUNDS` in all: a round that changes nothing, or fails, ends them.
+ * Each round looks at the text whole and at a query inside it.
  */
 function looksSecret(once: string): boolean {
 	let text = once;
 	for (let round = 1; round <= DECODE_ROUNDS; round++) {
-		if (looksSecretOnce(text)) return true;
+		if (looksSecretOnce(text) || holdsSecretQuery(text)) return true;
 		if (round === DECODE_ROUNDS) break;
 		const next = decoded(text);
 		if (next === undefined || next === text) break;

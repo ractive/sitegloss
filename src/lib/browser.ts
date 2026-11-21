@@ -169,6 +169,31 @@ const identity = (): Identity =>
  * `https://<hash of the add-on's id>.extensions.allizom.org/`. The server
  * allows both, by name.
  */
+/**
+ * The page of the extension's background, as a message's `sender.url` names
+ * it: Chromium's service worker (`background.js`); in Firefox the event page
+ * the browser makes for `background.scripts`.
+ */
+export const BACKGROUND_PAGE: string = FIREFOX
+	? "_generated_background_page.html"
+	: "background.js";
+
+/**
+ * A message from this extension's background, and only from there: not a
+ * content script (it has a tab), not another extension page (another
+ * window's panel, the offscreen document).
+ */
+export function fromBackground(
+	sender: { id?: string; url?: string; tab?: unknown },
+	runtime: { id: string; getURL(path: string): string } = chrome.runtime,
+): boolean {
+	return (
+		sender.id === runtime.id &&
+		sender.tab === undefined &&
+		sender.url === runtime.getURL(BACKGROUND_PAGE)
+	);
+}
+
 export function signInRedirect(): string {
 	return identity().getRedirectURL();
 }

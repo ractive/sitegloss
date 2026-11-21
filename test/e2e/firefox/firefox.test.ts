@@ -146,6 +146,14 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 	test("installs with no manifest warning, and the event page starts without an error", async () => {
 		expect(h.warnings).toEqual([]);
 		expect(await backgroundLog(h)).toEqual([]);
+		// The event page's address is what the panel takes the background's
+		// messages from (BACKGROUND_PAGE, DEC-050's review).
+		expect(
+			await h.rdp.eval<boolean>(
+				h.panel,
+				'browser.runtime.getBackgroundPage().then((w) => w.location.href === chrome.runtime.getURL("_generated_background_page.html"))',
+			),
+		).toBe(true);
 		// Firefox's words: the panel is a sidebar there.
 		expect(
 			await h.rdp.eval<string>(

@@ -242,7 +242,7 @@ The tools:
 | `get_case` | A case's pages, its summary for the developer, its marks with their page (and the address with its query where it had one), comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, and whether it is closed |
 | `get_image` | One screenshot or crop |
 | `load_case` | Finds the marks' elements on the tab in front and draws the marks there |
-| `open_case` | Opens a case in the side panel, as a click on it there would, and draws its marks on the tab in front (the case made on production, the tab on `localhost:3000`); navigates nowhere; asks first |
+| `open_case` | Opens a case in the side panel, as a click on it there would, and draws its marks on the tab in front (the case made on production, the tab on `localhost:3000`), leaving the case shown as a click would and never while something is being typed there; navigates nowhere; asks first |
 | `highlight` | Scrolls to one mark's element (or another candidate) |
 | `get_mark_element` | A mark's element on the tab in front, read from the live page: trimmed HTML, box and window size, computed styles, matching CSS rules, ancestors and children, beside the styles recorded when the mark was made; a CSS selector reads one of its ancestors or an element inside it instead (for a mark without an element, an element of the mark's page) |
 | `capture` | A screenshot of the tab in front |

@@ -1220,6 +1220,18 @@ export function pageInFront(c: Case, url: string): CasePage | undefined {
 }
 
 /**
+ * Whether the mark `a` is a mark of the page at `url`, for drawing and for
+ * what a draw found (DEC-050): its page is the one `pageInFront` picks. So
+ * of two sites' home pages in one case, on either site only that site's
+ * marks are the page's own; on a third host, the first listed page's.
+ * Everything that asks "is this mark on the page in front?" asks this.
+ */
+export function onPageInFront(c: Case, a: Annotation, url: string): boolean {
+	const page = pageInFront(c, url);
+	return page !== undefined && samePage(page.url, markUrl(c, a));
+}
+
+/**
  * Home offers the case under "This page" (DEC-050): one of its screenshots
  * was taken on the same page of the same site (`exactPage`); a case with no
  * screenshot yet, on its page. Nothing else: no other host, no title.

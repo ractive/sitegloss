@@ -32,6 +32,7 @@ import {
 	markStatus,
 	marksByPage,
 	markUrl,
+	onPageInFront,
 	pageInFront,
 	pageKey,
 	RESOLUTION_LABEL,
@@ -40,7 +41,6 @@ import {
 	type ResolveChoice,
 	STATUS_GROUPS,
 	type StatusGroup,
-	samePath,
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
@@ -2303,7 +2303,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 				onCasePage &&
 				match !== undefined &&
 				!isFound(match) &&
-				!samePath(markUrl(c, a), loaded?.url ?? "");
+				!onPageInFront(c, a, loaded?.url ?? "");
 			return markItem(c, a, {
 				crop: images?.urls.get(a.crop),
 				match: elsewhere ? undefined : match,
@@ -2610,7 +2610,7 @@ function markPlace(
 						class: "link page-link",
 						"data-mark-link": "here",
 						"aria-label": `Open the same page on ${targets.host}, and show mark ${a.number} there`,
-						title: `Open ${shortAddress(targets.here)} in this tab, and show the mark there`,
+						title: `Open ${targets.here} in this tab, and show the mark there`,
 						onclick: () => actions.openMarkPage(c, a, "here"),
 					},
 					`Open on ${targets.host}`,

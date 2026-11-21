@@ -3,7 +3,7 @@
  * into the same page is a no-op: the first one keeps answering.
  */
 
-import { LANGUAGE, samePath } from "../lib/case.ts";
+import { LANGUAGE } from "../lib/case.ts";
 import { cssSelector, describeElement } from "../lib/element.ts";
 import {
 	insideInput,
@@ -143,7 +143,7 @@ function inspect(
 			};
 		// Without an element to start from, a selector could name anything
 		// of any page; only the mark's own page is searched (DEC-038).
-		if (!samePath(request.casePage, location.href))
+		if (!reviewer.isOwn(request.annotationId))
 			return {
 				ok: false,
 				reason: "other-page",

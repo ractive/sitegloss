@@ -7,11 +7,13 @@
 import { describe, expect, test } from "bun:test";
 import {
 	askDataConsent,
+	BACKGROUND_PAGE,
 	BROWSER,
 	CANNOT_RUN_TEXT,
 	DATA_COLLECTION,
 	dataConsent,
 	FIREFOX,
+	fromBackground,
 	notificationOptions,
 	openSidebar,
 	PANEL,
@@ -136,5 +138,29 @@ describe("the panel's window in Firefox's test build", () => {
 		expect(windowParam("?window=-1")).toBeUndefined();
 		expect(windowParam("?window=3x")).toBeUndefined();
 		expect(windowParam("?other=1")).toBeUndefined();
+	});
+});
+
+describe("a message from the background only (review of DEC-050)", () => {
+	const runtime = {
+		id: "ext",
+		getURL: (path: string) => `chrome-extension://ext/${path}`,
+	};
+	test("the worker's address, no tab, this extension; nothing else", () => {
+		const worker = { id: "ext", url: "chrome-extension://ext/background.js" };
+		expect(BACKGROUND_PAGE).toBe("background.js");
+		expect(fromBackground(worker, runtime)).toBe(true);
+		// Another window's panel, the offscreen document: extension pages, no tab.
+		for (const page of ["sidepanel/index.html", "offscreen/index.html"])
+			expect(
+				fromBackground(
+					{ id: "ext", url: `chrome-extension://ext/${page}` },
+					runtime,
+				),
+			).toBe(false);
+		// A content script has a tab; another extension another id.
+		expect(fromBackground({ ...worker, tab: { id: 3 } }, runtime)).toBe(false);
+		expect(fromBackground({ ...worker, id: "other" }, runtime)).toBe(false);
+		expect(fromBackground({ id: "ext" }, runtime)).toBe(false);
 	});
 });

@@ -4483,12 +4483,53 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 		);
 		const here = link("here");
 		expect(here?.getAttribute("title")).toBe(
-			"Open localhost:3000/search?q=shoes in this tab, and show the mark there",
+			"Open http://localhost:3000/search?q=shoes in this tab, and show the mark there",
 		);
 		expect(here?.getAttribute("aria-label")).toBe(
 			"Open the same page on localhost:3000, and show mark 1 there",
 		);
 		here?.click();
 		expect(asked).toEqual(["here"]);
+	});
+});
+
+describe("the second link names the origin in front (review of DEC-050)", () => {
+	test("the same host on another scheme says the scheme; another port says the port; a page none of the case's still offers it", () => {
+		const base = withOneMark(sampleCase("c_scheme"));
+		const c: Case = {
+			...base,
+			page: { ...base.page, url: "https://shop.example/cart" },
+			shots: base.shots.map((s) => ({
+				...s,
+				url: "https://shop.example/cart",
+			})),
+		};
+		const line = (url: string) => {
+			render(
+				caseState(c, (s) => {
+					s.tab = { id: 1, url, title: "", size: undefined };
+				}),
+				noActions,
+			);
+			return window.document.querySelector('[data-annotation="a1"] .mark-page')
+				?.textContent;
+		};
+		expect(line("http://shop.example/cart")).toBe(
+			"Marked on shop.example/cart · Open on http://shop.example",
+		);
+		expect(line("https://shop.example:8443/")).toBe(
+			"Marked on shop.example/cart · Open on shop.example:8443",
+		);
+		// localhost's home page is none of this case's pages: offered all the same.
+		expect(line("http://localhost:3000/")).toBe(
+			"Marked on shop.example/cart · Open on localhost:3000",
+		);
+		expect(
+			window.document
+				.querySelector('[data-mark-link="here"]')
+				?.getAttribute("title"),
+		).toBe(
+			"Open http://localhost:3000/cart in this tab, and show the mark there",
+		);
 	});
 });

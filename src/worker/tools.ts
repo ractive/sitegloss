@@ -43,6 +43,7 @@ import {
 	markUrl,
 	newId,
 	nextNumbers,
+	onPageInFront,
 	pageInFront,
 	pageKey,
 	pendingImage,
@@ -53,7 +54,6 @@ import {
 	resolutionStatus,
 	type Shot,
 	STATUS_LABEL,
-	samePath,
 	shotUrl,
 	textLength,
 	withCaseComment,
@@ -563,8 +563,8 @@ function matchView(m: AnnotationMatch) {
  */
 export function pageView(c: Case, annotation: Annotation, front: string) {
 	const page = markUrl(c, annotation);
-	// By path, whatever the host (DEC-050).
-	const onThisPage = samePath(page, front);
+	// By path, whatever the host; of two sites' home pages, the one there (DEC-050).
+	const onThisPage = onPageInFront(c, annotation, front);
 	return {
 		page: plainUrl(page),
 		...addressField(plainUrl(page), markQuery(c, annotation)),
@@ -1060,7 +1060,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 						? {}
 						: addressField(plainUrl(page), markQuery(c, a))),
 					// By path, whatever the host (DEC-050).
-					onThisPage: samePath(page, result.url),
+					onThisPage: a === undefined ? false : onPageInFront(c, a, result.url),
 				};
 			}),
 			budget() - 400,
@@ -1082,7 +1082,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		name: "open_case",
 		title: "Open a case in the side panel",
 		description:
-			"Open a case in Sitegloss's side panel, as the user's click on it there would, and draw its marks on the page in the user's tab in front, which may be the case's page in another environment (for example localhost while the case was made on production). The marks of the page in front are those whose screenshot has the same path and hash route, whatever the host; the home page of any host is the home page there. While the case stays open in the panel, its marks follow the tab (another page, a reload). It navigates nowhere and opens no tab: to see a mark of another page, open that page (the mark's address) in the tab, or ask the user to. Reports per mark what load_case reports, and panel: opened, or why the panel did not open it (no side panel open in that window: the case opens there when the user opens the panel on this tab; or the toolbar there is adding marks to another case). The user is asked first.",
+			"Open a case in Sitegloss's side panel, as the user's click on it there would, and draw its marks on the page in the user's tab in front, which may be the case's page in another environment (for example localhost while the case was made on production). The marks of the page in front are those whose screenshot has the same path and hash route, whatever the host; the home page of any host is the home page there. While the case stays open in the panel, its marks follow the tab (another page, a reload). It navigates nowhere and opens no tab: to see a mark of another page, open that page (the mark's address) in the tab, or ask the user to. A case open in the panel before is left as the user's click would leave it. Reports per mark what load_case reports, and panel: opened, or not opened because no side panel is open in that window (the marks are drawn, and the case opens there when the user opens the panel on this tab). When the panel shows another case the user is in the middle of (a mark's form, its title or link being typed, closing it, its toolbar up on a tab), or the toolbar on that tab adds marks to another case, nothing is opened or drawn and the error says why: nothing the user typed is given up. The user is asked first.",
 		inputSchema: {
 			type: "object",
 			properties: { caseId: CASE_ID },
@@ -1098,9 +1098,8 @@ export function createTools(deps: ToolDeps): Tool[] {
 			serial(signal, async () => {
 				const c = await mustGet(caseId);
 				const current = await tab.current();
-				// Drawn by the page first: the panel takes up what the page shows,
-				// as when it is opened on a page that shows a case (DEC-023).
-				const result = await load(current, c);
+				// The panel of that window opens it as a person's click would,
+				// leaving the case it shows first, and draws its marks (DEC-050).
 				const answer: OpenCaseAnswer = deps.openInPanel
 					? await deps
 							.openInPanel({
@@ -1110,9 +1109,27 @@ export function createTools(deps: ToolDeps): Tool[] {
 							})
 							.catch(() => ({ opened: false, reason: "no-panel" }) as const)
 					: { opened: false, reason: "no-panel" };
-				return {
-					content: loadedView(c, result, { panel: panelWord(answer) }),
-				};
+				const panel = panelWord(answer);
+				// The panel stays on another case: nothing is drawn over it.
+				if (!answer.opened && answer.reason !== "no-panel")
+					throw new CaseError(`The side panel did not open the case: ${panel}`);
+				if (answer.opened && answer.result === undefined)
+					return {
+						content: [
+							text({
+								url: plainUrl(current.url),
+								panel,
+								marks: [],
+								note: "The panel has not drawn the marks on this tab yet (Sitegloss may not run there yet, or the page is still loading); load_case reports them once it can.",
+							}),
+						],
+					};
+				// No side panel: the page shows the case, and a panel opened on
+				// it later opens the case (DEC-023).
+				const result = answer.opened
+					? (answer.result as LoadResult)
+					: await load(current, c);
+				return { content: loadedView(c, result, { panel }) };
 			}),
 	};
 
@@ -1243,10 +1260,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 					const page = plainUrl(markUrl(c, annotation));
 					const front = state.url || current.url;
 					// On the mark's own page there is no other page to send anyone to.
-					if (
-						result.reason === "lost" &&
-						samePath(markUrl(c, annotation), front)
-					)
+					if (result.reason === "lost" && onPageInFront(c, annotation, front))
 						throw new CaseError(
 							`${result.error} The tab in front shows the mark's page (${page}): the element may have changed, or is not on the page yet. capture shows the page as it is.`,
 						);
@@ -2040,9 +2054,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 /** What open_case says of the side panel. */
 function panelWord(answer: OpenCaseAnswer): string {
 	if (answer.opened) return "opened";
-	return answer.reason === "adding"
-		? `not opened: the toolbar on that tab is adding marks to “${answer.title ?? "another case"}”, and the panel stays on it`
-		: "not opened: no side panel is open in that window; the case opens there when the user opens the panel on this tab, while the page shows its marks";
+	if (answer.reason === "adding")
+		return `not opened: the toolbar on that tab is adding marks to “${answer.title ?? "another case"}”, and the panel stays on it`;
+	if (answer.reason === "busy")
+		return `not opened: the panel is busy with “${answer.title ?? "another case"}”: ${answer.why ?? "it is in use"}. Nothing the user typed is given up for this; ask the user to finish there, then call open_case again`;
+	return "not opened: no side panel is open in that window; the case opens there when the user opens the panel on this tab, while the page shows its marks";
 }
 
 /** The mark a confirmation named (`markKey`), by the call's signal. */

@@ -2704,7 +2704,9 @@ that is kept").
     server's first page (`wire.ts`), the counts in case.md, `list_cases` and `get_case`'s
     pages, the case header's counts, the content script's "the address moved on to
     another page" (`#checkPage`) and the panel's `movedOn` (one document, one origin);
-  - now `samePath`/`pageInFront` (should this mark be drawn or offered here): which marks
+  - now `onPageInFront(c, a, url)` (should this mark be drawn or offered here: its page
+    is the one `pageInFront` picks, so of two sites' home pages in one case only the
+    site's own counts on either site, and the first listed on a third host): which marks
     are the page's own in what a draw found and the line under the case (`findsOn`,
     `dashDrawn`, `noneHere`), "on another page" in the marks list, "None of this case's
     marks were found on this page" and its "Open the case's page" button, the page list's
@@ -2721,7 +2723,9 @@ that is kept").
   rest of the lists) or the words joined are a known name (`apiKey`, `PHPSESSID`), when
   its name or value has an `@`, holds a JWT or is 40 or more characters of
   `A-Za-z0-9_-.~+/=` (tested on the decoded text and on up to two more decodings, so
-  `%2540` is an `@` too), when it holds a raw `#` or a malformed escape; the rest is kept
+  `%2540` is an `@` too), when a query inside its value says or looks secret on any of
+  those decodings (cut at `?`, `&`, `;` and `#`, one level a round: `next=/reset?token=…`,
+  amendment 5), when it holds a raw `#` or a malformed escape; the rest is kept
   as it was, in order; a result over 1024 code points is dropped whole, never cut (a cut
   query opens another page), and an input over 8000 units gives nothing before it is
   parsed. Linear on any input (no expression that backtracks). `countryCode` is dropped
@@ -2767,36 +2771,53 @@ that is kept").
   once the page has loaded and its marks are drawn, brings the mark into view and
   outlines it (`case:show`, as Show does); it waits while the draw still looks for a mark
   not found yet, and gives up after two minutes (a sign-in in between). With the case
-  open on another host than the mark's, "Open on <host>" opens the same path, query and
-  hash route there. Chrome's question for the site is asked in the click, as for a page
-  of the case; a Hide on that tab ends. The line is shown for every mark, not only in a
+  open on another origin than the mark's, "Open on <origin>" sends the mark's path, kept
+  query and hash route to the origin it names: the host with its port, and the scheme
+  too where host and port are the mark's (`Open on http://shop.example`), so it is never
+  taken for the first link. It is offered on any web page in front, also one that is
+  none of the case's, because opening a case elsewhere is a deliberate act and a
+  developer on `localhost:3000/` has to get to the case's `/cart` there. Chrome's
+  question for the site is asked in the click, as for a page of the case; a Hide on that
+  tab ends. The line is shown for every mark, not only in a
   case of several pages (it replaces "On <page>").
 - **AI apps.** `get_case` (each screenshot and mark), `load_case`, `highlight` and
   `get_mark_element` give `address` (the page with its query) beside `page` where the
   screenshot had a query; `add_annotation` says the address with its kept query. New
-  tool **`open_case`**: draws the case's marks on the tab in front (as `load_case`, by
-  path) and asks the side panel of that tab's window to open the case, as the user's
-  click there would, so the marks follow the tab from then on. It asks the user first
-  (`consequentialHint`: "Always allow" and "Allow all changes" cover it as any other,
-  DEC-043), its question names the case and the page in front (its address as kept). It
-  navigates nowhere and opens no tab; without a side panel open in that window the
-  marks are drawn and the case opens when the user opens the panel there (the panel
-  opens the case a page shows, DEC-023); with the toolbar there adding marks to another
-  case the panel stays on that one, and the answer says which. The panel takes the
-  request only from the worker (no tab) and only for its own window.
+  tool **`open_case`**: asks the side panel of the tab's window to open the case, and the
+  panel does exactly what a person's clicks do: "← All cases" on the case it shows
+  (`leaveCase`: its toolbars end, an untouched new case goes, DEC-026), a click on the
+  case, whose marks are then drawn on the tab in front by path and follow the tab
+  (DEC-022). The tool reports that draw. It asks the user first (`consequentialHint`:
+  "Always allow" and "Allow all changes" cover it as any other, DEC-043); its question
+  names the case and the page in front (its address as kept). **Nothing a person typed
+  is ever lost to it:** while the case shown has a mark's form open, its title or link
+  being typed, a "← All cases" under way, or its toolbar up on any tab, or while the
+  toolbar on that tab adds marks to another case, the panel stays, nothing is drawn, and
+  the call fails saying which case and why (`aiOpenRefusal`). It navigates nowhere and
+  opens no tab. Without a side panel open in that window the tool draws the marks
+  itself, and the case opens when the user opens the panel there (the panel opens the
+  case a page shows, DEC-023). The panel takes the request only from the extension's
+  background (`fromBackground`: this extension, no tab, and the background's own
+  address, `background.js` in Chromium and the event page Firefox makes,
+  `_generated_background_page.html`), so neither a content script nor another extension
+  page can switch it, and only for its own window.
 - **Not done, on purpose:** no learned or synced hosts and no host settings, no matching
   by title or metadata, nothing opens by itself (not even an exact match), the query
   takes no part in matching (`/search?q=shoes` and `?q=boots` are one page), no change
-  to `pageKey`. Two sites' home pages in one case are both "the home page" on a third
-  host; the one of the same site wins on either of them.
+  to `pageKey`. Two sites' home pages in one case: on either site its own counts, on a
+  third host the first listed.
 - **Tested** in `test/query.test.ts` (the contract's table, the server's vectors and
   lists, hostile input in linear time, what a screenshot keeps), `test/address.test.ts`
   (`exactPage`, `pathKey`, the offer, the page in front, a draw on localhost's home page,
   the toolbar's save, a file read and written, an import, 0.3.0 reading the file,
   case.md and the server's case file, the mark's link),
   `test/view.test.ts` (the offer and its order, the link's texts and names),
-  `test/tools.test.ts` (`address`, `onThisPage` on localhost's home page, `open_case`
-  and its question), `test/compat-0-3-0.test.ts` (the sync, 0.3.0 beside it), and in
-  Chromium (`test/e2e/address.test.ts`: the offer on the same site only, a case opened on
-  another host's home page, both links). The fake server keeps the query as the server
-  does.
+  `test/tools.test.ts` (`address`, `onThisPage` on localhost's home page, `open_case`,
+  its refusals and its question), `test/ai-open.test.ts` (every refusal),
+  `test/browser.test.ts` (`fromBackground`), two sites' home pages in
+  `test/address.test.ts` (`findsOn`, `pageView` on each site and a third host),
+  `test/compat-0-3-0.test.ts` (the sync, 0.3.0 beside it), in Chromium
+  (`test/e2e/address.test.ts`: the offer on the same site only, a case opened on
+  another host's home page, both links; `test/e2e/open-case.test.ts`: refused with a
+  comment half typed, which stays, then the clean switch) and in Firefox (the event
+  page's address). The fake server keeps the query as the server does.
