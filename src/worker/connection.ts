@@ -22,6 +22,13 @@ import {
 	TabMcp,
 } from "@ractive-ch/tab-mcp-client";
 import {
+	CodeFiller,
+	type FillHost,
+	PAIRING_PATH,
+	type PagePort,
+	pairingCodes,
+} from "@ractive-ch/tab-mcp-client/extension";
+import {
 	BROWSER,
 	dataConsent,
 	FIREFOX,
@@ -29,22 +36,19 @@ import {
 	PANEL,
 } from "../lib/browser.ts";
 import { cropImages, scaleImage, toWebp } from "../lib/images.ts";
-import type { Broadcast, ContentRequest } from "../lib/messages.ts";
+import {
+	type Broadcast,
+	type ContentRequest,
+	PAIRING_SCRIPT,
+} from "../lib/messages.ts";
 import type { CaseStore } from "../lib/store.ts";
 import { AlwaysAllowed, removeOldStore } from "./always.ts";
 import { badge } from "./badge.ts";
-import { CodeFiller } from "./code-filler.ts";
 import { decide } from "./decide.ts";
+import { FillQuestion } from "./fill-question.ts";
 import { endedProblem, KeepOn } from "./keep-on.ts";
 import { type Kv, openKv } from "./kv.ts";
-import {
-	codeToFill,
-	fillPairingForm,
-	HOSTED_ORIGIN,
-	PAIR_FILL_SITE,
-	type PairingForm,
-	readPairingForm,
-} from "./pair-fill.ts";
+import { HOSTED_ORIGIN, PAIR_FILL_SITE } from "./pair-fill.ts";
 import {
 	type AiState,
 	APP_ID,
@@ -326,7 +330,9 @@ export class Connection {
 	#revokes: Promise<void> = Promise.resolve();
 	/** Panel commands, one after the other. */
 	#commands: Promise<void> = Promise.resolve();
-	/** Filling in the code on the relay's pairing page (DEC-044). */
+	/** How Sitegloss asks whether to fill in the code (DEC-044). */
+	readonly #fillAsk: FillQuestion = new FillQuestion(this.#fillAskHost());
+	/** The rules of filling in the code: the client library's (DEC-044, tab-mcp's DEC-206). */
 	readonly #filler: CodeFiller = new CodeFiller(this.#fillHost());
 	/** Pairing is held on for a code Sitegloss fills in. */
 	#fillPairing = false;
@@ -513,6 +519,10 @@ export class Connection {
 		mcp.addEventListener(
 			"grantschange",
 			({ detail: { grants } }) => {
+				// An AI app that just connected ends its questions and fills.
+				this.#filler.grantsChanged(
+					grants.map((g) => ({ grantId: g.grantId, host: g.client.host })),
+				);
 				for (const id of this.#revokeProblems.keys())
 					if (!grants.some((g) => g.grantId === id))
 						this.#revokeProblems.delete(id);
@@ -539,7 +549,7 @@ export class Connection {
 			"statechange",
 			({ detail }) => {
 				// The question to fill in a code needs a connection to give one.
-				if (detail.state !== "connected") this.#filler.withdraw();
+				if (detail.state !== "connected") this.#withdrawFill();
 				if (detail.state === "connected") {
 					this.#problem = undefined;
 					// "Not connected" no longer holds; a new session owes no answers.
@@ -599,7 +609,7 @@ export class Connection {
 			this.#mcp.state !== "disconnected" ||
 			this.#keep.retrying ||
 			this.#questions.list.length > 0 ||
-			this.#filler.busy
+			this.#fillAsk.busy
 		);
 	}
 
@@ -694,8 +704,10 @@ export class Connection {
 		this.#mcp = next;
 		this.#watch(next);
 		// Its statechange is no longer heard: a question for the relay
-		// before goes now.
-		this.#filler.withdraw();
+		// before goes now, and the new relay's first list of grants is
+		// taken as it is.
+		this.#filler.reset();
+		this.#fillAsk.withdraw();
 		before.disconnect();
 		// (It connects only with Keep AI access on, which Firefox lets it only
 		// with the consent.)
@@ -762,7 +774,7 @@ export class Connection {
 			// What ends filling in the code ends it on receipt, not behind
 			// the commands before it: a yes waiting for its code types
 			// nothing once AI access, the setting or the relay goes.
-			if (this.#endsFill(command)) this.#filler.withdraw();
+			if (this.#endsFill(command)) this.#withdrawFill();
 			this.#commands = this.#commands
 				.then(() => this.#command(panel, command))
 				.catch((error: unknown) => {
@@ -877,14 +889,7 @@ export class Connection {
 				this.#questions.answer(command.id, command.answer);
 				return;
 			case "fill":
-				// Not awaited: the commands after it (a Stop, turning it off,
-				// another relay) must not wait for the code, up to 10 s.
-				void this.#filler
-					.answer(command.id, command.yes)
-					.catch((error: unknown) => {
-						this.#problem = message(error);
-						this.#changed();
-					});
+				this.#fillAsk.answer(command.id, command.yes);
 				return;
 			case "fill-code":
 				await this.#setFillCode(command.on);
@@ -993,66 +998,70 @@ export class Connection {
 	// --- Filling in the code on the relay's pairing page (DEC-044) ---
 
 	/**
-	 * The origins whose pairing page Sitegloss fills in: the hosted relay's,
-	 * while it is the relay Sitegloss connects to. A test build also takes
-	 * the origins its end-to-end tests set (the define itself: other builds
-	 * drop it).
+	 * The origin of the relay's pages whose pairing page Sitegloss fills in:
+	 * the hosted relay's, while it is the relay Sitegloss connects to. A test
+	 * build takes the origin its tests set instead (the define itself: other
+	 * builds drop it).
 	 */
-	#fillOrigins(): string[] {
-		const origins =
-			new URL(this.#relay).origin === HOSTED_ORIGIN ? [HOSTED_ORIGIN] : [];
+	#fillOrigin(): string | undefined {
 		if (typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD) {
-			const test = (globalThis as { siteglossTestFillOrigins?: unknown })
-				.siteglossTestFillOrigins;
-			if (Array.isArray(test))
-				origins.push(...test.filter((o) => typeof o === "string"));
+			const test = (globalThis as { siteglossTestFillOrigin?: unknown })
+				.siteglossTestFillOrigin;
+			if (typeof test === "string") return test;
 		}
-		return origins;
+		return new URL(this.#relay).origin === HOSTED_ORIGIN
+			? HOSTED_ORIGIN
+			: undefined;
 	}
 
-	/** What the filler needs: the browser, the library, the panels. */
-	#fillHost() {
+	/** Filling in may happen now: turned on, AI access connected, the hosted relay. */
+	#fillOn(): boolean {
+		return (
+			this.#settings.fillCode &&
+			this.#mcp.state === "connected" &&
+			this.#fillOrigin() !== undefined
+		);
+	}
+
+	/** Withdraw every question and fill: AI access off, or turned off. */
+	#withdrawFill(): void {
+		this.#filler.withdrawAll();
+		this.#fillAsk.withdraw();
+	}
+
+	/** What the library's filler needs from Sitegloss (its `FillHost`). */
+	#fillHost(): FillHost {
 		return {
+			extensionId: chrome.runtime.id,
 			app: APP_ID,
-			origins: () => this.#fillOrigins(),
-			ready: () => this.#settings.fillCode && this.#mcp.state === "connected",
-			hasSite: (origin: string) =>
-				chrome.permissions.contains({ origins: [`${origin}/*`] }),
-			tabUrl: async (tabId: number) =>
-				(await chrome.tabs.get(tabId).catch(() => undefined))?.url,
-			read: async (tabId: number, origin: string) => {
-				const [result] = await chrome.scripting.executeScript({
-					target: { tabId, frameIds: [0] },
-					func: readPairingForm,
-					args: [origin],
-				});
-				return result?.result as PairingForm | null | undefined;
-			},
-			fill: async (
-				tabId: number,
-				code: string,
-				form: PairingForm,
-				origin: string,
-			) => {
-				const [result] = await chrome.scripting.executeScript({
-					target: { tabId, frameIds: [0] },
-					func: fillPairingForm,
-					args: [code, form, origin],
-				});
-				return result?.result === true;
-			},
-			code: (cancelled: () => boolean) => {
-				const mcp = this.#mcp;
-				return codeToFill(() => mcp.pairingCode, { cancelled });
-			},
-			hold: (on: boolean) => {
-				this.#fillPairing = on;
-				if (on) this.#mcp.startPairing();
-				else this.#pairingOff();
-			},
+			relayOrigin: () => this.#fillOrigin(),
+			aiOn: () => this.#mcp.state === "connected",
+			enabled: () => this.#settings.fillCode,
+			ask: (tabId, client, signal) => this.#fillAsk.ask(tabId, client, signal),
+			code: (signal) => this.#fillAsk.code(signal),
+			release: () => this.#fillAsk.release(),
+			failed: (why) => this.#fillAsk.failed(why),
+			now: () => Date.now(),
+		};
+	}
+
+	/** What Sitegloss's question needs: the panels, the library, pairing. */
+	#fillAskHost() {
+		return {
 			notify: (view: FillView | undefined) => this.#fillNotice(view),
 			changed: () => this.#changed(),
 			visible,
+			// Not again while a panel shows the code: client 0.19 sends the
+			// relay `pairing.start` at every call, and the relay answers with
+			// the same code, which `takeCode` would take for the next one.
+			hold: (on: boolean) => {
+				this.#fillPairing = on;
+				if (!on) this.#pairingOff();
+				else if (![...this.#panels].some((p) => p.pairing))
+					this.#mcp.startPairing();
+			},
+			codes: () => pairingCodes(this.#mcp),
+			now: () => Date.now(),
 		};
 	}
 
@@ -1077,27 +1086,49 @@ export class Connection {
 			.catch(() => undefined);
 	}
 
-	/** A tab finished loading `url`: the relay's pairing page may get the question. */
-	pairingPage(tabId: number, url: string | undefined): Promise<void> {
-		return this.#filler.page(tabId, url);
+	/**
+	 * A pairing page's port (taken at the worker's top level): the library
+	 * checks its sender and asks, or closes it.
+	 */
+	pairingPage(page: PagePort): void {
+		void this.#filler.page(page);
 	}
 
-	/** The tab went, or left the page: its question goes too. */
-	tabLeft(tabId: number, url?: string): void {
-		this.#filler.tabLeft(tabId, url);
+	/**
+	 * A tab finished loading `url`: on the relay's pairing page, while
+	 * filling in may happen, the library's script goes into its top frame.
+	 * It reads the form and opens its port; nothing is read here. Without
+	 * the user's leave to see that site the browser refuses, and the user
+	 * types the code as before.
+	 */
+	async pageLoaded(tabId: number, url: string | undefined): Promise<void> {
+		const origin = this.#fillOrigin();
+		if (url === undefined || origin === undefined || !this.#fillOn()) return;
+		let parsed: URL;
+		try {
+			parsed = new URL(url);
+		} catch {
+			return;
+		}
+		if (parsed.origin !== origin || parsed.pathname !== PAIRING_PATH) return;
+		await chrome.scripting
+			.executeScript({
+				target: { tabId, frameIds: [0] },
+				files: [PAIRING_SCRIPT],
+			})
+			.catch(() => undefined);
 	}
 
 	/**
 	 * Tabs that load the relay's pairing page. Added here, not at the
 	 * worker's top level: it matters only while AI access is connected,
-	 * which keeps the worker running, so no tab's loading wakes it.
+	 * which keeps the worker running, so no tab's loading wakes it. The
+	 * page going ends its port, which withdraws its question.
 	 */
 	#watchTabs(): void {
 		chrome.tabs?.onUpdated?.addListener((tabId, info, tab) => {
-			if (info.status === "complete") void this.pairingPage(tabId, tab.url);
-			else if (info.url !== undefined) this.tabLeft(tabId, info.url);
+			if (info.status === "complete") void this.pageLoaded(tabId, tab.url);
 		});
-		chrome.tabs?.onRemoved?.addListener((tabId) => this.tabLeft(tabId));
 	}
 
 	/**
@@ -1109,7 +1140,7 @@ export class Connection {
 		await this.#kv.set({ [KEYS.fillCode]: on });
 		this.#settings = { ...this.#settings, fillCode: on };
 		if (on) return;
-		this.#filler.withdraw();
+		this.#withdrawFill();
 		try {
 			const all = await chrome.permissions.contains({
 				origins: ["<all_urls>"],
@@ -1167,8 +1198,8 @@ export class Connection {
 		const address = mcp.session?.address;
 		const code = mcp.pairingCode?.code;
 		const replaced = this.#settings.replaced;
-		const fill = this.#filler.question;
-		const fillProblem = this.#filler.problem;
+		const fill = this.#fillAsk.question;
+		const fillProblem = this.#fillAsk.problem;
 		return {
 			relay: this.#relay,
 			...(this.#relayNote !== undefined ? { relayNote: this.#relayNote } : {}),
@@ -1205,7 +1236,7 @@ export class Connection {
 			...(this.#lastCall !== undefined ? { lastCall: this.#lastCall } : {}),
 			questions: this.#questions.list,
 			fillCode: this.#settings.fillCode,
-			fillHere: this.#fillOrigins().length > 0,
+			fillHere: this.#fillOrigin() !== undefined,
 			...(fill !== undefined ? { fill } : {}),
 			...(fillProblem !== undefined ? { fillProblem } : {}),
 		};
@@ -1238,7 +1269,7 @@ export class Connection {
 	 */
 	#showBadge(): void {
 		badge.ai({
-			questions: this.#questions.list.length + (this.#filler.question ? 1 : 0),
+			questions: this.#questions.list.length + (this.#fillAsk.question ? 1 : 0),
 			ai: badgeOf(this.#mcp.state),
 		});
 	}

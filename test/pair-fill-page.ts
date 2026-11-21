@@ -6,6 +6,12 @@
  * renders the same form again, with the same id and an error above it.
  */
 
+import type {
+	ContentPort,
+	PageSender,
+	WorkerPort,
+} from "@ractive-ch/tab-mcp-client/extension";
+
 /** The relay's pairing form, as relay 0.12 writes it. */
 export function pairingPage(
 	options: {
@@ -32,4 +38,54 @@ export function pairingPage(
 			? ""
 			: `<p class="error" role="alert" id="error">${options.error}</p>`;
 	return `<!doctype html><html><body><h1>Connect Claude</h1>${error}${form.repeat(options.forms ?? 1)}</body></html>`;
+}
+
+/**
+ * A port pair as Chrome makes one between the pairing page's content script
+ * and the worker: messages are copied and come in a later turn, and the
+ * worker hears the page's document going (`gone`); a port used after its
+ * other end disconnected throws, as Chrome's does.
+ */
+export function portPair(sender: PageSender) {
+	type Listener = (message: unknown) => void;
+	const toWorker = new Set<Listener>();
+	const toPage = new Set<Listener>();
+	const workerGone = new Set<() => void>();
+	let connected = true;
+	const deliver = (to: Set<Listener>, message: unknown) => {
+		if (!connected) throw new Error("Attempting to use a disconnected port");
+		const copy = structuredClone(message);
+		queueMicrotask(() => {
+			if (connected) for (const l of [...to]) l(copy);
+		});
+	};
+	const content: ContentPort = {
+		postMessage: (m) => deliver(toWorker, m),
+		onMessage: { addListener: (l) => toPage.add(l) },
+	};
+	const worker: WorkerPort = {
+		sender,
+		postMessage: (m) => deliver(toPage, m),
+		disconnect: () => {
+			connected = false;
+		},
+		onMessage: {
+			addListener: (l) => toWorker.add(l),
+			removeListener: (l) => toWorker.delete(l),
+		},
+		onDisconnect: { addListener: (l) => workerGone.add(l) },
+	};
+	return {
+		content,
+		worker,
+		/** The page's document went: the worker hears it. */
+		gone() {
+			if (!connected) return;
+			connected = false;
+			for (const l of workerGone) l();
+		},
+		get connected() {
+			return connected;
+		},
+	};
 }

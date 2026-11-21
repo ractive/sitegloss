@@ -22,6 +22,7 @@
  * team both ways and holds the tokens (DEC-039, `worker/cloud.ts`).
  */
 
+import { PAIRING_PORT, pagePort } from "@ractive-ch/tab-mcp-client/extension";
 import {
 	BROWSER,
 	FIREFOX,
@@ -464,6 +465,18 @@ const withConnection = (use: (connection: Connection) => void) =>
 // Commands come only over the side panel's own port; content scripts reach
 // `chrome.runtime` too, so its sender is checked, and any other port closed.
 chrome.runtime.onConnect.addListener((port) => {
+	// The relay's pairing page (DEC-044): taken over at once, before any
+	// await, so its first message is not lost while the worker starts; the
+	// library checks the sender (this extension's script, top frame, the
+	// relay's origin and path) and closes any other.
+	if (port.name === PAIRING_PORT) {
+		const page = pagePort(port);
+		void ready.then(
+			(c) => c.pairingPage(page),
+			() => page.close(),
+		);
+		return;
+	}
 	if (
 		port.name !== PANEL_PORT ||
 		!isPanelSender(port.sender ?? {}, chrome.runtime.id, {

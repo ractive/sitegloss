@@ -23,7 +23,7 @@ import { readdir, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { DATA_COLLECTION } from "../src/lib/browser.ts";
-import { CONTENT_SCRIPT } from "../src/lib/messages.ts";
+import { CONTENT_SCRIPT, PAIRING_SCRIPT } from "../src/lib/messages.ts";
 import { writeZip } from "../src/lib/zip.ts";
 import { ICON_SIZES } from "./icons.ts";
 
@@ -328,6 +328,14 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 			"iife",
 			how,
 			CONTENT_SCRIPT,
+		)),
+		// The relay's pairing page (DEC-044): the library's content script.
+		...(await bundle(
+			"src/content/pairing.ts",
+			outdir,
+			"iife",
+			how,
+			PAIRING_SCRIPT,
 		)),
 		...(await bundle(
 			"src/sidepanel/index.html",

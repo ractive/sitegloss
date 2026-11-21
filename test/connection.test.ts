@@ -14,12 +14,15 @@ import {
 } from "@ractive-ch/tab-mcp";
 import { startTestRelay, tokenFor } from "@ractive-ch/tab-mcp/testing";
 import { TabMcp } from "@ractive-ch/tab-mcp-client";
+import { pagePort, runPairingPage } from "@ractive-ch/tab-mcp-client/extension";
+import { Window } from "happy-dom";
 import { type Kv, memoryKv } from "../src/lib/kv.ts";
 import type { CaseStore } from "../src/lib/store.ts";
 import { Connection } from "../src/worker/connection.ts";
 import type { AiState } from "../src/worker/protocol.ts";
 import { DEFAULT_RELAY, settleFillCode } from "../src/worker/settings.ts";
 import type { Capture } from "../src/worker/tab.ts";
+import { pairingPage, portPair } from "./pair-fill-page.ts";
 
 /**
  * A memory store whose revocations wait `slowMs`, and fail while `failing`;
@@ -95,6 +98,7 @@ beforeAll(() => {
 			setIcon: async () => {},
 		},
 		runtime: {
+			id: "sitegloss-id",
 			getManifest: () => ({ version: "0.0.0" }),
 			sendMessage: async () => {},
 			getURL: (path: string) => `chrome-extension://x/${path}`,
@@ -118,16 +122,63 @@ beforeAll(() => {
 				return true;
 			},
 		},
-		// The pairing page's functions, as the page would answer them.
+		// The library's script in the pairing page: it reads the form (as
+		// `fake.form` says it), opens its port to the worker, and fills in
+		// what comes back.
 		scripting: {
 			executeScript: async (injection: {
-				func: { name: string };
-				args?: unknown[];
+				target: { tabId: number; frameIds?: number[] };
+				files: string[];
 			}) => {
-				if (injection.func.name === "readPairingForm")
-					return [{ result: fake.form }];
-				fake.filled.push(String(injection.args?.[0]));
-				return [{ result: true }];
+				const { tabId } = injection.target;
+				const url = fake.tabs.get(tabId);
+				if (url === undefined) throw new Error("No tab");
+				if (!fake.granted.has(`${new URL(url).origin}/*`))
+					throw new Error("Cannot access contents of the page");
+				fake.injected.push({ tabId, files: injection.files });
+				const window = new Window({ url });
+				fake.windows.push(window);
+				window.document.write(
+					pairingPage({
+						app: fake.form.app,
+						name: fake.form.clientName,
+						host: fake.form.clientHost,
+						requestId: fake.form.requestId,
+					}),
+				);
+				window.document
+					.querySelector("form")
+					?.addEventListener("submit", (e) => {
+						e.preventDefault();
+						const field = window.document.querySelector(
+							"[data-tab-mcp-field=code]",
+						) as unknown as HTMLInputElement;
+						fake.filled.push(field.value);
+					});
+				delete (globals as Record<string, unknown>)["__tabMcpPairingPage"];
+				runPairingPage({
+					app: "sitegloss",
+					connect: () => {
+						const pair = portPair({
+							id: "sitegloss-id",
+							url,
+							origin: new URL(url).origin,
+							tab: { id: tabId },
+							frameId: 0,
+						});
+						fake.ports.set(tabId, pair);
+						queueMicrotask(() =>
+							fake.connection?.pairingPage(pagePort(pair.worker)),
+						);
+						return pair.content;
+					},
+					page: {
+						document: window.document as unknown as Document,
+						topLevel: true,
+						pathname: new URL(url).pathname,
+					},
+				});
+				return [{ result: undefined }];
 			},
 		},
 	};
@@ -149,6 +200,13 @@ const fake = {
 	},
 	/** The codes filled in. */
 	filled: [] as string[],
+	/** The scripts put into tabs. */
+	injected: [] as { tabId: number; files: string[] }[],
+	/** The pairing pages' ports, by tab. */
+	ports: new Map<number, ReturnType<typeof portPair>>(),
+	windows: [] as Window[],
+	/** The worker the pages' ports go to. */
+	connection: undefined as Connection | undefined,
 };
 
 afterAll(() => {
@@ -544,20 +602,21 @@ describe("the worker's connection with client 0.18", () => {
 	});
 });
 
-describe("filling in the code on the relay's pairing page, in the worker (DEC-044, its review)", () => {
+describe("filling in the code on the relay's pairing page, in the worker (DEC-044, its review, the library's filler)", () => {
 	const relay = startTestRelay({ maxSessionsPerIp: 50 });
-	/** The pairing page's origin: a test build fills in the origins it is given. */
+	/** The pairing page's origin: a test build fills in the origin it is given. */
 	const PAGE_ORIGIN = "https://pair.example";
 	const PAGE = `${PAGE_ORIGIN}/authorize?x=1`;
 	const workers: Worker[] = [];
 	beforeAll(() => {
 		globals["SITEGLOSS_TEST_BUILD"] = true;
-		globals["siteglossTestFillOrigins"] = [PAGE_ORIGIN];
+		globals["siteglossTestFillOrigin"] = PAGE_ORIGIN;
 	});
 	afterAll(async () => {
 		delete globals["SITEGLOSS_TEST_BUILD"];
-		delete globals["siteglossTestFillOrigins"];
+		delete globals["siteglossTestFillOrigin"];
 		for (const w of workers) w.send({ type: "stop" });
+		for (const window of fake.windows.splice(0)) void window.happyDOM.close();
 		await Bun.sleep(50);
 		await relay.stop();
 	});
@@ -570,11 +629,14 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		session.clear();
 		alarms.clear();
 		fake.tabs.clear();
+		fake.ports.clear();
 		fake.granted = new Set(granted);
 		fake.removed = [];
 		fake.filled = [];
+		fake.injected = [];
 		const kv = memoryKv({ relay: relay.url, ...stored });
 		const w = await startWorker(kv);
+		fake.connection = w.connection;
 		workers.push(w);
 		w.send({ type: "connect" });
 		await until(() => w.last()?.state === "connected");
@@ -582,28 +644,64 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		return { w, kv };
 	}
 
-	test("Review 3: off by default, also with access to every site: a pairing page gets no question; Fill in the code for me turns it on and is kept", async () => {
+	test("Review 3: off by default, also with access to every site: a pairing page gets no script and no question; Fill in the code for me turns it on and is kept", async () => {
 		const { w, kv } = await connected();
-		await w.connection.pairingPage(7, PAGE);
+		await w.connection.pageLoaded(7, PAGE);
 		await Bun.sleep(20);
+		expect(fake.injected).toEqual([]);
 		expect(w.last().fill).toBeUndefined();
 		expect(w.last().fillCode).toBe(false);
 		expect(w.last().fillHere).toBe(true);
 		w.send({ type: "fill-code", on: true });
 		await until(() => w.last().fillCode);
 		expect(await kv.get("fillCode")).toBe(true);
-		await w.connection.pairingPage(7, PAGE);
+		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
+		expect(fake.injected).toEqual([{ tabId: 7, files: ["pairing.js"] }]);
 		expect(w.last().fill).toMatchObject({ name: "Claude", host: "claude.ai" });
+	});
+
+	test("only the relay's /authorize at its origin gets the script; without the site the browser refuses and nothing happens", async () => {
+		const { w } = await connected({ fillCode: true }, []);
+		await w.connection.pageLoaded(7, PAGE);
+		await Bun.sleep(20);
+		expect(fake.injected).toEqual([]);
+		expect(w.last().fill).toBeUndefined();
+		fake.granted = new Set([`${PAGE_ORIGIN}/*`, "https://pair.example:8443/*"]);
+		for (const url of [
+			`${PAGE_ORIGIN}/authorize/x`,
+			"https://pair.example:8443/authorize",
+			"https://pair.example.evil.example/authorize",
+		]) {
+			fake.tabs.set(8, url);
+			await w.connection.pageLoaded(8, url);
+		}
+		expect(fake.injected).toEqual([]);
+	});
+
+	test("a relay that is not the hosted one: nothing to fill in (relayOrigin undefined)", async () => {
+		delete globals["siteglossTestFillOrigin"];
+		try {
+			const { w } = await connected({ fillCode: true });
+			expect(w.last().fillHere).toBe(false);
+			fake.tabs.set(9, "https://tab-mcp.ractive.ch/authorize");
+			fake.granted.add("https://tab-mcp.ractive.ch/*");
+			await w.connection.pageLoaded(9, "https://tab-mcp.ractive.ch/authorize");
+			await Bun.sleep(20);
+			expect(fake.injected).toEqual([]);
+		} finally {
+			globals["siteglossTestFillOrigin"] = PAGE_ORIGIN;
+		}
 	});
 
 	test("Review 3: Stop filling in the code withdraws a waiting question and gives the relay's site back; with access to all sites it keeps that", async () => {
 		const { w, kv } = await connected({ fillCode: true }, [`${PAGE_ORIGIN}/*`]);
-		await w.connection.pairingPage(7, PAGE);
+		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
 		w.send({ type: "fill-code", on: false });
 		await until(() => !w.last().fillCode);
 		expect(w.last().fill).toBeUndefined();
+		expect(fake.ports.get(7)?.connected).toBe(false);
 		expect(await kv.get("fillCode")).toBe(false);
 		expect(fake.removed).toEqual(["https://tab-mcp.ractive.ch/*"]);
 
@@ -615,7 +713,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 
 	test("Review 2: Stop AI access withdraws a waiting question at once", async () => {
 		const { w } = await connected({ fillCode: true });
-		await w.connection.pairingPage(7, PAGE);
+		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
 		expect(w.last().questions).toEqual([]);
 		const id = w.last().fill?.id;
@@ -624,6 +722,18 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(w.last().fill).toBeUndefined();
 		// A yes for it now does nothing.
 		w.send({ type: "fill", id, yes: true });
+		await Bun.sleep(50);
+		expect(fake.filled).toEqual([]);
+	});
+
+	test("Review 2: a yes queued behind Stop AI access (the panel's commands run in order) fills in nothing", async () => {
+		const { w } = await connected({ fillCode: true });
+		await w.connection.pageLoaded(7, PAGE);
+		await until(() => w.last().fill !== undefined);
+		const id = w.last().fill?.id;
+		w.send({ type: "stop" });
+		w.send({ type: "fill", id, yes: true });
+		await until(() => w.last().state === "disconnected");
 		await Bun.sleep(100);
 		expect(fake.filled).toEqual([]);
 	});
@@ -675,7 +785,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 			const codes = holdCodes();
 			try {
 				const { w } = await connected({ fillCode: true });
-				await w.connection.pairingPage(7, PAGE);
+				await w.connection.pageLoaded(7, PAGE);
 				await until(() => w.last().fill !== undefined);
 				w.send({ type: "fill", id: w.last().fill?.id, yes: true });
 				// Pairing turned on for the yes; its code is held back.
@@ -731,7 +841,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 
 	test("Review 2: another relay withdraws a waiting question", async () => {
 		const { w } = await connected({ fillCode: true });
-		await w.connection.pairingPage(7, PAGE);
+		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
 		const id = w.last().fill?.id;
 		w.send({ type: "set-relay", relay: "http://127.0.0.1:9/" });
@@ -742,13 +852,59 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(fake.filled).toEqual([]);
 	});
 
+	test("the page going (closed, or another page loaded) withdraws its question", async () => {
+		const { w } = await connected({ fillCode: true });
+		await w.connection.pageLoaded(7, PAGE);
+		await until(() => w.last().fill !== undefined);
+		fake.ports.get(7)?.gone();
+		await until(() => w.last().fill === undefined);
+	});
+
 	test("a yes fills in the code the card shows", async () => {
 		const { w } = await connected({ fillCode: true });
-		await w.connection.pairingPage(7, PAGE);
+		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
 		w.send({ type: "fill", id: w.last().fill?.id, yes: true });
 		await until(() => fake.filled.length > 0, 15_000);
 		expect(fake.filled).toEqual([w.last().code as string]);
 		expect(w.last().fill).toBeUndefined();
+	});
+
+	test("pairing is held on for a fill, and pairing.start is not sent again while the panel shows the code (client 0.19 sends it at every call)", async () => {
+		const start = spyOn(TabMcp.prototype, "startPairing");
+		try {
+			const { w } = await connected({ fillCode: true });
+			w.send({ type: "pair", on: true });
+			await until(() => w.last().code !== undefined);
+			expect(start).toHaveBeenCalledTimes(1);
+			await w.connection.pageLoaded(7, PAGE);
+			await until(() => w.last().fill !== undefined);
+			w.send({ type: "fill", id: w.last().fill?.id, yes: true });
+			await until(() => fake.filled.length > 0, 15_000);
+			expect(start).toHaveBeenCalledTimes(1);
+			// The panel's pairing view closes: the fill holds pairing on.
+			w.send({ type: "pair", on: false });
+			await Bun.sleep(50);
+			expect(w.last().code).toBeDefined();
+			expect(start).toHaveBeenCalledTimes(1);
+		} finally {
+			start.mockRestore();
+		}
+	});
+
+	test("without a panel's pairing view, a yes turns pairing on for the fill", async () => {
+		const start = spyOn(TabMcp.prototype, "startPairing");
+		try {
+			const { w } = await connected({ fillCode: true });
+			await w.connection.pageLoaded(7, PAGE);
+			await until(() => w.last().fill !== undefined);
+			expect(start).toHaveBeenCalledTimes(0);
+			w.send({ type: "fill", id: w.last().fill?.id, yes: true });
+			await until(() => fake.filled.length > 0, 15_000);
+			expect(start).toHaveBeenCalledTimes(1);
+			expect(w.last().pairing).toBe(false);
+		} finally {
+			start.mockRestore();
+		}
 	});
 });

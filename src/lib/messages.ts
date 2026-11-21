@@ -445,3 +445,6 @@ export function isMarkRequest(message: unknown): message is MarkRequest {
 
 /** The content script's file, as the build writes it. */
 export const CONTENT_SCRIPT = "content.js";
+
+/** The relay pairing page's script (DEC-044), as the build writes it. */
+export const PAIRING_SCRIPT = "pairing.js";

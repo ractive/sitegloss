@@ -6,7 +6,7 @@
  * has. The page is a fixture with the relay's
  * markup (`pairingPage`, as the unit tests use it) served on a port of its own:
  * the testing package's relay cannot show its form for a test client. The
- * test build takes that origin through `siteglossTestFillOrigins`; other
+ * test build takes that origin through `siteglossTestFillOrigin`; other
  * builds fill in only the hosted relay's page.
  */
 
@@ -59,7 +59,7 @@ describe.skipIf(browserBinary === undefined)(
 			h = await startHarness(browserBinary as string);
 			const w = await worker(h);
 			await w.eval(
-				`globalThis.siteglossTestFillOrigins = [${JSON.stringify(origin)}]`,
+				`globalThis.siteglossTestFillOrigin = ${JSON.stringify(origin)}`,
 			);
 			panel = await openSidePanel(h);
 			await connectAi(panel, relay.url);
@@ -155,6 +155,14 @@ describe.skipIf(browserBinary === undefined)(
 			expect(posted).toHaveLength(1);
 			await close(first);
 			await close(second);
+		});
+
+		test("closing the page withdraws its question", async () => {
+			const tab = await h.browser.newPage(`${origin}/authorize?r=6`);
+			await panel.waitFor(`!${ASK}.hidden`, 10_000);
+			await close(tab);
+			await panel.waitFor(`${ASK}.hidden`, 10_000);
+			expect(posted).toHaveLength(1);
 		});
 
 		test("a form for another app, or a page of another origin: no question", async () => {
