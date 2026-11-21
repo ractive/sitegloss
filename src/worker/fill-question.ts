@@ -17,12 +17,15 @@
  *   library withdraws it (the page went, AI access or the setting went off,
  *   another relay, the AI app connected meanwhile).
  * - Pairing is held on (codes come only while it is) from the yes until
- *   `holdMs` after the code went to the page; at once when no code went.
+ *   `holdMs` after the last code went to a page; at once when no code went
+ *   and none went within `holdMs` before; at once when the library says no
+ *   fill needs it any more (`release`, which may come with nothing held).
  */
 
 import {
 	type CodeSource,
 	type FillAnswer,
+	type FillContext,
 	type FillFailure,
 	takeCode,
 } from "@ractive-ch/tab-mcp-client/extension";
@@ -62,12 +65,7 @@ export class FillQuestion {
 	readonly #problemMs: number;
 	#question: Question | undefined;
 	#problem: { text: string; timer: ReturnType<typeof setTimeout> } | undefined;
-	/**
-	 * The last yes: the library's `code` and `failed` do not say which page
-	 * they are about, and with one question at a time it is this one's.
-	 */
-	#lastYes: { tabId: number; host: string } | undefined;
-	/** The tabs whose code is being fetched for a fill. */
+	/** The tabs whose code is being fetched for a fill (the library's `FillContext`). */
 	readonly #fetching: number[] = [];
 	#holding = false;
 	#release: ReturnType<typeof setTimeout> | undefined;
@@ -112,7 +110,8 @@ export class FillQuestion {
 		};
 		const waiting = this.#question;
 		if (waiting !== undefined && waiting.tabId !== tabId) {
-			// Said here: the library's `failed("busy")` names no AI app.
+			// Said here, not in `failed("busy")`: only here is it known what
+			// keeps Sitegloss busy, a question or a code on its way.
 			this.#setProblem(
 				`${fillAppLabel(view)} also opened the relay's page. Sitegloss asks about one at a time: answer the question above first, then reload that page; or type the code there.`,
 				this.#askMs,
@@ -152,33 +151,32 @@ export class FillQuestion {
 	answer(id: string, yes: boolean): void {
 		const q = this.#question;
 		if (q === undefined || q.view.id !== id) return;
-		if (yes) this.#lastYes = { tabId: q.tabId, host: q.view.host };
 		this.#end(yes ? "allow" : "deny");
 	}
 
-	/** The library's `failed`: a page that got no code. */
-	failed(why: FillFailure): void {
-		// `busy` was said by `ask`, with the AI app's name.
+	/** The library's `failed`: the page `context` got no code. */
+	failed(why: FillFailure, context: FillContext): void {
+		// `busy` was said by `ask`, which knows whether a question waits or a
+		// code is on its way.
 		if (why === "busy") return;
-		const who =
-			this.#lastYes === undefined
-				? "the AI app"
-				: `the AI app at ${this.#lastYes.host}`;
 		this.#setProblem(
-			`Sitegloss could not fill in the code for ${who}. Type the code from the AI app card on the relay's page.`,
+			`Sitegloss could not fill in the code for the AI app at ${this.#host.visible(context.client.host)}. Type the code from the AI app card on the relay's page.`,
 		);
 	}
 
 	/**
-	 * The library's `code`: the code to fill in (`takeCode`), with pairing
-	 * held on for it. Held until `holdMs` after a code was given; let go at
-	 * once when none was (withdrawn, the page went, no code came).
+	 * The library's `code`: the code to fill in on the page `context`
+	 * (`takeCode`), with pairing held on for it. Held until `holdMs` after a
+	 * code was given; let go at once when none was (withdrawn, the page went,
+	 * no code came), unless an earlier fill's `holdMs` still runs: the relay
+	 * may still be checking that code.
 	 */
-	async code(signal: AbortSignal): Promise<string | undefined> {
+	async code(
+		signal: AbortSignal,
+		context: FillContext,
+	): Promise<string | undefined> {
 		const host = this.#host;
-		clearTimeout(this.#release);
-		this.#release = undefined;
-		const tabId = this.#lastYes?.tabId ?? -1;
+		const { tabId } = context;
 		this.#fetching.push(tabId);
 		if (!this.#holding) {
 			this.#holding = true;
@@ -203,8 +201,14 @@ export class FillQuestion {
 		return code;
 	}
 
-	/** The library's `release`: a filled-in code paired its AI app. */
+	/**
+	 * The library's `release`: no fill needs pairing held any more (a
+	 * filled-in code paired its AI app, or a fill ended without sending its
+	 * code and no other one is under way or waits for the relay's check). It
+	 * may come with nothing held, also again: nothing to do then.
+	 */
 	release(): void {
+		if (!this.#holding) return;
 		clearTimeout(this.#release);
 		this.#release = undefined;
 		this.#letGo();

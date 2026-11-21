@@ -332,8 +332,14 @@ export class Connection {
 	#commands: Promise<void> = Promise.resolve();
 	/** How Sitegloss asks whether to fill in the code (DEC-044). */
 	readonly #fillAsk: FillQuestion = new FillQuestion(this.#fillAskHost());
-	/** The rules of filling in the code: the client library's (DEC-044, tab-mcp's DEC-206). */
-	readonly #filler: CodeFiller = new CodeFiller(this.#fillHost());
+	/**
+	 * The rules of filling in the code: the client library's (DEC-044,
+	 * tab-mcp's DEC-206). Without its one more fill for the same request:
+	 * never without a yes, one page, one question, one fill.
+	 */
+	readonly #filler: CodeFiller = new CodeFiller(this.#fillHost(), {
+		retry: false,
+	});
 	/** Pairing is held on for a code Sitegloss fills in. */
 	#fillPairing = false;
 	#sending = false;
@@ -1038,9 +1044,9 @@ export class Connection {
 			aiOn: () => this.#mcp.state === "connected",
 			enabled: () => this.#settings.fillCode,
 			ask: (tabId, client, signal) => this.#fillAsk.ask(tabId, client, signal),
-			code: (signal) => this.#fillAsk.code(signal),
+			code: (signal, context) => this.#fillAsk.code(signal, context),
 			release: () => this.#fillAsk.release(),
-			failed: (why) => this.#fillAsk.failed(why),
+			failed: (why, context) => this.#fillAsk.failed(why, context),
 			now: () => Date.now(),
 		};
 	}
@@ -1051,9 +1057,8 @@ export class Connection {
 			notify: (view: FillView | undefined) => this.#fillNotice(view),
 			changed: () => this.#changed(),
 			visible,
-			// Not again while a panel shows the code: client 0.19 sends the
-			// relay `pairing.start` at every call, and the relay answers with
-			// the same code, which `takeCode` would take for the next one.
+			// Not again while a panel shows the code: pairing is on already,
+			// and client 0.19 sends the relay `pairing.start` at every call.
 			hold: (on: boolean) => {
 				this.#fillPairing = on;
 				if (!on) this.#pairingOff();

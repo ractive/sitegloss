@@ -155,7 +155,6 @@ beforeAll(() => {
 						) as unknown as HTMLInputElement;
 						fake.filled.push(field.value);
 					});
-				delete (globals as Record<string, unknown>)["__tabMcpPairingPage"];
 				runPairingPage({
 					app: "sitegloss",
 					connect: () => {
