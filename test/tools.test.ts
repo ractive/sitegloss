@@ -1240,6 +1240,8 @@ describe("tools", () => {
 			"edit_finding",
 			"delete_finding",
 			"delete_case",
+			// It changes what the user sees: asked first (DEC-050).
+			"open_case",
 		])
 			expect(hints[name]?.consequentialHint).toBe(true);
 		expect(hints["delete_case"]?.destructiveHint).toBe(true);
@@ -1254,6 +1256,7 @@ describe("tools", () => {
 			"capture",
 			"add_annotation",
 			"delete_case",
+			"open_case",
 		])
 			expect(hints[name]?.untrustedContentHint).toBe(true);
 		// Its answer holds no text of the case.
@@ -2220,6 +2223,7 @@ describe("through a relay", () => {
 				"list_cases",
 				"list_comments",
 				"load_case",
+				"open_case",
 				"set_case_status",
 				"set_mark_status",
 				"set_summary",
@@ -2464,5 +2468,158 @@ describe("the thread and closing (DEC-046)", () => {
 			"2026-11-20T12:00:00.000Z",
 		);
 		expect(markViaOf(byHand.annotations[0] as Annotation).via).toBeUndefined();
+	});
+});
+
+describe("where a mark was made, and open_case (DEC-050)", () => {
+	const SEARCH = "https://www.example.com/search";
+	/** c_1 with mark 1 on the home page and mark 2 on a search with a query. */
+	async function queried(): Promise<Case> {
+		const c = await seed();
+		const shot = c.shots[0] as Case["shots"][number];
+		const value: Case = {
+			...c,
+			page: { ...c.page, url: "https://www.example.com/" },
+			pages: [
+				{ url: "https://www.example.com/", title: "Home", lang: "de" },
+				{ url: SEARCH, title: "Search", lang: "de" },
+			],
+			shots: [
+				{ ...shot, url: "https://www.example.com/" },
+				{
+					...shot,
+					id: "s2",
+					image: "shots/s2.webp",
+					url: SEARCH,
+					query: "q=shoes&sort=price",
+				},
+			],
+			annotations: [{ ...mark(1) }, { ...mark(2), shot: "s2" }],
+		};
+		await putCase(store, value);
+		return value;
+	}
+
+	test("get_case, load_case and highlight show a mark's address with its query; a page stays plain", async () => {
+		await queried();
+		const got = json(await call("get_case", { caseId: "c_1", images: false }));
+		expect(got.shots.map((s: { address?: string }) => s.address)).toEqual([
+			undefined,
+			`${SEARCH}?q=shoes&sort=price`,
+		]);
+		expect(got.marks[1].page).toBe(SEARCH);
+		expect(got.marks[1].address).toBe(`${SEARCH}?q=shoes&sort=price`);
+		expect(got.marks[0]).not.toHaveProperty("address");
+		expect(got.pages.map((p: { url: string }) => p.url)).toEqual([
+			"https://www.example.com/",
+			SEARCH,
+		]);
+		tab.url = "http://localhost:3000/search?q=boots";
+		const loaded = json(await call("load_case", { caseId: "c_1" }));
+		expect(
+			loaded.marks.map((m: { address?: string; onThisPage: boolean }) => [
+				m.address,
+				m.onThisPage,
+			]),
+		).toEqual([
+			[undefined, false],
+			[`${SEARCH}?q=shoes&sort=price`, true],
+		]);
+		const shown = json(await call("highlight", { caseId: "c_1", mark: 2 }));
+		expect(shown.address).toBe(`${SEARCH}?q=shoes&sort=price`);
+		expect(shown.onThisPage).toBe(true);
+	});
+
+	test("on localhost's home page, production's home page marks are on this page", async () => {
+		await queried();
+		tab.url = "http://localhost:3000/";
+		const loaded = json(await call("load_case", { caseId: "c_1" }));
+		expect(
+			loaded.marks.map((m: { onThisPage: boolean }) => m.onThisPage),
+		).toEqual([true, false]);
+		const shown = json(await call("highlight", { caseId: "c_1", mark: 1 }));
+		expect(shown.onThisPage).toBe(true);
+		expect(shown).not.toHaveProperty("otherPageNote");
+	});
+
+	test("add_annotation says the address with what is kept of its query, and records it", async () => {
+		await queried();
+		tab.url = `${SEARCH}?q=shoes&token=abc`;
+		const added = await call("add_annotation", {
+			caseId: "c_1",
+			selector: "button",
+			comment: "x",
+		});
+		expect(added.content[0]?.text).toContain(`on ${SEARCH}?q=shoes.`);
+		const c = (await store.getCase("c_1")) as Case;
+		expect(c.shots.at(-1)?.url).toBe(SEARCH);
+		expect(c.shots.at(-1)?.query).toBe("q=shoes");
+	});
+
+	test("open_case draws the marks on the tab in front, asks the panel of that window to open the case, and says what it did", async () => {
+		await queried();
+		const asked: unknown[] = [];
+		build({
+			openInPanel: async (request) => {
+				asked.push(request);
+				return { opened: true };
+			},
+		});
+		tab.url = "http://localhost:3000/search";
+		const opened = json(await call("open_case", { caseId: "c_1" }));
+		expect(asked).toEqual([{ caseId: "c_1", tabId: 7, windowId: 1 }]);
+		expect(opened.panel).toBe("opened");
+		expect(opened.url).toBe("http://localhost:3000/search");
+		expect(
+			opened.marks.map((m: { onThisPage: boolean }) => m.onThisPage),
+		).toEqual([false, true]);
+		// It loaded the case onto the page and navigated nowhere.
+		expect(tab.loaded).toBe("c_1");
+		expect(tab.sent.map((r) => r.type)).toEqual(["case:load"]);
+		expect(tab.url).toBe("http://localhost:3000/search");
+	});
+
+	test("open_case without a side panel, or with the toolbar adding to another case, says so", async () => {
+		await queried();
+		build({
+			openInPanel: async () => ({
+				opened: false,
+				reason: "adding",
+				title: "Other",
+			}),
+		});
+		expect(json(await call("open_case", { caseId: "c_1" })).panel).toBe(
+			"not opened: the toolbar on that tab is adding marks to “Other”, and the panel stays on it",
+		);
+		build({
+			openInPanel: async () => {
+				throw new Error("Could not establish connection");
+			},
+		});
+		expect(json(await call("open_case", { caseId: "c_1" })).panel).toContain(
+			"no side panel is open in that window",
+		);
+		build();
+		expect(json(await call("open_case", { caseId: "c_1" })).panel).toContain(
+			"no side panel is open in that window",
+		);
+		await expect(call("open_case", { caseId: "c_none" })).rejects.toThrow(
+			"No case with id c_none",
+		);
+	});
+
+	test("open_case's question names the case and the page in front, as Sitegloss keeps its address", async () => {
+		await queried();
+		tab.url = "http://localhost:3000/search?q=boots&session=x";
+		const lines = await confirmLines(store, tab, {
+			tool: { name: "open_case", description: "Opens it." },
+			arguments: { caseId: "c_1" },
+			client: CLAUDE,
+			signal: new AbortController().signal,
+		});
+		expect(lines).toEqual([
+			"Case: “Button contrast” (www.example.com and 1 more page, 2 marks).",
+			"Page: http://localhost:3000/search?q=boots",
+		]);
 	});
 });

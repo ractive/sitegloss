@@ -15,8 +15,12 @@ Sitegloss stores in your browser, on your computer:
   a connected AI app's findings, the case's thread of comments and whether the case is
   closed;
 - the address, title and language of each page you mark, the window size, and the
-  browser's user agent. An address is kept without its query string or fragment (only a
-  fragment that is a route of the page stays);
+  browser's user agent. An address is kept without its fragment (only a fragment that is
+  a route of the page stays). Its query string is kept with each screenshot, so that the
+  page can be opened again as it was marked, after dropping every parameter that looks
+  like a secret or an e-mail address (by its name, such as a token, key, code, session
+  or e-mail, or by its value, such as an e-mail address or a long run of letters and
+  digits); a query longer than 1024 characters after that is not kept at all;
 - for each marked element (for an arrow or a line, also the elements at its two ends):
   its tag, role, name, a short piece of its text, a few attributes, its position, and a
   CSS selector. A link's address is kept as its path; a fragment stays only where it
@@ -92,10 +96,12 @@ Only in four cases, all started by you:
    your team sees "Dana via Claude". What you do by hand is sent without one.
 
    The address of every page you marked in a case is part of that: the site, the path
-   and a hash route (`#/cart`), without the query (`?…`), which Sitegloss never keeps.
-   Your team sees these addresses. A case can cross to other sites, so this includes
-   the path of a payment provider's page or of a link someone was sent (a password
-   reset, an invitation), and some sites put a token or a session's name in the path.
+   and a hash route (`#/cart`), and with each screenshot its query (`?…`) as kept above.
+   Your team sees these addresses, and so does an AI app connected to the service; a
+   public share link of a case does not show the query. A case can cross to other
+   sites, so this includes the path of a payment provider's page or of a link someone
+   was sent (a password reset, an invitation), and some sites put a token or a
+   session's name in the path.
    Look at a case's list of pages before you share it; a mark you delete takes its
    page off the list when it was the page's last.
 

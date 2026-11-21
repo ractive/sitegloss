@@ -17,6 +17,7 @@ import {
 	type FindingApp,
 	isSafeId,
 	isWebPage,
+	markAddress,
 	markStatus,
 	marksByPage,
 	markUrl,
@@ -25,8 +26,8 @@ import {
 	type Resolution,
 	type ShapeKind,
 	STATUS_LABEL,
+	shotAddress,
 	shotImage,
-	shotUrl,
 	type UserRef,
 } from "./case.ts";
 import { lookSummary, summarize } from "./element.ts";
@@ -304,7 +305,16 @@ export function caseMarkdown(c: Case): string {
 		"",
 		...[...c.annotations]
 			.sort((a, b) => a.number - b.number)
-			.map((a) => annotation(a, several ? markUrl(c, a) : undefined)),
+			// Where it was made, with its query (DEC-050): in a case of one
+			// page only where a query says more than the first lines.
+			.map((a) =>
+				annotation(
+					a,
+					several || markAddress(c, a) !== markUrl(c, a)
+						? markAddress(c, a)
+						: undefined,
+				),
+			),
 		// The thread (DEC-046), oldest first, after the marks it may be about.
 		...(c.comments?.length
 			? [
@@ -325,7 +335,7 @@ export function caseMarkdown(c: Case): string {
 					// Which page it is of and in what window, where the case has
 					// several (DEC-038): the first lines say it for a case of one.
 					several
-						? `\nScreenshot ${inline(s.id)} is of ${address(shotUrl(c, s))}, in a window of ${s.viewport.width}×${s.viewport.height} CSS pixels.\n`
+						? `\nScreenshot ${inline(s.id)} is of ${address(shotAddress(c, s))}, in a window of ${s.viewport.width}×${s.viewport.height} CSS pixels.\n`
 						: ""
 				}`,
 		),

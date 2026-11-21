@@ -11,6 +11,7 @@ import {
 	casePages,
 	cleanLink,
 	cleanTitle,
+	exactPage,
 	linkProblem,
 	MARK_CHANGED,
 	MAX_COMMENT,
@@ -50,10 +51,13 @@ import {
 	type AnnotationMatch,
 	type Broadcast,
 	isMarkRequest,
+	isOpenCaseRequest,
 	type LoadReplacedAnswer,
 	type LoadResult,
 	type MarkAnswer,
 	type MarkRequest,
+	type OpenCaseAnswer,
+	type OpenCaseRequest,
 	type OverlayState,
 } from "../lib/messages.ts";
 import { IdbStore } from "../lib/store.ts";
@@ -77,6 +81,7 @@ import {
 } from "./follow.ts";
 import { isUntouched, mayHold, newCase, type TabAnswer } from "./fresh.ts";
 import { CaseHints } from "./hints.ts";
+import { markTargets } from "./mark-link.ts";
 import { markAsked } from "./picked.ts";
 import { cssSize, onScreen, type Size, sameSize, windowFor } from "./size.ts";
 import {
@@ -258,6 +263,64 @@ function takeOff(d: Drawn): void {
 let pendingLoad: { tabId: number; caseId: string } | undefined;
 
 /**
+ * A mark's link was clicked (DEC-050): once the tab has loaded `url` and
+ * its marks are drawn there, that mark is brought into view and outlined.
+ * Held for a while only: a page that never comes (a sign-in in between)
+ * shows nothing later on.
+ */
+let pendingShow:
+	| {
+			tabId: number;
+			caseId: string;
+			annotationId: string;
+			mark: string;
+			url: string;
+			until: number;
+	  }
+	| undefined;
+
+/** How long a mark's link waits for its page and the marks on it. */
+const SHOW_WAIT_MS = 120_000;
+
+/**
+ * The marks are drawn on a tab: the mark a link was clicked for, if it is
+ * of that tab and case and the page is the one opened, is shown now; while
+ * it is not found yet and the draw looks once more, it waits for that.
+ */
+async function showPending(): Promise<void> {
+	const p = pendingShow;
+	const loaded = state.loaded;
+	if (p === undefined || loaded === undefined) return;
+	if (Date.now() > p.until) {
+		pendingShow = undefined;
+		return;
+	}
+	if (
+		loaded.tabId !== p.tabId ||
+		loaded.caseId !== p.caseId ||
+		!exactPage(loaded.url, p.url)
+	)
+		return;
+	const m = loaded.matches.get(p.annotationId);
+	if (m === undefined) return;
+	if (!isFound(m) && m.status !== "no-element" && loaded.settling) return;
+	pendingShow = undefined;
+	const shown = (await chrome.tabs
+		.sendMessage(p.tabId, {
+			type: "case:show",
+			caseId: p.caseId,
+			annotationId: p.annotationId,
+			mark: p.mark,
+		})
+		.catch(() => null)) as AnnotationMatch | { error: string } | null;
+	if (shown === null || "error" in shown) return;
+	update((s) => {
+		if (s.loaded?.tabId === p.tabId && s.loaded.caseId === p.caseId)
+			s.loaded.matches.set(p.annotationId, shown);
+	});
+}
+
+/**
  * Loads the case onto the tab and says how it went; `undefined` when it could
  * not, the hint says why. `again`: the marks not found are looked for once
  * more in a moment.
@@ -333,6 +396,7 @@ async function loadInto(
 		});
 		// What it found, worded from `loaded` as it is now (`foundLine`).
 		hint({ kind: "found" });
+		void showPending();
 		return { found, total: result.matches.length };
 	} catch (error) {
 		if (work.current()) hint(describeError(error));
@@ -400,6 +464,7 @@ async function readMatches(
 		};
 	});
 	hint({ kind: "found" });
+	void showPending();
 	if (!again) return;
 	setTimeout(() => {
 		// Still that page of that case on that tab: what it has now.
@@ -432,6 +497,7 @@ async function readLoaded(c: Case, tabId: number): Promise<void> {
 		};
 	});
 	hint({ kind: "found" });
+	void showPending();
 }
 
 /** A page busy with a mark is asked again this often, this many times (20 s). */
@@ -1645,6 +1711,48 @@ const actions: Actions = {
 			);
 	},
 
+	openMarkPage(c, a, where) {
+		// Worked out again here, from the case and the tab as they are.
+		const targets = markTargets(c, a, state.tab?.url);
+		const url = where === "here" ? targets?.here : targets?.made;
+		if (url === undefined) return;
+		const hint = caseHintWriter();
+		// Now, while the click allows Chrome's prompt; without a yes the
+		// icon's click lets Sitegloss run there, as for a page of the case.
+		void askForSite(url);
+		void (async () => {
+			const tab = await activeTab();
+			if (tab?.id === undefined || !showing(c.id)) return;
+			const tabId = tab.id;
+			pendingShow = {
+				tabId,
+				caseId: c.id,
+				annotationId: a.id,
+				mark: markKey(c, a),
+				url,
+				until: Date.now() + SHOW_WAIT_MS,
+			};
+			// Asked for by name: a Hide on that tab holds no longer.
+			if (hiddenOn.has(tabId)) update(() => hiddenOn.delete(tabId));
+			// Already there, with the marks drawn: shown at once.
+			if (
+				tab.url === url &&
+				state.loaded?.tabId === tabId &&
+				state.loaded.caseId === c.id
+			) {
+				await showPending();
+				return;
+			}
+			// The case stays open; its marks follow the tab once it has loaded
+			// (DEC-022), and the mark is shown then (`showPending`).
+			await chrome.tabs
+				.update(tabId, { url })
+				.catch((error: unknown) =>
+					hint(`Could not open the page: ${message(error)}`),
+				);
+		})();
+	},
+
 	matchSize(c) {
 		const hint = caseHintWriter();
 		void (async () => {
@@ -2490,9 +2598,62 @@ chrome.runtime.onMessage.addListener(
 		// From a page's content script only: an extension page has no tab.
 		if (isMarkRequest(news))
 			return answerMark(news, sender.tab?.id, sendResponse);
+		// From the worker only (an AI app's open_case): a page has a tab.
+		if (isOpenCaseRequest(news))
+			return sender.tab === undefined && openForAi(news, sendResponse);
 		return hear(news, sender);
 	},
 );
+
+/**
+ * An AI app's `open_case` (DEC-050), which the user allowed: the page shows
+ * the case's marks already (the worker loaded it), and the panel of that
+ * window opens the case as a click on it would, taking up what the page
+ * found (as `adoptLoaded` does). Not while the toolbar there adds marks to
+ * another case: that one stays (DEC-023). Another window's panel says
+ * nothing.
+ */
+function openForAi(
+	request: OpenCaseRequest,
+	sendResponse: (answer: OpenCaseAnswer) => void,
+): boolean {
+	if (panelWindowId === undefined || request.windowId !== panelWindowId)
+		return false;
+	void (async () => {
+		const { caseId, tabId } = request;
+		const c = await store.getCase(caseId);
+		if (c === undefined) {
+			sendResponse({ opened: false, reason: "no-panel" });
+			return;
+		}
+		const page = await overlayState(tabId);
+		const toolbar = page?.visible ? page.target?.caseId : undefined;
+		if (toolbar !== undefined && toolbar !== caseId) {
+			const other = await store.getCase(toolbar);
+			sendResponse({
+				opened: false,
+				reason: "adding",
+				...(other ? { title: other.title } : {}),
+			});
+			return;
+		}
+		// The page's marks are the panel's from now on: they follow the case.
+		drawn = { tabId, caseId };
+		if (hiddenOn.has(tabId)) update(() => hiddenOn.delete(tabId));
+		if (!showing(caseId)) openCase(caseId);
+		// What the panel knew of a draw there is older than the worker's load.
+		update((s) => {
+			if (
+				s.loaded !== undefined &&
+				(s.loaded.caseId !== caseId || s.loaded.tabId === tabId)
+			)
+				s.loaded = undefined;
+		});
+		void readLoaded(c, tabId);
+		sendResponse({ opened: true });
+	})();
+	return true;
+}
 
 /** News from the pages and the worker: nothing is answered. */
 function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {

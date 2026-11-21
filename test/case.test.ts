@@ -9,8 +9,8 @@ import {
 	cutText,
 	type Finding,
 	findingsTextOf,
+	isOfferedOn,
 	isOwnFinding,
-	isPageOf,
 	linkProblem,
 	MAX_COMMENT,
 	MAX_FINDING,
@@ -591,18 +591,22 @@ describe("a case for a page", () => {
 		return { ...c, page: { ...c.page, url } };
 	};
 
-	test("a page in another environment is that page", () => {
-		expect(isPageOf(on("https://a.ch/kk"), "http://localhost:3000/kk")).toBe(
+	// Offered under "This page" only on the same page of the same site (DEC-050).
+	test("a page in another environment is not offered", () => {
+		expect(isOfferedOn(on("https://a.ch/kk"), "http://localhost:3000/kk")).toBe(
+			false,
+		);
+		expect(isOfferedOn(on("https://a.ch/kk"), "https://a.ch/kk/?x=1")).toBe(
 			true,
 		);
 	});
 
 	test("the same site's home page is that page", () => {
-		expect(isPageOf(on("https://a.ch/"), "https://a.ch/")).toBe(true);
+		expect(isOfferedOn(on("https://a.ch/"), "https://a.ch/")).toBe(true);
 	});
 
 	test("another site's home page is not", () => {
-		expect(isPageOf(on("https://a.ch/"), "https://b.ch/")).toBe(false);
+		expect(isOfferedOn(on("https://a.ch/"), "https://b.ch/")).toBe(false);
 	});
 });
 

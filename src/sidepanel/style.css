@@ -1189,9 +1189,16 @@ ul.cases .title {
 	margin-top: -4px;
 }
 
-/* A case the team does not have, in the list. */
-.cases .device-only {
+/* A case the team does not have, in the list; a closed one under This page (DEC-050). */
+.cases .device-only,
+.cases .closed-tag {
 	align-self: start;
+}
+
+/* Where a mark was made: its address is a link in the line (DEC-050). */
+.mark-page button.page-link {
+	display: inline;
+	min-height: 0;
 }
 
 /* What the server did not take: one line each, under the status. */

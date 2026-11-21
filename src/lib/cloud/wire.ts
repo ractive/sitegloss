@@ -38,6 +38,7 @@ import {
 	markSignature,
 	pageAt,
 	pageKey,
+	queryField,
 	type Rect,
 	type Reopen,
 	type Resolution,
@@ -279,6 +280,9 @@ export function newShotOf(
 	return {
 		id,
 		url: shotUrl(c, shot),
+		// To open the page again as it was (DEC-050); the server filters it
+		// again, and one that does not know the field leaves it out.
+		...(shot.query === undefined ? {} : { query: shot.query }),
 		image,
 		scrollX: shot.scrollX,
 		scrollY: shot.scrollY,
@@ -1474,6 +1478,8 @@ export function mergeCase(
 					viewport: w.viewport,
 					capturedAt: text(w.capturedAt, 64),
 					url: text(w.url, MAX_URL),
+					// As the server keeps it, held to the same rule here (DEC-050).
+					...queryField(w.query),
 				},
 			],
 		};

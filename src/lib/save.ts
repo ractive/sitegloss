@@ -35,6 +35,7 @@ import {
 	withPagesOfShots,
 } from "./case.ts";
 import type { RenderedMark } from "./marks.ts";
+import { queryOf } from "./query.ts";
 import type { CaseStore, StoredImage } from "./store.ts";
 
 /** An annotation as the content script sends it: with the crop's rectangle. */
@@ -198,9 +199,20 @@ export async function saveCase(
 		for (const shot of request.shots) {
 			const id = `s${shotNumber++}`;
 			finalIds.set(shot.id, id);
-			// Every screenshot says which page it is of.
+			// Every screenshot says which page it is of, and keeps what may be
+			// kept of its query, to open it again as it was (DEC-050): from
+			// the address it was taken on, never from what a sender says.
+			const { query: _sent, ...taken } = shot;
+			const href = shot.url ?? request.page.url;
 			const url = shot.url === undefined ? here.url : plainUrl(shot.url);
-			shots.push({ ...shot, url, id, image: shotImage(id) });
+			const query = queryOf(href);
+			shots.push({
+				...taken,
+				url,
+				...(query === undefined ? {} : { query }),
+				id,
+				image: shotImage(id),
+			});
 			if (!pages.some((p) => samePage(p.url, url)))
 				pages.push(
 					// The page's title and language are those of the page the

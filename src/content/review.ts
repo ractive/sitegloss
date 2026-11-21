@@ -25,7 +25,7 @@ import {
 	markKey,
 	markStatus,
 	markUrl,
-	pageAt,
+	pageInFront,
 	pageKey,
 	RESOLUTION_LABEL,
 	RESOLVE_CHOICES,
@@ -33,7 +33,7 @@ import {
 	type ResolveChoice,
 	type Shape,
 	STATUS_LABEL,
-	samePage,
+	samePath,
 	shapeBounds,
 	shapeOnBox,
 	translateShape,
@@ -432,9 +432,12 @@ export class Reviewer {
 		};
 	}
 
-	/** Whether the mark's own page is the page in front. */
+	/**
+	 * Whether the mark's own page is the page in front: by path and hash
+	 * route, whatever the host (DEC-050).
+	 */
 	#own(annotation: Annotation, c: Case | undefined = this.#case): boolean {
-		return c !== undefined && samePage(markUrl(c, annotation), location.href);
+		return c !== undefined && samePath(markUrl(c, annotation), location.href);
 	}
 
 	/**
@@ -450,7 +453,7 @@ export class Reviewer {
 		entry.match =
 			found &&
 			c !== undefined &&
-			pageAt(c, location.href) !== undefined &&
+			pageInFront(c, location.href) !== undefined &&
 			!this.#own(entry.annotation, c)
 				? { ...match, otherPage: true }
 				: match;
@@ -1108,7 +1111,7 @@ export class Reviewer {
 	#whereItWas(annotation: Annotation): ReviewItem | undefined {
 		// Only on its own page: a case spans pages (DEC-038).
 		const url = this.#case ? markUrl(this.#case, annotation) : "";
-		if (!samePage(url, location.href)) return undefined;
+		if (!samePath(url, location.href)) return undefined;
 		const win = this.overlay.doc.defaultView;
 		return {
 			number: annotation.number,

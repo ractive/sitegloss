@@ -5,7 +5,13 @@
  * page. Pure: main.ts carries the steps out.
  */
 
-import { type Case, markUrl, pageAt, samePage } from "../lib/case.ts";
+import {
+	type Case,
+	markUrl,
+	pageInFront,
+	samePage,
+	samePath,
+} from "../lib/case.ts";
 import type { AnnotationMatch } from "../lib/messages.ts";
 import { shortUrl } from "./dom.ts";
 import type { Loaded } from "./state.ts";
@@ -144,7 +150,7 @@ export function dashDrawn(
 		const a = c.annotations.find((x) => x.id === m.annotationId);
 		if (a === undefined || a.shape.kind === "note") return false;
 		if (m.status !== "no-element") return true;
-		return samePage(markUrl(c, a), url);
+		return samePath(markUrl(c, a), url);
 	});
 }
 
@@ -155,14 +161,15 @@ export function dashDrawn(
  * (a header every page has, or a look-alike: never sure, never counted as
  * found); `elsewhere`, marks of other pages that are not here, which nobody
  * expected. On a page that is none of the case's, every mark is looked for
- * and counted, as in a case of one page.
+ * and counted, as in a case of one page. A page is the case's by its path,
+ * whatever the host (`pageInFront`, DEC-050).
  */
 export function findsOn(
 	c: Case,
 	matches: readonly AnnotationMatch[],
 	url: string,
 ): { own: AnnotationMatch[]; also: number; elsewhere: number } {
-	if (pageAt(c, url) === undefined)
+	if (pageInFront(c, url) === undefined)
 		return { own: [...matches], also: 0, elsewhere: 0 };
 	const pageOf = new Map(c.annotations.map((a) => [a.id, a]));
 	const own: AnnotationMatch[] = [];
@@ -170,7 +177,7 @@ export function findsOn(
 	let elsewhere = 0;
 	for (const m of matches) {
 		const a = pageOf.get(m.annotationId);
-		if (a === undefined || samePage(markUrl(c, a), url)) own.push(m);
+		if (a === undefined || samePath(markUrl(c, a), url)) own.push(m);
 		else if (isFound(m)) also++;
 		else elsewhere++;
 	}
