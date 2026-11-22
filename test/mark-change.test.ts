@@ -57,3 +57,10 @@ test("a reopen without what is still wrong, or a comment too long, is refused be
 		),
 	).toEqual({ error: "That comment is too long." });
 });
+
+test("Reopen… on a mark opened meanwhile stores nothing and says the note is not saved", () => {
+	const open = withOneMark(sampleCase("c_1"));
+	expect(() =>
+		after(open, { type: "mark:reopen", ...ids, note: "Still pale" }),
+	).toThrow("Your note is not saved");
+});
