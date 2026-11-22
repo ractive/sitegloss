@@ -15,6 +15,7 @@ import type { CloudStatus, SyncMode } from "../lib/cloud/book.ts";
 import type { CheckedExport } from "../lib/export.ts";
 import type { MarkMatch, OverlayState } from "../lib/messages.ts";
 import type { SyncStatus, SyncTargetKind } from "../lib/sync.ts";
+import type { ChosenPage } from "./page-filter.ts";
 import type { Size } from "./size.ts";
 
 export interface MarkEdit {
@@ -181,6 +182,11 @@ export interface PanelState {
 	 */
 	markFilter: { caseId: string; group: StatusGroup; upTo: number } | undefined;
 	/**
+	 * The page filter of the open case's list (`page-filter.ts`): this page
+	 * (it follows the tab) or one page of the case; none: all pages.
+	 */
+	markPage: ChosenPage | undefined;
+	/**
 	 * The mark whose pin was clicked on the page (DEC-027): the list opens it
 	 * and brings it into view, once per click (`at`).
 	 */
@@ -316,6 +322,7 @@ export const initialState = (): PanelState => ({
 	renaming: undefined,
 	linking: undefined,
 	markFilter: undefined,
+	markPage: undefined,
 	picked: undefined,
 	markDeleteArmed: undefined,
 	findingDeleteArmed: undefined,
