@@ -3379,3 +3379,58 @@ app) apply.
   (the pictures, their order and captions, the address), `test/view.test.ts` (the fields'
   help and labels, no placeholder on the comment box, "Open larger"), `test/build.test.ts`
   (the viewer in both builds), `test/contrast.test.ts`.
+
+## DEC-061: Panel round 3, a draft for the owner to judge: the bar, Stop, the case's head, Verify, comments at the mark
+
+2026-11-22. What the owner asked for over several messages and was parked "to discuss" is
+built as a draft on `panel-round-3`, for the owner to look at on their own machine. Not
+settled: what follows is what was built, and why, to be judged.
+
+- **The bar on the page moves.** Dragged by its body (the pill by any part, once the pointer
+  moved 4 px; a press without a move is its click), by the arrow keys on a handle (Shift: four
+  times as far; Home puts it back), and back to the top right with a double click. It stays
+  inside the window, also when the window gets smaller. Its place is the profile's, kept by
+  the service worker (`bar:place`): a content script may not reach `storage.local` here, and
+  a page has no say in it (two numbers or nothing, `storedBarPlace`).
+- **Two states only.** "Hide marks", on the bar or in the panel, hides the marks and keeps
+  the case: the bar becomes a pill with the logo ("Show the marks of «case»") at the same
+  place, which brings them back. Closing the case in the panel takes it off for good. Adding
+  marks shows hidden marks; hiding them ends the adding. The panel and the page are one
+  switch: the page's news says which case is hidden (`hiddenCase`), and a pill pressed on the
+  page shows the marks in the panel too.
+- **"Add marks" on the bar**, beside "Hide marks", in the panel's words; none of the two is
+  primary. While marks are added the bar steps aside (hidden): the toolbar is up with its
+  Done, and nothing of Sitegloss covers what is being marked. Taken from `bar-gives-way`:
+  the bar hidden while adding, "Hide marks" as the word. Left: hiding it while the side panel
+  is open (a bar that moves does not cover, and a bar that comes and goes with the panel
+  confuses), with the worker plumbing for it.
+- **No Stop in the top bar.** The AI pill leads to the AI view, whose switch does what Stop
+  did (the same command); the switch's tooltip says that it stops at once.
+- **The case's head** after the web's case page: the title and a "…" menu (Rename…, Add a
+  link…/Change link…, Export…, Delete case, which asks twice), the counts, one action (Add
+  marks), then one quiet block of facts: Pages (folded to three, "Show all n"), Team, Link,
+  Made at. "This tab is your team's web app…" is no longer in the case (Home still says it,
+  DEC-045). "n of m marks found" is said only to a screen reader (a status line kept out of
+  sight): the page filter's counts and each mark's word show it. "Match size" shows only when
+  the tab's width differs by 24 px or more (a breakpoint can sit that close; a classic
+  scrollbar is 15 px) or its height by 100 px or more. What the tab shows (the access notice,
+  no marks found here, the size, adding) is under the head, where the marks start, so the head
+  does not move with the tab.
+- **Verify closes its mark**; the focus goes to the next mark waiting to be verified (after
+  it, else before it), else to the closed row's head. Reopen… does not close it. Round 2's
+  hold keeps the row in place.
+- **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
+  own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
+  bottom keeps the comments about the case as a whole (and one about a deleted mark).
+- **A picture opens in one step**: its tile opens the viewer; the in-panel large view is
+  gone. The viewer's caption is two lines (case, mark, which picture; who and when), and
+  Escape or Close closes its tab.
+- **The focus lost after Reopen's Save (round 2's measurement at 460 px)**: the press never
+  reached Save. The hold of the click that opened the form scrolled the list back while the
+  test scrolled it, so the press landed on the field. A real person's scroll ends a hold;
+  what could still pull against it was the panel's own scroll (a form's field focused out of
+  sight, a Tab): both now let the hold go.
+- Tests: `test/overlay.test.ts` (the bar's place, steps aside, the pill), `test/review.test.ts`
+  (hide, the pill, Add marks on the bar), `test/view.test.ts` (no Stop; the menu, counts and
+  facts; Match size's threshold; Verify closing and the focus; comments at the mark; the tile),
+  `test/viewer.test.ts` (the caption), `test/card.test.ts` unchanged.

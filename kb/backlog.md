@@ -23,13 +23,10 @@ An entry here is not a decision to build it. When one is taken up, its design mo
 
 ## Polish of what exists (before new features)
 
-- **The floating bar and the modes.** Today "Add marks" can be on while the case's marks
-  are hidden, and the bar on the page ("title · 5 of 24 found · Hide") covers page content
-  at the top right. The owner expects two states only, marks shown and editable or no marks
-  at all, and thought of a show/hide toggle, an "Add marks" button on the bar, and a bar that
-  can be dragged. To discuss with the owner before anything is built. A first attempt (bar
-  hidden while marks are added and while the side panel is open, the worker telling the
-  window's tabs) is kept on the branch `bar-gives-way`.
+- **The floating bar and the modes.** Built as a draft for the owner to judge on the branch
+  `panel-round-3` (DEC-061): the bar can be dragged and keeps its place, two states only
+  (Hide marks leaves a pill that shows them again; adding shows them; hiding ends adding),
+  "Add marks" on the bar, the bar steps aside while marks are added. Waits for the owner.
 - **The sync state on the case itself.** The sync knows its state (syncing with the number
   of cases left, offline, a problem per case, synced with a count still waiting), but shows
   it only as one line in the Team section. After "Sync it" nothing shows on the case. Wanted:
@@ -44,21 +41,12 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   "Copy instructions for your AI agent" (the same text as the web app's, from one shared
   template that names the case's title and address, says how to add the MCP server, and
   what to do with a mark that cannot be fixed).
-- **The open case's head in the panel is a pile.** The owner (22 November 2026): "This is
-  pretty chaotic": a list of links (the pages), then "Synced with …" as a small text on its
-  own, "Add a link" as a small link somewhere, two big buttons ("Add marks", "Export"), the
-  line "This tab is your team's web app at …: it shows the same cases as this panel"
-  ("what's this text? … Is this text really needed?": it shows on every page of the team's
-  web app, also when the tab shows another case than the panel, DEC-045), the dense line
-  "4 of 4 marks found on …. 21 more are on other pages of the case", and "Match size" with
-  another sentence. **Not to be built in parallel with the web app's case page.** The
-  owner's instruction: wait until the case page on the web is rebuilt (on Astryx's
-  `work-item-detail`), take its ideas (a head with the title, the state and one primary
-  action; facts in one quiet block; rare actions in a menu; sections that are told apart),
-  and discuss the plan with the owner before building. First thoughts for that talk: one
-  facts block (pages, synced with, link) with the pages folded when there are many; the
-  found-marks sentence replaced by the page filter's counts; the web-app line dropped;
-  "Match size" as a quiet action that appears only when the sizes differ enough to matter.
+- **The open case's head in the panel is a pile.** Built as a draft after the web's case
+  page, on the branch `panel-round-3` (DEC-061): the title with a "…" menu (Rename, the
+  link, Export, Delete case), the counts, one action (Add marks), one quiet facts block
+  (Pages folded to three, Team, Link, Made at), no web-app line, the found sentence for a
+  screen reader only, "Match size" only past 24 px of width or 100 px of height, and what
+  the tab shows under the head. Waits for the owner.
 - **An AI app cannot tell that AI access is off.** When AI access is off (after a reload or
   update of Sitegloss without "Keep AI access on", an idle session, a browser start), an AI
   app that calls a tool gets the relay's "The page is not open, or not in front. Ask the
