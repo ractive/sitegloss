@@ -1666,7 +1666,6 @@ const actions: Actions = {
 	startNewCase: () => void startNewCase(),
 
 	openCase,
-	caseImage: async (caseId, path) => (await store.getImage(caseId, path))?.blob,
 	closeCase: () => void leaveCase(),
 	closeSettings: () =>
 		update((s) => {

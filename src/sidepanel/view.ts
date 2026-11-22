@@ -81,8 +81,6 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	/** "New case for this page": a new case, stored at once and opened (DEC-026). */
 	startNewCase(): void;
 	openCase(id: string): void;
-	/** A stored image of a case (a screenshot for its card's thumbnail). */
-	caseImage(caseId: string, path: string): Promise<Blob | undefined>;
 	/** "← All cases": end the toolbar adding to the case, then close it (DEC-023). */
 	closeCase(): void;
 	/** "← Back" from Settings, to the view underneath. */
@@ -468,135 +466,22 @@ function whereLine(c: Case): HTMLElement {
 	);
 }
 
-/** The thumbnail's box, in CSS pixels: a screenshot's top, cut to it. */
-const THUMB = { width: 72, height: 54 };
-
-/**
- * The thumbnails drawn so far, small (a screenshot decoded once and scaled
- * down, then let go), by case and screenshot; dropped with their case.
- */
-const thumbs = new Map<string, ImageBitmap | null>();
-const thumbsLoading = new Set<string>();
-let thumbActions: Actions | undefined;
-const thumbObserver =
-	typeof IntersectionObserver === "undefined"
-		? undefined
-		: new IntersectionObserver(
-				(entries) => {
-					for (const entry of entries) {
-						if (!entry.isIntersecting) continue;
-						thumbObserver?.unobserve(entry.target);
-						void loadThumb(entry.target as HTMLCanvasElement);
-					}
-				},
-				{ rootMargin: "200px" },
-			);
-
-function drawThumb(canvas: HTMLCanvasElement, bitmap: ImageBitmap): void {
-	const context = canvas.getContext("2d");
-	if (context === null) return;
-	context.clearRect(0, 0, canvas.width, canvas.height);
-	context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-	canvas.closest(".thumb")?.setAttribute("data-drawn", "");
+/** The case's bar as the card's top edge; an empty track while it has no marks. */
+function caseBand(c: Case): HTMLElement {
+	const band =
+		statusBar(c) ??
+		h("span", { class: "progress empty", "aria-hidden": "true" });
+	band.classList.add("band");
+	return band;
 }
 
-/** Only for a card on screen: the screenshot read, scaled down, drawn. */
-async function loadThumb(canvas: HTMLCanvasElement): Promise<void> {
-	const key = canvas.dataset["thumb"] ?? "";
-	const caseId = canvas.dataset["thumbCase"] ?? "";
-	const path = canvas.dataset["path"] ?? "";
-	const cached = thumbs.get(key);
-	if (cached) return drawThumb(canvas, cached);
-	if (cached === null || thumbsLoading.has(key)) return;
-	thumbsLoading.add(key);
-	try {
-		const blob = await thumbActions?.caseImage(caseId, path);
-		if (blob === undefined || typeof createImageBitmap === "undefined") {
-			thumbs.set(key, null);
-			return;
-		}
-		const full = await createImageBitmap(blob);
-		// The top of the page, as wide as the box's shape allows.
-		const height = Math.min(
-			full.height,
-			Math.round((full.width * THUMB.height) / THUMB.width),
-		);
-		const small = await createImageBitmap(full, 0, 0, full.width, height, {
-			resizeWidth: canvas.width,
-			resizeHeight: canvas.height,
-			resizeQuality: "high",
-		});
-		full.close();
-		thumbs.set(key, small);
-		for (const other of document.querySelectorAll<HTMLCanvasElement>(
-			`canvas[data-thumb="${CSS.escape(key)}"]`,
-		))
-			drawThumb(other, small);
-	} catch {
-		thumbs.set(key, null);
-	} finally {
-		thumbsLoading.delete(key);
-	}
-}
-
-/** The thumbnails of cases no longer listed, or of a first screenshot that changed, let go. */
-function keepThumbs(cases: Case[]): void {
-	const keys = new Set(
-		cases.flatMap((c) => (c.shots[0] ? [`${c.id}/${c.shots[0].image}`] : [])),
-	);
-	for (const [key, bitmap] of thumbs)
-		if (!keys.has(key)) {
-			bitmap?.close();
-			thumbs.delete(key);
-		}
-}
-
-/** A page with lines on it: a case without a screenshot yet. */
-function thumbPlaceholder(): SVGSVGElement {
-	const svg = document.createElementNS(SVG, "svg");
-	svg.setAttribute("viewBox", "0 0 72 54");
-	svg.setAttribute("class", "thumb-empty");
-	for (const [tag, attrs] of [
-		["rect", { x: "14", y: "8", width: "44", height: "38", rx: "3" }],
-		["path", { d: "M14 15h44M21 24h24M21 30h30M21 36h18" }],
-	] as const) {
-		const e = document.createElementNS(SVG, tag);
-		for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-		svg.append(e);
-	}
-	return svg;
-}
-
-/** The case's first screenshot, cut to a fixed box; loaded once on screen. */
-function caseThumb(c: Case): HTMLElement {
-	const first = c.shots[0];
-	const box = h("span", { class: "thumb", "aria-hidden": "true" });
-	if (first === undefined) {
-		box.append(thumbPlaceholder());
-		return box;
-	}
-	const key = `${c.id}/${first.image}`;
-	const canvas = h("canvas", {
-		width: String(THUMB.width * 2),
-		height: String(THUMB.height * 2),
-		"data-thumb": key,
-		"data-thumb-case": c.id,
-		"data-path": first.image,
-	});
-	box.append(canvas);
-	const cached = thumbs.get(key);
-	if (cached) drawThumb(canvas, cached);
-	else if (cached !== null) thumbObserver?.observe(canvas);
-	return box;
-}
-
-/** "25 open", "6 to verify", …: the counts in words, each with its sign. */
-function countWords(c: Case, chips: boolean): HTMLElement {
+/** "25 open", "6 to verify", …: a chip per status with marks, each with its sign. */
+function caseChips(c: Case): HTMLElement {
 	const n = caseCounts(c);
 	const groups = STATUS_GROUPS.filter((g) => n[g] > 0);
 	return h(
 		"span",
-		{ class: chips ? "card-chips" : "card-counts" },
+		{ class: "card-chips" },
 		...(groups.length === 0
 			? [h("span", { class: "none" }, "No marks yet")]
 			: groups.map((g) =>
@@ -624,10 +509,8 @@ function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
 
 /**
  * A case, as one object wherever the panel lists it: a card, the whole of
- * it the control; opening it draws its marks on the tab in front (DEC-022).
- * Variant A (a thumbnail, the bar across, the counts under it) and B (a band
- * at its top and the counts as chips) are both drawn; the style sheet shows
- * one (`data-case-card` on the root), while the owner chooses.
+ * it the control, its bar along its top edge and its counts as chips;
+ * opening it draws its marks on the tab in front (DEC-022).
  */
 function caseItem(
 	c: Case,
@@ -635,17 +518,6 @@ function caseItem(
 	deviceOnly = false,
 	team = false,
 ): HTMLLIElement {
-	thumbActions = actions;
-	const tags = [
-		c.closed !== undefined
-			? h("span", { class: "tag closed-tag" }, "Closed")
-			: null,
-		// Signed in: shared with the team, or not (DEC-039).
-		team ? h("span", { class: "tag team-tag" }, "Team") : null,
-		deviceOnly
-			? h("span", { class: "tag device-only" }, "This device only")
-			: null,
-	];
 	return h(
 		"li",
 		{},
@@ -660,27 +532,23 @@ function caseItem(
 				title: `Open “${c.title}” and show its marks on the page in this tab`,
 				onclick: () => actions.openCase(c.id),
 			},
-			statusBar(c, "band"),
-			caseThumb(c),
+			caseBand(c),
 			h(
 				"span",
-				{ class: "card-body" },
-				h(
-					"span",
-					{ class: "card-head" },
-					h("span", { class: "title" }, c.title),
-					...tags,
-				),
-				whereLine(c),
-				h("span", { class: "card-date" }, formatDate(c.updatedAt)),
+				{ class: "card-head" },
+				h("span", { class: "title" }, c.title),
+				c.closed !== undefined
+					? h("span", { class: "tag closed-tag" }, "Closed")
+					: null,
+				// Signed in: shared with the team, or not (DEC-039).
+				team ? h("span", { class: "tag team-tag" }, "Team") : null,
+				deviceOnly
+					? h("span", { class: "tag device-only" }, "This device only")
+					: null,
 			),
-			statusBar(c, "bar"),
-			h(
-				"span",
-				{ class: "card-foot" },
-				countWords(c, false),
-				countWords(c, true),
-			),
+			whereLine(c),
+			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
+			caseChips(c),
 		),
 	);
 }
@@ -705,7 +573,6 @@ function renderCases(state: PanelState, actions: Actions): void {
 	]);
 	if (key === casesKey) return;
 	casesKey = key;
-	keepThumbs(state.cases);
 	// The page's own cases stand under "This page" (the owner): going on with
 	// the case a page has is what is done most, a second case for it rarely.
 	// Only on the same page of the same site as one of its screenshots
@@ -1947,16 +1814,12 @@ function marksText(c: Case): string {
  * (DEC-023). The chips or the counts beside it say it in words: the bar is
  * only a picture. A span: it also sits inside a case's button in the list.
  */
-function statusBar(c: Case, kind?: "band" | "bar"): HTMLElement | null {
-	// In a card, an empty track: every card keeps its height and shape.
-	if (c.marks.length === 0)
-		return kind
-			? h("span", { class: `progress ${kind} empty`, "aria-hidden": "true" })
-			: null;
+function statusBar(c: Case): HTMLElement | null {
+	if (c.marks.length === 0) return null;
 	const n = caseCounts(c);
 	return h(
 		"span",
-		{ class: kind ? `progress ${kind}` : "progress", "aria-hidden": "true" },
+		{ class: "progress", "aria-hidden": "true" },
 		...STATUS_GROUPS.filter((g) => n[g] > 0).map((g) =>
 			h("span", { "data-kind": g, style: `flex-grow: ${n[g]}` }),
 		),
