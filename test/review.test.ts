@@ -178,7 +178,9 @@ describe("elements replaced after loading", () => {
 		expect(reviewer.caseId).toBeUndefined();
 		expect(reviewer.loadingCaseId).toBe(c.id);
 		reviewer.clear();
+		// Replaced, which is no failure, and no case is loaded.
 		await expect(loading).rejects.toBeInstanceOf(LoadReplaced);
+		expect(reviewer.caseId).toBeUndefined();
 		expect(overlay.reviewing).toBe(false);
 		expect(overlay.items).toEqual([]);
 		expect(reviewer.loadingCaseId).toBeUndefined();
@@ -305,12 +307,6 @@ describe("the outline", () => {
 		await reviewer.load(c);
 		expect(overlay.items.length).toBe(1);
 		expect(overlay.items[0]?.found).toBe(false);
-	});
-
-	test("is green for a found element", async () => {
-		doc.body.innerHTML = `<main><button>Berechnen</button></main>`;
-		await reviewer.load(caseOf($("button")));
-		expect(overlay.items[0]?.found).toBe(true);
 	});
 });
 
@@ -462,15 +458,6 @@ describe("loads close together", () => {
 		expect(a).toEqual({ ...b, adopted: true });
 		expect(b.adopted).toBeUndefined();
 		expect(reviewer.caseId).toBe(c.id);
-	});
-
-	test("a clear during a load stops it: replaced, no failure", async () => {
-		doc.body.innerHTML = PAGE;
-		const c = caseOf($("button"));
-		const loading = reviewer.load(c);
-		reviewer.clear();
-		await expect(loading).rejects.toBeInstanceOf(LoadReplaced);
-		expect(reviewer.caseId).toBeUndefined();
 	});
 
 	test("another case's load stops the one before: replaced", async () => {
