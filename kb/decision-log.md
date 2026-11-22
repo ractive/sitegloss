@@ -551,7 +551,7 @@ button exports every case at once; the panel's buttons say in a tooltip what the
   150 MB). Otherwise each `<folder>/case.json` is a case, read and checked with the same
   rules as a single case; one bad case, or a case id twice, refuses the whole file with
   a message naming the folder (`In login-button-contrast/: The export lacks
-  crops/a1.webp.`), and nothing is stored. The file may be at most 256 MB, and what it
+  crops/m1.webp.`), and nothing is stored. The file may be at most 256 MB, and what it
   unpacks to is counted for the whole file, not per case: the sizes its cases' entries
   declare are added up before anything is unpacked (an entry never unpacks to more than
   it declares), and what each case did unpack to is added up as it is read; past 256 MB
@@ -1552,7 +1552,8 @@ handled elsewhere") and DEC-007's spirit holds: no new runtime dependency.
    Firefox, wrapped in `browser.ts`). The API's types are generated (DEC-040).
    "Version 1 only grows; ignore what you do not know" holds: an unknown field, error
    code or kind of removed thing never fails anything.
-3. **Identity of things.** Ids here stay as they are (`a<number>`, `s<n>`): they say
+3. **Identity of things.** Ids here stay as they are (`m<number>`, `a<number>` before
+   DEC-051, and `s<n>`): they say
    where a thing is on this device. At the server a mark and a screenshot have ids of
    their own (`m_…`, `sh_…`), made once on the device that makes them. Which is which is
    in the sync's own bookkeeping, a new database `sitegloss-cloud` beside `sitegloss-sync`:
@@ -1974,7 +1975,7 @@ Both addresses of the second are known, in one module with the first
   first, so the same marks become one, and sends what the team lacks. A case without a
   book here (made or imported since the sign-in) is the team's as before.
 - **A mark keeps its identity at one server when another renumbers it.** Marks are
-  `a<number>` here, and a server's numbers count while with that server; the other
+  `m<number>` here (`a<number>` before DEC-051), and a server's numbers count while with that server; the other
   servers' books are not told. A book entry whose mark here has another drawing than
   the server's mark is therefore dropped, and the server's mark finds its own again by
   its drawing (`relink`), instead of being deleted and made anew.
@@ -2830,15 +2831,20 @@ that is kept").
   comment half typed, which stays, then the clean switch) and in Firefox (the event
   page's address). The fake server keeps the query as the server does.
 
-## DEC-051: The thing a person adds is a mark, in the code too; the case format is `sitegloss/2` (owner)
+## DEC-051: The thing a person adds is a mark, in the code too; the case format is `sitegloss/2`; the update starts with no case (owner)
 
 2026-11-21/22. The owner: the domain word is **mark**, everywhere in the code and its
 language. "No need to support backwards compatibility", and "in descriptions and on the
 webpage you can mention it, but in the domain language of the code, use mark all over."
-Every text a person sees, the server, its API and its database said "mark" already; the
-extension's inside said "annotation", from before the product was called Sitegloss. The
-server's side of it is its DEC-024.
+Then, 2026-11-22: a mark's id no longer keeps the letter of the old word, and "You can
+also wipe the cases and marks db. No one besides me is using it right now." Every text a
+person sees, the server, its API and its database said "mark" already; the extension's
+inside said "annotation", from before the product was called Sitegloss. The server's
+side of it is its DEC-024.
 
+- **The update wipes the cases in the browser.** A case that was only in this browser,
+  never synced with a team, is gone with it; the owner knows and accepts that. Its file
+  in the folder or Downloads mirror stays (below), but this version cannot open it.
 - **Renamed by meaning, not by a blind replace**: the type `Annotation` is `Mark`
   (`AnnotationMatch` `MarkMatch`, `AnnotationDraft` `MarkDraft`, `AnnotateTarget`
   `MarkTarget`, `MAX_ANNOTATIONS` `MAX_MARKS`, `withoutAnnotation` `withoutMark`), a
@@ -2850,37 +2856,50 @@ server's side of it is its DEC-024.
   already said mark and meant something else kept their meaning: where both met, the
   other one moved (the book's wire ids in `renumber`, a mark found by number in two
   tools).
-- **The case format is `sitegloss/2`**: the list of marks is `marks`, nothing else in
-  the file changes (mark ids stay `a<number>`, crops `crops/a<number>.webp`, a comment
-  names its mark by that id: the ids are what the sync's books map to the server's, and
-  `a` no longer stands for a word). This build reads and writes only `sitegloss/2`. A
-  file of `sitegloss/1` (Sitegloss 0.3.1 and older, or a server download from before its
-  DEC-024) is refused in one sentence: "This file is a case from Sitegloss 0.3.1 or older
-  (format sitegloss/1); this version reads sitegloss/2 only." Nothing converts it on
-  import. 0.3.1 and older refuse a `sitegloss/2` file in turn (their own message:
-  `Sitegloss reads "sitegloss/1" only`).
-- **Stored cases are brought along once, in the store's upgrade** (database version 2,
-  `upgradeStoredCase` in `store.ts`): the old key becomes `marks` in its place, the
-  format's name `sitegloss/2`, nothing else is touched. It runs in IndexedDB's upgrade
-  transaction, before any connection opens: no page, worker or sync ever reads a case
-  of the old format. A failure aborts it, and the database stays at version 1 as it
-  was, with nothing reading it. A build before this one cannot open version 2 at all
-  (`VersionError`), so it never takes a case without `annotations` for one without
-  marks. Why it matters: the sync tells a deleted case only by the record the store
-  writes with a delete, so a stored case it cannot read was never sent as
-  `case.delete`; but it failed at every run ("could not be stored here … read again
-  later"), and the panel and the folder sync could not show or write it. Measured
-  without the upgrade: the case's status a problem at every run, nothing sent.
-- **The folder sync writes every file once more** (DEC-025): a case's version includes
-  its format, so each mirror file in `sitegloss/1` is written again in `sitegloss/2`.
-  The mirror is read by no one but the user, with Import a case…, which now reads only
-  `sitegloss/2`: without this, a case deleted by mistake could not be brought back from
-  its file. Nothing in the folder or Downloads is ever read by the sync.
+- **The case format is `sitegloss/2`**: the list of marks is `marks`, and a mark's id is
+  `m<number>` (`m1`, `m2`…; it was `a<number>`), made in one place (`markIdOf`): its crop
+  is `crops/m<number>.webp`, and comments and the sync's books name it by that id.
+  Screenshot and case ids keep their forms. This build reads and writes only
+  `sitegloss/2`. A case file of `sitegloss/1` is refused in one sentence, by its
+  format: "This case file is in the old format sitegloss/1; this version of Sitegloss
+  reads sitegloss/2 only." Nothing converts it on import. So a file written before this
+  version (an export someone kept, a mirror file, a download from a sitegloss.dev
+  without its DEC-024) no longer opens in this version; Sitegloss 0.3.1 and older still
+  open it, and refuse a `sitegloss/2` file in turn.
+- **Stored cases are not converted: the store's upgrade empties it** (database version
+  2, `store.ts`): the cases, their images, the delete records and the screenshots of
+  saves that never finished go, in IndexedDB's upgrade transaction, before any
+  connection opens. A failed upgrade aborts and leaves the database as it was, at
+  version 1; the error says what failed by its name only, once in the console, and for
+  ten seconds every call (the panel's list, the folder sync, the cloud sync) gets the
+  same error without opening again. A build before this one cannot open version 2. The
+  cloud's database forgets, once, what it kept about cases (`forgetCases` in
+  `cloud/book.ts`, run wherever that database is opened): every server's books, how far
+  the team's changes were read, what waited to be sent, the whole-read and status
+  notes, and the deletes an expired sign-in recorded. It keeps the server chosen, the
+  account and its team, and the tokens; settings and the AI connection are in other
+  databases and stay. Undo (the ledger in `storage.session`) and the drafts on open
+  pages end with the update anyway. So the first run has no case, no book, no cursor
+  and no delete on record: it sends nothing and reads the team's whole state, and every
+  case of the team comes back with `m` ids.
+- **The open waits for no one for ever**: an open blocked by a connection of the build
+  before waits five seconds, then fails with a sentence that says what to close; its
+  request stays, so the upgrade runs once that connection goes. A connection of this
+  build closes when another context upgrades or deletes the database, as the settings'
+  database does.
+- **The folder and Downloads mirror (DEC-025) leaves files of before alone.** It reads
+  nothing back. A file whose record has no format in its version (written before this
+  version) is moved aside in the records: never written over, never removed, its name
+  still taken. On the first run after the update the store is empty, so nothing is
+  written and nothing removed. When the team's cases come back, each is written to a
+  file of its own beside its old one (`login-2.sitegloss.zip` beside
+  `login.sitegloss.zip`); the old one stays, in `sitegloss/1`, for 0.3.1 and older.
 - **The AI tool `add_annotation` is `add_mark`**, the name sitegloss.dev's MCP server has
   for its own tool (without a live page); its parameters were `caseId`, `selector` and
   `comment` already and stay. An "Always allow" given to `add_annotation` does not carry
   over: the app is asked again (DEC-043 keeps a tool allowed one by one by its name;
-  "Allow all changes" still covers it).
+  "Allow all changes" still covers it). Crops are `crops/m<number>.webp` in
+  `get_case` and `get_image`, as at the server.
 - **What keeps the word**: the describing verb where a sentence tells someone who does
   not know the product what it does (the README's opening, `PRIVACY.md`'s first
   sentence, the store's listing); the MCP protocol's tool `annotations` (`readOnlyHint`
@@ -2888,11 +2907,14 @@ server's side of it is its DEC-024.
   copies of 0.3.0 under `test/` (its names, as it shipped); and in this log and the
   design documents, the owner's own words in quotes and the panel's old labels ("Annotate
   this page", "Stop annotating", "Continue annotating") as they were.
-- Tests: `test/store.test.ts` (the upgrade on a case 0.3.0's own `validateCase` made),
-  `test/e2e/store.test.ts` (a database written by 0.3.0's `IdbStore`, opened by this
-  build's: every case in `sitegloss/2` with its marks, images and delete records, an
-  older build's open refused), `test/compat-0-3-0.test.ts` (0.3.0's data opened by this
-  build through the upgrade: nothing sent, no delete, every mark at the server and here),
-  `test/export.test.ts` (a `sitegloss/1` file refused in that sentence), and
-  `test/e2e/upgrade.test.ts` with a real server (a profile of 0.3.0 and a later build
-  opened by this one sends nothing).
+- Tests: `test/compat-0-3-0.test.ts` (a 0.3.0 browser's data after the update: no
+  operation at all, not even the delete 0.3.0 had on record; the team's cases back with
+  `m` ids; the case only 0.3.0 had is gone), `test/forget-cases.test.ts`,
+  `test/sync.test.ts` (the mirror after the update, to a folder and to Downloads),
+  `test/export.test.ts` (a `sitegloss/1` file refused in that sentence),
+  `test/case.test.ts` (an `a<number>` id refused), `test/e2e/store.test.ts` (a database
+  written by 0.3.0's `IdbStore` emptied by the upgrade, an older build's open refused;
+  the blocked open and the version change), and with a real server
+  `test/cloud-server.test.ts` and `test/e2e/upgrade.test.ts` (a profile of 0.3.0 and a
+  later build opened by this one: nothing sent, the team's cases back in `sitegloss/2`
+  with `m` ids).

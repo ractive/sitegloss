@@ -155,19 +155,20 @@ same ID, `ldmcfigcnobhnbaigehcaodheklibeon`. The store package itself leaves the
 
 ## Case format
 
-A case is JSON (`format: "sitegloss/2"`) with its images referenced by relative path. A
-file of another format is not read: one of `sitegloss/1` (Sitegloss 0.3.1 and older, its
-marks under another key) is refused with a sentence that says so (DEC-051). The same JSON
-is stored in IndexedDB and written into the export, so an export is the case plus its
-images. The database's version 2 brought every case stored in `sitegloss/1` to
-`sitegloss/2` once, in the upgrade itself (`upgradeStoredCase` in `store.ts`):
+A case is JSON (`format: "sitegloss/2"`) with its images referenced by relative path; a
+mark's id is `m<number>`. A file of another format is not read: one of `sitegloss/1`
+(marks under another key, ids `a<number>`) is refused with a sentence that says so
+(DEC-051). The same JSON is stored in IndexedDB and written into the export, so an
+export is the case plus its images. The database's version 2 started empty: its upgrade
+emptied the cases and images kept in `sitegloss/1`, and the sync read the team's cases
+again (`store.ts`, `forgetCases` in `cloud/book.ts`):
 
 ```text
 <title>.sitegloss.zip
   case.json      the case
   case.md        generated: summary, comments, AI findings, element details, image links
   shots/s1.webp  screenshots with their marks
-  crops/a1.webp  one crop per mark
+  crops/m1.webp  one crop per mark
 ```
 
 ```json
@@ -183,9 +184,9 @@ images. The database's version 2 brought every case stored in `sitegloss/1` to
               "viewport": { "width": 1440, "height": 900, "dpr": 2 }, "capturedAt": "…",
               "url": "https://www.example.com/cart" }],
   "marks": [{
-    "id": "a1", "number": 1, "shot": "s1", "comment": "…", "author": "user",
+    "id": "m1", "number": 1, "shot": "s1", "comment": "…", "author": "user",
     "shape": { "kind": "box", "rect": { "x": 10, "y": 20, "width": 200, "height": 40 } },
-    "crop": "crops/a1.webp",
+    "crop": "crops/m1.webp",
     "element": { "tag": "button", "role": "button", "name": "Anmelden", "…": "…" },
     "resolution": { "kind": "fixed", "note": "…", "at": "…",
                     "app": { "id": "https://claude.ai/oauth", "name": "Claude", "host": "claude.ai" },
@@ -253,7 +254,7 @@ both directions, by the service worker:
   server applies an operation's id once.
 - **Fetching:** everything after the team's revision this browser has seen; what was
   not changed here becomes the server's, what was changed here stays and is sent next.
-- **Ids:** `a<number>` and `s<n>` stay what they are here; the server knows marks and
+- **Ids:** `m<number>` and `s<n>` stay what they are here; the server knows marks and
   screenshots by ids of their own, and the bookkeeping maps one to the other. A mark's
   number is the server's to give when two people drew the same one.
 - **Live:** the open side panel listens to the server's events stream and tells the
