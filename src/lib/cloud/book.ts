@@ -12,7 +12,7 @@
  * is which here.
  */
 
-import type { CaseComment } from "../case.ts";
+import type { CaseComment, ImageAdded } from "../case.ts";
 import type { Kv } from "../kv.ts";
 import type {
 	ImageRef,
@@ -156,6 +156,23 @@ export interface MarkContent {
 	resolution: WireResolution | null;
 	reopens: WireReopen[];
 	findings: WireFinding[];
+	/**
+	 * The images added to the mark, in order (DEC-058). Absent: not told (a
+	 * server from before images, or a shadow written before them), which
+	 * reads as none for what is sent and removes nothing here.
+	 */
+	images?: ContentImage[];
+}
+
+/**
+ * An image added to a mark, as content: only added or removed, so its id
+ * says which; who added it when, for showing; the server's picture (`ref`),
+ * where the server named it, to fetch it.
+ */
+export interface ContentImage {
+	id: string;
+	added: ImageAdded;
+	ref?: ImageRef;
 }
 
 /** A mark as the server last had it. */
@@ -199,6 +216,14 @@ export interface Rejected {
 	key: string;
 	/** Why, in words for the user. */
 	text: string;
+	/**
+	 * The images added to a mark that it would have sent (DEC-058), by id:
+	 * each is not sent, for `why` (said on its tile).
+	 */
+	images?: string[];
+	why?: string;
+	/** The mark at the server it was about: tried again once that mark's images change. */
+	mark?: string;
 }
 
 /** The bookkeeping of one case. */
@@ -348,6 +373,11 @@ export interface CloudStatus {
 	 * Shown, but no problem: the state is not `problem` for them.
 	 */
 	notes?: { caseId?: string; title?: string; text: string }[];
+	/**
+	 * Images added to marks here that the team does not have, and why
+	 * (DEC-058): by the case's id, then the image's id. Said on the image.
+	 */
+	notSent?: Record<string, Record<string, string>>;
 	/** Cases that were here before the team was chosen and wait for an answer. */
 	undecided: number;
 	/**

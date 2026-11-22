@@ -1,7 +1,7 @@
 /**
  * End to end: Verify (DEC-023). The developer sets marks fixed and exports;
  * the tester imports the file over the copy here, reads what differs in the
- * prompt, and finds the marks to verify; Verified moves the bar and the
+ * prompt, and finds the marks to verify; Verify moves the bar and the
  * chips; Reopen asks what is still wrong, and the note shows in the card and
  * the case. An AI app's "verified" (it asks first, and who set it shows),
  * and a reopen read back through get_case, are tools.test.ts's and
@@ -126,7 +126,7 @@ inFullSet("Verify", () => {
 				(c) => c.id === tester.id && c.marks[0]?.resolution !== undefined,
 			),
 		);
-		// The marks to verify: their pill, and Verified in the head.
+		// The marks to verify: their pill, and Verify in the head.
 		await panelHome(h);
 		await openCase(panel, "Hand back");
 		await panel.waitFor(`${row("m1")}?.dataset.status === "fixed"`);
@@ -154,7 +154,7 @@ inFullSet("Verify", () => {
 		await panel.click(`document.querySelector('[data-action="show-all"]')`);
 		await panel.waitFor(`document.querySelectorAll("li.mark").length === 3`);
 
-		// Verified, from the collapsed head: the bar and the chips move.
+		// Verify, from the collapsed head: the bar and the chips move.
 		await panel.click(
 			`${row("m1")}.querySelector('.mark-sub [data-mark-action="verify"]')`,
 		);

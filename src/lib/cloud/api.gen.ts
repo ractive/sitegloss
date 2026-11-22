@@ -64,7 +64,7 @@ export interface paths {
 		};
 		/**
 		 * One case as a file: the zip the Sitegloss extension exports
-		 * @description The case in the extension's file format (`sitegloss/2`): `case.json`, `case.md`, the screenshots in `shots/` and the marks' crops in `crops/`, as the extension's own export lays them out. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.
+		 * @description The case in the extension's file format (`sitegloss/2`): `case.json`, `case.md`, the screenshots in `shots/`, the marks' crops in `crops/` and the images people added to marks in `images/` (`images/<id>.webp`), as the extension's own export lays them out. An image gone from the server while the file is written is left out and named in `MISSING.txt`; its mark stays. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.
 		 */
 		get: operations["exportCase"];
 		put?: never;
@@ -149,7 +149,7 @@ export interface paths {
 		get: operations["getBlob"];
 		/**
 		 * Upload an image
-		 * @description A WebP image of at most 31457280 bytes whose SHA-256 is the path's. Uploading one the team has is fine.
+		 * @description A WebP image of at most 31457280 bytes whose SHA-256 is the path's. Uploading one the team has is fine. Needs mark:create or mark:update: a screenshot, a crop or an image added to a mark (DEC-032).
 		 */
 		put: operations["putBlob"];
 		post?: never;
@@ -354,6 +354,8 @@ export interface components {
 			resolution: components["schemas"]["Resolution"] | null;
 			reopens: components["schemas"]["Reopen"][];
 			findings: components["schemas"]["Finding"][];
+			/** @description Images a person added to the mark, in the order they were added, at most 6. Always sent by a server that keeps images, `[]` for none; absent from a server from before this (DEC-032), which a client reads as "not told", not as "none". */
+			images?: components["schemas"]["MarkImage"][];
 			status: components["schemas"]["MarkStatus"];
 			createdBy: components["schemas"]["UserRef"] | null;
 			createdVia?: components["schemas"]["AppRef"];
@@ -366,6 +368,20 @@ export interface components {
 		MarkEnds: {
 			start: components["schemas"]["ElementDetails"] | null;
 			end: components["schemas"]["ElementDetails"] | null;
+		};
+		/** @description A picture a person added to a mark (pasted, chosen or dropped in the extension), for what the screenshot does not show: a menu that closes, another state of the page. It may show anything that was on that person's screen. A WebP image uploaded as a blob, like a crop. Only ever added or removed, never changed. */
+		MarkImage: {
+			id: components["schemas"]["Id"];
+			image: components["schemas"]["ImageRef"];
+			added: components["schemas"]["MarkImageAdded"];
+		};
+		/** @description Who added an image to a mark, and when: a Stamp, set by the server from the caller. In a case that came in from a file (importedAt), an image the file brings keeps the file's time and says imported: true, with no user or app: the server cannot vouch for who added it there. */
+		MarkImageAdded: {
+			at: components["schemas"]["Timestamp"];
+			user?: components["schemas"]["UserRef"];
+			app?: components["schemas"]["AppRef"];
+			/** @constant */
+			imported?: true;
 		};
 		/**
 		 * @description Derived from the resolution, never stored.
@@ -380,6 +396,12 @@ export interface components {
 				image: string | null;
 			};
 			teams: components["schemas"]["TeamMembership"][];
+		};
+		/** @description An image to add to a mark. id: the client's, unique in the case (the case file names it `images/<id>.webp`). image: a WebP uploaded first with PUT …/blobs/{sha256}; the server takes the size it measured at upload. at: when it was added, believed only in a case that came in from a file, where the image is then stored as imported, naming no person; otherwise the server's time and the caller. */
+		NewMarkImage: {
+			id: components["schemas"]["Id"];
+			image: components["schemas"]["ImageRef"];
+			at?: components["schemas"]["Timestamp"];
 		};
 		/** @description One change to a case, a screenshot, a mark or a comment. A server that does not know an operation's type refuses the request; a client sends only the types it knows. */
 		Op:
@@ -464,6 +486,7 @@ export interface components {
 						resolution?: components["schemas"]["Resolution"] | null;
 						reopens?: components["schemas"]["Reopen"][];
 						findings?: components["schemas"]["Finding"][];
+						images?: components["schemas"]["NewMarkImage"][];
 						createdAt?: components["schemas"]["Timestamp"];
 					};
 					via?: components["schemas"]["AppRef"];
@@ -482,6 +505,11 @@ export interface components {
 					};
 					findings?: {
 						upsert?: components["schemas"]["Finding"][];
+						remove?: components["schemas"]["Id"][];
+					};
+					/** @description Images added to or removed from the mark: remove first (an id the mark does not have is ignored), then add (an id the mark has stays as it is stored; an id another mark of the case has refuses the operation with conflict; a picture not uploaded with blob_missing). An id twice in add, or in both add and remove, refuses it with invalid: an image is only added or removed, never changed. More than 6 after that refuses the operation with limit. Ignored by a server from before DEC-032. */
+					images?: {
+						add?: components["schemas"]["NewMarkImage"][];
 						remove?: components["schemas"]["Id"][];
 					};
 					via?: components["schemas"]["AppRef"];

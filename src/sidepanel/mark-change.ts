@@ -23,7 +23,7 @@ export type CaseChange = (
 
 /** The change a popover's command makes at `now`, or why it is refused. */
 export function markChange(
-	request: Exclude<MarkRequest, { type: "mark:picked" }>,
+	request: Exclude<MarkRequest, { type: "mark:picked" | "mark:add-image" }>,
 	now: string,
 ): { change: CaseChange } | { error: string } {
 	switch (request.type) {

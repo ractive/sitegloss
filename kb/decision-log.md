@@ -3206,3 +3206,176 @@ The end-to-end tests that drew a case of `/v1` on `/v2` now draw it on
   also once the page in front joins the case", the report's steps; the single-page
   app's next route), `test/pages.test.ts`, `test/view.test.ts`, `test/tools.test.ts`.
   The tests of the look-alike are gone.
+
+## DEC-058: Images a person adds to a mark: by id in the case, added in the side panel, always re-encoded (owner)
+
+2026-11-22. The owner: "When a mark is open, I'd like to have an 'add screenshot...'
+button. The dialog that opens needs to support a simple cmd-v to get the image in the
+clipboard, but obviously also have a classic 'Upload...' button and the possibility to
+drag/drop images onto it." For what Sitegloss cannot capture, such as a menu that closes as
+soon as a tool is picked. The owner settled the design's open questions the same day
+(`kb/design/mark-images.md`): the word is "image", the button "Add image…" ("screenshot"
+stays the case's own capture, which adds a page); at most 6 per mark, the longest side
+2048 px, input up to 30 MB; the side panel first; a share link shows them; adding from the
+web app comes later.
+
+- **The format.** `sitegloss/2` gains an optional `marks[].images`, a list of
+  `{ id, image, added: { at, user? } }` (`MarkImage`), absent when there are none, as
+  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 6 per mark, an
+  id unique in the whole case, the path exactly `images/<id>.webp`, and `added` as every
+  stamp. The import requires each file as it does a crop ("The export lacks
+  images/….webp."). The format is not released, so it keeps its name: a reader from before
+  builds its marks from the fields it knows and reads only the files it names, so it drops
+  the images and imports the rest.
+- **By the image's id, not the mark's number.** An image is only added or removed, never
+  changed, so its id (`newId("i")`) is the same here, on the wire and in a file, and needs
+  no mapping in the sync's book. A crop is named after its mark (`crops/m3.webp`) and moves
+  when the sync gives the mark another number; an image named by its own id never moves.
+- **What counts as a change.** `fixedOf` (the drawing the sync compares) leaves images
+  out: an added picture is not another drawing (the lesson of `ends`, DEC-047).
+  `markSignature` counts the images' ids where a mark has any, unlike the design, which
+  left them out: an image added by hand after an AI app's change must end the app's note,
+  or the sync would send the image as the app's doing. A mark without images keeps the
+  signature it had, so no note made before this ends.
+- **The side panel, not the page.** The page's own scripts see `paste` and `drop` on
+  `window` in their capture phase before the overlay's shadow root does, so a picture
+  pasted on the page (maybe of another app's window) would reach the site being marked; its
+  bytes would also cross from the content script to the panel as text, and the panel owns
+  the store (DEC-027). The panel's open mark gets "Add image…"; later the page's popover
+  only asks the panel to open the dialog for that mark. No picture touches the page. The
+  panel reads the clipboard only from a paste into its dialog, so no `clipboardRead`
+  permission and no install warning.
+- **Limits and re-encoding.** At most 6 per mark; input up to 30 MB and 64 million pixels,
+  the import's own limits (`MAX_IMAGE_BYTES`, `MAX_IMAGE_PIXELS`). The pixels are read from
+  the file's header before anything is decoded (`declaredSize`): a small file can declare a
+  picture whose decode alone takes gigabytes and ends the panel. So only formats whose
+  header says the size the decoder will use: PNG, JPEG and WebP, what a screenshot is. No
+  GIF (its decoder grows to the first frame's bounds, which its screen size does not
+  bound), no AVIF (its size sits deep in the file), no SVG. A JPEG with a stray `FF 00` or
+  a marker no JPEG has is refused, so the reader walks the segments as the decoder does.
+  An animated picture (APNG, animated WebP) keeps its first frame, and its preview says so. Every picture is re-encoded in the panel
+  (`toAddedImage`): WebP at the crops' quality 0.85, the longest side at most 2048 px
+  (`ADDED_MAX_SIDE`), turned as its EXIF orientation says. 2048 px stays readable enlarged
+  and mostly fits what an AI app is sent. The canvas writes no EXIF, XMP or GPS, so the
+  re-encoding is what removes a photo's camera, place and time; no file name is kept; and
+  the server takes WebP only.
+- **case.md**: after the mark's crop, `- Images added: 2`, then each image as
+  `![Mark 3, added image 1](images/<id>.webp)`, a link only where the path is the one its
+  id gives.
+- **From a file**: an imported image keeps the file's time, is marked `imported` and names
+  nobody (as the server stores it); the panel says "from an imported file".
+- **The panel**: the open mark's pictures are a grid of equal tiles with the mark's own
+  screenshot first ("Screenshot", no Remove, refused by `withoutImage` by any name), then
+  the added images ("Image 1"…, numbered without the screenshot), then "+ Add another
+  image…". A closed mark says "+2 images". The page's popover only asks the panel to open
+  the dialog (`mark:add-image`).
+- **Sync** (the server's DEC-032): an image goes with a new mark (`mark.create`'s `images`)
+  or as `mark.patch`'s `images.add`, removed by id in `images.remove`; its picture is
+  uploaded first, as a crop's, and the blob route takes `mark:update` too. Merged by id as
+  findings: the server's order, removed here stays away, added here stays, gone there goes.
+  A server mark without `images` is "not told": nothing here is removed, and the shadow
+  keeps what it knew. An added image whose picture does not come is left out of that read
+  and said; nothing here is removed for it.
+- **Never deleted unsent, never past six.** An image this device has not sent (not in the
+  shadow) is never removed by a merge. `Mark.images` holds six at most, everywhere: here, in
+  a file, in an operation. What does not fit once the team's images come back is held back
+  in `Mark.heldImages`, this browser's own like `via` (left out of the file, the Markdown,
+  the AI tools and the wire), its file kept, its tile "Not sent: the mark already holds six
+  images" with its Remove. When a place frees up, here or at the server, the oldest held
+  image moves into `images` and is sent as an ordinary add. So no patch carries an add that
+  cannot fit, and a held image never holds back the mark's other changes (a first answer
+  had it in the patch, refused whole with `limit` at every edit). A refusal for the
+  storage or the role leaves the image out of the patch, said on its tile ("Not sent:" and
+  why, with "Try again"); a role is looked at again at every run. Only an image the server
+  took, or that the person removes, leaves the device.
+- **From a file, again.** The panel re-encodes the images of an imported case as the
+  dialog does, so a file's metadata or animation is not stored or synced. One case's file
+  may have as many entries as the format allows (`MAX_CASE_ENTRIES`).
+- **Keyboard.** A Delete or Remove clicked once redraws the list; the focus stays on the
+  armed control (mark Delete, a finding's Delete, an image's Remove), and moves to the
+  next picture when an image goes.
+- **AI tools**: `get_case` lists a mark's images (path, when, who) and sends them after
+  every crop within the size budget; `get_image` reads `images/<id>.webp`.
+- Tests: `test/case.test.ts` ("images added to a mark"), `test/image-size.test.ts` (the headers), `test/export.test.ts` (round trip,
+  a missing file refused), `test/markdown.test.ts`, `test/add-images.test.ts` (the
+  dialog's rules), `test/view.test.ts` (the grid), `test/cloud-wire.test.ts`,
+  `test/cloud.test.ts` (two devices), `test/tools.test.ts`, `test/review.test.ts`,
+  `test/cloud-server.test.ts` (a real server), `test/e2e/images.test.ts` (full set: a
+  pasted PNG kept as WebP of at most 2048 px).
+
+## DEC-059: Asked once whether to keep AI access on; never on by default (owner)
+
+2026-11-22. AI access is a session: after a reload or an update of Sitegloss, an idle or
+expired session, or a browser start it is off unless "Keep AI access on" is ticked. The
+owner was surprised that it had gone off, and asked to move the checkbox next to the AI
+access switch and to ask about it when AI access is first turned on.
+
+- **Where.** "Keep AI access on" and its sentence sit right under the AI access switch and
+  its state line in the AI app card: it decides whether that switch comes back on by itself.
+- **Asked once.** When the person turns AI access on (the card's switch, its "Turn on AI
+  access" button, the top bar's pill), keep-on is not ticked, this browser never answered,
+  and the connection is not taken over by another browser or program, the card asks under
+  the checkbox: "Keep AI access on after a reload, an update of Sitegloss or a restart of
+  the browser? Without it, you turn AI access on again each time." with "Keep it on" and
+  "Not now" (`asksKeepOn` in `src/sidepanel/card.ts`). Not when AI access comes on by
+  itself. It shows only once AI access is really on after that action, and goes whenever
+  it is not on (a refused consent, an unreachable relay, turned off, a session that ended;
+  `nextKeepOnAsk`): unanswered, it comes again the next time. A note in the card, a status
+  region, not a dialog: pairing goes on, no focus is taken, nothing scrolls; while it
+  shows, the sentence under the checkbox, which says the same, is hidden, so the address
+  and the code stay in the first view of a narrow panel. After an answer, or when it goes
+  while one of its buttons has the focus, the focus goes to the switch. Neither button is
+  amber (DEC-024).
+- **One answer.** "Keep it on" is the same as ticking the checkbox (the same handler,
+  Firefox's consent step included). The answer is kept in this browser's own storage (the
+  panel's `localStorage`, not a case, not synced) when it holds: "Not now" and unticking
+  by hand at once; "Keep it on" and ticking by hand once keep-on is really on
+  (`keepOnChosen`), so a refused consent leaves the question to come again. An answer in
+  one panel takes the question away in another (the `storage` event). It does not come
+  again.
+- **Not on by default.** AI access left on means every paired AI app can reach Sitegloss
+  whenever the browser runs, with the person's cases and the pages in front. That stays
+  the person's choice, made once and visibly, and always undone by the same checkbox.
+- Tests: `test/card.test.ts` (the table: each way AI access comes on, keep-on ticked or
+  not, answered or not, taken over; the question's course; when an answer is kept),
+  `test/view.test.ts` (the question's markup, its two answers, the focus when it goes).
+
+## DEC-060: Nothing jumps; pictures at their size in a tab of the extension's own; placeholders only as hints (owner)
+
+2026-11-22. The owner, on a case of 25 marks: Verify "lets the content jump around", the
+screenshots cannot be seen larger than the panel, and the placeholders "almost look like
+there's real text in it". The rules of the redesign (rules 5, 6 and 7, shared with the web
+app) apply.
+
+- **Nothing jumps.** Measured in the real panel before the change, a Verify moved the acted
+  row 190 px down at 340 px wide (134 px at 460); so did Resolve's and Reopen's Save and the
+  second click of Delete mark (95 to 190 px), and the focus fell to the page's start. The
+  open case's mark list is drawn anew for every change, its pictures come after it, and the
+  browser's own scroll anchoring cannot hold a row that is replaced. So the panel holds it
+  (`src/sidepanel/scroll-anchor.ts`): a click on a mark's control or a filter chip notes where the
+  row (or chip) was on screen; for 2.5 s, every frame, the page is scrolled by however far
+  it moved, and when the row went (deleted, or left out by a filter) the mark that takes
+  its place is held there instead. The person's own scroll (wheel, touch, a key, a press
+  elsewhere) ends it. The row may still change below its top (two buttons fewer). The focus
+  goes to the same row's next control that shows (its head when none does); the row's head
+  is found again after a second redraw. After: 0 px for each of these at 340 and 460 px.
+- **Pictures at their size.** "Open larger" on a picture shown large opens the viewer, an
+  extension page (`viewer/index.html`) in a new tab: the picture fitted to the window
+  (never larger than it is) or at its actual size, its caption (which mark of which case;
+  for an added image who added it and when), the mark's other pictures with Previous and
+  Next, ← → and F from the keyboard. It reads the case and its pictures from the extension's
+  own store, so it works for a case that is not synced, and asks nothing of a server. Not in
+  the web page: a picture of one site never goes through another site's page (as the add
+  dialog, DEC-058). An extension page needs no permission and no `web_accessible_resources`
+  (it is opened by the extension itself); the store build only gains the page's files.
+- **Placeholders.** A field with a label that shows gets no placeholder that repeats it;
+  a comment box gets none. A hint worth keeping becomes help under the label (the summary,
+  a reopen's note), a note without a label gets one that shows (a resolution's note). What
+  stays is only an address's form (`https://…`, a case's link, another server), in
+  `--placeholder`: `#6e7583` on the white field (4.63:1), `#7f8797` on the dark one
+  (4.62:1), clearly lighter than typed text (16.07:1 and 14.37:1); the page's dialogs, white
+  in both schemes, use the same light value. `test/contrast.test.ts` holds both pairs.
+- Tests: `test/scroll-anchor.test.ts` (which element is held and how far), `test/viewer.test.ts`
+  (the pictures, their order and captions, the address), `test/view.test.ts` (the fields'
+  help and labels, no placeholder on the comment box, "Open larger"), `test/build.test.ts`
+  (the viewer in both builds), `test/contrast.test.ts`.

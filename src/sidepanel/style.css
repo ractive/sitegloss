@@ -13,6 +13,8 @@
 	/* Text; meta and placeholders */
 	--ink: #1b2130;
 	--ink-2: #535c6e;
+	/* A placeholder: clearly lighter than typed text, still 4.5:1 on a field (DEC-060) */
+	--placeholder: #6e7583;
 	/* Lines: separators (decoration only); boundaries of buttons, fields, chips */
 	--rule: #dedad0;
 	--edge: #7b8291;
@@ -72,6 +74,7 @@
 		--wash: #242a37;
 		--ink: #eceef3;
 		--ink-2: #a6aebd;
+		--placeholder: #7f8797;
 		--rule: #2b313d;
 		--edge: #737c8e;
 		--accent-hover: #ffc233;
@@ -326,8 +329,20 @@ textarea {
 }
 
 ::placeholder {
-	color: var(--ink-2);
+	color: var(--placeholder);
 	opacity: 1;
+}
+
+/* Help under a field's label: what a placeholder must not carry (DEC-060). */
+.field-help {
+	margin: 0 0 var(--s1);
+}
+
+.mark-form .note-label {
+	display: block;
+	margin: var(--s2) 0 var(--s1);
+	color: var(--ink-2);
+	font-size: 12px;
 }
 
 textarea + .row {
@@ -758,6 +773,116 @@ body:has(#settings:not([hidden])) .ai-allow {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* --- adding images to a mark: a modal dialog over the panel (add-images.ts, DEC-058) */
+
+.add-images {
+	width: auto;
+	max-width: none;
+	max-height: calc(100% - 2 * var(--s3));
+	margin: var(--s3);
+	padding: var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
+	color: inherit;
+	overflow: auto;
+}
+
+.add-images[open] {
+	display: grid;
+	gap: var(--s3);
+}
+
+.add-images::backdrop {
+	background: var(--scrim, rgb(27 33 48 / 0.4));
+}
+
+.add-images h2 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.add-images p {
+	margin: 0;
+}
+
+/* The screenshot the mark has already, small, beside what it is. */
+.add-images-head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--s3);
+}
+
+.add-images-head img {
+	flex: none;
+	max-width: 96px;
+	max-height: 64px;
+	object-fit: contain;
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+}
+
+/* Where a picture is pasted or dropped; its button is the way without either. */
+.add-images-drop {
+	display: grid;
+	gap: var(--s2);
+	justify-items: start;
+	padding: var(--s3);
+	border: 1px dashed var(--edge);
+	border-radius: var(--r-control);
+	background: var(--wash);
+}
+
+.add-images-drop .hint {
+	color: var(--ink-2);
+	font-size: 12px;
+}
+
+.add-images-list {
+	display: grid;
+	gap: var(--s2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.add-images-list:empty,
+.add-images-status:empty {
+	display: none;
+}
+
+.add-images-list li {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+}
+
+.add-images-list img {
+	flex: none;
+	max-width: 72px;
+	max-height: 48px;
+	object-fit: contain;
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+}
+
+.add-images-list span {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+}
+
+.add-images-status {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.add-images-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--s2);
 }
 
 /* --- an AI app's questions: a modal dialog over the panel (ai.ts, DEC-037) ---- */
@@ -1448,22 +1573,59 @@ ul.cases [data-case]:hover:not(:disabled) {
 	font: 12px / 19px var(--font-mono);
 }
 
+/*
+ * The count and its word: one control, which sets the list's page filter
+ * (plain text for a page without marks). Room for three digits, the word
+ * after them: a button is no subgrid.
+ */
+.case-pages .page-count-box {
+	grid-row: 1;
+	grid-column: 3 / 5;
+	display: grid;
+	grid-template-columns: 3ch auto;
+	justify-content: start;
+	color: var(--ink-2);
+}
+
+.case-pages .page-count-button {
+	min-height: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--r-pill);
+	background: none;
+	color: var(--link);
+	font: inherit;
+}
+
+.case-pages .page-count-button:hover:not(:disabled) {
+	background: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* The page the list is filtered by: its count on a wash, apart from the bar. */
+.case-pages .page-count-button[aria-pressed="true"],
+.case-pages .page-count-button[aria-pressed="true"]:hover:not(:disabled) {
+	background: var(--wash);
+	box-shadow: 0 0 0 3px var(--wash);
+	color: var(--ink);
+	font-weight: 700;
+}
+
 .case-pages .page-count,
 .case-pages .page-unit {
-	grid-row: 1;
-	color: var(--ink-2);
 	white-space: nowrap;
 }
 
 .case-pages .page-count {
-	grid-column: 3;
+	grid-column: 1;
 	text-align: end;
 	font-variant-numeric: tabular-nums;
 }
 
 .case-pages .page-unit {
-	grid-column: 4;
-	padding-inline-start: 0.25em;
+	grid-column: 2;
+	white-space: pre;
 }
 
 /* Whether the case is the team's, and "Share with team" (DEC-039). */
@@ -1556,8 +1718,37 @@ ul.cases [data-case]:hover:not(:disabled) {
 
 /* Under the marks' heading: the chips filter the list below. */
 .marks > .case-status {
+	display: grid;
+	gap: var(--s2);
 	padding: var(--s3) var(--s4);
 	border-bottom: 1px solid var(--rule);
+}
+
+/*
+ * The page filter, under the status chips: two chips for the usual choices,
+ * a menu for any page, as tall as a chip and taking the rest of the row.
+ */
+.page-filter {
+	align-items: center;
+}
+
+.page-filter select {
+	flex: 1 1 9em;
+	min-width: 0;
+	max-width: 100%;
+	min-height: 24px;
+	padding: 0 var(--s2);
+	border: 1.5px solid transparent;
+	border-radius: var(--r-pill);
+	background: var(--wash);
+	color: var(--ink-2);
+	font: 600 12px / 16px var(--font);
+	text-overflow: ellipsis;
+}
+
+.page-filter select[data-on] {
+	border-color: var(--edge);
+	color: var(--ink);
 }
 
 .chips {
@@ -1780,6 +1971,11 @@ ul.cases [data-case]:hover:not(:disabled) {
 }
 
 .marks > .empty {
+	padding: var(--s3) var(--s4);
+}
+
+/* "Add marks" under the last mark: inside the section's padding, as the rest. */
+.marks > .row {
 	padding: var(--s3) var(--s4);
 }
 
@@ -2051,9 +2247,28 @@ ol.marks {
 	font-weight: 600;
 }
 
-/* Where the mark is on the tab in front; the pin's fill alone is not enough. */
+/* Where the mark is on the tab in front (or, for a mark of another page, that
+   page as a link); the pin's fill alone is not enough. */
 .mark-sub .state {
 	color: var(--ink-2);
+}
+
+/* A mark of another page: its page by its title as a link (the link's own
+   colour, not the state's grey; underlined, because here it stands among
+   plain words), cut where the row ends. */
+.mark-sub button.elsewhere {
+	/* A word in the row, not a control of its own height: the row keeps its line. */
+	min-height: 0;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--link);
+	font: inherit;
+	text-align: start;
+	text-decoration: underline;
+	text-underline-offset: 2px;
 }
 
 .mark[data-colour="lost"] .mark-sub .state {
@@ -2132,6 +2347,174 @@ button.crop[aria-pressed="true"] img {
 
 button.crop:hover img {
 	border-color: var(--ink);
+}
+
+/*
+ * A mark's pictures as a grid of equal tiles (DEC-058): its own screenshot
+ * first, then the images a person added, then a tile to add another. Each
+ * picture is contained in its tile, never cropped; one shown large takes the
+ * grid's whole width at its own shape, its caption under it.
+ */
+.pictures {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--s3) var(--s2);
+	align-items: start;
+}
+
+@media (max-width: 320px) {
+	.pictures {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.picture {
+	position: relative;
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	margin: 0;
+}
+
+.picture:has(> .tile[aria-pressed="true"]) {
+	grid-column: 1 / -1;
+}
+
+.picture figcaption {
+	overflow: hidden;
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 16px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Every tile the same box, the picture contained in it on the panel's paper. */
+.tile {
+	display: grid;
+	place-items: center;
+	width: 100%;
+	min-height: 0;
+	aspect-ratio: 4 / 3;
+	padding: 2px;
+	overflow: hidden;
+	border: 1px solid var(--rule);
+	border-radius: var(--r-control);
+	background: var(--paper);
+}
+
+button.tile {
+	cursor: zoom-in;
+}
+
+button.tile:hover:not(:disabled) {
+	border-color: var(--edge);
+	background: var(--paper);
+}
+
+.mark .tile img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	border: 0;
+	border-radius: 0;
+}
+
+/* Shown large: the picture at its own shape, as wide as the grid. */
+button.tile[aria-pressed="true"] {
+	aspect-ratio: auto;
+	cursor: zoom-out;
+}
+
+.mark button.tile[aria-pressed="true"] img {
+	width: auto;
+	height: auto;
+	max-width: 100%;
+}
+
+/* A picture whose file is not here: said, in the place it would take. */
+.tile-missing {
+	padding: var(--s1);
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 16px;
+	text-align: center;
+}
+
+/* Remove, at the tile's corner; clicked once it says so in words. */
+.tile-remove {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	min-height: 0;
+	padding: 0 6px;
+	border-color: var(--edge);
+	border-radius: var(--r-pill);
+	background: var(--sheet);
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.tile-remove:hover:not(:disabled) {
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.tile-remove[data-armed] {
+	left: 4px;
+	border-color: var(--danger);
+	border-radius: var(--r-control);
+	background: var(--danger);
+	color: var(--on-danger);
+	font-size: 11px;
+	line-height: 14px;
+}
+
+.tile-remove[data-armed]:hover:not(:disabled) {
+	background: var(--danger);
+	color: var(--on-danger);
+}
+
+/* The way to add one: a dashed tile of the same size; its words wrap inside it. */
+button.tile-add {
+	display: block;
+	align-content: center;
+	padding: 2px var(--s1);
+	border: 1px dashed var(--edge);
+	background: none;
+	color: var(--ink);
+	font-size: 11px;
+	line-height: 14px;
+	text-align: center;
+	cursor: pointer;
+}
+
+button.tile-add:hover:not(:disabled) {
+	border-color: var(--ink);
+	background: var(--wash);
+}
+
+.tile-add .plus {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+/* An image added here that the team does not have: said in words under it. */
+.tile-note {
+	margin: 0;
+	color: var(--warn);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.pictures-box {
+	display: grid;
+	gap: var(--s1);
+}
+
+.pictures-full {
+	color: var(--ink-2);
+	font-size: 12px;
 }
 
 /*
@@ -2382,6 +2765,24 @@ button.crop:hover img {
 .ai-card > .row,
 .ai-card > p {
 	margin: 0 0 var(--s3);
+}
+
+/*
+ * Asked once under Keep AI access on (DEC-059): a note on the card, not a
+ * dialog. Empty, it takes no room; it stays in the page, a status region.
+ */
+.keep-on-ask:not(:empty) {
+	display: grid;
+	gap: var(--s2);
+	margin: var(--s2) 0 var(--s3);
+	padding: var(--s3);
+	border: 1px solid var(--rule);
+	border-radius: var(--r-control);
+	background: var(--sheet);
+}
+
+.keep-on-ask p {
+	margin: 0;
 }
 
 #pair-replaced > :last-child {
@@ -2698,4 +3099,18 @@ ol.comments {
 .closed-cases > summary {
 	cursor: pointer;
 	font-weight: 600;
+}
+
+/*
+ * "Open larger" on a picture shown large: the viewer, a tab of its own
+ * (DEC-060). Only while the picture is large; small, a click shows it so.
+ */
+.picture .open-larger {
+	display: none;
+	justify-self: start;
+	margin-top: var(--s1);
+}
+
+.picture:has(> .tile[aria-pressed="true"]) .open-larger {
+	display: inline-flex;
 }

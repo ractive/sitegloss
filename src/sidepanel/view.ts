@@ -16,6 +16,7 @@ import {
 	appLabel,
 	byline,
 	type Case,
+	type CasePage,
 	caseCounts,
 	casePages,
 	cleanTitle,
@@ -24,6 +25,7 @@ import {
 	GROUP_OF,
 	isOfferedOn,
 	MAX_COMMENT,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	MAX_TITLE,
 	MAX_VERDICT,
@@ -57,6 +59,8 @@ import {
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
+import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
+import { holdClickedInPlace } from "./scroll-anchor.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
 import {
@@ -90,18 +94,26 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	typeMark(change: { kind?: ResolveChoice; text?: string }): void;
 	cancelMarkEdit(): void;
 	resolveMark(c: Case, a: Mark, kind: ResolveChoice, note: string): void;
-	/** "Verified" on a fixed mark: the fix holds (DEC-023). */
+	/** "Verify" on a fixed mark: the fix holds (DEC-023). */
 	verifyMark(c: Case, a: Mark): void;
 	/** "Reopen" in its form: the note says what is still wrong. */
 	reopenMark(c: Case, a: Mark, note: string): void;
 	/** A status chip: show only those marks; `undefined`: all of them. */
 	filterMarks(caseId: string, group: StatusGroup | undefined): void;
+	/** The page filter: this page, one page of the case; `undefined`: all pages. */
+	filterPage(caseId: string, choice: PageChoice | undefined): void;
 	saveComment(c: Case, a: Mark, text: string): void;
 	deleteMark(c: Case, a: Mark): void;
+	/** "Add another image…": the dialog for the mark's added images (DEC-058). */
+	addImages(c: Case, a: Mark): void;
+	/** An added image's Remove: the first click asks, the second removes. */
+	deleteImage(c: Case, a: Mark, imageId: string): void;
 	/** An AI app's finding on a mark: the first click asks, the second deletes. */
 	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
+	/** A mark's picture in the viewer, a tab of the extension's own (DEC-060). */
+	openPicture(c: Case, a: Mark, pictureId: string): void;
 	/**
 	 * A mark's link (DEC-050): open where it was made (`made`), or the same
 	 * path and query on the host in front (`here`), in the tab in front, and
@@ -148,6 +160,8 @@ const bar = byId<HTMLElement>("bar");
 const back = byId<HTMLButtonElement>("back");
 const home = byId<HTMLElement>("home");
 const caseView = byId<HTMLElement>("case-view");
+// What a click acts on stays where it was on screen (DEC-060).
+const releaseHeld = holdClickedInPlace(caseView);
 const settingsView = byId<HTMLElement>("settings");
 const pageText = byId<HTMLParagraphElement>("page");
 const hint = byId<HTMLParagraphElement>("hint");
@@ -995,21 +1009,31 @@ function shownText(
 const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 	m !== undefined && (m.candidates.length > 0 || m.status === "no-element");
 
-/** Crops shown large (`caseId:markId`); the rest are small. */
+/**
+ * Pictures shown large (`caseId:markId` for the crop, `caseId:markId:imageId`
+ * for an added image); the rest are small.
+ */
 const zoomed = new Set<string>();
 
-/** A mark's crop, small at first: a click shows it large, another small again. */
-function cropView(caseId: string, a: Mark, src: string): HTMLElement {
-	const key = `${caseId}:${a.id}`;
+/**
+ * A picture of a mark as a tile, small at first: a click shows it large
+ * across the row (as the crop was shown before the row), another small again.
+ */
+function pictureTile(
+	key: string,
+	src: string,
+	label: string,
+	title: string,
+): HTMLElement {
 	const button: HTMLButtonElement = h(
 		"button",
 		{
 			type: "button",
-			class: "crop",
+			class: "tile",
 			"data-action": "zoom",
 			"aria-pressed": String(zoomed.has(key)),
-			"aria-label": `Mark ${a.number}, shown large`,
-			title: "Show the crop larger, or small again",
+			"aria-label": label,
+			title,
 			onclick: () => {
 				const large = !zoomed.delete(key);
 				if (large) zoomed.add(key);
@@ -1019,6 +1043,199 @@ function cropView(caseId: string, a: Mark, src: string): HTMLElement {
 		h("img", { src, alt: "" }),
 	);
 	return button;
+}
+
+/**
+ * On a picture shown large: the same picture at its size, in a tab of the
+ * extension's own (DEC-060), with the mark's other pictures; it never goes
+ * through the web page being marked.
+ */
+function openLarger(
+	c: Case,
+	a: Mark,
+	pictureId: string,
+	what: string,
+	actions: Actions,
+): HTMLButtonElement {
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "small open-larger",
+			"data-action": "open-larger",
+			"aria-label": `Open ${what} larger, in a new tab`,
+			title:
+				"Open it in a new tab, at its size, with the mark's other pictures",
+			onclick: () => actions.openPicture(c, a, pictureId),
+		},
+		"Open larger",
+	);
+}
+
+/** "22 Nov" in the browser's language. */
+const shortDate = (iso: string) => {
+	const date = new Date(iso);
+	return Number.isNaN(date.getTime())
+		? iso
+		: date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+};
+
+/**
+ * A mark's pictures as a grid of equal tiles (DEC-058, the owner's rule): its
+ * own screenshot first, always, so nobody thinks a mark needs one added; then
+ * the images a person added, oldest first, each with a Remove at its corner;
+ * last a tile to add another, gone once the mark holds the most. Numbers
+ * count the added images only. `ready`: the images were read for this
+ * version of the case, so one without a URL is missing, not on its way.
+ */
+function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
+	const added = a.images ?? [];
+	// Added here, and no place for them on the team's mark (DEC-058).
+	const held = a.heldImages ?? [];
+	const missing = (text: string) =>
+		h("div", { class: "tile tile-missing" }, x.ready ? text : "");
+	const shot = x.urls?.get(a.crop);
+	const grid = h(
+		"div",
+		{ class: "pictures" },
+		h(
+			"figure",
+			{ class: "picture", "data-picture": "screenshot" },
+			shot
+				? pictureTile(
+						`${c.id}:${a.id}`,
+						shot,
+						`Screenshot of mark ${a.number}, taken by Sitegloss`,
+						"Taken by Sitegloss when the mark was made. It stays with the mark.",
+					)
+				: missing("The screenshot is missing."),
+			shot
+				? openLarger(
+						c,
+						a,
+						"screenshot",
+						`the screenshot of mark ${a.number}`,
+						x.actions,
+					)
+				: null,
+			h("figcaption", {}, "Screenshot"),
+		),
+		...[...added, ...held].map((image, i) => {
+			const n = i + 1;
+			const waiting = i >= added.length;
+			// From a file, nobody is named: who added it is only what the file says.
+			const who = image.added.imported
+				? undefined
+				: byline(image.added.user, image.added.app);
+			const whence = image.added.imported
+				? ", from an imported file"
+				: who
+					? `, added by ${who}`
+					: "";
+			const url = x.urls?.get(image.image);
+			const armed = x.imageArmed === image.id;
+			return h(
+				"figure",
+				{ class: "picture", "data-picture": image.id },
+				url
+					? pictureTile(
+							`${c.id}:${a.id}:${image.id}`,
+							url,
+							waiting
+								? `Image ${n} on mark ${a.number}, not sent: the mark already holds ${MAX_MARK_IMAGES} images`
+								: `Image ${n} of ${added.length} on mark ${a.number}${whence}`,
+							image.added.imported
+								? `Added ${shortDate(image.added.at)}, from an imported file. Click to show it larger, or small again`
+								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
+						)
+					: missing("The image is missing."),
+				url
+					? openLarger(
+							c,
+							a,
+							image.id,
+							`image ${n} of mark ${a.number}`,
+							x.actions,
+						)
+					: null,
+				h(
+					"button",
+					{
+						type: "button",
+						class: "tile-remove",
+						"data-action": "remove-image",
+						"aria-label": armed
+							? `Really remove image ${n} from mark ${a.number}?`
+							: `Remove image ${n} from mark ${a.number}`,
+						title: armed
+							? "Click again to remove it"
+							: "Remove this image from the mark (click twice)",
+						...(armed ? { "data-armed": true } : {}),
+						onclick: () => x.actions.deleteImage(c, a, image.id),
+					},
+					armed ? "Really remove?" : h("span", { "aria-hidden": "true" }, "×"),
+				),
+				h("figcaption", {}, `Image ${n}`),
+				waiting
+					? h(
+							"p",
+							{ class: "tile-note" },
+							"Not sent: the mark already holds six images. It goes when a place is free.",
+						)
+					: x.notSent?.[image.id] === undefined
+						? null
+						: h(
+								"p",
+								{ class: "tile-note" },
+								`Not sent: ${x.notSent[image.id]?.replace(/[.\s]+$/, "")}. `,
+								// Its refusal may have gone (room in storage, a role).
+								h(
+									"button",
+									{
+										type: "button",
+										class: "link",
+										"data-action": "retry-image",
+										onclick: () => x.actions.cloudSyncNow(),
+									},
+									"Try again",
+								),
+							),
+			);
+		}),
+		added.length < MAX_MARK_IMAGES
+			? h(
+					"button",
+					{
+						type: "button",
+						class: "tile tile-add",
+						"data-action": "add-image",
+						title:
+							"Add a picture of what the screenshot does not show, for example a menu that closes",
+						onclick: () => x.actions.addImages(c, a),
+					},
+					h("span", { class: "plus", "aria-hidden": "true" }, "+ "),
+					"Add another image…",
+				)
+			: null,
+	);
+	return h(
+		"div",
+		{
+			class: "pictures-box",
+			role: "group",
+			"aria-label": `Pictures of mark ${a.number}`,
+		},
+		grid,
+		added.length >= MAX_MARK_IMAGES
+			? h(
+					"p",
+					{ class: "meta pictures-full" },
+					held.length > 0
+						? `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images; ${held.length === 1 ? "1 more waits" : `${held.length} more wait`} for a place`
+						: `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images`,
+				)
+			: null,
+	);
 }
 
 function matchView(
@@ -1185,8 +1402,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const verdict: HTMLTextAreaElement = h("textarea", {
 		id: "verdict",
 		rows: "2",
-		placeholder:
-			"What should change, as agreed. Whoever loads this case sees it first.",
+		// Help under the label, not a placeholder that looks like text (DEC-060).
+		"aria-describedby": "verdict-help",
 		maxlength: String(MAX_VERDICT),
 		"data-case": c.id,
 		oninput: () => actions.typeVerdict(c.id, verdict.value),
@@ -1272,7 +1489,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		id: "case-link-field",
 		"aria-label": "Link of this case",
 		"aria-describedby": "case-link-hint",
-		placeholder: "https://… a ticket, a design, a pull request",
+		// Only the address's form: what a link is for is the button's title.
+		placeholder: "https://…",
 		autocomplete: "off",
 		spellcheck: "false",
 		oninput: () => actions.typeLink(linkField.value),
@@ -1575,6 +1793,11 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				verdictStatus,
 				created.saveVerdict,
 			),
+			h(
+				"p",
+				{ class: "meta field-help", id: "verdict-help" },
+				"What should change, as agreed. Whoever loads this case sees it first.",
+			),
 			verdict,
 			created.summaryBy,
 		),
@@ -1757,6 +1980,8 @@ function statusBlock(
 	c: Case,
 	filter: StatusGroup | undefined,
 	actions: Actions,
+	/** The page the list is filtered by: the counts are its marks'. */
+	page?: CasePage,
 ): HTMLElement | null {
 	if (c.marks.length === 0) return null;
 	const n = caseCounts(c);
@@ -1793,7 +2018,9 @@ function statusBlock(
 					"p",
 					{ class: "meta all-done" },
 					h("span", { class: "sign", "aria-hidden": "true" }, "✓"),
-					" All marks are verified or dismissed.",
+					page === undefined
+						? " All marks are verified or dismissed."
+						: ` All marks on ${pageLabel(page)} are verified or dismissed.`,
 				)
 			: null,
 	);
@@ -1923,7 +2150,7 @@ const REOPEN_TITLE =
 
 const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton(
-		"Verified",
+		"Verify",
 		"verify",
 		VERIFIED_TITLE,
 		() => actions.verifyMark(c, a),
@@ -1934,6 +2161,12 @@ const reopenButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton("Reopen…", "reopen", REOPEN_TITLE, () =>
 		actions.editMark(c, a, "reopen"),
 	);
+
+/** `, and its 2 added images`; nothing for none. */
+const imagesNote = (a: Mark) => {
+	const n = a.images?.length ?? 0;
+	return n === 0 ? "" : ` and its ${n} added image${n === 1 ? "" : "s"}`;
+};
 
 /** The buttons a mark's status calls for, the strong one first (DEC-023). */
 function markActions(
@@ -1976,7 +2209,7 @@ function markActions(
 				"data-mark-action": "delete",
 				title: armed
 					? "Click again to delete this mark"
-					: "Delete this mark and its crop (click twice); its number is not given again",
+					: `Delete this mark and its screenshot${imagesNote(a)} (click twice); its number is not given again`,
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
@@ -2023,12 +2256,12 @@ function resolveForm(
 	actions: Actions,
 ): HTMLElement {
 	const name = `resolution-${a.id}`;
+	const noteId = `resolution-note-${a.id}`;
 	const noteField: HTMLInputElement = h("input", {
 		type: "text",
 		class: "note",
-		placeholder: "Note (optional): what was done, or why",
+		id: noteId,
 		maxlength: String(MAX_COMMENT),
-		"aria-label": `Note for mark ${a.number}`,
 		value: note,
 		oninput: () => actions.typeMark({ text: noteField.value }),
 		onkeydown: (e) => {
@@ -2062,6 +2295,12 @@ function resolveForm(
 					CHOICE_LABEL[k],
 				),
 			),
+		),
+		// A label that shows, not a placeholder in its place (DEC-060).
+		h(
+			"label",
+			{ class: "note-label", for: noteId },
+			"Note (optional): what was done, or why",
 		),
 		noteField,
 		h(
@@ -2168,8 +2407,8 @@ function reopenForm(
 		"textarea",
 		{
 			maxlength: String(MAX_REOPEN_NOTE),
-			placeholder: "What is still wrong? The developer reads this first.",
 			"aria-label": `What is still wrong with mark ${a.number}`,
+			"aria-describedby": `reopen-help-${a.id}`,
 			oninput: () => {
 				// No redraw while typing: the button follows the text itself.
 				done.disabled = empty(field.value);
@@ -2190,7 +2429,17 @@ function reopenForm(
 	return h(
 		"div",
 		{ class: "mark-form", "data-form": "reopen" },
-		h("fieldset", {}, h("legend", {}, `Reopen mark ${a.number}`), field),
+		h(
+			"fieldset",
+			{},
+			h("legend", {}, `Reopen mark ${a.number}`),
+			h(
+				"p",
+				{ class: "meta field-help", id: `reopen-help-${a.id}` },
+				"What is still wrong? The developer reads this first.",
+			),
+			field,
+		),
 		h(
 			"div",
 			{ class: "row" },
@@ -2208,6 +2457,141 @@ function reopenForm(
 	);
 }
 
+/** A page as the page filter names it: its title, else its address. */
+const pageLabel = (page: CasePage) => page.title.trim() || shortUrl(page.url);
+
+/**
+ * A page's mark count in the case's list of pages: it sets the list's page
+ * filter to that page, and another click sets it back to all pages. Its name
+ * starts with what it shows and stays; `aria-pressed` says whether it is on.
+ * A page without marks has its count as plain text: nothing to show.
+ */
+function pageCount(
+	c: Case,
+	page: CasePage,
+	marks: number,
+	byPage: PageFilter,
+	actions: Actions,
+): HTMLElement {
+	const count = [
+		h("span", { class: "page-count" }, String(marks)),
+		h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+	];
+	if (marks === 0) return h("span", { class: "page-count-box" }, ...count);
+	const on = byPage.page?.url === page.url;
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "page-count-box page-count-button",
+			"aria-pressed": String(on),
+			"aria-label": `${marks} mark${marks === 1 ? "" : "s"} on ${pageLabel(page)}: show only these`,
+			onclick: () =>
+				actions.filterPage(c.id, on ? undefined : { page: pageKey(page.url) }),
+		},
+		...count,
+	);
+}
+
+/**
+ * The list's page filter, beside the status chips, for a case of several
+ * pages: "All pages" and "This page" as chips (this page while the tab shows
+ * one of the case's), and any page of the case from a menu, in the order of
+ * the case's pages, each with its mark count.
+ */
+function pageChooser(
+	c: Case,
+	byPage: PageFilter,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement | null {
+	const pages = casePages(c);
+	if (pages.length < 2 || c.marks.length === 0) return null;
+	const counts = marksByPage(c);
+	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
+	const front = tabUrl ? pageInFront(c, tabUrl) : undefined;
+	const here = byPage.choice === "here";
+	const picked = byPage.choice !== undefined && !here ? byPage.page : undefined;
+	const chip = (
+		label: string,
+		count: number | undefined,
+		pressed: boolean,
+		choice: PageChoice | undefined,
+		extra: Record<string, string>,
+	) =>
+		h(
+			"button",
+			{
+				type: "button",
+				class: "chip",
+				"aria-pressed": String(pressed),
+				onclick: () => actions.filterPage(c.id, choice),
+				...extra,
+			},
+			label,
+			count === undefined ? null : h("span", { class: "count" }, ` ${count}`),
+		);
+	const hosts = new Set(
+		pages.filter((pg) => isWebPage(pg.url)).map((pg) => hostOf(pg.url)),
+	);
+	const select = h(
+		"select",
+		{
+			id: "marks-page",
+			"aria-label": "Show the marks of one page",
+			onchange: (e: Event) => {
+				const value = (e.target as HTMLSelectElement).value;
+				actions.filterPage(c.id, value === "" ? undefined : { page: value });
+			},
+		},
+		h("option", { value: "" }, picked ? "All pages" : "Other page…"),
+		...pages.map((pg) => {
+			const n = marksOn(pg.url);
+			const path = isWebPage(pg.url)
+				? shortPath(pg.url, hosts.size > 1)
+				: pg.url;
+			const title = pg.title.trim();
+			// A page without marks would show nothing.
+			return h(
+				"option",
+				{ value: pageKey(pg.url), ...(n === 0 ? { disabled: true } : {}) },
+				`${title ? `${title} (${path})` : path}: ${n} mark${n === 1 ? "" : "s"}`,
+			);
+		}),
+	);
+	select.value = picked ? pageKey(picked.url) : "";
+	if (picked) select.setAttribute("data-on", "");
+	return h(
+		"div",
+		{
+			class: "chips page-filter",
+			role: "group",
+			"aria-label": "Show marks by page",
+		},
+		chip("All pages", undefined, byPage.choice === undefined, undefined, {
+			"data-page-filter": "all",
+		}),
+		front !== undefined || here
+			? chip(
+					"This page",
+					// Counted as the list of pages counts it, once.
+					front === undefined ? 0 : marksOn(front.url),
+					here,
+					here ? undefined : "here",
+					{
+						"data-page-filter": "here",
+						title: front
+							? `Only the marks of ${pageLabel(front)}, the page in front; it follows the tab`
+							: byPage.unread
+								? "Sitegloss cannot read which page the tab in front shows"
+								: "The tab in front shows none of this case's pages",
+					},
+				)
+			: null,
+		select,
+	);
+}
+
 /**
  * The pages of a case that has several (DEC-038): each with its marks
  * counted, and a link that opens it; the one the tab in front shows says so.
@@ -2221,6 +2605,7 @@ function renderPages(
 	c: Case,
 	pages: ReturnType<typeof casePages>,
 	tabUrl: string | undefined,
+	byPage: PageFilter,
 	actions: Actions,
 ): void {
 	// The page whose marks are drawn on the tab in front, whatever its host (DEC-050).
@@ -2231,6 +2616,7 @@ function renderPages(
 	const key = JSON.stringify([
 		pages.map((page) => [page.url, page.title, marksOn(page.url)]),
 		here?.url ?? null,
+		byPage.page?.url ?? null,
 	]);
 	if (key === p.pagesKey) return;
 	p.pagesKey = key;
@@ -2239,6 +2625,18 @@ function renderPages(
 	const hosts = new Set(
 		pages.filter((page) => isWebPage(page.url)).map((page) => hostOf(page.url)),
 	);
+	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
+	// the title it was on), in the same row.
+	const at = document.activeElement as HTMLElement | null;
+	const focused =
+		at !== null && p.pages.contains(at)
+			? {
+					page: at.closest<HTMLElement>("li")?.dataset["page"],
+					control: at.classList.contains("page-count-button")
+						? ".page-count-button"
+						: ".page-name",
+				}
+			: undefined;
 	p.pages.replaceChildren(
 		...pages.map((page) => {
 			const marks = marksOn(page.url);
@@ -2255,9 +2653,14 @@ function renderPages(
 				? `${whole}\nOpens in a new tab; the case's marks are drawn there`
 				: whole;
 			const nameClass = `page-name${title ? "" : " cut-start"}`;
+			const filtered = byPage.page?.url === page.url;
 			return h(
 				"li",
-				{ "data-page": page.url, ...(front ? { "data-here": true } : {}) },
+				{
+					"data-page": page.url,
+					...(front ? { "data-here": true } : {}),
+					...(filtered ? { "data-filter": true } : {}),
+				},
 				web
 					? h(
 							"button",
@@ -2271,14 +2674,19 @@ function renderPages(
 							name,
 						)
 					: h("span", { class: nameClass, title: tooltip }, name),
-				h("span", { class: "page-count" }, String(marks)),
-				h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+				// The count sets the list's page filter; the title opens the page.
+				pageCount(p.current, page, marks, byPage, actions),
 				title
 					? h("span", { class: "page-address cut-start" }, address())
 					: null,
 			);
 		}),
 	);
+	if (focused?.page !== undefined)
+		[...p.pages.children]
+			.find((li) => (li as HTMLElement).dataset["page"] === focused.page)
+			?.querySelector<HTMLElement>(focused.control)
+			?.focus();
 }
 
 function renderCase(state: PanelState, actions: Actions): void {
@@ -2323,7 +2731,14 @@ function renderCase(state: PanelState, actions: Actions): void {
 		: web
 			? ""
 			: c.page.url;
-	renderPages(p, c, several ? pages : [], state.tab?.url, actions);
+	renderPages(
+		p,
+		c,
+		several ? pages : [],
+		state.tab?.url,
+		pageFilter(c, state.markPage, state.tab?.url),
+		actions,
+	);
 	// The window the marks of the page in front were made in (DEC-038).
 	const madeAt = viewportAt(c, state.tab?.url);
 	p.madeAt.textContent = sizeOf(madeAt);
@@ -2470,27 +2885,61 @@ function renderCase(state: PanelState, actions: Actions): void {
 
 	// A filter ends once none of its marks are left (nothing to show), or a
 	// mark was added (it would not show, as if it was not saved).
+	// The page filter first: the status chips count what it leaves.
+	const byPage = pageFilter(c, state.markPage, state.tab?.url);
+	const onPage: Case = { ...c, marks: c.marks.filter(byPage.shows) };
 	const f = state.markFilter;
 	const filter =
 		f?.caseId === c.id &&
-		caseCounts(c)[f.group] > 0 &&
+		caseCounts(onPage)[f.group] > 0 &&
 		c.marks.every((a) => a.number <= f.upTo)
 			? f.group
 			: undefined;
+	const pageKeyNow = JSON.stringify([
+		byPage.choice ?? null,
+		byPage.page?.url ?? null,
+	]);
 	// The status block: under the marks' heading, where its chips filter the
 	// list (the owner; DEC-023 had it in the header).
-	const statusKey = JSON.stringify([filter ?? null, caseCounts(c)]);
+	const front = state.tab?.url ? pageInFront(c, state.tab.url) : undefined;
+	// Keyed on what it shows, not on every change of the case: an open menu
+	// survives a save or a sync.
+	const pageCounts = marksByPage(c);
+	const statusKey = JSON.stringify([
+		filter ?? null,
+		caseCounts(onPage),
+		pageKeyNow,
+		front?.url ?? null,
+		byPage.unread ?? false,
+		casePages(c).map((pg) => [
+			pg.url,
+			pg.title,
+			pageCounts.get(pageKey(pg.url)) ?? 0,
+		]),
+	]);
 	if (statusKey !== p.statusKey) {
 		p.statusKey = statusKey;
 		// The chip that was clicked is drawn anew: the focus stays on it.
 		const at = document.activeElement as HTMLElement | null;
-		const group =
-			at !== null && p.status.contains(at) ? at.dataset["group"] : undefined;
-		const block = statusBlock(c, filter, actions);
-		p.status.replaceChildren(...(block === null ? [] : [block]));
-		p.status.hidden = block === null;
-		if (group !== undefined)
-			block?.querySelector<HTMLElement>(`[data-group="${group}"]`)?.focus();
+		const inside = at !== null && p.status.contains(at);
+		const refocus = !inside
+			? undefined
+			: at.dataset["group"] !== undefined
+				? `[data-group="${at.dataset["group"]}"]`
+				: at.dataset["pageFilter"] !== undefined
+					? `[data-page-filter="${at.dataset["pageFilter"]}"]`
+					: at.id === "marks-page"
+						? "#marks-page"
+						: undefined;
+		const block = statusBlock(onPage, filter, actions, byPage.page);
+		// Beside the status chips, the page filter: the two combine.
+		const chooser = pageChooser(c, byPage, state.tab?.url, actions);
+		p.status.replaceChildren(
+			...[block, chooser].filter((e): e is HTMLElement => e !== null),
+		);
+		p.status.hidden = block === null && chooser === null;
+		if (refocus !== undefined)
+			p.status.querySelector<HTMLElement>(refocus)?.focus();
 	}
 
 	const images = state.images?.caseId === c.id ? state.images : undefined;
@@ -2499,6 +2948,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 	if (edit === undefined) focusedForm = undefined;
 	const markArmed = state.markDeleteArmed?.markId;
 	const findingArmed = state.findingDeleteArmed;
+	const imageArmed = state.imageDeleteArmed;
+	// Images added here the team does not have, and why (DEC-058).
+	const notSent = state.cloud.status?.notSent?.[c.id];
 	// A mark's pin was clicked on the page (DEC-027): its row opens, once.
 	const picked =
 		state.picked?.caseId === c.id && state.picked.at !== p.pickedAt
@@ -2508,6 +2960,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const marksKey = JSON.stringify([
 		picked?.at ?? null,
 		filter ?? null,
+		pageKeyNow,
+		state.tab?.url ? (pageInFront(c, state.tab.url)?.url ?? null) : null,
 		c.updatedAt,
 		images?.version,
 		loaded ? [loaded.url, ...loaded.matches.values()] : null,
@@ -2517,14 +2971,21 @@ function renderCase(state: PanelState, actions: Actions): void {
 		tabOrigin(state.tab?.url),
 		markArmed ?? null,
 		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
+		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
+		notSent ?? null,
 		ok,
 	]);
 	if (marksKey !== p.marksKey) {
-		const sorted = [...c.marks]
+		const sorted = [...onPage.marks]
 			.sort((x, y) => x.number - y.number)
 			.filter(
 				(a) => filter === undefined || GROUP_OF[markStatus(a)] === filter,
 			);
+		const narrowed = filter !== undefined || byPage.choice !== undefined;
+		const showAll = () => {
+			actions.filterMarks(c.id, undefined);
+			actions.filterPage(c.id, undefined);
+		};
 		// A mark of another page than the one drawn on is not looked for
 		// there: "on another page", whatever the page (DEC-057).
 		const items = sorted.map((a) => {
@@ -2532,7 +2993,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const elsewhere =
 				loaded !== undefined && !onPageInFront(c, a, loaded.url);
 			return markItem(c, a, {
-				crop: images?.urls.get(a.crop),
+				urls: images?.urls,
+				ready: images?.version === c.updatedAt,
 				match: elsewhere ? undefined : match,
 				tabUrl: state.tab?.url,
 				elsewhere,
@@ -2540,6 +3002,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 				armed: markArmed === a.id,
 				findingArmed:
 					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
+				imageArmed:
+					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
+				notSent,
 				actions,
 				canReach: ok,
 				changed: () => syncToggleAll(),
@@ -2588,7 +3053,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 				h("div", { class: "marks-tools" }, toggleAll, p.loadButton),
 			),
 			p.status,
-			filter === undefined
+			!narrowed || c.marks.length === 0
 				? null
 				: h(
 						"p",
@@ -2600,7 +3065,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 								type: "button",
 								class: "link",
 								"data-action": "show-all",
-								onclick: () => actions.filterMarks(c.id, undefined),
+								onclick: showAll,
 							},
 							"Show all",
 						),
@@ -2609,22 +3074,46 @@ function renderCase(state: PanelState, actions: Actions): void {
 			items.length > 0 ? h("div", { class: "row" }, p.addMarksEnd) : null,
 			items.length > 0
 				? null
-				: filter === undefined
+				: c.marks.length === 0
 					? h(
 							"p",
 							{ class: "empty" },
 							"No marks yet. Click Add marks and draw on the page.",
 						)
-					: null,
+					: byPage.choice !== undefined
+						? h(
+								"p",
+								{ class: "empty", id: "marks-none-on-page" },
+								byPage.unread
+									? "Sitegloss cannot read which page the tab in front shows (see the notice about this tab). "
+									: byPage.page === undefined
+										? "The tab in front shows none of this case's pages. "
+										: "No marks on this page. ",
+								h(
+									"button",
+									{
+										type: "button",
+										class: "link",
+										"data-action": "all-pages",
+										onclick: showAll,
+									},
+									"Show all pages",
+								),
+							)
+						: null,
 		);
+		const refocus = focusInMarks(p.marks);
 		p.marks.replaceWith(marks);
 		p.marks = marks;
 		if (kept !== undefined && !kept.hidden) kept.focus();
+		refocus?.(marks);
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
 			const row = items.find((li) => li.dataset["mark"] === picked.markId);
 			// Its head under the sticky bars, its actions in view where they fit.
 			row?.setAttribute("data-picked", "");
+			// The panel's own scroll: a row held after a click lets go.
+			releaseHeld();
 			row?.scrollIntoView?.({ block: "nearest" });
 		}
 		p.marksKey = marksKey;
@@ -2672,8 +3161,119 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	if (body) body.hidden = !open;
 }
 
+/** A value inside a quoted attribute selector. */
+const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
+
+/**
+ * The button in the marks list that has the focus, as something to find
+ * again once the list is drawn anew: a Delete or Remove clicked once redraws
+ * the list, and the second press from the keyboard must find the armed
+ * control where the first left it (mark Delete, a finding's Delete, an added
+ * image's Remove). A control that went with its finding or image leaves the
+ * focus on the next picture's, the way to add one, or the mark's head.
+ */
+function focusInMarks(
+	list: HTMLElement,
+): ((next: HTMLElement) => void) | undefined {
+	const at = document.activeElement as HTMLElement | null;
+	if (at === null || at.tagName !== "BUTTON" || !list.contains(at))
+		return undefined;
+	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
+	// The row's head is found again by its class (a second redraw, when
+	// the pictures come, must not drop the focus the first one put there).
+	const which = [
+		"data-mark-action",
+		"data-finding-action",
+		"data-action",
+		"class",
+	].find((name) =>
+		name === "class"
+			? at.classList.contains("mark-toggle")
+			: at.hasAttribute(name),
+	);
+	if (markId === undefined || which === undefined) return undefined;
+	const value =
+		which === "class" ? "mark-toggle" : (at.getAttribute(which) as string);
+	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
+	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
+	// The marks around it, for when its row goes (a mark deleted).
+	const marks = [...list.querySelectorAll<HTMLElement>("li.mark")].map(
+		(li) => li.dataset["mark"],
+	);
+	const pictures = [
+		...list.querySelectorAll(
+			`li.mark[data-mark="${quoted(markId)}"] [data-picture]`,
+		),
+	].map((e) => e.getAttribute("data-picture"));
+	return (next) => {
+		const row = next.querySelector<HTMLElement>(
+			`li.mark[data-mark="${quoted(markId)}"]`,
+		);
+		if (row === null) {
+			// Deleted: the next mark's head, else the one before, else the
+			// list's heading.
+			const at = marks.indexOf(markId);
+			const near = [...marks.slice(at + 1), ...marks.slice(0, at).reverse()]
+				.map((id) =>
+					next.querySelector<HTMLElement>(
+						`li.mark[data-mark="${quoted(id as string)}"] .mark-toggle`,
+					),
+				)
+				.find((e) => e !== null);
+			const heading = next.querySelector<HTMLElement>("#marks-heading");
+			if (near) near.focus();
+			else if (heading) {
+				heading.tabIndex = -1;
+				heading.focus();
+			}
+			return;
+		}
+		const within =
+			picture != null
+				? `[data-picture="${quoted(picture)}"] `
+				: finding != null
+					? `[data-finding="${quoted(finding)}"] `
+					: "";
+		const same = row.querySelector<HTMLElement>(
+			which === "class"
+				? ".mark-toggle"
+				: `${within}[${which}="${quoted(value)}"]`,
+		);
+		if (same !== null) return same.focus();
+		// A mark's action that went with its status (Verify, Save): the same
+		// row's next control, the first of its actions now.
+		if (which === "data-mark-action") {
+			const next =
+				[...row.querySelectorAll<HTMLElement>("[data-mark-action]")].find(
+					(b) => b.getClientRects().length > 0,
+				) ?? row.querySelector<HTMLElement>(".mark-toggle");
+			if (next !== null) return next.focus();
+		}
+		// Gone with its picture: the next picture's control, else the way to
+		// add one; gone with its finding: the mark's head.
+		const after =
+			picture == null ? [] : pictures.slice(pictures.indexOf(picture) + 1);
+		const fallback =
+			after
+				.map((id) =>
+					row.querySelector<HTMLElement>(
+						`[data-picture="${quoted(id as string)}"] [data-action="remove-image"]`,
+					),
+				)
+				.find((e) => e !== null) ??
+			(picture == null
+				? null
+				: row.querySelector<HTMLElement>("[data-action=add-image]")) ??
+			row.querySelector<HTMLElement>(".mark-toggle");
+		fallback?.focus();
+	};
+}
+
 interface MarkContext {
-	crop: string | undefined;
+	/** The case's images as object URLs, by path; none: not read yet. */
+	urls: ReadonlyMap<string, string> | undefined;
+	/** `urls` were read for this version of the case. */
+	ready: boolean;
 	match: MarkMatch | undefined;
 	/** The tab in front's address: a mark's link offers its host (DEC-050). */
 	tabUrl: string | undefined;
@@ -2683,6 +3283,10 @@ interface MarkContext {
 	armed: boolean;
 	/** The finding of this mark whose Delete was clicked once. */
 	findingArmed: string | undefined;
+	/** The added image of this mark whose Remove was clicked once. */
+	imageArmed: string | undefined;
+	/** The case's added images the team does not have, and why. */
+	notSent: Readonly<Record<string, string>> | undefined;
 	actions: Actions;
 	/** Sitegloss may run on the tab in front: Show can scroll it. */
 	canReach: boolean;
@@ -2746,11 +3350,11 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				},
 				"Show",
 			)
-		: null;
+		: showElsewhere(c, a, x, actions);
 	const body = h(
 		"div",
 		{ class: "body", id: bodyId },
-		x.crop ? cropView(c.id, a, x.crop) : null,
+		picturesView(c, a, x),
 		historyList(a),
 		findingsList(c, a, x.findingArmed, actions),
 		markPlace(c, a, x.tabUrl, actions),
@@ -2778,7 +3382,15 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					: commentForm(c, a, edit.text, actions)
 			: markActions(c, a, x.armed, actions),
 	);
-	const sub = markSubline(c, a, m, edit === undefined, actions, x.elsewhere);
+	const sub = markSubline(
+		c,
+		a,
+		m,
+		edit === undefined,
+		actions,
+		x.elsewhere,
+		x.tabUrl,
+	);
 	li.append(
 		h("div", { class: "mark-head" }, toggle, show),
 		...(sub ? [sub] : []),
@@ -2843,10 +3455,107 @@ function markPlace(
 	);
 }
 
+/** The most of a page's title that names it in a mark's row. */
+const PAGE_NAME = 60;
+
+/**
+ * Where a mark of another page than the tab shows opens: its page by its
+ * title (else its path), the address, and which of the mark's two targets it
+ * is. With the tab on another host than the mark's, the same page on that
+ * host (DEC-050): a developer on localhost stays on localhost. None for a
+ * mark of no web page (an imported file's).
+ */
+function elsewhereTarget(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+): { name: string; address: string; where: "made" | "here" } | undefined {
+	const targets = markTargets(c, a, tabUrl);
+	if (targets === undefined) return undefined;
+	const url = markUrl(c, a);
+	const key = pageKey(url);
+	const page = casePages(c).find((p) => pageKey(p.url) === key);
+	// A page's title is the page's own text: one line, and not longer than a
+	// name should be, before it goes into a label and a tooltip.
+	const title = (page?.title ?? "").replace(/\s+/g, " ").trim();
+	return {
+		name:
+			title === ""
+				? shortPath(url, false)
+				: title.length > PAGE_NAME
+					? `${title.slice(0, PAGE_NAME - 1).trimEnd()}…`
+					: title,
+		address: targets.here ?? targets.made,
+		where: targets.here === undefined ? "made" : "here",
+	};
+}
+
+/**
+ * A mark of another page than the tab shows, in its row's second line: the
+ * page by its title, as a link that opens it in this tab and shows the mark
+ * there (owner, 22 November 2026: a link, not the words "On another page").
+ * A mark with nowhere to go keeps the words.
+ */
+function otherPage(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement {
+	const to = elsewhereTarget(c, a, tabUrl);
+	if (to === undefined) return h("span", { class: "state" }, "On another page");
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "link state elsewhere",
+			"data-mark-link": to.where,
+			// Starts with the words shown, so the control can be named by them.
+			"aria-label": `On ${to.name}: opens in this tab and shows mark ${a.number} there`,
+			title: `On another page: ${to.name}\n${to.address}\nOpens in this tab and shows the mark there`,
+			onclick: () => actions.openMarkPage(c, a, to.where),
+		},
+		`On ${to.name}`,
+	);
+}
+
+/**
+ * "Show" on a mark of another page (owner, 22 November 2026: every mark has
+ * it): it opens the mark's page in this tab and shows the mark there, as the
+ * page's link in the second row does. "Every mark" holds while the case is
+ * drawn on the tab: with its marks hidden no mark has Show, here or there.
+ * Never disabled, unlike the page's own Show (`canReach`): opening a page
+ * needs no access to the page in front, and `openMarkPage` asks for the
+ * site's access itself where it needs it.
+ */
+function showElsewhere(
+	c: Case,
+	a: Mark,
+	x: { elsewhere: boolean; tabUrl?: string | undefined },
+	actions: Actions,
+): HTMLElement | null {
+	if (!x.elsewhere) return null;
+	const to = elsewhereTarget(c, a, x.tabUrl);
+	if (to === undefined) return null;
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "small show",
+			"data-action": "show-elsewhere",
+			"aria-label": `Show mark ${a.number}: open ${to.name} in this tab`,
+			title: `Open ${to.name} in this tab and show the mark there\n${to.address}`,
+			onclick: () => actions.openMarkPage(c, a, to.where),
+		},
+		"Show",
+	);
+}
+
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
- * its AI findings; why it came back, for a reopened one. A mark to verify
- * offers Verified and Reopen… here, so verifying needs no expanding.
+ * its AI findings; why it came back, for a reopened one. A mark of another
+ * page names that page as a link. A mark to verify offers Verify and
+ * Reopen… here, so verifying needs no expanding.
  */
 function markSubline(
 	c: Case,
@@ -2855,11 +3564,12 @@ function markSubline(
 	buttons: boolean,
 	actions: Actions,
 	elsewhere = false,
+	tabUrl?: string,
 ): HTMLElement | null {
 	const status = markStatus(a);
 	const pill = PILL[status];
 	const last = a.reopens?.at(-1);
-	const where = elsewhere ? "On another page" : matchWord(m);
+	const where = elsewhere ? null : matchWord(m);
 	const findings = a.findings?.length ?? 0;
 	// The thread's comments about this mark (DEC-046).
 	const talk = commentCount(c, a.id);
@@ -2874,6 +3584,7 @@ function markSubline(
 						: "Reopened",
 				)
 			: null,
+		elsewhere ? otherPage(c, a, tabUrl, actions) : null,
 		where ? h("span", { class: "state" }, where) : null,
 		findings > 0
 			? h(
@@ -2881,6 +3592,15 @@ function markSubline(
 					{ class: "tag findings-count" },
 					`${findings} AI finding${findings === 1 ? "" : "s"}`,
 				)
+			: null,
+		// Only what was added: the screenshot every mark has is not counted.
+		(a.images?.length ?? 0) + (a.heldImages?.length ?? 0) > 0
+			? ((n: number) =>
+					h(
+						"span",
+						{ class: "tag images-count" },
+						`+${n} image${n === 1 ? "" : "s"}`,
+					))((a.images?.length ?? 0) + (a.heldImages?.length ?? 0))
 			: null,
 		talk > 0
 			? h(

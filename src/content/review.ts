@@ -20,6 +20,7 @@ import {
 	type Case,
 	MARK_CHANGED,
 	MAX_COMMENT,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	type Mark,
 	type MarkStatus,
@@ -637,7 +638,7 @@ export class Reviewer {
 	/**
 	 * A loaded mark's pin was clicked (DEC-027): its comment opens in the
 	 * popover a new mark's comment is typed in, with the commands the panel
-	 * has for it (Resolve…, Verified, Reopen…, Change…, Delete mark) and Done,
+	 * has for it (Resolve…, Verify, Reopen…, Change…, Delete mark) and Done,
 	 * and the side panel shows the mark.
 	 */
 	pick(number: number): void {
@@ -770,9 +771,13 @@ export class Reviewer {
 			const note = doc.createElement("input");
 			note.type = "text";
 			note.className = "note";
-			note.placeholder = "Note (optional): what was done, or why";
+			note.id = `sitegloss-note-${mark.id}`;
 			note.maxLength = MAX_COMMENT;
-			note.setAttribute("aria-label", `Note for mark ${mark.number}`);
+			// A label that shows, not a placeholder in its place (DEC-060).
+			const noteLabel = doc.createElement("label");
+			noteLabel.className = "note-label";
+			noteLabel.htmlFor = note.id;
+			noteLabel.textContent = "Note (optional): what was done, or why";
 			note.value = mark.resolution?.note ?? "";
 			const save = () => {
 				const kind = (choices.querySelector<HTMLInputElement>("input:checked")
@@ -792,6 +797,7 @@ export class Reviewer {
 			content = [
 				label,
 				choices,
+				noteLabel,
 				note,
 				problem,
 				row(
@@ -805,11 +811,16 @@ export class Reviewer {
 			label.append(pin, "Reopen");
 			const note = doc.createElement("textarea");
 			note.maxLength = MAX_REOPEN_NOTE;
-			note.placeholder = "What is still wrong? The developer reads this first.";
 			note.setAttribute(
 				"aria-label",
 				`What is still wrong with mark ${mark.number}`,
 			);
+			// Help under the label, not a placeholder that looks like text (DEC-060).
+			const help = doc.createElement("p");
+			help.className = "help";
+			help.id = `sitegloss-reopen-help-${mark.id}`;
+			help.textContent = "What is still wrong? The developer reads this first.";
+			note.setAttribute("aria-describedby", help.id);
 			const reopen = () => {
 				// The developer reads it first: a reopen says why.
 				if (note.value.trim() === "") return;
@@ -833,6 +844,7 @@ export class Reviewer {
 			});
 			content = [
 				label,
+				help,
 				note,
 				problem,
 				row("row", button("Cancel", "mark-back", back), done),
@@ -848,7 +860,6 @@ export class Reviewer {
 			}
 			const field = doc.createElement("textarea");
 			field.setAttribute("aria-label", `Comment of mark ${mark.number}`);
-			field.placeholder = "What is wrong, or what should change?";
 			field.maxLength = MAX_COMMENT;
 			field.value = open.draft;
 			field.addEventListener("keydown", (e) => {
@@ -871,7 +882,7 @@ export class Reviewer {
 				if (open.status === "fixed")
 					commands.push(
 						button(
-							"Verified",
+							"Verify",
 							"mark-verify",
 							() =>
 								void this.#settle(open, {
@@ -894,6 +905,17 @@ export class Reviewer {
 					),
 				);
 			}
+			// A picture of what the screenshot does not show (DEC-058): the
+			// panel's dialog, never a paste on the page.
+			// Apart from the status's commands, which are the panel's.
+			const addImage =
+				(mark.images?.length ?? 0) < MAX_MARK_IMAGES
+					? button(
+							"Add another image…",
+							"mark-add-image",
+							() => void this.#addImage(open),
+						)
+					: undefined;
 			const remove = button(
 				"Delete mark",
 				"mark-delete",
@@ -905,6 +927,7 @@ export class Reviewer {
 				field,
 				problem,
 				row("commands", ...commands),
+				...(addImage === undefined ? [] : [row("row", addImage)]),
 				row(
 					"row",
 					remove,
@@ -992,6 +1015,24 @@ export class Reviewer {
 		const open = this.#open;
 		if (open === undefined || open.busy) return;
 		if (await this.#keep(open)) this.#closeMark();
+	}
+
+	/**
+	 * "Add another image…": a comment typed is stored first, then the panel
+	 * is asked to open its dialog for the mark, and the popover goes.
+	 */
+	async #addImage(open: OpenMark): Promise<void> {
+		const now = this.#openMark();
+		if (now === undefined || now.open !== open || open.busy) return;
+		if (!(await this.#keep(open))) return;
+		if (
+			await this.#request(open, {
+				type: "mark:add-image",
+				caseId: now.c.id,
+				markId: now.mark.id,
+			})
+		)
+			this.#closeMark();
 	}
 
 	/** Delete mark: asked twice, as in the panel; the mark leaves the case. */

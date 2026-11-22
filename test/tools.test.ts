@@ -485,6 +485,45 @@ describe("tools", () => {
 		).rejects.toThrow("does not fit");
 	});
 
+	test("get_case lists a mark's added images and sends them after the crops; get_image reads one (DEC-058)", async () => {
+		const c = await seed();
+		await putCase(store, {
+			...c,
+			marks: c.marks.map((a) =>
+				a.number === 2
+					? {
+							...a,
+							images: [
+								{
+									id: "i_menu",
+									image: "images/i_menu.webp",
+									added: { at: "2026-11-22T10:00:00Z" },
+								},
+							],
+						}
+					: a,
+			),
+		});
+		await store.putImage("c_1", "images/i_menu.webp", {
+			blob: webp(100),
+			width: 10,
+			height: 10,
+		});
+		const result = await call("get_case", { caseId: "c_1" });
+		expect(json(result).marks[1].images).toEqual([
+			{ path: "images/i_menu.webp", added: "2026-11-22T10:00:00Z" },
+		]);
+		expect(
+			result.content.filter((b) => b.type === "text").map((b) => b.text),
+		).toContain("Mark 2, added image 1 (images/i_menu.webp):");
+		expect(result.content.at(-1)?.type).toBe("image");
+		const one = await call("get_image", {
+			caseId: "c_1",
+			path: "images/i_menu.webp",
+		});
+		expect(one.content[1]?.type).toBe("image");
+	});
+
 	test("unknown cases and images are errors", async () => {
 		await expect(call("get_case", { caseId: "c_9" })).rejects.toThrow(
 			"No case with id c_9",

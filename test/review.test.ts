@@ -629,6 +629,36 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(overlay.popover.hidden).toBe(true);
 	});
 
+	test("Add another image… asks the panel to open its dialog, after the comment typed is kept; a full mark offers none (DEC-058)", async () => {
+		const c = await loaded();
+		overlay.onPick?.(1);
+		field().value = "Menu closes";
+		button("mark-add-image").click();
+		await settled();
+		expect(asked.slice(1).map((r) => r.type)).toEqual([
+			"mark:comment",
+			"mark:add-image",
+		]);
+		expect(asked.at(-1)).toMatchObject({ caseId: c.id, markId: "m1" });
+		expect(overlay.popover.hidden).toBe(true);
+		const full = {
+			...c,
+			marks: c.marks.map((a) => ({
+				...a,
+				images: Array.from({ length: 6 }, (_, i) => ({
+					id: `i_${i}`,
+					image: `images/i_${i}.webp`,
+					added: { at: "2026-11-22T10:00:00Z" },
+				})),
+			})),
+		};
+		await reviewer.update(full);
+		overlay.onPick?.(1);
+		expect(
+			overlay.popover.querySelector('[data-action="mark-add-image"]'),
+		).toBeNull();
+	});
+
 	test("a mark that is not open says its status beside the label", async () => {
 		const c = await loaded();
 		const fixed = {
@@ -785,7 +815,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		reviewer.clear();
 		await reviewer.load(settledAs(c, "fixed"));
 		overlay.onPick?.(1);
-		expect(commands()).toEqual(["Verified", "Reopen…", "Change…"]);
+		expect(commands()).toEqual(["Verify", "Reopen…", "Change…"]);
 		reviewer.clear();
 		await reviewer.load(settledAs(c, "fixed", { verified: { at: "x" } }));
 		overlay.onPick?.(1);
@@ -873,7 +903,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		);
 	});
 
-	test("Verified: one click, for a mark to verify", async () => {
+	test("Verify: one click, for a mark to verify", async () => {
 		const c = await loaded();
 		await reviewer.update(settledAs(c, "fixed"));
 		overlay.onPick?.(1);
@@ -957,7 +987,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		// Being typed here while the panel resolves the mark: the text stays.
 		field().value = "Typing";
 		await reviewer.update(settledAs(edited, "fixed"));
-		expect(commands()).toEqual(["Verified", "Reopen…", "Change…"]);
+		expect(commands()).toEqual(["Verify", "Reopen…", "Change…"]);
 		expect(field().value).toBe("Typing");
 		expect(overlay.popover.querySelector(".state")?.textContent).toBe(
 			"Fixed, to verify",

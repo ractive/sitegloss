@@ -10,6 +10,7 @@ import { Window } from "happy-dom";
 import type { Case, Mark } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
+import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
 import { sampleCase, withOneMark } from "./fixtures.ts";
@@ -528,7 +529,7 @@ describe("a mark's status and actions", () => {
 		]);
 		// A crop is small; a click shows it large, another small again.
 		const crop = row("m1").querySelector(
-			"button.crop",
+			"button.tile",
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("aria-pressed")).toBe("false");
 		crop.click();
@@ -627,6 +628,382 @@ describe("a mark's status and actions", () => {
 			["open", "flex-grow: 1"],
 			["dismissed", "flex-grow: 1"],
 		]);
+	});
+});
+
+describe("a mark's pictures: its screenshot first, then the images added (DEC-058)", () => {
+	const DANA = { id: "u_dana", name: "Dana" };
+	// Its own case each: rows of a case unchanged are kept.
+	const marked = (id: string): Case => {
+		const c = withOneMark(sampleCase(id));
+		const a = c.marks[0] as Mark;
+		c.marks = [
+			{
+				...a,
+				images: [
+					{
+						id: "i_a",
+						image: "images/i_a.webp",
+						added: { at: "2026-11-22T10:00:00Z", user: DANA },
+					},
+					{
+						id: "i_b",
+						image: "images/i_b.webp",
+						added: { at: "2026-11-22T11:00:00Z" },
+					},
+					{
+						id: "i_c",
+						image: "images/i_c.webp",
+						added: { at: "2026-11-20T09:00:00Z", imported: true },
+					},
+				],
+			},
+		];
+		return c;
+	};
+	const stateOf = (c: Case, urls: [string, string][]) =>
+		caseState(c, (s) => {
+			s.images = { caseId: c.id, version: c.updatedAt, urls: new Map(urls) };
+		});
+
+	test("one grid, the screenshot named first and never removed, the added ones counted from 1", () => {
+		const c = marked("c_pictures1");
+		const a = c.marks[0] as Mark;
+		const asked: string[] = [];
+		render(
+			stateOf(c, [
+				[a.crop, "blob:crop"],
+				["images/i_a.webp", "blob:a"],
+				["images/i_b.webp", "blob:b"],
+				["images/i_c.webp", "blob:c"],
+			]),
+			actionsWith({
+				addImages: () => asked.push("add"),
+				deleteImage: (_c, _a, id) => asked.push(`remove ${id}`),
+				openPicture: (_c, _a, id) => asked.push(`open ${id}`),
+			}),
+		);
+		const row = window.document.querySelector(
+			`[data-mark="${a.id}"] .pictures`,
+		);
+		const names = [
+			...(row?.querySelectorAll("button.tile[data-action=zoom]") ?? []),
+		].map((b) => b.getAttribute("aria-label"));
+		expect(names).toEqual([
+			`Screenshot of mark ${a.number}, taken by Sitegloss`,
+			`Image 1 of 3 on mark ${a.number}, added by Dana`,
+			`Image 2 of 3 on mark ${a.number}`,
+			`Image 3 of 3 on mark ${a.number}, from an imported file`,
+		]);
+		const captions = [...(row?.querySelectorAll("figcaption") ?? [])].map(
+			(f) => f.firstChild?.textContent,
+		);
+		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2", "Image 3"]);
+		// The screenshot's place has nothing to remove it with, not even a
+		// disabled control: its controls show it large, and open it larger in
+		// a tab of its own (DEC-060; shown only while it is large).
+		const shot = row?.querySelector('[data-picture="screenshot"]');
+		expect(
+			[...(shot?.querySelectorAll("button, a, input, [tabindex]") ?? [])].map(
+				(e) => e.getAttribute("data-action"),
+			),
+		).toEqual(["zoom", "open-larger"]);
+		const larger = shot?.querySelector("[data-action=open-larger]");
+		expect(larger?.getAttribute("aria-label")).toBe(
+			`Open the screenshot of mark ${a.number} larger, in a new tab`,
+		);
+		(larger as unknown as HTMLButtonElement | undefined)?.click();
+		(
+			row?.querySelector(
+				'[data-picture="i_b"] [data-action=open-larger]',
+			) as unknown as HTMLButtonElement | undefined
+		)?.click();
+		expect(asked.splice(0)).toEqual(["open screenshot", "open i_b"]);
+		expect(shot?.querySelector("button")?.getAttribute("title")).toBe(
+			"Taken by Sitegloss when the mark was made. It stays with the mark.",
+		);
+		(
+			row?.querySelector(
+				`[aria-label="Remove image 2 from mark ${a.number}"]`,
+			) as unknown as HTMLButtonElement | undefined
+		)?.click();
+		(
+			row?.querySelector("[data-action=add-image]") as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		expect(asked).toEqual(["remove i_b", "add"]);
+		// The way to add one is the grid's last tile.
+		expect(row?.lastElementChild?.getAttribute("data-action")).toBe(
+			"add-image",
+		);
+		// The subline counts only what was added.
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .images-count`)
+				?.textContent,
+		).toBe("+3 images");
+	});
+
+	test("a screenshot not here is said in its place; a mark with six offers no more", () => {
+		const c = marked("c_pictures2");
+		const a = c.marks[0] as Mark;
+		const six = Array.from({ length: 6 }, (_, i) => ({
+			id: `i_${i}`,
+			image: `images/i_${i}.webp`,
+			added: { at: "2026-11-22T10:00:00Z" },
+		}));
+		c.marks = [{ ...a, images: six }];
+		render(stateOf(c, []), noActions);
+		const row = window.document.querySelector(
+			`[data-mark="${a.id}"] .pictures`,
+		);
+		expect(row?.querySelector('[data-picture="screenshot"]')?.textContent).toBe(
+			"The screenshot is missing.Screenshot",
+		);
+		expect(row?.querySelector("[data-action=add-image]")).toBeNull();
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .pictures-full`)
+				?.textContent,
+		).toBe("6 of 6 images");
+	});
+
+	test("a Delete or Remove pressed from the keyboard keeps the focus on its armed control, and on the next one when its image goes", () => {
+		const c = marked("c_pictures5");
+		const a = c.marks[0] as Mark;
+		c.marks = [
+			{
+				...a,
+				findings: [
+					{
+						id: "f_1",
+						text: "Padding",
+						app: { id: "x", name: "Claude", host: "claude.ai" },
+						at: "2026-11-10T10:00:00Z",
+					},
+				],
+			},
+		];
+		const urls = new Map([
+			[a.crop, "blob:crop"],
+			["images/i_a.webp", "blob:a"],
+			["images/i_b.webp", "blob:b"],
+			["images/i_c.webp", "blob:c"],
+		]);
+		const draw = (armed: (s: PanelState) => void, of: Case = c) =>
+			render(
+				caseState(of, (s) => {
+					s.images = { caseId: of.id, version: of.updatedAt, urls };
+					armed(s);
+				}),
+				noActions,
+			);
+		const at = (selector: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] ${selector}`,
+			) as unknown as HTMLElement;
+		const focused = () =>
+			window.document.activeElement as unknown as HTMLElement;
+		draw(() => undefined);
+		at(".mark-toggle").click();
+		at('[data-picture="i_b"] [data-action=remove-image]').focus();
+		draw((s) => {
+			s.imageDeleteArmed = { markId: a.id, mark: "", imageId: "i_b", at: 1 };
+		});
+		expect(focused().getAttribute("aria-label")).toBe(
+			`Really remove image 2 from mark ${a.number}?`,
+		);
+		// Removed: the next picture's Remove has the focus.
+		const without = {
+			...c,
+			updatedAt: "2026-11-22T12:00:00Z",
+			marks: c.marks.map((x) => ({
+				...x,
+				images: (x.images ?? []).filter((i) => i.id !== "i_b"),
+			})),
+		};
+		draw(() => undefined, without);
+		expect(
+			focused().closest("[data-picture]")?.getAttribute("data-picture"),
+		).toBe("i_c");
+		at('[data-mark-action="delete"]').focus();
+		draw((s) => {
+			s.markDeleteArmed = { markId: a.id, mark: "", at: 1 };
+		}, without);
+		expect(focused().textContent).toBe("Really delete?");
+		at('[data-finding="f_1"] [data-finding-action="delete"]').focus();
+		draw((s) => {
+			s.findingDeleteArmed = {
+				markId: a.id,
+				mark: "",
+				findingId: "f_1",
+				at: 1,
+			};
+		}, without);
+		expect(focused().getAttribute("data-finding-action")).toBe("delete");
+		expect(focused().hasAttribute("data-armed")).toBe(true);
+	});
+
+	test("a mark deleted from the keyboard leaves the focus on the next mark's head, else the one before", () => {
+		const c = marked("c_pictures7");
+		const a = c.marks[0] as Mark;
+		const second = {
+			...a,
+			id: "m2",
+			number: 2,
+			crop: "crops/m2.webp",
+			images: [],
+		};
+		const both = { ...c, marks: [a, second] };
+		render(caseState(both), noActions);
+		const toggle = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] .mark-toggle`,
+			) as unknown as HTMLElement;
+		const del = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] [data-mark-action="delete"]`,
+			) as unknown as HTMLElement;
+		toggle(a.id).click();
+		del(a.id).focus();
+		render(
+			caseState({
+				...both,
+				marks: [second],
+				updatedAt: "2026-11-22T13:00:00Z",
+			}),
+			noActions,
+		);
+		expect(window.document.activeElement).toBe(toggle("m2") as never);
+		// The last one: the mark before it.
+		const back = { ...both, updatedAt: "2026-11-22T14:00:00Z" };
+		render(caseState(back), noActions);
+		toggle("m2").click();
+		del("m2").focus();
+		render(
+			caseState({ ...back, marks: [a], updatedAt: "2026-11-22T15:00:00Z" }),
+			noActions,
+		);
+		expect(window.document.activeElement).toBe(toggle(a.id) as never);
+	});
+
+	test("an image the team does not have says so on its tile, in words", () => {
+		const c = marked("c_pictures6");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([["images/i_b.webp", "blob:b"]]),
+				};
+				s.cloud.status = {
+					state: "problem",
+					problems: [],
+					undecided: 0,
+					notSent: { [c.id]: { i_b: "The team's storage is full" } },
+				};
+			}),
+			noActions,
+		);
+		const note = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-picture="${id}"] .tile-note`,
+			)?.textContent;
+		expect(note("i_b")).toBe("Not sent: The team's storage is full. Try again");
+		expect(note("i_a")).toBeUndefined();
+	});
+
+	test("an image held back past six is a tile of its own: not sent, why, and its Remove", () => {
+		const c = marked("c_pictures8");
+		const a = c.marks[0] as Mark;
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: "2026-11-22T10:00:00Z" },
+		});
+		c.marks = [
+			{
+				...a,
+				images: ["t1", "t2", "t3", "t4", "t5", "t6"].map(image),
+				heldImages: [image("i_mine")],
+			},
+		];
+		render(caseState(c), noActions);
+		const tile = window.document.querySelector(
+			`[data-mark="${a.id}"] [data-picture="i_mine"]`,
+		);
+		expect(tile?.querySelector("figcaption")?.textContent).toBe("Image 7");
+		expect(tile?.querySelector(".tile-note")?.textContent).toBe(
+			"Not sent: the mark already holds six images. It goes when a place is free.",
+		);
+		expect(
+			tile
+				?.querySelector("[data-action=remove-image]")
+				?.getAttribute("aria-label"),
+		).toBe(`Remove image 7 from mark ${a.number}`);
+		expect(
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-action=add-image]`,
+			),
+		).toBeNull();
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .pictures-full`)
+				?.textContent,
+		).toBe("6 of 6 images; 1 more waits for a place");
+	});
+
+	test("with the page filter on, a mark of that page keeps its pictures", () => {
+		const c = marked("c_pictures4");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([[a.crop, "blob:crop"]]),
+				};
+				s.markPage = {
+					caseId: c.id,
+					choice: { page: new URL(c.page.url).pathname },
+					upTo: 3,
+				};
+			}),
+			noActions,
+		);
+		const row = window.document.querySelector(`[data-mark="${a.id}"]`);
+		expect(row).not.toBeNull();
+		expect(row?.querySelectorAll(".pictures figure").length).toBe(4);
+		expect(row?.querySelector(".images-count")?.textContent).toBe("+3 images");
+	});
+
+	test("a Remove clicked once says so on its tile, in words", () => {
+		const c = marked("c_pictures3");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([["images/i_b.webp", "blob:b"]]),
+				};
+				s.imageDeleteArmed = {
+					markId: a.id,
+					mark: "",
+					imageId: "i_b",
+					at: 0,
+				};
+			}),
+			noActions,
+		);
+		const remove = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-picture="${id}"] [data-action=remove-image]`,
+			);
+		expect(remove("i_b")?.textContent).toBe("Really remove?");
+		expect(remove("i_b")?.getAttribute("aria-label")).toBe(
+			`Really remove image 2 from mark ${a.number}?`,
+		);
+		expect(remove("i_a")?.getAttribute("data-armed")).toBeNull();
 	});
 });
 
@@ -912,7 +1289,7 @@ describe("Verify (DEC-023)", () => {
 			"Delete mark",
 		]);
 		expect(actionsOf("m2")).toEqual([
-			"Verified",
+			"Verify",
 			"Reopen…",
 			"Change…",
 			"Edit comment",
@@ -931,15 +1308,15 @@ describe("Verify (DEC-023)", () => {
 			);
 		expect([strong("m1"), strong("m2"), strong("m3")]).toEqual([
 			["Resolve…"],
-			["Verified"],
+			["Verify"],
 			[],
 		]);
-		// To verify: Verified and Reopen… in the collapsed head too.
+		// To verify: Verify and Reopen… in the collapsed head too.
 		expect(
 			[...row("m2").querySelectorAll(".mark-sub button")].map(
 				(b) => b.textContent,
 			),
-		).toEqual(["Verified", "Reopen…"]);
+		).toEqual(["Verify", "Reopen…"]);
 		expect(row("m3").querySelector(".mark-sub button")).toBeNull();
 		expect(
 			row("m2")
@@ -1083,10 +1460,14 @@ describe("Verify (DEC-023)", () => {
 			"Won't fix",
 			"Can't reproduce",
 		]);
-		expect(
-			(form.querySelector("input.note") as unknown as HTMLInputElement)
-				.placeholder,
-		).toBe("Note (optional): what was done, or why");
+		// A label that shows, no placeholder in its place (DEC-060).
+		const note = form.querySelector(
+			"input.note",
+		) as unknown as HTMLInputElement;
+		expect(note.placeholder).toBe("");
+		expect(form.querySelector(`label[for="${note.id}"]`)?.textContent).toBe(
+			"Note (optional): what was done, or why",
+		);
 		(
 			form.querySelector(
 				'input[value="verified"]',
@@ -1125,9 +1506,12 @@ describe("Verify (DEC-023)", () => {
 		const field = form.querySelector(
 			"textarea",
 		) as unknown as HTMLTextAreaElement;
-		expect(field.placeholder).toBe(
-			"What is still wrong? The developer reads this first.",
-		);
+		expect(field.placeholder).toBe("");
+		expect(
+			window.document.getElementById(
+				field.getAttribute("aria-describedby") ?? "",
+			)?.textContent,
+		).toBe("What is still wrong? The developer reads this first.");
 		const done = form.querySelector(
 			'[data-mark-action="reopen-done"]',
 		) as unknown as HTMLButtonElement;
@@ -1649,6 +2033,87 @@ describe("a case of several pages (DEC-038)", () => {
 	const pages = () =>
 		[...el("case-pages").querySelectorAll("li")].map((li) => li.textContent);
 
+	test("a mark of another page: where its link goes, and how its page is named", () => {
+		const drawn = (c: Case, url: string) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url, title: "", size: undefined };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					url,
+					matches: new Map(
+						[match(1, "found"), match(2, "found"), match(3, "lost")].map(
+							(m) => [m.markId, m],
+						),
+					),
+				};
+			});
+		const link = () =>
+			el("case-view").querySelector<HTMLElement>(
+				'[data-mark="m3"] .mark-sub .state',
+			);
+		// On the mark's own site: the page where it was made.
+		render(drawn(flow("c_made"), CART), noActions);
+		expect(link()?.dataset["markLink"]).toBe("made");
+		expect(link()?.title).toContain(PAY);
+		// A page without a title is named by its path.
+		const untitled = flow("c_untitled");
+		render(
+			drawn(
+				{
+					...untitled,
+					pages: [
+						{ url: CART, title: "Your cart", lang: "en" },
+						{ url: PAY, title: "  ", lang: "en" },
+					],
+				},
+				CART,
+			),
+			noActions,
+		);
+		expect(link()?.textContent).toBe(`On ${new URL(PAY).pathname}`);
+		// A page's title is the page's own text: one line, and cut.
+		const long = flow("c_long");
+		render(
+			drawn(
+				{
+					...long,
+					pages: [
+						{ url: CART, title: "Your cart", lang: "en" },
+						{ url: PAY, title: `Pay\n now ${"x".repeat(200)}`, lang: "en" },
+					],
+				},
+				CART,
+			),
+			noActions,
+		);
+		expect(link()?.textContent).toStartWith("On Pay now x");
+		expect(link()?.textContent?.length).toBeLessThanOrEqual(63);
+		expect(link()?.getAttribute("aria-label")).not.toContain("\n");
+		// A mark of no web page has nowhere to go: the words, and no Show.
+		const file = "file:///tmp/pay.html";
+		const imported = flow("c_file");
+		render(
+			drawn(
+				{
+					...imported,
+					pages: [
+						{ url: CART, title: "Your cart", lang: "en" },
+						{ url: file, title: "Payment", lang: "en" },
+					],
+					shots: [shot("s1", CART, 1280), shot("s2", file, 390)],
+				},
+				CART,
+			),
+			noActions,
+		);
+		expect(link()?.tagName).toBe("SPAN");
+		expect(link()?.textContent).toBe("On another page");
+		expect(
+			el("case-view").querySelector('[data-mark="m3"] button.show'),
+		).toBeNull();
+	});
+
 	test("Home: a case is this page's for any of its pages, on their own site only, and its row says how many it has", () => {
 		const state = initialState();
 		// The same path on localhost: the case is opened by hand there (DEC-050).
@@ -1724,7 +2189,7 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(el("case-view").querySelector(".case-meta")?.textContent).toContain(
 			"2 pages",
 		);
-		const links = el("case-pages").querySelectorAll("button");
+		const links = el("case-pages").querySelectorAll(".page-name");
 		(links[1] as unknown as HTMLButtonElement).click();
 		(links[0] as unknown as HTMLButtonElement).click();
 		expect(opened).toEqual([PAY, CART]);
@@ -1742,8 +2207,223 @@ describe("a case of several pages (DEC-038)", () => {
 			"Your cart2 marksshop.example/cart",
 			"staging.shop.example/checkout/pay1 mark",
 		]);
-		expect(el("case-pages").querySelectorAll("button")[1]?.title).toBe(
-			`${other}\nOpens in a new tab; the case's marks are drawn there`,
+		expect(
+			el("case-pages").querySelectorAll<HTMLElement>(".page-name")[1]?.title,
+		).toBe(`${other}\nOpens in a new tab; the case's marks are drawn there`);
+	});
+
+	test("the marks by page: this page follows the tab, any page from the list or the menu, combined with the status chips, which count what it leaves", () => {
+		const base = flow("c_by_page");
+		// m1 and m2 on the cart, m3 on the payment page; m2 fixed.
+		const c: Case = {
+			...base,
+			marks: base.marks.map((a) =>
+				a.number === 2
+					? { ...a, resolution: { kind: "fixed", at: "2026-11-20T10:00:00Z" } }
+					: a,
+			),
+		};
+		const chosen: unknown[] = [];
+		const actions = actionsWith({
+			filterPage: (_id, choice) => void chosen.push(choice),
+		});
+		const at = (url: string, change?: (s: PanelState) => void) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url, title: "", size: undefined };
+				change?.(s);
+			});
+		const shown = () =>
+			[...el("case-view").querySelectorAll("ol.marks > li")].map(
+				(li) => (li as unknown as HTMLElement).dataset["mark"],
+			);
+		const chip = (which: string) =>
+			el("case-view").querySelector(
+				`[data-page-filter="${which}"]`,
+			) as unknown as HTMLButtonElement | null;
+		const statusCounts = () =>
+			[...el("case-view").querySelectorAll("#case-status .chip")].map(
+				(b) => b.textContent,
+			);
+		const cart = "http://localhost:3000/cart";
+		const pay = "http://localhost:3000/checkout/pay";
+
+		// All pages by default; "This page" with the count of the page in front.
+		render(at(cart), actions);
+		expect(shown()).toEqual(["m1", "m2", "m3"]);
+		expect(chip("all")?.getAttribute("aria-pressed")).toBe("true");
+		expect(chip("here")?.textContent).toBe("This page 2");
+		expect(el("marks-filtered")).toBeNull();
+		chip("here")?.click();
+		expect(chosen).toEqual(["here"]);
+
+		// This page: the cart's marks; the status chips count those only.
+		const here = (s: PanelState) => {
+			s.markPage = { caseId: c.id, choice: "here", upTo: 3 };
+		};
+		render(at(cart, here), actions);
+		expect(shown()).toEqual(["m1", "m2"]);
+		expect(statusCounts()).toEqual(["● Open 1", "◐ To verify 1"]);
+		expect(el("marks-filtered").textContent).toContain("Showing 2 of 3 marks.");
+		// It follows the tab.
+		render(at(pay, here), actions);
+		expect(shown()).toEqual(["m3"]);
+		// A page that is none of the case's: nothing, and the way back.
+		render(at("http://localhost:3000/elsewhere", here), actions);
+		expect(shown()).toEqual([]);
+		expect(el("marks-none-on-page").textContent).toContain(
+			"The tab in front shows none of this case's pages.",
+		);
+		// An address the panel may not read is not "none of the case's".
+		render(at("", here), actions);
+		expect(el("marks-none-on-page").textContent).toContain(
+			"Sitegloss cannot read which page the tab in front shows",
+		);
+
+		// Combined with a status chip.
+		render(
+			at(cart, (s) => {
+				here(s);
+				s.markFilter = { caseId: c.id, group: "toVerify", upTo: 3 };
+			}),
+			actions,
+		);
+		expect(shown()).toEqual(["m2"]);
+		// A page set with none of the status's marks ends the status filter
+		// (in state, main.ts), so it cannot come back by itself.
+		const hereChosen = { caseId: c.id, choice: "here" as const, upTo: 3 };
+		expect(statusLeft(c, hereChosen, cart, "toVerify")).toBe(true);
+		expect(statusLeft(c, hereChosen, pay, "toVerify")).toBe(false);
+
+		// The list of pages: a count sets the filter to its page, said so.
+		render(at(cart), actions);
+		const count = el("case-pages").querySelector(
+			'[data-page="https://shop.example/cart"] .page-count-button',
+		) as unknown as HTMLButtonElement;
+		// Its name starts with what it shows, and stays; aria-pressed says on.
+		expect(count.getAttribute("aria-label")).toBe(
+			"2 marks on Your cart: show only these",
+		);
+		expect(count.getAttribute("aria-pressed")).toBe("false");
+		count.focus();
+		count.click();
+		expect(chosen.at(-1)).toEqual({ page: "/cart" });
+		// Drawn anew pressed, the focus still on it.
+		render(
+			at(cart, (s) => {
+				s.markPage = { caseId: c.id, choice: { page: "/cart" }, upTo: 3 };
+			}),
+			actions,
+		);
+		const pressed = el("case-pages").querySelector(
+			'[data-page="https://shop.example/cart"] .page-count-button',
+		);
+		expect(pressed?.getAttribute("aria-pressed")).toBe("true");
+		expect(pressed?.getAttribute("aria-label")).toBe(
+			"2 marks on Your cart: show only these",
+		);
+		expect(window.document.activeElement === (pressed as unknown)).toBe(true);
+		// One page, from the list or the menu: its row says it is the filter.
+		const payPage = (s: PanelState) => {
+			s.markPage = { caseId: c.id, choice: { page: "/checkout/pay" }, upTo: 3 };
+		};
+		render(at(cart, payPage), actions);
+		expect(shown()).toEqual(["m3"]);
+		expect(
+			el("case-pages")
+				.querySelector("[data-filter]")
+				?.getAttribute("data-page"),
+		).toBe(PAY);
+		expect(el<HTMLSelectElement>("marks-page").value).toBe("/checkout/pay");
+		expect(
+			[...el<HTMLSelectElement>("marks-page").options].map(
+				(o) => o.textContent,
+			),
+		).toEqual([
+			"All pages",
+			"Your cart (/cart): 2 marks",
+			"Payment (/checkout/pay): 1 mark",
+		]);
+		// The menu sets it.
+		const menu = el<HTMLSelectElement>("marks-page");
+		menu.value = "/cart";
+		menu.dispatchEvent(new window.Event("change") as unknown as Event);
+		expect(chosen.at(-1)).toEqual({ page: "/cart" });
+		// A save or a sync that changes nothing it shows keeps the menu (an
+		// open one stays open).
+		render(
+			at(cart, (s) => {
+				payPage(s);
+				if (s.current)
+					s.current = { ...s.current, updatedAt: "2026-11-23T10:00:00Z" };
+			}),
+			actions,
+		);
+		expect(el<HTMLSelectElement>("marks-page")).toBe(menu);
+		// All of one page's marks settled: said of that page, not the case.
+		const settled: Case = {
+			...c,
+			marks: c.marks.map(
+				(a): Mark =>
+					a.number === 3
+						? {
+								...a,
+								resolution: {
+									kind: "fixed",
+									at: "2026-11-20T10:00:00Z",
+									verified: { at: "2026-11-21T10:00:00Z" },
+								},
+							}
+						: a,
+			),
+		};
+		render(
+			caseState(settled, (s) => {
+				s.tab = { id: 1, url: cart, title: "", size: undefined };
+				payPage(s);
+			}),
+			actions,
+		);
+		expect(el("case-status").textContent).toContain(
+			"All marks on Payment are verified or dismissed.",
+		);
+
+		// Another case's filter, a page that left the case, a case of one page
+		// left, a mark added since: none.
+		const none = (markPage: PanelState["markPage"], of: Case = c) => {
+			render(
+				caseState(of, (s) => {
+					s.tab = { id: 1, url: cart, title: "", size: undefined };
+					s.markPage = markPage;
+				}),
+				actions,
+			);
+			return shown();
+		};
+		expect(
+			none({ caseId: "c_other", choice: { page: "/checkout/pay" }, upTo: 3 }),
+		).toEqual(["m1", "m2", "m3"]);
+		expect(none({ caseId: c.id, choice: { page: "/gone" }, upTo: 3 })).toEqual([
+			"m1",
+			"m2",
+			"m3",
+		]);
+		expect(
+			none({ caseId: c.id, choice: { page: "/checkout/pay" }, upTo: 2 }),
+		).toEqual(["m1", "m2", "m3"]);
+		const onePage: Case = {
+			...c,
+			pages: [c.pages?.[0] ?? c.page],
+			shots: c.shots.slice(0, 1),
+			marks: c.marks.filter((a) => a.shot === "s1"),
+		};
+		expect(
+			pageFilterEnds(onePage, { caseId: c.id, choice: "here", upTo: 3 }),
+		).toBe(true);
+		expect(
+			pageFilterEnds(c, { caseId: c.id, choice: { page: "/gone" }, upTo: 3 }),
+		).toBe(true);
+		expect(pageFilterEnds(c, { caseId: c.id, choice: "here", upTo: 3 })).toBe(
+			false,
 		);
 	});
 
@@ -1780,16 +2460,49 @@ describe("a case of several pages (DEC-038)", () => {
 			el("case-view").querySelector(`[data-mark="m${n}"] .mark-sub .state`)
 				?.textContent;
 		const cart = "http://localhost:3000/cart";
+		const opened: [string, string][] = [];
 		render(
 			on(cart, [match(1, "found"), match(2, "found"), match(3, "lost")]),
-			noActions,
+			actionsWith({
+				openMarkPage: (_c, mark, where) => void opened.push([mark.id, where]),
+			}),
 		);
 		expect(el("none-found").hidden).toBe(true);
 		expect(el("case-hint").textContent).toBe(
 			"2 of 2 marks found on localhost:3000/cart. 1 more is on other pages of the case.",
 		);
 		expect(word(1)).toContain("Found here");
-		expect(word(3)).toBe("On another page");
+		// A link to the mark's page, named by its title: not the bare words.
+		expect(word(3)).toBe("On Payment");
+		const link = el("case-view").querySelector<HTMLButtonElement>(
+			'[data-mark="m3"] .mark-sub button.elsewhere',
+		);
+		expect(link?.getAttribute("aria-label")).toBe(
+			"On Payment: opens in this tab and shows mark 3 there",
+		);
+		// On localhost the link stays on localhost: the same page there.
+		expect(link?.dataset["markLink"]).toBe("here");
+		expect(link?.title).toContain("localhost:3000/checkout/pay");
+		// Every mark has Show: here it scrolls to the mark, there it opens the page.
+		const showOf = (n: number) =>
+			el("case-view").querySelector<HTMLButtonElement>(
+				`[data-mark="m${n}"] button.show`,
+			);
+		expect(showOf(1)?.dataset["action"]).toBe("show");
+		expect(showOf(3)?.dataset["action"]).toBe("show-elsewhere");
+		expect(showOf(3)?.getAttribute("aria-label")).toBe(
+			"Show mark 3: open Payment in this tab",
+		);
+		showOf(3)?.click();
+		el("case-view")
+			.querySelector<HTMLButtonElement>(
+				'[data-mark="m3"] .mark-sub button.elsewhere',
+			)
+			?.click();
+		expect(opened).toEqual([
+			["m3", "here"],
+			["m3", "here"],
+		]);
 		// Not red, and no "Not found" in its row.
 		const row = el("case-view").querySelector('[data-mark="m3"]');
 		expect(row?.getAttribute("data-colour")).toBeNull();
@@ -1821,9 +2534,9 @@ describe("a case of several pages (DEC-038)", () => {
 			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
 		);
 		expect([word(1), word(2), word(3)]).toEqual([
-			"On another page",
-			"On another page",
-			"On another page",
+			"On Your cart",
+			"On Your cart",
+			"On Payment",
 		]);
 		expect(el("case-hint").hidden).toBe(true);
 		// Started on a page that has no marks (DEC-026), marked elsewhere: on
@@ -1852,7 +2565,7 @@ describe("a case of several pages (DEC-038)", () => {
 			"1 of 1 marks found on localhost:3000/checkout/pay. 2 more are on other pages of the case.",
 		);
 		expect(word(3)).toContain("Found here");
-		expect(word(1)).toBe("On another page");
+		expect(word(1)).toBe("On Your cart");
 	});
 });
 
@@ -2758,9 +3471,13 @@ describe("the summary for the developer", () => {
 		expect(
 			window.document.querySelector('label[for="verdict"]')?.textContent,
 		).toBe("Summary for the developer");
-		expect(el<HTMLTextAreaElement>("verdict").placeholder).toContain(
+		// Help under the label, no placeholder (DEC-060).
+		expect(el<HTMLTextAreaElement>("verdict").placeholder).toBe("");
+		expect(el("verdict-help").textContent).toContain(
 			"Whoever loads this case sees it first.",
 		);
+		// A comment box gets no placeholder (the owner, DEC-060).
+		expect(el<HTMLTextAreaElement>("comment-new").placeholder).toBe("");
 		expect(el("save-verdict").textContent).toBe("Save summary");
 		const home = initialState();
 		home.cases = [c];
@@ -2854,6 +3571,59 @@ describe("an imported case", () => {
 });
 
 describe("the AI app", () => {
+	test("the question whether to keep AI access on: a status region, two plain answers, drawn once (DEC-059)", async () => {
+		const { KEEP_ON_QUESTION, showKeepOnQuestion } = await import(
+			"../src/sidepanel/ai.ts"
+		);
+		const box = el("keep-on-ask");
+		// Always in the page, so what is put in it is said.
+		expect(box.getAttribute("role")).toBe("status");
+		// Right under Keep AI access on and its sentence.
+		expect(
+			box.previousElementSibling?.previousElementSibling?.querySelector(
+				"#keep-on",
+			),
+		).not.toBeNull();
+		const answers: boolean[] = [];
+		const answer = (keep: boolean) => void answers.push(keep);
+		showKeepOnQuestion(box, true, answer);
+		expect(box.querySelector("p")?.textContent).toBe(KEEP_ON_QUESTION);
+		const buttons = [...box.querySelectorAll("button")];
+		expect(buttons.map((b) => b.textContent)).toEqual([
+			"Keep it on",
+			"Not now",
+		]);
+		// Neither is the view's amber button.
+		expect(box.querySelector(".primary")).toBeNull();
+		// A redraw while it is asked draws nothing anew (it would be said again).
+		const first = box.firstElementChild;
+		showKeepOnQuestion(box, true, answer);
+		expect(box.firstElementChild).toBe(first);
+		(
+			box.querySelector('[data-answer="keep"]') as unknown as HTMLButtonElement
+		).click();
+		(
+			box.querySelector(
+				'[data-answer="not-now"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		expect(answers).toEqual([true, false]);
+		// Taken away while one of its buttons has the focus: the focus goes
+		// to the switch, not to the page's start.
+		(
+			box.querySelector(
+				'[data-answer="not-now"]',
+			) as unknown as HTMLButtonElement
+		).focus();
+		showKeepOnQuestion(box, false, answer, el("ai-switch"));
+		expect(box.childElementCount).toBe(0);
+		expect(window.document.activeElement === (el("ai-switch") as unknown)).toBe(
+			true,
+		);
+		// The sentence it stands in for while asked is there to be hidden.
+		expect(el("keep-on-note").textContent).toContain("AI access stays on");
+	});
+
 	const ai = (change: Partial<PanelState["ai"]>) => (s: PanelState) => {
 		s.ai = { ...s.ai, ...change };
 	};
@@ -3404,7 +4174,8 @@ describe("a case's link (DEC-028)", () => {
 		expect(field.value).toBe(TICKET);
 		expect(field.type).toBe("url");
 		expect(field.getAttribute("aria-label")).toBe("Link of this case");
-		expect(field.placeholder).toContain("a ticket");
+		// Only the address's form (DEC-060).
+		expect(field.placeholder).toBe("https://…");
 		expect(shown("case-link-hint")).toBe(false);
 	});
 

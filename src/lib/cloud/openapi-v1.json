@@ -182,7 +182,7 @@
 			"get": {
 				"operationId": "exportCase",
 				"summary": "One case as a file: the zip the Sitegloss extension exports",
-				"description": "The case in the extension's file format (`sitegloss/2`): `case.json`, `case.md`, the screenshots in `shots/` and the marks' crops in `crops/`, as the extension's own export lays them out. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.",
+				"description": "The case in the extension's file format (`sitegloss/2`): `case.json`, `case.md`, the screenshots in `shots/`, the marks' crops in `crops/` and the images people added to marks in `images/` (`images/<id>.webp`), as the extension's own export lays them out. An image gone from the server while the file is written is left out and named in `MISSING.txt`; its mark stays. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.",
 				"security": [
 					{
 						"oauth": ["cases:read"]
@@ -584,7 +584,7 @@
 			"put": {
 				"operationId": "putBlob",
 				"summary": "Upload an image",
-				"description": "A WebP image of at most 31457280 bytes whose SHA-256 is the path's. Uploading one the team has is fine.",
+				"description": "A WebP image of at most 31457280 bytes whose SHA-256 is the path's. Uploading one the team has is fine. Needs mark:create or mark:update: a screenshot, a crop or an image added to a mark (DEC-032).",
 				"security": [
 					{
 						"oauth": ["cases:write"]
@@ -1538,6 +1538,14 @@
 							"$ref": "#/components/schemas/Finding"
 						}
 					},
+					"images": {
+						"description": "Images a person added to the mark, in the order they were added, at most 6. Always sent by a server that keeps images, `[]` for none; absent from a server from before this (DEC-032), which a client reads as \"not told\", not as \"none\".",
+						"maxItems": 6,
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MarkImage"
+						}
+					},
 					"status": {
 						"$ref": "#/components/schemas/MarkStatus"
 					},
@@ -1617,6 +1625,42 @@
 				"required": ["start", "end"],
 				"description": "The page elements at the two ends of a stroke (an arrow, an open pen stroke), as the extension recorded them when the mark was made. Set with the mark, never changed afterwards."
 			},
+			"MarkImage": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"$ref": "#/components/schemas/Id"
+					},
+					"image": {
+						"$ref": "#/components/schemas/ImageRef"
+					},
+					"added": {
+						"$ref": "#/components/schemas/MarkImageAdded"
+					}
+				},
+				"required": ["id", "image", "added"],
+				"description": "A picture a person added to a mark (pasted, chosen or dropped in the extension), for what the screenshot does not show: a menu that closes, another state of the page. It may show anything that was on that person's screen. A WebP image uploaded as a blob, like a crop. Only ever added or removed, never changed."
+			},
+			"MarkImageAdded": {
+				"type": "object",
+				"properties": {
+					"at": {
+						"$ref": "#/components/schemas/Timestamp"
+					},
+					"user": {
+						"$ref": "#/components/schemas/UserRef"
+					},
+					"app": {
+						"$ref": "#/components/schemas/AppRef"
+					},
+					"imported": {
+						"type": "boolean",
+						"const": true
+					}
+				},
+				"required": ["at"],
+				"description": "Who added an image to a mark, and when: a Stamp, set by the server from the caller. In a case that came in from a file (importedAt), an image the file brings keeps the file's time and says imported: true, with no user or app: the server cannot vouch for who added it there."
+			},
 			"MarkStatus": {
 				"type": "string",
 				"enum": ["open", "fixed", "verified", "wontfix", "cantreproduce"],
@@ -1651,6 +1695,22 @@
 					}
 				},
 				"required": ["user", "teams"]
+			},
+			"NewMarkImage": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"$ref": "#/components/schemas/Id"
+					},
+					"image": {
+						"$ref": "#/components/schemas/ImageRef"
+					},
+					"at": {
+						"$ref": "#/components/schemas/Timestamp"
+					}
+				},
+				"required": ["id", "image"],
+				"description": "An image to add to a mark. id: the client's, unique in the case (the case file names it `images/<id>.webp`). image: a WebP uploaded first with PUT …/blobs/{sha256}; the server takes the size it measured at upload. at: when it was added, believed only in a case that came in from a file, where the image is then stored as imported, naming no person; otherwise the server's time and the caller."
 			},
 			"Op": {
 				"oneOf": [
@@ -1970,6 +2030,13 @@
 											"$ref": "#/components/schemas/Finding"
 										}
 									},
+									"images": {
+										"maxItems": 6,
+										"type": "array",
+										"items": {
+											"$ref": "#/components/schemas/NewMarkImage"
+										}
+									},
 									"createdAt": {
 										"$ref": "#/components/schemas/Timestamp"
 									}
@@ -2046,6 +2113,26 @@
 									},
 									"remove": {
 										"maxItems": 20,
+										"type": "array",
+										"items": {
+											"$ref": "#/components/schemas/Id"
+										}
+									}
+								}
+							},
+							"images": {
+								"description": "Images added to or removed from the mark: remove first (an id the mark does not have is ignored), then add (an id the mark has stays as it is stored; an id another mark of the case has refuses the operation with conflict; a picture not uploaded with blob_missing). An id twice in add, or in both add and remove, refuses it with invalid: an image is only added or removed, never changed. More than 6 after that refuses the operation with limit. Ignored by a server from before DEC-032.",
+								"type": "object",
+								"properties": {
+									"add": {
+										"maxItems": 6,
+										"type": "array",
+										"items": {
+											"$ref": "#/components/schemas/NewMarkImage"
+										}
+									},
+									"remove": {
+										"maxItems": 6,
 										"type": "array",
 										"items": {
 											"$ref": "#/components/schemas/Id"

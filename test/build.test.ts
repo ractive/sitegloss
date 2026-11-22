@@ -170,6 +170,7 @@ describe("build", () => {
 			"pairing.js",
 			"sidepanel/index.html",
 			"offscreen/index.html",
+			"viewer/index.html",
 			"icons/icon-16.png",
 			"icons/icon-128.png",
 		]) {
@@ -339,6 +340,7 @@ describe("build", () => {
 			"content.js",
 			"pairing.js",
 			"sidepanel/index.html",
+			"viewer/index.html",
 			"icons/icon-128.png",
 			NOTICES_FILE,
 		])

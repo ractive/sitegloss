@@ -629,3 +629,146 @@ describe("a mark's look: computed styles, backdrop, siblings (DEC-048)", () => {
 		);
 	});
 });
+
+describe("images added to a mark in the sync (DEC-058)", () => {
+	const withImage = (): Case =>
+		local([
+			mark(1),
+			{
+				...mark(2),
+				images: [{ id: "i_a", image: "images/i_a.webp", added: { at: NOW } }],
+			},
+		]);
+	/** Mark 2 as the server sends it; `images` absent: a server before images. */
+	const theirs = (
+		book: CaseBook,
+		images: WireMark["images"] | undefined,
+	): WireMark => ({
+		id: book.marks["m2"] as string,
+		caseId: "c_1",
+		number: 2,
+		shotId: book.shots["s1"] as string,
+		comment: "comment 2",
+		author: "user",
+		shape: mark(2).shape,
+		crop: ref("crops/m2.webp"),
+		element: null,
+		resolution: null,
+		reopens: [],
+		findings: [],
+		...(images === undefined ? {} : { images }),
+		status: "open",
+		createdBy: null,
+		createdAt: NOW,
+		updatedAt: NOW,
+		rev: 2,
+	});
+	const merge = (c: Case, book: CaseBook, w: WireMark) =>
+		mergeCase(
+			c,
+			book,
+			{ shots: [], marks: [w], removedMarks: [], removedShots: [] },
+			new Map(),
+			new Map(),
+			{ teamId: "team_1", whole: false, now: NOW },
+		);
+
+	test("go with a new mark; a server that says nothing of them removes none here, one that has none removes it", () => {
+		const c = withImage();
+		const { book, ops } = synced(c);
+		const create = ops.find(
+			(op) => op.type === "mark.create" && op.mark.number === 2,
+		) as Extract<Op, { type: "mark.create" }>;
+		expect(create.mark.images?.map((x) => x.id)).toEqual(["i_a"]);
+		expect(isClean(c, book)).toBe(true);
+		const untold = merge(c, book, theirs(book, undefined));
+		expect(untold?.value.marks[1]?.images?.map((x) => x.id)).toEqual(["i_a"]);
+		expect(untold?.deleteImages).toEqual([]);
+		expect(isClean(untold?.value as Case, untold?.book as CaseBook)).toBe(true);
+		const removed = merge(c, book, theirs(book, []));
+		expect(removed?.value.marks[1]?.images).toBeUndefined();
+		expect(removed?.deleteImages).toEqual(["images/i_a.webp"]);
+	});
+
+	test("an image added here after the run's push is held back when the team's mark comes back full, its file kept", () => {
+		const c = withImage();
+		const { book } = synced(c);
+		// Added between the push and the pull: not in the shadow.
+		const late: Case = {
+			...c,
+			marks: [
+				mark(1),
+				{
+					...(c.marks[1] as Mark),
+					images: [
+						...((c.marks[1] as Mark).images ?? []),
+						{ id: "i_late", image: "images/i_late.webp", added: { at: NOW } },
+					],
+				},
+			],
+		};
+		const six = ["i_a", "t1", "t2", "t3", "t4", "t5"].map((id) => ({
+			id,
+			image: ref(`images/${id}.webp`),
+			added: { at: NOW, user: { id: "u_dana", name: "Dana" } },
+		}));
+		const merged = mergeCase(
+			late,
+			book,
+			{
+				shots: [],
+				marks: [theirs(book, six)],
+				removedMarks: [],
+				removedShots: [],
+			},
+			new Map(six.map((x) => [x.image.sha256, `picture ${x.id}`])),
+			new Map(),
+			{ teamId: "team_1", whole: false, now: NOW },
+		);
+		// The team's six are the mark's images; the late one is held back,
+		// its file kept, and no patch carries it.
+		const after = merged?.value as Case;
+		expect(after.marks[1]?.images?.map((x) => x.id)).toEqual([
+			"i_a",
+			"t1",
+			"t2",
+			"t3",
+			"t4",
+			"t5",
+		]);
+		expect(after.marks[1]?.heldImages?.map((x) => x.id)).toEqual(["i_late"]);
+		expect(merged?.deleteImages).toEqual([]);
+		expect(isClean(after, merged?.book as CaseBook)).toBe(true);
+	});
+
+	test("an image added here goes as an add by id, one removed here as a remove, with a key that does not hang on the picture", () => {
+		const c = withImage();
+		const { book } = synced(c);
+		const changed: Case = {
+			...c,
+			marks: [
+				mark(1),
+				{
+					...mark(2),
+					images: [{ id: "i_b", image: "images/i_b.webp", added: { at: NOW } }],
+				},
+			],
+		};
+		const { ops } = deriveOps(changed, structuredClone(book), ref, newId);
+		const patch = ops.find((op) => op.type === "mark.patch") as Extract<
+			Op,
+			{ type: "mark.patch" }
+		>;
+		expect(patch.images?.add?.map((x) => [x.id, x.image.sha256])).toEqual([
+			["i_b", ref("images/i_b.webp").sha256],
+		]);
+		expect(patch.images?.remove).toEqual(["i_a"]);
+		const other = deriveOps(
+			changed,
+			structuredClone(book),
+			() => ref("x"),
+			newId,
+		).ops.find((op) => op.type === "mark.patch") as Op;
+		expect(opKey(other)).toBe(opKey(patch));
+	});
+});

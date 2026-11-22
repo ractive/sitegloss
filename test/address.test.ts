@@ -450,7 +450,7 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 		);
 	});
 
-	test("case.md names an address with its query as the server's does, in a case of one page too", () => {
+	test("case.md names an address with its query, and a mark's added images, as the server's does", () => {
 		expect(
 			lines(caseFile.caseJson as never, (l) => pageLine(l) && l.includes("?")),
 		).toEqual(caseFile.caseMdQueryLines);
@@ -460,6 +460,15 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 		expect(lines(caseFile.singlePageCaseJson as never, pageLine)).toEqual(
 			caseFile.singlePageCaseMdPageLines,
 		);
+		// The images added to a mark (DEC-058).
+		expect(
+			lines(
+				caseFile.caseJson as never,
+				(l) =>
+					l.startsWith("- Images added:") ||
+					l.startsWith("![Mark 3, added image"),
+			),
+		).toEqual(caseFile.caseMdImageLines);
 	});
 });
 

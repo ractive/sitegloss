@@ -435,6 +435,11 @@ export type MarkRequest = (
 	| { type: "mark:verify"; caseId: string; markId: string }
 	/** Reopen…: with what is still wrong, which the panel requires. */
 	| { type: "mark:reopen"; caseId: string; markId: string; note: string }
+	/**
+	 * "Add another image…" (DEC-058): the panel opens its dialog for the
+	 * mark. The page asks only; no picture ever passes through it.
+	 */
+	| { type: "mark:add-image"; caseId: string; markId: string }
 ) & {
 	/**
 	 * Which mark the popover was opened on (`markKey`): its id is another
@@ -453,6 +458,7 @@ const MARK_REQUESTS: ReadonlySet<string> = new Set<MarkRequest["type"]>([
 	"mark:resolve",
 	"mark:verify",
 	"mark:reopen",
+	"mark:add-image",
 ]);
 
 /** An `OpenCaseRequest`, checked before the panel takes it. */

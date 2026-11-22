@@ -69,6 +69,7 @@ import {
 	teamOf,
 } from "./book.ts";
 import {
+	addedImagesOf,
 	applyOp,
 	appOut,
 	carryVia,
@@ -197,6 +198,58 @@ function whatOf(op: Op): string {
 			return "A comment could not be deleted for the team";
 		default:
 			return "A change was not taken";
+	}
+}
+
+/**
+ * The images added to marks of `c` that the team does not have (not in the
+ * shadow) and why, where a reason is known: what the server refused, or a
+ * role that may not change marks. One merely waiting to go says nothing.
+ */
+function notSentOf(
+	c: Case,
+	book: CaseBook,
+	mayAdd: boolean,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	const refused = new Map<string, string>();
+	for (const r of book.rejected ?? [])
+		for (const id of r.images ?? []) refused.set(id, r.why ?? r.text);
+	for (const a of c.marks) {
+		const wire = book.marks[a.id];
+		const had = new Set(
+			(
+				(wire === undefined ? undefined : book.shadow?.marks[wire])?.content
+					.images ?? []
+			).map((x) => x.id),
+		);
+		for (const x of a.images ?? []) {
+			if (had.has(x.id)) continue;
+			const why =
+				refused.get(x.id) ??
+				(mayAdd ? undefined : "your role in the team does not allow it");
+			if (why !== undefined) out[x.id] = why;
+		}
+	}
+	return out;
+}
+
+/** The number of the mark an added image of this path is on (DEC-058); none: no such image. */
+function addedTo(c: Case, path: string): number | undefined {
+	return c.marks.find((a) => a.images?.some((x) => x.image === path))?.number;
+}
+
+/** The pictures an operation names, which have to be at the server before it. */
+function picturesOf(op: Op): ImageRef[] {
+	switch (op.type) {
+		case "shot.create":
+			return [op.shot.image];
+		case "mark.create":
+			return [op.mark.crop, ...(op.mark.images ?? []).map((x) => x.image)];
+		case "mark.patch":
+			return (op.images?.add ?? []).map((x) => x.image);
+		default:
+			return [];
 	}
 }
 
@@ -682,6 +735,9 @@ export class CloudSync {
 		const here = new Map(cases.map((c) => [c.id, c]));
 		const problems = [...this.#problems];
 		const notes = [...this.#notes];
+		const notSent: Record<string, Record<string, string>> = {};
+		const role = teamOf(await this.account());
+		const mayAdd = (role?.permissions ?? []).includes(PERMISSION["mark.patch"]);
 		let undecided = 0;
 		const joins = { cases: 0, marks: 0 };
 		for (const book of books.values()) {
@@ -727,6 +783,11 @@ export class CloudSync {
 						: { title: kept?.title ?? book.title ?? "" }),
 					text: book.reread.text,
 				});
+			// Images added here that the team does not have, and why (DEC-058).
+			if (book.mode === "synced" && kept !== undefined && role !== undefined) {
+				const said = notSentOf(kept, book, mayAdd);
+				if (Object.keys(said).length > 0) notSent[book.caseId] = said;
+			}
 			const [first, ...rest] = book.rejected ?? [];
 			if (book.mode !== "synced" || first === undefined) continue;
 			const title = kept?.title ?? book.title;
@@ -759,6 +820,7 @@ export class CloudSync {
 			state,
 			problems,
 			...(notes.length > 0 ? { notes } : {}),
+			...(Object.keys(notSent).length > 0 ? { notSent } : {}),
 			undecided,
 			waiting,
 			...(joins.cases > 0 ? { joins } : {}),
@@ -1399,12 +1461,18 @@ export class CloudSync {
 				const mark = c.marks.find((a) => a.id === id);
 				if (mark !== undefined) wanted.add(mark.crop);
 			}
+			// The images a person added that go with it (DEC-058), by their ids.
+			for (const path of addedImagesOf(op)) wanted.add(path);
 		}
 		const refs = new Map<string, ImageRef>();
 		const blobs = new Map<string, Blob>();
-		/** Images the server refused, as they are said. */
+		/** Images the server refused, as they are said, and their paths. */
 		const unsent: Rejected[] = [];
-		const mayUpload = may.has(PERMISSION["mark.create"]);
+		const refusedPaths = new Set<string>();
+		// A screenshot or crop needs mark:create; an image added to a mark
+		// mark:update (the blob route takes either, DEC-058).
+		const mayUpload =
+			may.has(PERMISSION["mark.create"]) || may.has(PERMISSION["mark.patch"]);
 		for (const path of wanted) {
 			const stored = await store.getImage(c.id, path);
 			if (stored === undefined) continue;
@@ -1425,6 +1493,7 @@ export class CloudSync {
 			);
 			if (before !== undefined) {
 				refs.delete(path);
+				refusedPaths.add(path);
 				unsent.push(before);
 				continue;
 			}
@@ -1436,9 +1505,19 @@ export class CloudSync {
 				// Not this team's member any more: the run's to say.
 				if (error.status === 403 || error.status === 404) throw error;
 				refs.delete(path);
+				refusedPaths.add(path);
+				const added = addedTo(c, path);
+				const why = whyOf(error.code ?? "", error.message);
 				unsent.push({
 					key: `blob:${sha}`,
-					text: `An image was not taken, so its mark is not shared: ${whyOf(error.code ?? "", error.message)}.`,
+					...(added === undefined
+						? {}
+						: { images: [path.slice("images/".length, -".webp".length)], why }),
+					// An added image's mark is shared; only that picture is not.
+					text:
+						added === undefined
+							? `An image was not taken, so its mark is not shared: ${whyOf(error.code ?? "", error.message)}.`
+							: `An image added to mark ${added} was not taken, so the team does not see it: ${whyOf(error.code ?? "", error.message)}.`,
 				});
 			}
 		}
@@ -1462,8 +1541,14 @@ export class CloudSync {
 		const held = new Set(refused.map((r) => r.key));
 		if (refused.length > 0) book.rejected = refused;
 		else delete book.rejected;
-		// An image the server refused is not one that is missing here.
-		const absent = missing.length - unsent.length;
+		// An image the server refused is not one that is missing here. An
+		// added image's mark is shared without it; a crop's or a screenshot's
+		// is not.
+		const gone = missing.filter((path) => !refusedPaths.has(path));
+		const absentPictures = gone.filter(
+			(path) => addedTo(c, path) !== undefined,
+		);
+		const absent = gone.length - absentPictures.length;
 		const forbidden = ops.filter((op) => !may.has(PERMISSION[op.type]));
 		if (forbidden.length > 0)
 			said.push(
@@ -1472,6 +1557,10 @@ export class CloudSync {
 		if (absent > 0)
 			said.push(
 				`${absent === 1 ? "An image" : `${absent} images`} of the case ${absent === 1 ? "is" : "are"} missing on this device, so ${absent === 1 ? "its mark is" : "their marks are"} not shared.`,
+			);
+		for (const path of absentPictures)
+			said.push(
+				`An image added to mark ${addedTo(c, path)} is missing on this device, so the team does not see it.`,
 			);
 		let sending = ops.filter(
 			(op) => may.has(PERMISSION[op.type]) && !held.has(opKey(op)),
@@ -1633,16 +1722,18 @@ export class CloudSync {
 				for (const [i, op] of batch.entries()) {
 					if (
 						results[i]?.status !== "rejected" ||
-						results[i]?.error?.code !== "blob_missing" ||
-						(op.type !== "shot.create" && op.type !== "mark.create")
+						results[i]?.error?.code !== "blob_missing"
 					)
 						continue;
-					const ref = op.type === "shot.create" ? op.shot.image : op.mark.crop;
-					const blob = blobs.get(ref.sha256);
-					if (blob === undefined || sent.has(ref.sha256)) continue;
-					await this.#upload(api, team, ref.sha256, blob, true);
-					sent.add(ref.sha256);
-					uploaded = true;
+					// Every image the operation names: a screenshot, a crop, the
+					// images added to a mark (DEC-058).
+					for (const ref of picturesOf(op)) {
+						const blob = blobs.get(ref.sha256);
+						if (blob === undefined || sent.has(ref.sha256)) continue;
+						await this.#upload(api, team, ref.sha256, blob, true);
+						sent.add(ref.sha256);
+						uploaded = true;
+					}
 				}
 				if (!uploaded) break;
 				const refused = batch.filter(
@@ -1695,11 +1786,26 @@ export class CloudSync {
 				} else {
 					// Refused, or an answer this build does not know: not done.
 					clean = false;
+					const images = addedImagesOf(op).map((path) =>
+						path.slice("images/".length, -".webp".length),
+					);
 					book.rejected = [
 						...(book.rejected ?? []).filter((r) => r.key !== opKey(op)),
 						{
 							key: opKey(op),
 							text: sentence(op, code, result.error?.message ?? ""),
+							// Its images are not sent, and say why (DEC-058); tried
+							// again once the team's mark changes its images.
+							...(images.length === 0
+								? {}
+								: {
+										images,
+										why:
+											code === "limit"
+												? "the mark already holds six images"
+												: whyOf(code, result.error?.message ?? ""),
+										...(op.type === "mark.patch" ? { mark: op.markId } : {}),
+									}),
 						},
 					].slice(-MAX_REJECTED);
 				}
@@ -2141,6 +2247,13 @@ export class CloudSync {
 		// The images of what is new, before the store is touched.
 		const knownShots = new Set(Object.values(given?.shots ?? {}));
 		const knownMarks = new Set(Object.values(given?.marks ?? {}));
+		/** Images added to marks that are not here yet (DEC-058): not in the shadow. */
+		const newImages = (m: WireMark) => {
+			const had = new Set(
+				(given?.shadow?.marks[m.id]?.content.images ?? []).map((x) => x.id),
+			);
+			return (m.images ?? []).filter((x) => !had.has(x.id));
+		};
 		const refused = await this.#fetch(
 			api,
 			team,
@@ -2151,6 +2264,7 @@ export class CloudSync {
 				...incoming.marks
 					.filter((m) => !knownMarks.has(m.id))
 					.map((m) => m.crop),
+				...incoming.marks.flatMap((m) => newImages(m).map((x) => x.image)),
 			],
 			fetched,
 		);
@@ -2169,13 +2283,39 @@ export class CloudSync {
 					(!refused.has(m.crop.sha256) && !without.has(m.shotId)),
 			);
 			const left = incoming.marks.length - marks.length;
+			// An added image whose picture did not come is left out of its
+			// mark this time, as if the server did not have it yet: nothing
+			// here is removed for it, and it comes with a later read.
+			const pictures = (m: WireMark): WireMark =>
+				m.images === undefined
+					? m
+					: {
+							...m,
+							images: m.images.filter((x) => !refused.has(x.image.sha256)),
+						};
+			const count = (list: readonly WireMark[]) =>
+				list.reduce((n, m) => n + (m.images?.length ?? 0), 0);
+			const pictureless = count(marks) - count(marks.map(pictures));
 			incoming = {
 				...incoming,
 				shots: incoming.shots.filter((s) => !without.has(s.id)),
-				marks,
+				marks: marks.map(pictures),
 			};
 			// Said until a read of the case brings them (it is marked for one).
-			incomplete = `${left === 1 ? "A mark" : `${left} marks`} of the team ${left === 1 ? "is" : "are"} not shown here: ${refused.size === 1 ? "an image" : "images"} the server sent ${refused.size === 1 ? "is" : "are"} not the image named (missing, not a WebP image, too large, or other content).`;
+			const what = [
+				left > 0 ? (left === 1 ? "A mark" : `${left} marks`) : "",
+				pictureless > 0
+					? left > 0
+						? `${pictureless} added image${pictureless === 1 ? "" : "s"}`
+						: pictureless === 1
+							? "An image added to a mark"
+							: `${pictureless} images added to marks`
+					: "",
+			]
+				.filter(Boolean)
+				.join(" and ");
+			const many = left + pictureless > 1;
+			incomplete = `${what} of the team ${many ? "are" : "is"} not shown here: ${refused.size === 1 ? "an image" : "images"} the server sent ${refused.size === 1 ? "is" : "are"} not the image named (missing, not a WebP image, too large, or other content).`;
 		}
 		// A mark an AI app added at the server has its whole screenshot as its
 		// crop: a crop of it is cut here, for showing it. Only here: the

@@ -2,12 +2,18 @@ import { describe, expect, test } from "bun:test";
 import {
 	ALLOW_DELAY_MS,
 	armed,
+	asksKeepOn,
 	type CardStatus,
 	CONFIRM_DELAY_MS,
 	cardStatus,
 	cardView,
 	confirms,
 	hasNewGrant,
+	KEEP_ON_ASK_WAIT_MS,
+	keepOnAskStarts,
+	keepOnChosen,
+	NOT_ASKING,
+	nextKeepOnAsk,
 	pairedSince,
 	stillPaired,
 	switchShown,
@@ -220,4 +226,74 @@ describe("when a yes to a question counts (Allow, Fill in the code)", () => {
 		// Not focused: never.
 		expect(armed(0, undefined, 1_000_000)).toBe(false);
 	});
+});
+
+test("the question whether to keep AI access on: once, when the person turned it on, not kept on, not taken over (DEC-059)", () => {
+	const ways = ["switch", "button", "pill", "by-itself"] as const;
+	const rows: [string, boolean, boolean, boolean][] = [];
+	for (const way of ways)
+		for (const keepOn of [false, true])
+			for (const answered of [false, true])
+				rows.push([
+					way,
+					keepOn,
+					answered,
+					asksKeepOn(way, { keepOn }, answered),
+				]);
+	// Only the person's own turning on, with keep-on off and no answer yet.
+	expect(rows.filter(([, , , asks]) => asks)).toEqual([
+		["switch", false, false, true],
+		["button", false, false, true],
+		["pill", false, false, true],
+	]);
+	// Taken over by another browser or program: not asked.
+	expect(
+		asksKeepOn("switch", { keepOn: false, replaced: { sibling: true } }, false),
+	).toBe(false);
+});
+
+test("the question shows only once AI access is really on after the person's turning on, and goes whenever it is not (DEC-059)", () => {
+	const off = {
+		state: "disconnected" as const,
+		retrying: false,
+		keepOn: false,
+	};
+	const connecting = { ...off, state: "connecting" as const };
+	const connected = { ...off, state: "connected" as const };
+	const started = keepOnAskStarts("switch", off, false, 0);
+	expect(started.asking).toBe(false);
+	// Still off: the worker has not taken the command up yet; then connecting.
+	expect(nextKeepOnAsk(started, off, false, 10)).toBe(started);
+	const seen = nextKeepOnAsk(started, connecting, false, 20);
+	expect(seen.pending?.seenActive).toBe(true);
+	// Connected: asked.
+	const asking = nextKeepOnAsk(seen, connected, false, 30);
+	expect(asking.asking).toBe(true);
+	// Gone when it goes off, the session ends, or another panel answered.
+	expect(nextKeepOnAsk(asking, off, false, 40)).toEqual(NOT_ASKING);
+	expect(
+		nextKeepOnAsk(asking, { ...connected, state: "reconnecting" }, false, 40),
+	).toEqual(NOT_ASKING);
+	expect(nextKeepOnAsk(asking, connected, true, 40)).toEqual(NOT_ASKING);
+	expect(
+		nextKeepOnAsk(asking, { ...connected, keepOn: true }, false, 40),
+	).toEqual(NOT_ASKING);
+	// The attempt failed (an unreachable relay): never asked.
+	expect(nextKeepOnAsk(seen, off, false, 40)).toEqual(NOT_ASKING);
+	// It took too long: not asked any more.
+	expect(
+		nextKeepOnAsk(started, connected, false, KEEP_ON_ASK_WAIT_MS + 1),
+	).toEqual({ asking: true });
+	expect(nextKeepOnAsk(started, off, false, KEEP_ON_ASK_WAIT_MS + 1)).toEqual(
+		NOT_ASKING,
+	);
+	// Coming on by itself never starts it.
+	expect(nextKeepOnAsk(NOT_ASKING, connected, false, 50)).toEqual(NOT_ASKING);
+	expect(keepOnAskStarts("by-itself", off, false, 0)).toEqual(NOT_ASKING);
+
+	// The answer "keep" (or a tick by hand) is kept once keep-on is really on:
+	// a refused consent or a worker that does not take it leaves it unanswered.
+	expect(keepOnChosen(false, { keepOn: false })).toBe(false);
+	expect(keepOnChosen(false, { keepOn: true })).toBe(true);
+	expect(keepOnChosen(true, { keepOn: true })).toBe(false);
 });
