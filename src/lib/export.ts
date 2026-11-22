@@ -8,7 +8,7 @@ import {
 	CaseError,
 	caseImages,
 	importedResolution,
-	MAX_HELD_IMAGES,
+	MAX_MARK_IMAGES,
 	MAX_MARKS,
 	MAX_SHOTS,
 	MAX_TITLE,
@@ -90,7 +90,8 @@ function withoutSyncNotes(c: Case): Case {
 	const { via: _v, createdVia: _c, deletedVia: _d, ...rest } = c;
 	return {
 		...rest,
-		marks: rest.marks.map(({ via: _a, ...a }) => a),
+		// Images held back are this browser's too (DEC-058): not in a file.
+		marks: rest.marks.map(({ via: _a, heldImages: _h, ...a }) => a),
 	};
 }
 
@@ -208,7 +209,7 @@ export async function exportAllCases(
  * and case.md.
  */
 export const MAX_CASE_ENTRIES =
-	MAX_SHOTS + MAX_MARKS * (1 + MAX_HELD_IMAGES) + 2;
+	MAX_SHOTS + MAX_MARKS * (1 + MAX_MARK_IMAGES) + 2;
 
 /** case.json is text about marks; a real one is far smaller than this. */
 export const MAX_CASE_JSON_BYTES = 20 * 1024 * 1024;

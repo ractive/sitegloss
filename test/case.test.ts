@@ -16,8 +16,8 @@ import {
 	MAX_FINDING,
 	MAX_FINDINGS,
 	MAX_FINDINGS_TEXT,
-	MAX_HELD_IMAGES,
 	MAX_LINK,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	MAX_REOPENS,
 	MAX_TITLE,
@@ -1153,9 +1153,9 @@ describe("images added to a mark (DEC-058)", () => {
 		};
 		bad({}, undefined, "images: must be an array");
 		bad(
-			Array.from({ length: MAX_HELD_IMAGES + 1 }, (_, i) => image(`i_${i}`)),
+			Array.from({ length: MAX_MARK_IMAGES + 1 }, (_, i) => image(`i_${i}`)),
 			undefined,
-			`more than ${MAX_HELD_IMAGES} items`,
+			`more than ${MAX_MARK_IMAGES} items`,
 		);
 		bad([image("../x")], undefined, "not a valid id");
 		bad(
@@ -1206,6 +1206,35 @@ describe("images added to a mark (DEC-058)", () => {
 			NOW,
 		);
 		expect(last.value.marks[1]).not.toHaveProperty("images");
+	});
+
+	test("a place freed here gives the oldest held image a place; a held image is removed as any, and goes with its mark", () => {
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: NOW },
+		});
+		const c = twoMarks();
+		c.marks[1] = {
+			...(c.marks[1] as Mark),
+			images: ["t1", "t2", "t3", "t4", "t5", "t6"].map(image),
+			heldImages: [image("h1"), image("h2")],
+		};
+		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
+		expect(() => withImages(c, "m2", ["h1"], NOW)).toThrow("cannot be used");
+		const freed = withoutImage(c, "m2", "t3", NOW).value.marks[1] as Mark;
+		expect(freed.images?.map((x) => x.id)).toEqual([
+			"t1",
+			"t2",
+			"t4",
+			"t5",
+			"t6",
+			"h1",
+		]);
+		expect(freed.heldImages?.map((x) => x.id)).toEqual(["h2"]);
+		const { images } = withoutImage(c, "m2", "h2", NOW);
+		expect(images).toEqual(["images/h2.webp"]);
+		expect(withoutMark(c, "m2", NOW).images).toContain("images/h1.webp");
 	});
 
 	test("a deleted mark takes its images; an added one ends an AI app's note", () => {

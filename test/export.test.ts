@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Case, Finding, Mark } from "../src/lib/case.ts";
+import type { Op } from "../src/lib/cloud/api.ts";
+import { emptyBook } from "../src/lib/cloud/book.ts";
+import { deriveOps } from "../src/lib/cloud/wire.ts";
 import {
 	caseFolders,
 	exportAllCases,
@@ -678,6 +681,59 @@ describe("import", () => {
 			[c.id, copy.id].sort(),
 		);
 		expect(await store.getImage(copy.id, "crops/m2.webp")).toBeDefined();
+	});
+});
+
+describe("an image held back on this device (DEC-058)", () => {
+	test("is never in the file: the file holds the mark's six, and a copy sends at most six", async () => {
+		const { store, c } = await stored();
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: "t" },
+		});
+		const six = ["t1", "t2", "t3", "t4", "t5", "t6"].map(image);
+		const marked: Case = {
+			...c,
+			marks: [
+				mark(1, { images: six, heldImages: [image("i_held")] }),
+				mark(2, { author: "ai", element: null }),
+			],
+		};
+		await putCase(store, marked);
+		for (const x of [...six, image("i_held")])
+			await store.putImage(c.id, x.image, {
+				blob: webp(x.id),
+				width: 10,
+				height: 10,
+			});
+		const files = await readZip(await exportCase(store, marked));
+		const json = JSON.parse(new TextDecoder().decode(files.get("case.json")));
+		expect(json.marks[0].images).toHaveLength(6);
+		expect(json.marks[0]).not.toHaveProperty("heldImages");
+		expect(files.has("images/i_held.webp")).toBe(false);
+		const copy = await storeImport(
+			new MemoryStore(),
+			await readExport(await exportCase(store, marked)),
+			{ copy: true },
+		);
+		expect(copy.marks[0]?.images).toHaveLength(6);
+		expect(copy.marks[0]?.heldImages).toBeUndefined();
+		const book = emptyBook(copy.id, "synced", "team_1");
+		const create = deriveOps(
+			copy,
+			book,
+			() => ({
+				sha256: "a".repeat(64),
+				width: 1,
+				height: 1,
+				bytes: 1,
+			}),
+			(p) => `${p}_1`,
+		).ops.find(
+			(op) => op.type === "mark.create" && op.mark.number === 1,
+		) as Extract<Op, { type: "mark.create" }>;
+		expect(create.mark.images).toHaveLength(6);
 	});
 });
 

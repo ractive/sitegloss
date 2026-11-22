@@ -690,7 +690,7 @@ describe("images added to a mark in the sync (DEC-058)", () => {
 		expect(removed?.deleteImages).toEqual(["images/i_a.webp"]);
 	});
 
-	test("an image added here after the run's push is kept when the team's mark comes back full, its file too", () => {
+	test("an image added here after the run's push is held back when the team's mark comes back full, its file kept", () => {
 		const c = withImage();
 		const { book } = synced(c);
 		// Added between the push and the pull: not in the shadow.
@@ -725,16 +725,20 @@ describe("images added to a mark in the sync (DEC-058)", () => {
 			new Map(),
 			{ teamId: "team_1", whole: false, now: NOW },
 		);
-		expect(merged?.value.marks[1]?.images?.map((x) => x.id)).toEqual([
+		// The team's six are the mark's images; the late one is held back,
+		// its file kept, and no patch carries it.
+		const after = merged?.value as Case;
+		expect(after.marks[1]?.images?.map((x) => x.id)).toEqual([
 			"i_a",
 			"t1",
 			"t2",
 			"t3",
 			"t4",
 			"t5",
-			"i_late",
 		]);
+		expect(after.marks[1]?.heldImages?.map((x) => x.id)).toEqual(["i_late"]);
 		expect(merged?.deleteImages).toEqual([]);
+		expect(isClean(after, merged?.book as CaseBook)).toBe(true);
 	});
 
 	test("an image added here goes as an add by id, one removed here as a remove, with a key that does not hang on the picture", () => {

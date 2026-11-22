@@ -16,6 +16,7 @@ import {
 	caseImages,
 	casePages,
 	cleanTitle,
+	heldImagesOf,
 	MARK_CHANGED,
 	MAX_MARK_IMAGES,
 	type Mark,
@@ -891,8 +892,9 @@ async function refreshCase(): Promise<void> {
 		return;
 	const images = imagesWork.start();
 	const urls = new Map<string, string>();
-	// Its screenshots, the marks' crops and the images added to them.
-	for (const path of caseImages(c)) {
+	// Its screenshots, the marks' crops and the images added to them, those
+	// held back here too (DEC-058).
+	for (const path of [...caseImages(c), ...heldImagesOf(c)]) {
 		const image = await store.getImage(c.id, path);
 		if (image !== undefined) urls.set(path, URL.createObjectURL(image.blob));
 	}

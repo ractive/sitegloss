@@ -53,14 +53,12 @@ export const MAX_FINDINGS_TEXT = 200_000;
 /** The most findings a mark may have. */
 export const MAX_FINDINGS = 20;
 
-/** The most images a person may add to a mark, and the team's mark holds (DEC-058). */
-export const MAX_MARK_IMAGES = 6;
-
 /**
- * The most a mark holds here: the team's six, and images added on this
- * device that could not be sent beside them (DEC-058), never deleted unsent.
+ * The most images a mark holds (DEC-058): here, in a file and at the team's
+ * server alike. What was added here and does not fit beside the team's is
+ * held back apart (`Mark.heldImages`), never in `images`.
  */
-export const MAX_HELD_IMAGES = 2 * MAX_MARK_IMAGES;
+export const MAX_MARK_IMAGES = 6;
 
 /** The most points a freehand mark may have. */
 export const MAX_PEN_POINTS = 5000;
@@ -393,6 +391,14 @@ export interface Mark {
 	 * first, at most `MAX_MARK_IMAGES`; none: no images (DEC-058).
 	 */
 	images?: MarkImage[];
+	/**
+	 * Images added on this device that did not fit once the team's came back
+	 * (the mark holds six there), oldest first (DEC-058): this browser's
+	 * own, never in a file, the Markdown, an AI app's view or the wire. Not
+	 * sent, and said so; the oldest moves into `images` as soon as a place
+	 * frees up, and is then sent as any added image. Their files are kept.
+	 */
+	heldImages?: MarkImage[];
 	/** Who made it, in a case synced with a team (DEC-039). */
 	createdBy?: UserRef;
 	/**
@@ -820,6 +826,10 @@ export function caseImages(c: Case): Set<string> {
 		...c.marks.flatMap((a) => (a.images ?? []).map((x) => x.image)),
 	]);
 }
+
+/** The files of the images held back on marks here (DEC-058): never in a file. */
+export const heldImagesOf = (c: Case): string[] =>
+	c.marks.flatMap((a) => (a.heldImages ?? []).map((x) => x.image));
 
 /**
  * The screenshot's real pixels per CSS pixel. `devicePixelRatio` can differ
@@ -1585,6 +1595,16 @@ export function validateCase(value: unknown): Case {
 			...reopensOf(a["reopens"], `${p}.reopens`),
 			...findingsOf(a["findings"], `${p}.findings`),
 			...imagesOf(a["images"], `${p}.images`, imageIds),
+			// This browser's images held back (DEC-058); a file never has them
+			// (the import leaves them out), the store does.
+			...((): { heldImages?: MarkImage[] } => {
+				const held = imagesOf(
+					a["heldImages"],
+					`${p}.heldImages`,
+					imageIds,
+				).images;
+				return held === undefined ? {} : { heldImages: held };
+			})(),
 			...createdByOf(a["createdBy"], `${p}.createdBy`),
 			...(a["createdVia"] === undefined
 				? {}
@@ -1916,7 +1936,7 @@ function imagesOf(
 	taken: Set<string>,
 ): { images?: MarkImage[] } {
 	if (value === undefined) return {};
-	const images = arr(value, path, MAX_HELD_IMAGES).map((v, i): MarkImage => {
+	const images = arr(value, path, MAX_MARK_IMAGES).map((v, i): MarkImage => {
 		const p = `${path}[${i}]`;
 		const x = obj(v, p);
 		const imageId = id(x["id"], `${p}.id`);
@@ -2293,6 +2313,7 @@ export function withoutMark(
 		images: [
 			gone.crop,
 			...(gone.images ?? []).map((x) => x.image),
+			...(gone.heldImages ?? []).map((x) => x.image),
 			...(shotUsed || shot === undefined ? [] : [shot.image]),
 		],
 	};
@@ -2306,6 +2327,25 @@ const withMarkImages = (a: Mark, images: MarkImage[]): Mark => {
 };
 
 /**
+ * The mark with `images` as its added images and `held` held back
+ * (DEC-058): what does not fit in six is held, and the oldest held image
+ * takes a place that is free. `images` in order, the server's first.
+ */
+export function withHeldImages(
+	a: Mark,
+	images: readonly MarkImage[],
+	held: readonly MarkImage[],
+): Mark {
+	const all = [...images, ...held];
+	const { heldImages: _h, ...rest } = withMarkImages(
+		a,
+		all.slice(0, MAX_MARK_IMAGES),
+	);
+	const back = all.slice(MAX_MARK_IMAGES);
+	return back.length > 0 ? { ...rest, heldImages: back } : rest;
+}
+
+/**
  * The case with images added to the mark, after its others, each by its id
  * (`newId("i")`), its file at `addedImage(id)`, added `now`. Refused past
  * `MAX_MARK_IMAGES` and for an id the case has already.
@@ -2317,7 +2357,9 @@ export function withImages(
 	now: string,
 ): Case {
 	const taken = new Set(
-		c.marks.flatMap((a) => (a.images ?? []).map((x) => x.id)),
+		c.marks.flatMap((a) =>
+			[...(a.images ?? []), ...(a.heldImages ?? [])].map((x) => x.id),
+		),
 	);
 	for (const imageId of imageIds) {
 		if (!isSafeId(imageId) || taken.has(imageId))
@@ -2369,16 +2411,20 @@ export function withoutImage(
 		throw new CaseError(
 			"The mark's screenshot stays with the mark; only an added image can be removed.",
 		);
-	const gone = mark?.images?.find((x) => x.id === imageId);
+	const gone = [...(mark?.images ?? []), ...(mark?.heldImages ?? [])].find(
+		(x) => x.id === imageId,
+	);
 	const value = changed(
 		c,
 		markId,
 		(a) => {
 			if (gone === undefined)
 				throw new CaseError("The image is no longer on the mark.");
-			return withMarkImages(
+			// A place freed here: the oldest held image takes it (DEC-058).
+			return withHeldImages(
 				a,
 				(a.images ?? []).filter((x) => x.id !== imageId),
+				(a.heldImages ?? []).filter((x) => x.id !== imageId),
 			);
 		},
 		now,

@@ -27,7 +27,6 @@ import {
 	MAX_COMMENT,
 	MAX_FINDING,
 	MAX_FINDINGS,
-	MAX_HELD_IMAGES,
 	MAX_LINK,
 	MAX_MARK_IMAGES,
 	MAX_PAGE_TITLE,
@@ -57,6 +56,7 @@ import {
 	shotImage,
 	shotUrl,
 	type UserRef,
+	withHeldImages,
 	withoutLook,
 } from "../case.ts";
 import { cropRectFor } from "../save.ts";
@@ -1327,7 +1327,14 @@ function caseOf(w: WireCase, shots: readonly WireShot[]): Case {
 }
 
 const withContent = (a: Mark, content: MarkContent): Mark => {
-	const { resolution: _r, reopens: _o, findings: _f, images: _i, ...rest } = a;
+	const {
+		resolution: _r,
+		reopens: _o,
+		findings: _f,
+		images: _i,
+		heldImages: _h,
+		...rest
+	} = a;
 	// Not told of images: the mark keeps its own.
 	const images: MarkImage[] =
 		content.images === undefined
@@ -1337,9 +1344,15 @@ const withContent = (a: Mark, content: MarkContent): Mark => {
 					image: addedImage(x.id),
 					added: x.added as ImageAdded,
 				}));
+	// Six at most; what was added here and does not fit is held back, and
+	// the oldest held takes a place that is free (DEC-058).
+	const fitted = withHeldImages(rest as Mark, images, a.heldImages ?? []);
 	return {
 		...rest,
-		...(images.length > 0 ? { images } : {}),
+		...(fitted.images === undefined ? {} : { images: fitted.images }),
+		...(fitted.heldImages === undefined
+			? {}
+			: { heldImages: fitted.heldImages }),
 		comment: content.comment,
 		author: content.author,
 		...(content.resolution
@@ -1427,10 +1440,10 @@ function mergeImages(
 	return [
 		...incoming.images.filter((x) => here.has(x.id) || !was.has(x.id)),
 		// Never sent from here (not in the shadow): kept whatever the team's
-		// mark holds, and said as not sent; only one the server took, or the
-		// person removes, leaves the device.
+		// mark holds; what does not fit in six is held back (`withContent`).
+		// Only one the server took, or the person removes, leaves the device.
 		...(local.images ?? []).filter((x) => !now.has(x.id) && !was.has(x.id)),
-	].slice(0, MAX_HELD_IMAGES);
+	].slice(0, 2 * MAX_MARK_IMAGES);
 }
 
 /** The next free number above every number of `c` and those in `taken`. */
@@ -1607,7 +1620,8 @@ export function mergeCase(
 		const a = c.marks.find((x) => x.id === id);
 		if (a !== undefined) {
 			out.deleteImages.add(a.crop);
-			for (const x of a.images ?? []) out.deleteImages.add(x.image);
+			for (const x of [...(a.images ?? []), ...(a.heldImages ?? [])])
+				out.deleteImages.add(x.image);
 			emptied.add(a.shot);
 			c = {
 				...c,
@@ -1725,8 +1739,10 @@ export function mergeCase(
 				const ref = refs.get(x.id);
 				if (ref !== undefined) out.images.set(x.image, need(ref));
 			}
-			const kept = new Set((next.images ?? []).map((x) => x.id));
-			for (const x of was?.images ?? [])
+			const kept = new Set(
+				[...(next.images ?? []), ...(next.heldImages ?? [])].map((x) => x.id),
+			);
+			for (const x of [...(was?.images ?? []), ...(was?.heldImages ?? [])])
 				if (!kept.has(x.id)) out.deleteImages.add(x.image);
 		};
 		const id = markHere.get(w.id);

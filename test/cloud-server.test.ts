@@ -26,7 +26,7 @@ import {
 	withoutImage,
 	withoutMark,
 } from "../src/lib/case.ts";
-import { eventsUrl } from "../src/lib/cloud/api.ts";
+import { eventsUrl, sha256Of } from "../src/lib/cloud/api.ts";
 import {
 	AuthError,
 	discover,
@@ -596,6 +596,90 @@ serverTest("images added to a mark at a real server (DEC-058)", () => {
 		expect(
 			await tess.device.store.getImage(caseId, addedImage(imageId)),
 		).toBeUndefined();
+
+		await removeCase(tess.device, caseId);
+		await tess.device.engine.request();
+		await tess.session.end(base);
+		await dana.session.end(base);
+	}, 120_000);
+
+	test("past six: the service refuses a seventh with limit; a device's late image is held back and the mark's comment still goes", async () => {
+		const caseId = `c_ix${Date.now().toString(36)}`;
+		const tess = await real(base, "tess", "tess@example.com");
+		const dana = await real(base, "dana", "dana@example.com");
+		await signIn(tess.device);
+		await signIn(dana.device);
+		await startCase(tess.device, caseId);
+		await addMark(tess.device, caseId, "The menu closes", { element: true });
+		await tess.device.engine.request();
+		const markId = ((await tess.device.store.getCase(caseId)) as Case).marks[0]
+			?.id as string;
+		const add = (d: typeof tess.device, tags: string[]) =>
+			d.store.updateCase(caseId, (current) => {
+				const ids = tags.map((t) => `i_${caseId}_${t}`);
+				return {
+					value: withImages(
+						current as Case,
+						markId,
+						ids,
+						new Date().toISOString(),
+					),
+					images: new Map(
+						ids.map((id, i) => [
+							addedImage(id),
+							{
+								blob: webp(`picture ${tags[i]}`, 64, 40),
+								width: 64,
+								height: 40,
+							},
+						]),
+					),
+				};
+			});
+		await add(tess.device, ["a", "b", "c", "d", "e"]);
+		await tess.device.engine.request();
+		await dana.device.engine.request();
+		// Both add a sixth, neither knowing of the other's.
+		await add(tess.device, ["f"]);
+		await tess.device.engine.request();
+		await add(dana.device, ["g"]);
+		await change(dana.device, caseId, (c, now) =>
+			withComment(c, markId, "Seen on Firefox too", now),
+		);
+		await dana.device.engine.request();
+		await dana.device.engine.request();
+		const teamId = (await tess.device.engine.account())?.teamId as string;
+		const there = await tess.device.api.getCase(teamId, caseId);
+		const wire = there?.marks[0];
+		expect(wire?.images).toHaveLength(6);
+		expect(wire?.comment).toBe("Seen on Firefox too");
+		const mine = ((await dana.device.store.getCase(caseId)) as Case).marks[0];
+		expect(mine?.images).toHaveLength(6);
+		expect(mine?.heldImages?.map((x) => x.id)).toEqual([`i_${caseId}_g`]);
+		expect(status(dana.device)?.problems).toEqual([]);
+
+		// The service's own answer to a seventh, which the sync holds back.
+		const blob = webp("a seventh", 64, 40);
+		const sha256 = await sha256Of(blob);
+		await dana.device.api.putBlob(teamId, sha256, blob);
+		const answer = await dana.device.api.ops(teamId, [
+			{
+				opId: `o_${caseId}`,
+				type: "mark.patch",
+				markId: wire?.id as string,
+				images: {
+					add: [
+						{
+							id: `i_${caseId}_x`,
+							image: { sha256, width: 64, height: 40, bytes: blob.size },
+						},
+					],
+				},
+			},
+		]);
+		expect(answer.results[0]?.status).toBe("rejected");
+		expect(answer.results[0]?.error?.code).toBe("limit");
+		expect(answer.results[0]?.error?.message).toContain("at most 6 images");
 
 		await removeCase(tess.device, caseId);
 		await tess.device.engine.request();
