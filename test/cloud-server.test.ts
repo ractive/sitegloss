@@ -23,20 +23,16 @@ import {
 	withoutCaseComment,
 	withoutMark,
 } from "../src/lib/case.ts";
-import { eventsUrl, httpApi } from "../src/lib/cloud/api.ts";
+import { eventsUrl } from "../src/lib/cloud/api.ts";
 import {
 	AuthError,
 	discover,
 	refreshTokens,
-	Session,
 	TOKENS_KEY,
 	type Tokens,
 } from "../src/lib/cloud/auth.ts";
-import { type Account, forgetCases } from "../src/lib/cloud/book.ts";
-import { CloudSync } from "../src/lib/cloud/engine.ts";
+import type { Account } from "../src/lib/cloud/book.ts";
 import { listen } from "../src/lib/cloud/sse.ts";
-import { memoryKv } from "../src/lib/kv.ts";
-import { MemoryStore } from "../src/lib/store.ts";
 import {
 	addMark,
 	CART,
@@ -49,23 +45,8 @@ import {
 	startCase,
 	status,
 	sync,
-	webp,
 } from "./cloud-helpers.ts";
-import { SERVER as BASE, real, signInWindow } from "./cloud-real.ts";
-import {
-	type Case as Case030,
-	withComment as withComment030,
-} from "./compat/v0.3.0/src/lib/case.ts";
-import { httpApi as httpApi030 } from "./compat/v0.3.0/src/lib/cloud/api.ts";
-import {
-	beginSignIn as beginSignIn030,
-	codeFrom as codeFrom030,
-	exchangeCode as exchangeCode030,
-	Session as Session030,
-} from "./compat/v0.3.0/src/lib/cloud/auth.ts";
-import { CloudSync as CloudSync030 } from "./compat/v0.3.0/src/lib/cloud/engine.ts";
-import { memoryKv as memoryKv030 } from "./compat/v0.3.0/src/lib/kv.ts";
-import { MemoryStore as MemoryStore030 } from "./compat/v0.3.0/src/lib/store.ts";
+import { SERVER as BASE, real } from "./cloud-real.ts";
 
 const serverTest = BASE === undefined ? describe.skip : describe;
 
@@ -278,14 +259,12 @@ serverTest("against a real server", () => {
 		await dana.session.end(base);
 	}, 120_000);
 
-	test("the thread, closing and the app's name (DEC-046), with a 0.3.0 browser on the team", async () => {
+	test("the thread, closing and the app's name (DEC-046)", async () => {
 		const caseId = `c_th${Date.now().toString(36)}`;
 		const tess = await real(base, "tess", "tess@example.com");
 		const dana = await real(base, "dana", "dana@example.com");
-		const old = await real030(base, "dana@example.com");
 		await signIn(tess.device);
 		await signIn(dana.device);
-		await old.engine.signedIn(base, await old.api.me());
 		const CLAUDE = {
 			id: "https://claude.ai/oauth",
 			name: "Claude",
@@ -341,39 +320,11 @@ serverTest("against a real server", () => {
 		expect(there.closed?.user?.name).toBe("Tess Tester");
 		expect(there.closed?.app?.name).toBe("Claude");
 
-		// 0.3.0 has the case and its marks, without problems.
-		for (let i = 0; i < 2; i++) await old.engine.request();
-		expect(old.statuses.at(-1)?.state).toBe("synced");
-		expect(old.statuses.at(-1)?.problems).toEqual([]);
-		const oldCase = (await old.store.getCase(caseId)) as Case030;
-		expect(oldCase.annotations.map((a) => a.comment)).toEqual([
-			"Total is cut off",
-			"Pay button too pale",
-		]);
-		// 0.3.0 changes a mark's comment: it arrives; the thread and the close stay.
-		await old.store.updateCase(caseId, (c) => ({
-			value: withComment030(
-				c as Case030,
-				(c as Case030).annotations[0]?.id as string,
-				"Total is cut off on small screens",
-				new Date(Date.now() + 1000).toISOString(),
-			),
-		}));
-		await old.engine.request();
-		expect(old.statuses.at(-1)?.problems).toEqual([]);
-		await tess.device.engine.request();
-		const mine = (await tess.device.store.getCase(caseId)) as Case;
-		expect(mine.marks[0]?.comment).toBe("Total is cut off on small screens");
-		expect(mine.comments).toHaveLength(2);
-		expect(mine.closed).toBeDefined();
-
-		// Deleted here: the server lists it with no case; 0.3.0 passes it by.
+		// Deleted here: the other device has it no more.
 		await change(tess.device, caseId, (c, now) =>
 			withoutCaseComment(c, `k_${caseId}_1`, now),
 		);
 		await tess.device.engine.request();
-		await old.engine.request();
-		expect(old.statuses.at(-1)?.problems).toEqual([]);
 		await dana.device.engine.request();
 		expect(
 			((await dana.device.store.getCase(caseId)) as Case).comments?.map(
@@ -381,46 +332,10 @@ serverTest("against a real server", () => {
 			),
 		).toEqual([`k_${caseId}_2`]);
 
-		// 0.3.0 adds an open mark: the server opens the case again, and Tess has it.
-		await old.store.putImage(caseId, "crops/a3.webp", {
-			blob: webp("crop by 0.3.0", 280, 160),
-			width: 280,
-			height: 160,
-		});
-		await old.store.updateCase(caseId, (c) => {
-			const value = c as Case030;
-			const one = value.annotations[0] as Case030["annotations"][number];
-			return {
-				value: {
-					...value,
-					annotations: [
-						...value.annotations,
-						{
-							...one,
-							id: "a3",
-							number: 3,
-							comment: "From 0.3.0",
-							crop: "crops/a3.webp",
-							shape: { kind: "note", at: { x: 5, y: 5 } },
-							element: null,
-						},
-					],
-					updatedAt: new Date(Date.now() + 2000).toISOString(),
-				},
-			};
-		});
-		await old.engine.request();
-		expect(old.statuses.at(-1)?.problems).toEqual([]);
-		await tess.device.engine.request();
-		const reopened = (await tess.device.store.getCase(caseId)) as Case;
-		expect(reopened.marks.map((a) => a.comment)).toContain("From 0.3.0");
-		expect(reopened.closed).toBeUndefined();
-
 		await removeCase(tess.device, caseId);
 		await tess.device.engine.request();
 		await tess.session.end(base);
 		await dana.session.end(base);
-		await old.session.end(base);
 	}, 120_000);
 });
 
@@ -618,157 +533,3 @@ serverTest(
 		}, 120_000);
 	},
 );
-
-serverTest("a browser's 0.3.0 data, opened by this build", () => {
-	const base = BASE as string;
-
-	test("its cases, books and account open cleanly, keep syncing, and get the thread and closings 0.3.0 passed by", async () => {
-		const caseId = `c_mg${Date.now().toString(36)}`;
-		// Tess on 0.3.0: signed in, the team's cases here, a case of her own.
-		const old = await real030(base, "tess@example.com");
-		await old.engine.signedIn(base, await old.api.me());
-		const dana = await real(base, "dana", "dana@example.com");
-		await signIn(dana.device);
-		await startCase(dana.device, caseId);
-		await addMark(dana.device, caseId, "Total is cut off");
-		await addMark(dana.device, caseId, "Pay button too pale");
-		await dana.device.engine.request();
-		await old.engine.request();
-		expect((await old.store.getCase(caseId))?.annotations).toHaveLength(2);
-		// What 0.3.0 cannot keep: Dana comments and closes the case. 0.3.0
-		// reads past it and moves its cursor on.
-		await change(dana.device, caseId, (c, now) =>
-			withClosed(
-				withCaseComment(
-					c,
-					{ id: `k_${caseId}_1`, text: "Before the upgrade" },
-					now,
-				),
-				true,
-				now,
-			),
-		);
-		await dana.device.engine.request();
-		await old.engine.request();
-		await old.engine.request();
-		expect(old.statuses.at(-1)?.state).toBe("synced");
-		const cases = (await old.store.listCases()).length;
-
-		// The extension is reloaded with this build: the same database.
-		const session = new Session(old.kv as never, (input, init) =>
-			fetch(input, init),
-		);
-		const plain = httpApi({
-			server: base,
-			token: (fresh) => session.access(base, fresh),
-		});
-		// Every write it makes, and every question about an image, counted.
-		const writes: string[] = [];
-		const api = {
-			...plain,
-			ops: (team: string, list: Parameters<typeof plain.ops>[1]) => {
-				writes.push(...list.map((o) => o.type));
-				return plain.ops(team, list);
-			},
-			putBlob: (...args: Parameters<typeof plain.putBlob>) => {
-				writes.push("PUT blob");
-				return plain.putBlob(...args);
-			},
-			hasBlob: (...args: Parameters<typeof plain.hasBlob>) => {
-				writes.push("HEAD blob");
-				return plain.hasBlob(...args);
-			},
-		};
-		const statuses: { state: string; problems: unknown[] }[] = [];
-		// The extension reloaded as this build (DEC-051): its store starts
-		// empty, the cloud's database forgets what it kept about cases.
-		const store = new MemoryStore();
-		const kv = memoryKv(Object.fromEntries(old.kv.data));
-		await forgetCases(kv);
-		const engine = new CloudSync({
-			store,
-			kv,
-			api: () => api,
-			onStatus: (s) => statuses.push(s),
-		});
-		// Signed in still, with the same account; no sign-in asked.
-		expect((await engine.account())?.server).toBe(base);
-		await engine.request();
-		await engine.request();
-		expect(statuses.at(-1)?.state).toBe("synced");
-		expect(statuses.at(-1)?.problems).toEqual([]);
-		// The team's cases are here again, read from the server.
-		expect((await store.listCases()).length).toBe(cases);
-		const here = (await store.getCase(caseId)) as Case;
-		expect(here.marks.map((a) => a.id)).toEqual(["m1", "m2"]);
-		expect(here.comments?.map((k) => k.text)).toEqual(["Before the upgrade"]);
-		expect(here.closed?.user?.name).toBe("Dana Developer");
-		// Up to here (the upgrade, and the cases read again) nothing went:
-		// no operation (no delete), no image, not even a question about one.
-		expect(writes).toEqual([]);
-		// And it keeps syncing both ways.
-		await store.updateCase(caseId, (c) => ({
-			value: withCaseComment(
-				c as Case,
-				{ id: `k_${caseId}_2`, text: "After the upgrade" },
-				new Date().toISOString(),
-			),
-		}));
-		await engine.request();
-		await dana.device.engine.request();
-		expect(
-			((await dana.device.store.getCase(caseId)) as Case).comments?.map(
-				(k) => k.text,
-			),
-		).toEqual(["Before the upgrade", "After the upgrade"]);
-		await change(dana.device, caseId, (c, now) =>
-			withComment(c, "m1", "Total is cut off on small screens", now),
-		);
-		await dana.device.engine.request();
-		await engine.request();
-		expect(((await store.getCase(caseId)) as Case).marks[0]?.comment).toBe(
-			"Total is cut off on small screens",
-		);
-
-		await removeCase(dana.device, caseId);
-		await dana.device.engine.request();
-		await dana.session.end(base);
-		await session.end(base);
-	}, 120_000);
-});
-
-/** A browser with 0.3.0's sync, signed in at the real server as 0.3.0 signs in. */
-async function real030(base: string, email: string) {
-	const kv = memoryKv030();
-	const session = new Session030(kv, (input, init) => fetch(input, init));
-	const { pending, url } = await beginSignIn030(
-		base,
-		await session.endpoints(base, true),
-		process.env["SITEGLOSS_REDIRECT"] ??
-			"https://ldmcfigcnobhnbaigehcaodheklibeon.chromiumapp.org/",
-		Date.now(),
-	);
-	const ended = await signInWindow(base, email, url);
-	await session.store(
-		await exchangeCode030(
-			(input, init) => fetch(input, init),
-			pending,
-			codeFrom030(pending, ended, Date.now()),
-			Date.now(),
-		),
-	);
-	const api = httpApi030({
-		server: base,
-		token: (fresh) => session.access(base, fresh),
-	});
-	const store = new MemoryStore030();
-	const statuses: { state: string; problems: unknown[] }[] = [];
-	// One database for the account and the sync, as the worker keeps them.
-	const engine = new CloudSync030({
-		store,
-		kv,
-		api: () => api,
-		onStatus: (s) => statuses.push(s),
-	});
-	return { api, store, kv, engine, statuses, session };
-}

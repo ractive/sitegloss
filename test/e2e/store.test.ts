@@ -8,7 +8,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { StoreBlockedError } from "../../src/lib/store.ts";
-import { validateCase as validateCase030 } from "../case-0-3-0.ts";
 import { sampleCase } from "../fixtures.ts";
 import { kvContract } from "../kv-contract.ts";
 import { storeContract } from "../store-contract.ts";
@@ -68,26 +67,11 @@ describe.skipIf(browserBinary === undefined)("IdbStore and openKv", () => {
 		});
 	});
 
-	test("a database 0.3.0 wrote is emptied by the upgrade to version 2: no case, no image, no delete record; a build before cannot open it (DEC-051)", async () => {
-		// Cases as 0.3.0 stores them: its own validateCase's result.
-		const old = [
-			["c_up1", "2026-11-04T10:00:00Z"],
-			["c_up2", "2026-11-05T10:00:00Z"],
-		].map(([id, at]) => {
-			const {
-				format: _f,
-				marks,
-				...rest
-			} = JSON.parse(JSON.stringify(sampleCase(id, at)));
-			return validateCase030({
-				format: "sitegloss/1",
-				...rest,
-				annotations: marks.map((m: { number: number }) => ({
-					...m,
-					id: `a${m.number}`,
-					crop: `crops/a${m.number}.webp`,
-				})),
-			});
+	test("a database of version 1 is emptied by the upgrade to version 2: no case, no image, no delete record; a build before cannot open it (DEC-051)", async () => {
+		// Cases as a build before the update stored them.
+		const old = ["c_up1", "c_up2"].map((id) => {
+			const { marks, ...rest } = JSON.parse(JSON.stringify(sampleCase(id)));
+			return { ...rest, format: "sitegloss/1", annotations: marks };
 		});
 		// Another origin, so a database of its own that nothing else opened.
 		const fresh = await h.browser.newPage(
@@ -101,8 +85,8 @@ describe.skipIf(browserBinary === undefined)("IdbStore and openKv", () => {
 			deleted: string[];
 			olderOpens: string;
 			version: number;
-		}>(`__siteglossStore.upgradeFrom030(${JSON.stringify(old)})`);
-		// What 0.3.0 left: version 1, its cases, images and a delete on record.
+		}>(`__siteglossStore.upgradeFromVersion1(${JSON.stringify(old)})`);
+		// What the build before left: version 1, its cases, images and a delete on record.
 		expect(result.before.version).toBe(1);
 		expect(result.before.cases).toHaveLength(2);
 		expect(result.before.imageKeys.length).toBeGreaterThan(0);

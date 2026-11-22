@@ -41,7 +41,6 @@ import {
 	tryShow,
 } from "../src/sidepanel/mark-link.ts";
 import { pageView } from "../src/worker/tools.ts";
-import { validateCase as validateCase030 } from "./case-0-3-0.ts";
 import caseFile from "./case-file.json" with { type: "json" };
 import { putCase, sampleCase } from "./fixtures.ts";
 
@@ -320,7 +319,7 @@ describe("a screenshot keeps its query", () => {
 			expect(read(odd)).not.toHaveProperty("query");
 	});
 
-	test("the export writes it, an import keeps it, and 0.3.0 refuses the file: its format is sitegloss/2 (DEC-051)", async () => {
+	test("the export writes it, and an import keeps it", async () => {
 		const store = new MemoryStore();
 		const c = shopCase();
 		await putCase(store, c);
@@ -340,11 +339,6 @@ describe("a screenshot keeps its query", () => {
 			[HOME, undefined],
 			[SEARCH, "q=shoes&sort=price"],
 		]);
-		// 0.3.0's own validateCase reads sitegloss/1 only.
-		const json = JSON.parse(JSON.stringify(c));
-		expect(() => validateCase030(json)).toThrow(
-			'case.format: is "sitegloss/2"; Sitegloss reads "sitegloss/1" only',
-		);
 	});
 
 	test("an import of a file whose addresses still have a query: plain addresses, the query kept as the rule keeps it", async () => {

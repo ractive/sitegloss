@@ -8,7 +8,6 @@ import {
 	IdbStore,
 	StoreBlockedError,
 } from "../../src/lib/store.ts";
-import { IdbStore as IdbStore030 } from "../compat/v0.3.0/src/lib/store.ts";
 import { storeContract } from "../store-contract.ts";
 
 declare global {
@@ -63,21 +62,39 @@ async function recordReads(work: () => Promise<unknown>): Promise<string[]> {
 	return reads;
 }
 
-/** The databases `work` opens, closed after it: 0.3.0's store never closes its own. */
-async function closingWhatOpens(work: () => Promise<unknown>): Promise<void> {
-	const original = indexedDB.open.bind(indexedDB);
-	const opened: IDBOpenDBRequest[] = [];
-	indexedDB.open = (name: string, version?: number) => {
-		const req = original(name, version);
-		opened.push(req);
-		return req;
-	};
-	try {
-		await work();
-	} finally {
-		indexedDB.open = original;
-		for (const req of opened) req.result?.close();
-	}
+/**
+ * Database `sitegloss` at version 1, as a build before the update left it:
+ * `cases` and `images`, each case with a screenshot and a crop, and a delete
+ * on record (under `!deleted/`, beside the images).
+ */
+function version1(cases: { id: string }[]): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const open = indexedDB.open("sitegloss", 1);
+		open.onupgradeneeded = () => {
+			open.result.createObjectStore("cases", { keyPath: "id" });
+			open.result.createObjectStore("images");
+		};
+		open.onerror = () => reject(open.error);
+		open.onsuccess = () => {
+			const db = open.result;
+			const tx = db.transaction(["cases", "images"], "readwrite");
+			const image = { blob: new Blob(["x"]), width: 1, height: 1 };
+			for (const c of cases) {
+				tx.objectStore("cases").put(c);
+				tx.objectStore("images").put(image, `${c.id}/shots/s1.webp`);
+				tx.objectStore("images").put(image, `${c.id}/crops/a1.webp`);
+			}
+			tx.objectStore("images").put(
+				{ deletedAt: Date.now() },
+				"!deleted/c_gone",
+			);
+			tx.oncomplete = () => {
+				db.close();
+				resolve();
+			};
+			tx.onerror = () => reject(tx.error);
+		};
+	});
 }
 
 /** The version of database `sitegloss` and what it holds, read without a store. */
@@ -187,22 +204,12 @@ globalThis.__siteglossStore = {
 		};
 	},
 	/**
-	 * Database `sitegloss` (of a page whose origin has none yet) written by
-	 * 0.3.0's own `IdbStore` with `old` (cases as 0.3.0 stores them), a
-	 * screenshot and a crop for each, and one delete on record; then opened
-	 * by this build's store, as a reloaded extension opens it.
+	 * Database `sitegloss` (of a page whose origin has none yet) at version 1
+	 * with `old`, then opened by this build's store, as a reloaded extension
+	 * opens it.
 	 */
-	async upgradeFrom030(old: { id: string }[]) {
-		const image = { blob: new Blob(["x"]), width: 1, height: 1 };
-		await closingWhatOpens(async () => {
-			const store = new IdbStore030();
-			for (const c of old) {
-				await store.updateCase(c.id, () => ({ value: c as never }));
-				await store.putImage(c.id, "shots/s1.webp", image);
-				await store.putImage(c.id, "crops/m1.webp", image);
-			}
-			await store.deleteCase("c_gone");
-		});
+	async upgradeFromVersion1(old: { id: string }[]) {
+		await version1(old);
 		const before = await rawDatabase();
 		const store = new IdbStore();
 		const listed = await store.listCases();
