@@ -1326,18 +1326,25 @@ describe("every run keeps to the API's contract", () => {
 		caseId: "c_1",
 		title: "A title",
 	};
+	// The operations are built in the test: a row is formatted for its title
+	// and the reporter, and a 50,000-character summary must not be.
 	test.each([
-		["a good operation", [good], undefined],
-		["a title over 500 characters", [{ ...good, title: "t".repeat(501) }], 400],
-		["a field of another type", [{ ...good, title: 7 }], 400],
+		["a good operation", undefined, () => [good]],
+		[
+			"a title over 500 characters",
+			400,
+			() => [{ ...good, title: "t".repeat(501) }],
+		],
+		["a field of another type", 400, () => [{ ...good, title: 7 }]],
 		[
 			"an operation the API does not have",
-			[{ ...good, type: "case.rename" }],
 			400,
+			() => [{ ...good, type: "case.rename" }],
 		],
 		[
 			"a capturedAt that is no UTC time",
-			[
+			400,
+			() => [
 				{
 					opId: "o_2",
 					type: "shot.create",
@@ -1353,29 +1360,33 @@ describe("every run keeps to the API's contract", () => {
 					},
 				},
 			],
-			400,
 		],
 		// 500 characters are 500 characters, also when each is two code units.
-		["500 emoji in a title", [{ ...good, title: "😀".repeat(500) }], undefined],
-		["201 operations", Array.from({ length: 201 }, () => good), 400],
+		[
+			"500 emoji in a title",
+			undefined,
+			() => [{ ...good, title: "😀".repeat(500) }],
+		],
+		["201 operations", 400, () => Array.from({ length: 201 }, () => good)],
 		[
 			"a summary of 50,000 characters",
-			[{ ...good, summary: "s".repeat(50_000) }],
 			undefined,
+			() => [{ ...good, summary: "s".repeat(50_000) }],
 		],
 		[
 			"a request over the size one may hold",
-			Array.from({ length: 200 }, (_, i) => ({
-				...good,
-				opId: `o_${i}`,
-				summary: "s".repeat(50_000),
-			})),
 			413,
+			() =>
+				Array.from({ length: 200 }, (_, i) => ({
+					...good,
+					opId: `o_${i}`,
+					summary: "s".repeat(50_000),
+				})),
 		],
 	] as const)(
 		"the server in memory keeps to the API's schemas: %s gives %p",
-		(_what, ops, status) => {
-			expect(requestProblem(ops as never)?.status).toBe(status);
+		(_what, status, ops) => {
+			expect(requestProblem(ops() as never)?.status).toBe(status);
 		},
 	);
 
