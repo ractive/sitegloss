@@ -284,19 +284,17 @@ describe("the pages of a case", () => {
 		).toThrow(`more than ${MAX_PAGES} items`);
 	});
 
-	test("0.3.0, the build before the list, reads a new file: its own code, on a case of several pages", () => {
-		// test/case-0-3-0.ts is 0.3.0's case module as shipped. It builds its
-		// result from the fields it knows: the list is left out, not refused,
-		// and every screenshot keeps its address, which 0.3.0 knew.
+	test("0.3.0, the build before the list, refuses a new file: its format is sitegloss/2 (DEC-051)", () => {
+		// test/case-0-3-0.ts is 0.3.0's case module as shipped.
 		const file = JSON.parse(JSON.stringify(flow()));
-		const read = validateCase030(file) as unknown as Record<string, unknown>;
-		expect(read["pages"]).toBeUndefined();
-		expect(read["page"]).toEqual(flow().page);
-		expect((read["shots"] as Shot[]).map((s) => s.url)).toEqual([CART, PAY]);
-		expect(read["annotations"]).toHaveLength(3);
-		// And back: this build reads what 0.3.0 stored, the pages from the
-		// screenshots, the first with its title, the others without.
-		expect(casePages(validateCase(read))).toEqual([
+		expect(() => validateCase030(file)).toThrow(
+			'case.format: is "sitegloss/2"; Sitegloss reads "sitegloss/1" only',
+		);
+	});
+
+	test("a case without the list, as 0.3.0 kept it, gets its pages from the screenshots: the first with its title, the others without", () => {
+		const { pages: _pages, ...before } = JSON.parse(JSON.stringify(flow()));
+		expect(casePages(validateCase(before))).toEqual([
 			{ url: CART, title: "Your cart", lang: "en" },
 			{ url: PAY, title: "", lang: "" },
 		]);

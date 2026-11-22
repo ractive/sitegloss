@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
 import { exportCase } from "../../src/lib/export.ts";
-import { MemoryStore } from "../../src/lib/store.ts";
+import { DB_VERSION, MemoryStore } from "../../src/lib/store.ts";
 import { putMarked, sampleCase } from "../fixtures.ts";
 import {
 	answerInPanel,
@@ -81,7 +81,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		// test run by itself): opened without a version it would have no
 		// stores, the transaction would throw, and this would wait for ever.
 		await h.control.eval(`new Promise((resolve, reject) => {
-			const open = indexedDB.open("sitegloss", 1);
+			const open = indexedDB.open("sitegloss", ${DB_VERSION});
 			open.onupgradeneeded = () => {
 				open.result.createObjectStore("cases", { keyPath: "id" });
 				open.result.createObjectStore("images");

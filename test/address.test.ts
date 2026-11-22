@@ -320,7 +320,7 @@ describe("a screenshot keeps its query", () => {
 			expect(read(odd)).not.toHaveProperty("query");
 	});
 
-	test("the export writes it, an import keeps it, and a build before this one reads the file without it", async () => {
+	test("the export writes it, an import keeps it, and 0.3.0 refuses the file: its format is sitegloss/2 (DEC-051)", async () => {
 		const store = new MemoryStore();
 		const c = shopCase();
 		await putCase(store, c);
@@ -340,12 +340,11 @@ describe("a screenshot keeps its query", () => {
 			[HOME, undefined],
 			[SEARCH, "q=shoes&sort=price"],
 		]);
-		// 0.3.0's own validateCase: the field is left out, the rest is whole.
+		// 0.3.0's own validateCase reads sitegloss/1 only.
 		const json = JSON.parse(JSON.stringify(c));
-		const old = validateCase030(json);
-		expect(old.shots.map((s) => s.url)).toEqual([HOME, SEARCH]);
-		expect(old.shots[1]).not.toHaveProperty("query");
-		expect(old.annotations).toHaveLength(2);
+		expect(() => validateCase030(json)).toThrow(
+			'case.format: is "sitegloss/2"; Sitegloss reads "sitegloss/1" only',
+		);
 	});
 
 	test("an import of a file whose addresses still have a query: plain addresses, the query kept as the rule keeps it", async () => {

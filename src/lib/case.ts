@@ -1,12 +1,19 @@
 /**
- * The case format `sitegloss/1` (see kb/design/overview.md): the same JSON in
+ * The case format `sitegloss/2` (see kb/design/overview.md): the same JSON in
  * IndexedDB and in an export. Images are referenced by paths relative to the
  * case (`shots/s1.webp`, `crops/a1.webp`).
  */
 
 import { storedQuery, withQuery } from "./query.ts";
 
-export const CASE_FORMAT = "sitegloss/1";
+export const CASE_FORMAT = "sitegloss/2";
+
+/**
+ * The format before it (Sitegloss 0.3.1 and older): its marks were under
+ * another key. Not read (DEC-051); a stored case of it is brought to
+ * `CASE_FORMAT` once, when the store's database is upgraded (store.ts).
+ */
+export const OLD_CASE_FORMAT = "sitegloss/1";
 
 /** The attributes element details keep (element.ts). */
 export const ELEMENT_ATTRIBUTES = [
@@ -1430,10 +1437,14 @@ function language(v: unknown, path: string): string {
 	return s;
 }
 
-/** Check that `value` is a case in format `sitegloss/1` and return it typed. */
+/** Check that `value` is a case in format `sitegloss/2` and return it typed. */
 export function validateCase(value: unknown): Case {
 	const o = obj(value, "case");
 	const format = o["format"];
+	if (format === OLD_CASE_FORMAT)
+		throw new CaseError(
+			`This file is a case from Sitegloss 0.3.1 or older (format ${OLD_CASE_FORMAT}); this version reads ${CASE_FORMAT} only.`,
+		);
 	if (typeof format === "string" && format !== CASE_FORMAT)
 		fail(
 			"case.format",

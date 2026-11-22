@@ -304,8 +304,14 @@ export const stopSyncing = (kv: Kv): Promise<void> =>
 		[LAST_DOWNLOAD_KEY]: undefined,
 	});
 
-/** A case's version: an import may keep `updatedAt` and still change it. */
-export const versionOf = (c: Case) => `${c.updatedAt}|${c.importedAt ?? ""}`;
+/**
+ * A case's version: an import may keep `updatedAt` and still change it. With
+ * the format, so a file written in an older one (`sitegloss/1`, which this
+ * build cannot import) is written again once, and the mirror stays a way
+ * back for a case deleted by mistake (DEC-051).
+ */
+export const versionOf = (c: Case) =>
+	`${c.format}|${c.updatedAt}|${c.importedAt ?? ""}`;
 
 const errorName = (error: unknown) =>
 	error instanceof Error || error instanceof DOMException ? error.name : "";

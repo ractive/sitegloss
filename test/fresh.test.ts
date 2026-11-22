@@ -24,7 +24,7 @@ describe("a case created by New case for this page (DEC-026)", () => {
 	test("has the page's title, the page's info, and nothing else yet", () => {
 		const c = newCase("c_new", page(), NOW);
 		expect(c).toEqual({
-			format: "sitegloss/1",
+			format: "sitegloss/2",
 			id: "c_new",
 			title: "Your cart",
 			createdAt: NOW,

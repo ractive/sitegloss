@@ -616,6 +616,31 @@ describe("import", () => {
 		expect(await target.listCases()).toEqual([]);
 	});
 
+	test("refuses a file of Sitegloss 0.3.1 and older (sitegloss/1) in one sentence (DEC-051)", async () => {
+		const target = new MemoryStore();
+		const { store, c } = await stored();
+		const files = await readZip(await exportCase(store, c));
+		const {
+			format: _format,
+			marks,
+			...rest
+		} = JSON.parse(
+			new TextDecoder().decode(files.get("case.json") as Uint8Array),
+		);
+		// As 0.3.1 wrote it: the old format's name, the marks under its key.
+		const old = { format: "sitegloss/1", ...rest, annotations: marks };
+		files.set("case.json", new TextEncoder().encode(JSON.stringify(old)));
+		await expect(
+			importCase(
+				target,
+				await writeZip([...files].map(([name, data]) => ({ name, data }))),
+			),
+		).rejects.toThrow(
+			"This file is a case from Sitegloss 0.3.1 or older (format sitegloss/1); this version reads sitegloss/2 only.",
+		);
+		expect(await target.listCases()).toEqual([]);
+	});
+
 	test("refuses images too large for a screenshot", async () => {
 		const { store, c } = await stored();
 		const files = await readZip(await exportCase(store, c));

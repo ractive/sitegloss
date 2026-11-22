@@ -64,7 +64,7 @@ export interface paths {
 		};
 		/**
 		 * One case as a file: the zip the Sitegloss extension exports
-		 * @description The case in the extension's file format (`sitegloss/1`): `case.json`, `case.md`, the screenshots in `shots/` and the marks' crops in `crops/`, as the extension's own export lays them out. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.
+		 * @description The case in the extension's file format (`sitegloss/2`): `case.json`, `case.md`, the screenshots in `shots/` and the marks' crops in `crops/`, as the extension's own export lays them out. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.
 		 */
 		get: operations["exportCase"];
 		put?: never;

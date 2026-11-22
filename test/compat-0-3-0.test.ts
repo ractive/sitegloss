@@ -1,15 +1,18 @@
 /**
  * Sitegloss 0.3.0 beside this build (DEC-046): a 0.3.0 browser on the same
- * team keeps syncing while this build comments and closes, and 0.3.0 reads a
- * file this build writes. 0.3.0's sync is the copy in `compat/v0.3.0` (never
- * edited); the server is the one in memory, with what the server added
- * (closing, comments, the app's name).
+ * team keeps syncing while this build comments and closes; a file this build
+ * writes (`sitegloss/2`) is one 0.3.0 refuses (DEC-051); and what a 0.3.0
+ * browser stored, opened by this build, is synced on without a word to the
+ * server. 0.3.0's sync is the copy in `compat/v0.3.0` (never edited); the
+ * server is the one in memory, with what the server added (closing,
+ * comments, the app's name).
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
 	type Case,
 	type Shape,
+	validateCase,
 	withCaseComment,
 	withClosed,
 	withFinding,
@@ -19,7 +22,7 @@ import {
 } from "../src/lib/case.ts";
 import { CloudSync } from "../src/lib/cloud/engine.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
-import { MemoryStore } from "../src/lib/store.ts";
+import { MemoryStore, upgradeStoredCase } from "../src/lib/store.ts";
 import { readZip } from "../src/lib/zip.ts";
 import type { FakeApi } from "./cloud-fake.ts";
 import { FakeServer } from "./cloud-fake.ts";
@@ -70,6 +73,16 @@ function device030(api: FakeApi) {
 		onStatus: (status) => statuses.push(status),
 	});
 	return { store, kv, api, engine, statuses, clock };
+}
+
+/**
+ * 0.3.0's database as this build's store opens it: its upgrade to version 2
+ * (DEC-051) brings every case to `sitegloss/2` before anything reads one.
+ */
+function openedByThisBuild(store: MemoryStore030): MemoryStore030 {
+	for (const [id, c] of store.cases)
+		store.cases.set(id, upgradeStoredCase(c) as Case030);
+	return store;
 }
 
 let server: FakeServer;
@@ -205,7 +218,7 @@ describe("0.3.0's data opened by this build", () => {
 		// The extension is reloaded with this build: the same database.
 		const statuses: { state: string; problems: unknown[] }[] = [];
 		const engine = new CloudSync({
-			store: dana.store as never,
+			store: openedByThisBuild(dana.store) as never,
 			kv: dana.kv as never,
 			api: () => dana.api as never,
 			onStatus: (s) => statuses.push(s),
@@ -240,6 +253,54 @@ describe("0.3.0's data opened by this build", () => {
 		};
 		await engine.request();
 		expect(reads).toBe(0);
+	});
+
+	test("its stored cases are brought to sitegloss/2 once, every mark kept: nothing is sent, no delete (DEC-051)", async () => {
+		await startCase(tess, "c_keep");
+		for (const text of ["Total is cut off", "Pay button too pale", "Logo"])
+			await addMark(tess, "c_keep", text);
+		await sync();
+		const stored = dana.store.cases.get("c_keep") as unknown as Record<
+			string,
+			unknown
+		>;
+		// As 0.3.0 stores a case.
+		expect(stored["format"]).toBe("sitegloss/1");
+		expect(stored["annotations"]).toHaveLength(3);
+		const sent: string[] = [];
+		const ops = dana.api.ops.bind(dana.api);
+		dana.api.ops = async (team, list) => {
+			sent.push(...list.map((o) => o.type));
+			return ops(team, list);
+		};
+		const statuses: { state: string; problems: unknown[] }[] = [];
+		const engine = new CloudSync({
+			store: openedByThisBuild(dana.store) as never,
+			kv: dana.kv as never,
+			api: () => dana.api as never,
+			onStatus: (s) => statuses.push(s),
+		});
+		for (let i = 0; i < 3; i++) await engine.request();
+		expect(statuses.at(-1)?.state).toBe("synced");
+		expect(statuses.at(-1)?.problems).toEqual([]);
+		// Nothing at all went: no case.delete, no mark.delete, no patch.
+		expect(sent).toEqual([]);
+		expect(server.caseOf("c_keep")).toBeDefined();
+		expect(server.marksOf("c_keep").map((m) => m.comment)).toEqual([
+			"Total is cut off",
+			"Pay button too pale",
+			"Logo",
+		]);
+		// Here: the same case in the new format, a valid one, every mark in it.
+		const here = (await dana.store.getCase("c_keep")) as unknown as Case;
+		expect(here.format).toBe("sitegloss/2");
+		expect("annotations" in here).toBe(false);
+		expect(validateCase(here).marks.map((a) => a.comment)).toEqual([
+			"Total is cut off",
+			"Pay button too pale",
+			"Logo",
+		]);
+		expect(await dana.store.deletedCases()).toEqual([]);
 	});
 });
 
@@ -367,7 +428,7 @@ describe("0.3.0's data opened by this build sends nothing nobody did (review of 
 		};
 		const from = dana.api.calls.length;
 		const engine = new CloudSync({
-			store: dana.store as never,
+			store: openedByThisBuild(dana.store) as never,
 			kv: dana.kv as never,
 			api: () => dana.api as never,
 		});
@@ -424,7 +485,7 @@ describe("0.3.0's data opened by this build, when the database fails once (revie
 			},
 		};
 		const engine = new CloudSync({
-			store: dana.store as never,
+			store: openedByThisBuild(dana.store) as never,
 			kv: kv as never,
 			api: () => dana.api as never,
 		});
@@ -500,7 +561,7 @@ describe("a mark's look (DEC-048) beside 0.3.0", () => {
 });
 
 describe("a file this build writes", () => {
-	test("0.3.0 reads it, without what it does not know; this build reads it back whole, without this browser's notes", async () => {
+	test("0.3.0 refuses it (sitegloss/2, DEC-051); this build reads it back whole, without this browser's notes", async () => {
 		await startCase(tess, "c_file");
 		await addMark(tess, "c_file", "Total is cut off");
 		// The thread, a close and a mark made through Claude, as the tools
@@ -529,12 +590,10 @@ describe("a file this build writes", () => {
 		// This browser's notes for its sync are not in the file.
 		expect("via" in json || "createdVia" in json).toBe(false);
 		expect("createdVia" in (json.marks[0] ?? {})).toBe(true);
-		// 0.3.0: the case and its marks, nothing else.
-		const old = validateCase030(json);
-		expect(old.annotations.map((a) => a.comment)).toEqual(["Total is cut off"]);
-		expect(Object.keys(old)).not.toContain("comments");
-		expect(Object.keys(old)).not.toContain("closed");
-		expect(Object.keys(old.annotations[0] ?? {})).not.toContain("createdVia");
+		// 0.3.0 reads sitegloss/1 only.
+		expect(() => validateCase030(json)).toThrow(
+			'case.format: is "sitegloss/2"; Sitegloss reads "sitegloss/1" only',
+		);
 		// This build, imported as a user imports it: the thread and the close;
 		// who wrote a comment is what the file says; a mark's app, the server's
 		// to say, is left out.
@@ -556,7 +615,7 @@ describe("a file this build writes", () => {
 		expect(back.via).toBeUndefined();
 		expect(back.createdVia).toBeUndefined();
 	});
-	test("an element's look (DEC-048): 0.3.0 reads the file without it; this build reads it back", async () => {
+	test("an element's look (DEC-048): this build reads the file back with it", async () => {
 		await startCase(tess, "c_file_look");
 		await addMark(tess, "c_file_look", "Book is hard to read", {
 			element: true,
@@ -581,14 +640,6 @@ describe("a file this build writes", () => {
 			),
 		);
 		expect(json.marks[0]?.element).toMatchObject(look);
-		const old = validateCase030(json);
-		const element = old.annotations[0]?.element as unknown as Record<
-			string,
-			unknown
-		>;
-		expect(element["selector"]).toBe("form > button");
-		for (const key of ["styles", "backdrop", "siblings"])
-			expect(key in element).toBe(false);
 		const back = await storeImport(new MemoryStore(), await readExport(zip));
 		expect(back.marks[0]?.element).toMatchObject(look);
 	});

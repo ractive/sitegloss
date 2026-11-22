@@ -4,7 +4,38 @@
  * `cases` and `images`). `MemoryStore` is the same for tests.
  */
 
-import { type Case, imageKey } from "./case.ts";
+import { CASE_FORMAT, type Case, imageKey, OLD_CASE_FORMAT } from "./case.ts";
+
+/**
+ * The database's version. 1: the stores. 2 (DEC-051): every case stored by
+ * Sitegloss 0.3.1 or older brought to `sitegloss/2` (`upgradeStoredCase`), in
+ * the upgrade itself, so nothing here ever reads a case of the old format.
+ * A build before it cannot open the database any more: it would read no
+ * marks in a case of the new format.
+ */
+export const DB_VERSION = 2;
+
+/** The key a case of `sitegloss/1` kept its marks under. */
+const OLD_MARKS_KEY = "annotations";
+
+/**
+ * A case as Sitegloss 0.3.1 and older stored it (`sitegloss/1`) in the
+ * format of this one: its marks under `marks`, where the old key was, and
+ * the format's name. Nothing else differs between the two. Anything else
+ * (a case of the new format, a record that is no case) is returned as it is.
+ */
+export function upgradeStoredCase(value: unknown): unknown {
+	if (typeof value !== "object" || value === null || Array.isArray(value))
+		return value;
+	const old = value as Record<string, unknown>;
+	if (old["format"] !== OLD_CASE_FORMAT || "marks" in old) return value;
+	const upgraded: Record<string, unknown> = {};
+	for (const [key, v] of Object.entries(old))
+		if (key === "format") upgraded[key] = CASE_FORMAT;
+		else if (key === OLD_MARKS_KEY) upgraded["marks"] = v;
+		else upgraded[key] = v;
+	return upgraded;
+}
 
 export interface StoredImage {
 	blob: Blob;
@@ -253,10 +284,26 @@ export class IdbStore implements CaseStore {
 
 	#open(): Promise<IDBDatabase> {
 		this.#db ??= new Promise((resolve, reject) => {
-			const req = indexedDB.open("sitegloss", 1);
-			req.onupgradeneeded = () => {
-				req.result.createObjectStore("cases", { keyPath: "id" });
-				req.result.createObjectStore("images");
+			const req = indexedDB.open("sitegloss", DB_VERSION);
+			req.onupgradeneeded = (event) => {
+				if (event.oldVersion < 1) {
+					req.result.createObjectStore("cases", { keyPath: "id" });
+					req.result.createObjectStore("images");
+					return;
+				}
+				// In the upgrade's own transaction: every case is brought to the
+				// new format, or (a failure aborts it) the database stays as it
+				// was, at its old version, and nothing opens it.
+				const walk = (req.transaction as IDBTransaction)
+					.objectStore("cases")
+					.openCursor();
+				walk.onsuccess = () => {
+					const at = walk.result;
+					if (at === null) return;
+					const upgraded = upgradeStoredCase(at.value);
+					if (upgraded !== at.value) at.update(upgraded);
+					at.continue();
+				};
 			};
 			req.onsuccess = () => resolve(req.result);
 			req.onerror = () => {

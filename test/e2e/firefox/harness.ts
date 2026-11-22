@@ -16,6 +16,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build, FIREFOX_ID } from "../../../scripts/build.ts";
+import { DB_VERSION } from "../../../src/lib/store.ts";
 import { FfRdp, findFfRdp, findFirefox, freePort, takeLock } from "./ffrdp.ts";
 
 export const ffRdpBinary = findFfRdp();
@@ -220,7 +221,7 @@ export function readCase(
 	return h.rdp.eval<StoredCase>(
 		h.panel,
 		`new Promise((resolve, reject) => {
-			const open = indexedDB.open("sitegloss", 1);
+			const open = indexedDB.open("sitegloss", ${DB_VERSION});
 			open.onerror = () => reject(open.error);
 			open.onsuccess = () => {
 				const db = open.result;

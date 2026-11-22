@@ -93,7 +93,7 @@ describe("validateCase", () => {
 	test("a file of another format says what it is and what is read", () => {
 		const c = { ...withMarks(), format: "other/9" };
 		expect(() => validateCase(c)).toThrow(
-			'case.format: is "other/9"; Sitegloss reads "sitegloss/1" only',
+			'case.format: is "other/9"; Sitegloss reads "sitegloss/2" only',
 		);
 		const long = { ...withMarks(), format: "x".repeat(60) };
 		expect(() => validateCase(long)).toThrow(
@@ -103,7 +103,7 @@ describe("validateCase", () => {
 
 	test("a format that is no string must be the format", () => {
 		const c = { ...withMarks(), format: 1 };
-		expect(() => validateCase(c)).toThrow('case.format: must be "sitegloss/1"');
+		expect(() => validateCase(c)).toThrow('case.format: must be "sitegloss/2"');
 	});
 
 	test("refuses a verdict over 50,000 characters", () => {
@@ -983,9 +983,10 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 
 	test("a case without the new fields validates and serializes unchanged", () => {
 		// As the build before Verify wrote it (its validateCase, then
-		// JSON.stringify): every kind, a finding, importedAt, lastNumber.
+		// JSON.stringify), in today's format: every kind, a finding,
+		// importedAt, lastNumber.
 		const OLD_BUILD =
-			'{"format":"sitegloss/1","id":"c_old","title":"From before Verify","createdAt":"2026-11-04T10:00:00Z","updatedAt":"2026-11-05T10:00:00Z","page":{"url":"https://www.example.com/kk","title":"KK","lang":"de","viewport":{"width":1280,"height":800,"dpr":2},"userAgent":"UA"},"shots":[{"id":"s1","image":"shots/s1.webp","scrollX":0,"scrollY":0,"viewport":{"width":1280,"height":800,"dpr":2},"capturedAt":"2026-11-04T10:00:00Z"}],"marks":[{"id":"a1","number":1,"shot":"s1","comment":"Comment 1","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a1.webp","element":null},{"id":"a2","number":2,"shot":"s1","comment":"Comment 2","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a2.webp","element":null,"resolution":{"kind":"fixed","note":"Darker","at":"2026-11-05T09:00:00Z"},"findings":[{"id":"f_1","text":"Padding","app":{"id":"https://claude.ai/oauth","name":"Claude","host":"claude.ai"},"at":"2026-11-05T08:00:00Z","editedAt":"2026-11-05T08:30:00Z","imported":true}]},{"id":"a3","number":3,"shot":"s1","comment":"Comment 3","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a3.webp","element":null,"resolution":{"kind":"wontfix","at":"2026-11-05T09:00:00Z"}},{"id":"a4","number":4,"shot":"s1","comment":"Comment 4","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a4.webp","element":null,"resolution":{"kind":"cantreproduce","note":"Not on dev","at":"2026-11-05T09:00:00Z"}}],"verdict":"Use the dark button.","importedAt":"2026-11-05T11:00:00Z","lastNumber":5}';
+			'{"format":"sitegloss/2","id":"c_old","title":"From before Verify","createdAt":"2026-11-04T10:00:00Z","updatedAt":"2026-11-05T10:00:00Z","page":{"url":"https://www.example.com/kk","title":"KK","lang":"de","viewport":{"width":1280,"height":800,"dpr":2},"userAgent":"UA"},"shots":[{"id":"s1","image":"shots/s1.webp","scrollX":0,"scrollY":0,"viewport":{"width":1280,"height":800,"dpr":2},"capturedAt":"2026-11-04T10:00:00Z"}],"marks":[{"id":"a1","number":1,"shot":"s1","comment":"Comment 1","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a1.webp","element":null},{"id":"a2","number":2,"shot":"s1","comment":"Comment 2","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a2.webp","element":null,"resolution":{"kind":"fixed","note":"Darker","at":"2026-11-05T09:00:00Z"},"findings":[{"id":"f_1","text":"Padding","app":{"id":"https://claude.ai/oauth","name":"Claude","host":"claude.ai"},"at":"2026-11-05T08:00:00Z","editedAt":"2026-11-05T08:30:00Z","imported":true}]},{"id":"a3","number":3,"shot":"s1","comment":"Comment 3","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a3.webp","element":null,"resolution":{"kind":"wontfix","at":"2026-11-05T09:00:00Z"}},{"id":"a4","number":4,"shot":"s1","comment":"Comment 4","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a4.webp","element":null,"resolution":{"kind":"cantreproduce","note":"Not on dev","at":"2026-11-05T09:00:00Z"}}],"verdict":"Use the dark button.","importedAt":"2026-11-05T11:00:00Z","lastNumber":5}';
 		expect(JSON.stringify(validateCase(JSON.parse(OLD_BUILD)))).toBe(OLD_BUILD);
 		const plain = JSON.stringify(one());
 		expect(JSON.stringify(validateCase(JSON.parse(plain)))).toBe(plain);
