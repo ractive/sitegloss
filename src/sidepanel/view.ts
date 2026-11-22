@@ -159,7 +159,7 @@ const back = byId<HTMLButtonElement>("back");
 const home = byId<HTMLElement>("home");
 const caseView = byId<HTMLElement>("case-view");
 // What a click acts on stays where it was on screen (DEC-060).
-holdClickedInPlace(caseView);
+const releaseHeld = holdClickedInPlace(caseView);
 const settingsView = byId<HTMLElement>("settings");
 const pageText = byId<HTMLParagraphElement>("page");
 const hint = byId<HTMLParagraphElement>("hint");
@@ -2923,6 +2923,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const row = items.find((li) => li.dataset["mark"] === picked.markId);
 			// Its head under the sticky bars, its actions in view where they fit.
 			row?.setAttribute("data-picked", "");
+			// The panel's own scroll: a row held after a click lets go.
+			releaseHeld();
 			row?.scrollIntoView?.({ block: "nearest" });
 		}
 		p.marksKey = marksKey;

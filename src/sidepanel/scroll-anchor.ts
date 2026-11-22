@@ -51,12 +51,13 @@ const quoted = (s: string) => s.replace(/["\\]/g, "\\$&");
 
 /**
  * Hold what a click in `root` acts on (see above). Marks are `li.mark` with
- * `data-mark`; chips carry `data-group` or `data-page-filter`.
+ * `data-mark`; chips carry `data-group` or `data-page-filter`. Returns what
+ * lets it go, for a scroll of the panel's own (a pin picked on the page).
  */
-export function holdClickedInPlace(root: HTMLElement): void {
+export function holdClickedInPlace(root: HTMLElement): () => void {
 	const doc = root.ownerDocument;
 	const win = doc.defaultView;
-	if (win === null) return;
+	if (win === null) return () => {};
 	let held: { keys: string[]; top: number; until: number } | undefined;
 	let frame = 0;
 	const elementOf = (key: string) =>
@@ -131,4 +132,5 @@ export function holdClickedInPlace(root: HTMLElement): void {
 		)
 			release();
 	});
+	return release;
 }
