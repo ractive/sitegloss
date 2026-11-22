@@ -42,6 +42,9 @@ import {
 	sync,
 } from "./cloud-helpers.ts";
 
+/** The worker's quiet moment before a run, short here; `quiet()` outwaits it. */
+const QUIET_MS = 10;
+const quiet = () => Bun.sleep(QUIET_MS + 50);
 const SERVER = "https://app.sitegloss.dev";
 const REDIRECT = "https://ldmcfigcnobhnbaigehcaodheklibeon.chromiumapp.org/";
 const TESS = { id: "u_tess", name: "Tess Tester", email: "tess@example.com" };
@@ -74,6 +77,7 @@ function worker(): Cloud {
 		fetch: (input, init) =>
 			(input.startsWith(`${DEV}/`) ? devHttp : http).fetch(input, init),
 		now: () => now,
+		quietMs: QUIET_MS,
 		alarms: {
 			create: (async (name: string, info: chrome.alarms.AlarmCreateInfo) => {
 				alarms.set(name, info);
@@ -271,7 +275,7 @@ describe("syncing from the worker", () => {
 		await addMark(d, "c_1", "One");
 		cloud.request();
 		cloud.request();
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(server.marksOf("c_1").map((m) => m.comment)).toEqual(["One"]);
 
@@ -286,11 +290,11 @@ describe("syncing from the worker", () => {
 		http.state.requests.length = 0;
 		// Where this device is already: nothing is asked.
 		await cloud.handle({ type: "cloud:run", cursor: seen });
-		await Bun.sleep(400);
+		await quiet();
 		expect(http.state.requests).toEqual([]);
 		changed.length = 0;
 		await cloud.handle({ type: "cloud:run", cursor: seen + 1 });
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect((await store.getCase("c_1"))?.marks[0]?.comment).toBe(
 			"Dana's words",
@@ -305,13 +309,13 @@ describe("syncing from the worker", () => {
 		now += 10_000;
 		cloud = worker();
 		cloud.start();
-		await Bun.sleep(400);
+		await quiet();
 		expect(http.state.requests).toEqual([]);
 		// Minutes later: it looks.
 		now += 5 * 60_000;
 		cloud = worker();
 		cloud.start();
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(http.state.requests.some((r) => r.endsWith("/changes"))).toBe(true);
 		// The alarm was not made anew: its wait goes on.
@@ -325,7 +329,7 @@ describe("syncing from the worker", () => {
 			(p) => p !== "mark:create" && p !== "case:create",
 		);
 		await cloud.handle({ type: "cloud:run", retry: true });
-		await Bun.sleep(400);
+		await quiet();
 		await startCase(here(), "c_held");
 		await addMark(here(), "c_held", "Not allowed to send");
 		await settled();
@@ -335,7 +339,7 @@ describe("syncing from the worker", () => {
 			now += 10_000;
 			cloud = worker();
 			cloud.start();
-			await Bun.sleep(400);
+			await quiet();
 			expect(http.state.requests).toEqual([]);
 		}
 	});
@@ -345,7 +349,7 @@ describe("syncing from the worker", () => {
 		expect(cloud.alarm("sitegloss-keep-ai-on")).toBe(false);
 		http.state.requests.length = 0;
 		expect(cloud.alarm(CLOUD_ALARM)).toBe(true);
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(http.state.requests.some((r) => r.endsWith("/changes"))).toBe(true);
 	});
@@ -354,13 +358,13 @@ describe("syncing from the worker", () => {
 		await signIn();
 		http.state.offline = true;
 		cloud.request();
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(status()?.state).toBe("offline");
 		expect(alarms.get(CLOUD_RETRY_ALARM)).toEqual({ delayInMinutes: 1 });
 		http.state.offline = false;
 		cloud.alarm(CLOUD_RETRY_ALARM);
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(status()?.state).toBe("synced");
 		expect(alarms.has(CLOUD_RETRY_ALARM)).toBe(false);
@@ -373,7 +377,7 @@ describe("syncing from the worker", () => {
 		await addMark(d, "c_1", "One");
 		http.state.expired = true;
 		cloud.request();
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(status()?.state).toBe("signed-out");
 		expect((data.get(KEYS.account) as Account).expired).toBe(true);
@@ -404,7 +408,7 @@ describe("the update to the store's version 2 (DEC-051)", () => {
 		http.state.requests.length = 0;
 		cloud = worker();
 		cloud.request();
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(http.state.requests).toEqual([]);
 		expect(data.has("case:c_1")).toBe(true);
@@ -414,7 +418,7 @@ describe("the update to the store's version 2 (DEC-051)", () => {
 		store.cases.clear();
 		store.images.clear();
 		cloud.request();
-		await Bun.sleep(400);
+		await quiet();
 		await settled();
 		expect(kv.data.get(CASES_KEY)).toBe(CASES);
 		expect(http.state.requests.filter((r) => !r.startsWith("GET "))).toEqual(
