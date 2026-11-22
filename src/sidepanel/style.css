@@ -285,7 +285,8 @@ button[data-armed]:hover:not(:disabled) {
 }
 
 /* Never opacity alone: a disabled button is flat and says so in its colours. */
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
 	border-color: var(--rule);
 	background: var(--wash);
 	color: var(--ink-2);
@@ -1185,9 +1186,16 @@ ul.cases .title {
 .case-pages li {
 	display: grid;
 	grid-column: 1 / -1;
-	grid-template-columns: subgrid;
+	/* Chrome 116, without subgrid: the same columns, lined up per row only. */
+	grid-template-columns: 3px minmax(0, 1fr) auto auto;
 	grid-template-rows: 19px 16px;
 	padding: 2px 0;
+}
+
+@supports (grid-template-columns: subgrid) {
+	.case-pages li {
+		grid-template-columns: subgrid;
+	}
 }
 
 .case-pages li::before {

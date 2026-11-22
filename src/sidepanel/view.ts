@@ -2036,11 +2036,12 @@ function renderPages(
 			const path = web ? shortPath(page.url, hosts.size > 1) : page.url;
 			// An address is cut at its start: its end tells two pages apart.
 			const address = () => h("bdi", { dir: "ltr" }, path);
-			const name = [
-				title || address(),
-				front ? h("span", { class: "visually-hidden" }, " (this tab)") : "",
-			];
-			const tooltip = title ? `${title}\n${page.url}` : page.url;
+			// The page in front is said by `aria-current` alone, once.
+			const name = title || address();
+			const whole = title ? `${title}\n${page.url}` : page.url;
+			const tooltip = web
+				? `${whole}\nOpens in a new tab; the case's marks are drawn there`
+				: whole;
 			const nameClass = `page-name${title ? "" : " cut-start"}`;
 			return h(
 				"li",
@@ -2055,9 +2056,9 @@ function renderPages(
 								...(front ? { "aria-current": "page" } : {}),
 								onclick: () => actions.openPage(p.current, page.url),
 							},
-							...name,
+							name,
 						)
-					: h("span", { class: nameClass, title: tooltip }, ...name),
+					: h("span", { class: nameClass, title: tooltip }, name),
 				h("span", { class: "page-count" }, String(marks)),
 				h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
 				title

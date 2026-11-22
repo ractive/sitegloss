@@ -46,3 +46,65 @@ export function nextCodeShown(
 		};
 	return fresh;
 }
+
+export interface CodeClock {
+	now(): number;
+	setTimer(run: () => void, ms: number): ReturnType<typeof setTimeout>;
+	clearTimer(timer: ReturnType<typeof setTimeout>): void;
+}
+
+/**
+ * The code shown, moved on where the facts arrive (a code, the apps listed)
+ * and when a used code's wait is over, whether a panel is open or not: a
+ * panel opened later reads what is true then. One timer at a time.
+ */
+export class CodeWatch {
+	#shown: CodeShown = {};
+	#current: PairingCode | undefined;
+	#grants: readonly string[] = [];
+	#timer: ReturnType<typeof setTimeout> | undefined;
+	readonly #clock: CodeClock;
+	readonly #changed: () => void;
+
+	constructor(clock: CodeClock, changed: () => void) {
+		this.#clock = clock;
+		this.#changed = changed;
+	}
+
+	get shown(): CodeShown {
+		return this.#shown;
+	}
+
+	/** The relay's code is `current` now, and the apps listed are `grants`. */
+	update(current: PairingCode | undefined, grants: readonly string[]): void {
+		this.#current = current;
+		this.#grants = grants;
+		const before = this.#shown;
+		this.#shown = nextCodeShown(before, current, grants, this.#clock.now());
+		const used = this.#shown.used;
+		if (used === before.used) return;
+		this.#clear();
+		if (used !== undefined)
+			this.#timer = this.#clock.setTimer(
+				() => {
+					this.#timer = undefined;
+					this.update(this.#current, this.#grants);
+					this.#changed();
+				},
+				Math.max(0, used.until - this.#clock.now()) + 1,
+			);
+	}
+
+	/** Watching another connection, or none: nothing shown, no timer. */
+	stop(): void {
+		this.#clear();
+		this.#shown = {};
+		this.#current = undefined;
+		this.#grants = [];
+	}
+
+	#clear(): void {
+		if (this.#timer !== undefined) this.#clock.clearTimer(this.#timer);
+		this.#timer = undefined;
+	}
+}
