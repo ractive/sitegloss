@@ -11,21 +11,25 @@
 import { MAX_MARK_IMAGES } from "../lib/case.ts";
 import { sha256Of } from "../lib/cloud/api.ts";
 import { MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS } from "../lib/export.ts";
+import { declaredSize } from "../lib/image-size.ts";
 import { TooManyPixels, toAddedImage } from "../lib/images.ts";
 import type { StoredImage } from "../lib/store.ts";
 import { h } from "./dom.ts";
 
-/** What the browser decodes and Sitegloss takes; no SVG (it can run script). */
+/**
+ * What the browser decodes and Sitegloss takes: formats whose size can be
+ * read from the header before anything is decoded (`declaredSize`). No SVG
+ * (it can run script), no AVIF (its size sits deep in the file).
+ */
 export const ACCEPTED_TYPES = [
 	"image/png",
 	"image/jpeg",
 	"image/webp",
 	"image/gif",
-	"image/avif",
 ] as const;
 
 export const NOT_READABLE =
-	"This file is not an image Sitegloss can read: PNG, JPEG, WebP, GIF or AVIF.";
+	"This file is not an image Sitegloss can read: PNG, JPEG, WebP or GIF.";
 export const NO_IMAGE_PASTED =
 	"The clipboard holds no image. Copy a screenshot first.";
 export const TOO_MANY_BYTES = `This image is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`;
@@ -67,7 +71,7 @@ export function placesFor(
 export interface PreparedImage {
 	image: StoredImage;
 	sha256: string;
-	/** A GIF: only its first frame is kept. */
+	/** An animated picture: only its first frame is kept. */
 	firstFrame: boolean;
 }
 
@@ -85,6 +89,15 @@ export async function prepareImage(
 ): Promise<PreparedImage | { problem: string }> {
 	const problem = fileProblem(file);
 	if (problem !== undefined) return { problem };
+	// The size the file declares, before any decode: a small file can
+	// declare a picture whose decode alone would take gigabytes.
+	const declared = declaredSize(
+		new Uint8Array(await file.arrayBuffer()),
+		file.type,
+	);
+	if (declared === undefined) return { problem: NOT_READABLE };
+	if (declared.width * declared.height > MAX_IMAGE_PIXELS)
+		return { problem: TOO_MANY_PIXELS };
 	let image: StoredImage;
 	try {
 		image = await encode(file, MAX_IMAGE_PIXELS);
@@ -95,7 +108,7 @@ export async function prepareImage(
 	}
 	const sha256 = await sha256Of(image.blob);
 	if (known.has(sha256)) return { problem: ON_THE_MARK };
-	return { image, sha256, firstFrame: file.type === "image/gif" };
+	return { image, sha256, firstFrame: declared.animated };
 }
 
 /** The pictures of a clipboard or a drop that are files. */

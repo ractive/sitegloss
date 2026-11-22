@@ -7,6 +7,7 @@ import {
 	exportCase,
 	exportFileName,
 	type FileLimits,
+	MAX_CASE_ENTRIES,
 	readExport,
 	readExports,
 	storeImport,
@@ -450,6 +451,19 @@ describe("images added to a mark in an export (DEC-058)", () => {
 		expect(new TextDecoder().decode(await back?.blob.arrayBuffer())).toEndWith(
 			"added",
 		);
+		// In the panel each one is re-encoded as the dialog does it; a crop
+		// or a screenshot never is.
+		const reencoded: string[] = [];
+		const panel = new MemoryStore();
+		await storeImport(panel, await readExport(zip), {
+			reencode: async (blob) => {
+				reencoded.push(await blob.text());
+				return { blob: webp("again"), width: 10, height: 10 };
+			},
+		});
+		expect(reencoded.map((t) => t.slice(30))).toEqual(["added"]);
+		const again = await panel.getImage(c.id, added.image);
+		expect((await again?.blob.text())?.slice(30)).toBe("again");
 		const files = await readZip(zip);
 		files.delete(added.image);
 		await expect(
@@ -664,6 +678,28 @@ describe("import", () => {
 			[c.id, copy.id].sort(),
 		);
 		expect(await store.getImage(copy.id, "crops/m2.webp")).toBeDefined();
+	});
+});
+
+describe("how many entries one case's file may have (DEC-058)", () => {
+	test("what the format allows is read; one more is refused", async () => {
+		const { store, c } = await stored();
+		const files = [...(await readZip(await exportCase(store, c)))].map(
+			([name, data]) => ({ name, data }),
+		);
+		const filler = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({
+				name: `extra/${i}.txt`,
+				data: new Uint8Array(0),
+			}));
+		const room = MAX_CASE_ENTRIES - files.length;
+		expect(MAX_CASE_ENTRIES).toBeGreaterThan(2500);
+		await expect(
+			readExport(await writeZip([...files, ...filler(room)])),
+		).resolves.toBeDefined();
+		await expect(
+			readExport(await writeZip([...files, ...filler(room + 1)])),
+		).rejects.toThrow(`more than ${MAX_CASE_ENTRIES} entries`);
 	});
 });
 

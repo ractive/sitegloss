@@ -8,16 +8,22 @@ import {
 	CaseError,
 	caseImages,
 	importedResolution,
+	MAX_HELD_IMAGES,
+	MAX_MARKS,
+	MAX_SHOTS,
 	MAX_TITLE,
 	newId,
 	plainUrl,
 	validateCase,
 	withPagesAgreed,
 } from "./case.ts";
+import { webpSize } from "./image-size.ts";
 import { caseMarkdown } from "./markdown.ts";
 import { queryOf } from "./query.ts";
 import type { CaseStore, StoredImage } from "./store.ts";
 import { readZip, writeZip, type ZipEntry } from "./zip.ts";
+
+export { webpSize };
 
 export const EXPORT_SUFFIX = ".sitegloss.zip";
 
@@ -196,49 +202,20 @@ export async function exportAllCases(
 	return zip;
 }
 
+/**
+ * The most entries one case's file may have: what the format allows, its
+ * screenshots, each mark's crop and the images it holds (DEC-058), case.json
+ * and case.md.
+ */
+export const MAX_CASE_ENTRIES =
+	MAX_SHOTS + MAX_MARKS * (1 + MAX_HELD_IMAGES) + 2;
+
 /** case.json is text about marks; a real one is far smaller than this. */
 export const MAX_CASE_JSON_BYTES = 20 * 1024 * 1024;
 /** Limits per imported image: larger ones are no Sitegloss screenshot. */
 export const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 export const MAX_IMAGE_SIDE = 16_384;
 export const MAX_IMAGE_PIXELS = 64 * 1024 * 1024;
-
-/**
- * Width and height from a WebP file's header (`VP8 `, `VP8L` or `VP8X`),
- * without decoding it; `undefined` when it is no WebP.
- */
-export function webpSize(
-	data: Uint8Array,
-): { width: number; height: number } | undefined {
-	const ascii = (from: number, to: number) =>
-		String.fromCharCode(...data.subarray(from, to));
-	if (data.length < 30 || ascii(0, 4) !== "RIFF" || ascii(8, 12) !== "WEBP")
-		return undefined;
-	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-	const u24 = (at: number) =>
-		(data[at] ?? 0) | ((data[at + 1] ?? 0) << 8) | ((data[at + 2] ?? 0) << 16);
-	switch (ascii(12, 16)) {
-		case "VP8X":
-			return { width: u24(24) + 1, height: u24(27) + 1 };
-		case "VP8L": {
-			if (data[20] !== 0x2f) return undefined;
-			const bits = view.getUint32(21, true);
-			return {
-				width: (bits & 0x3fff) + 1,
-				height: ((bits >>> 14) & 0x3fff) + 1,
-			};
-		}
-		case "VP8 ":
-			if (data[23] !== 0x9d || data[24] !== 0x01 || data[25] !== 0x2a)
-				return undefined;
-			return {
-				width: view.getUint16(26, true) & 0x3fff,
-				height: view.getUint16(28, true) & 0x3fff,
-			};
-		default:
-			return undefined;
-	}
-}
 
 /** An export read and checked, not stored yet. */
 export interface ParsedExport {
@@ -338,9 +315,9 @@ export async function readExport(
 ): Promise<ParsedExport> {
 	if (zip.length > maxBytes)
 		throw new CaseError(`The file is larger than ${mb(maxBytes)}.`);
-	const { c } = await readCaseJson(zip, "", 2500);
+	const { c } = await readCaseJson(zip, "", MAX_CASE_ENTRIES);
 	const { images } = await readImages(zip, "", c, {
-		maxEntries: 2500,
+		maxEntries: MAX_CASE_ENTRIES,
 		maxBytes,
 		keep: true,
 	});
@@ -446,10 +423,29 @@ export async function readExports(
 export async function storeImport(
 	store: CaseStore,
 	parsed: ParsedExport | CheckedExport,
-	options: { copy?: boolean; now?: Date } = {},
+	options: {
+		copy?: boolean;
+		now?: Date;
+		/**
+		 * Re-encodes an image added to a mark (DEC-058), as the dialog does:
+		 * a file's own may carry metadata or an animation. Where there is no
+		 * canvas (tests), the file's bytes are kept.
+		 */
+		reencode?: (image: Blob) => Promise<StoredImage>;
+	} = {},
 ): Promise<Case> {
-	const images =
+	const unpacked =
 		parsed.images instanceof Map ? parsed.images : await parsed.images();
+	const images = new Map(unpacked);
+	if (options.reencode !== undefined)
+		for (const [path, image] of unpacked) {
+			if (!path.startsWith("images/")) continue;
+			try {
+				images.set(path, await options.reencode(image.blob));
+			} catch {
+				throw new CaseError(`${path} is not an image Sitegloss can read.`);
+			}
+		}
 	// `page`, the list and the screenshots are made to agree (DEC-038):
 	// nothing in a file says they do.
 	const { comments: _fileThread, ...fromFile } = withoutSyncNotes(parsed.case);

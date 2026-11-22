@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { TooManyPixels } from "../src/lib/images.ts";
 import type { StoredImage } from "../src/lib/store.ts";
 import {
 	type Encode,
@@ -11,16 +10,37 @@ import {
 	TOO_MANY_BYTES,
 	TOO_MANY_PIXELS,
 } from "../src/sidepanel/add-images.ts";
+import { pngHeader } from "./fixtures.ts";
 
-/** Re-encodes to the file's own bytes; a file whose text is `pixels` has too many. */
+/** Re-encodes to a tag of the file's own bytes; a file tagged `broken` cannot be decoded. */
 const fakeEncode: Encode = async (file) => {
 	const text = await file.text();
-	if (text === "pixels") throw new TooManyPixels();
-	if (text === "broken") throw new Error("decode failed");
+	if (text.endsWith("broken")) throw new Error("decode failed");
 	return { blob: new Blob([`webp:${text}`]), width: 1440, height: 900 };
 };
-const file = (text: string, type = "image/png", size?: number) => {
-	const blob = new Blob([text], { type });
+/** A PNG of `width`×`height` with `tag` after its header. */
+const file = (
+	tag: string,
+	{
+		type = "image/png",
+		size,
+		width = 1440,
+		height = 900,
+		apng = false,
+	} = {} as {
+		type?: string;
+		size?: number;
+		width?: number;
+		height?: number;
+		apng?: boolean;
+	},
+) => {
+	const blob = new Blob(
+		[pngHeader(width, height, { apng, tag }) as Uint8Array<ArrayBuffer>],
+		{
+			type,
+		},
+	);
 	return size === undefined
 		? blob
 		: Object.defineProperty(blob, "size", { value: size });
@@ -29,22 +49,34 @@ const file = (text: string, type = "image/png", size?: number) => {
 describe("which pictures the dialog takes (DEC-058)", () => {
 	test.each([
 		["a PNG", file("a"), undefined],
-		["an SVG", file("<svg/>", "image/svg+xml"), NOT_READABLE],
-		["a file with no type", file("a", ""), NOT_READABLE],
+		["an SVG", new Blob(["<svg/>"], { type: "image/svg+xml" }), NOT_READABLE],
+		["an AVIF", file("a", { type: "image/avif" }), NOT_READABLE],
+		["a file with no type", file("a", { type: "" }), NOT_READABLE],
 		[
 			"a file over 30 MB",
-			file("a", "image/jpeg", 30 * 1024 * 1024 + 1),
+			file("a", { size: 30 * 1024 * 1024 + 1 }),
 			TOO_MANY_BYTES,
 		],
-		["more than 64 million pixels", file("pixels"), TOO_MANY_PIXELS],
 		[
-			"a file the browser cannot decode",
-			file("broken", "image/webp"),
+			"a small file declaring 23000 × 23000",
+			file("a", { width: 23_000, height: 23_000 }),
+			TOO_MANY_PIXELS,
+		],
+		[
+			"a file whose header is not its type's",
+			new Blob(["GIF89a"], { type: "image/png" }),
 			NOT_READABLE,
 		],
+		["a file the browser cannot decode", file("broken"), NOT_READABLE],
 	])("%s", async (_name, f, problem) => {
-		const done = await prepareImage(f, new Set(), fakeEncode);
+		let decoded = 0;
+		const done = await prepareImage(f, new Set(), async (blob, max) => {
+			decoded++;
+			return fakeEncode(blob, max);
+		});
 		expect("problem" in done ? done.problem : undefined).toBe(problem);
+		// A picture too large by its header is never decoded.
+		if (problem === TOO_MANY_PIXELS) expect(decoded).toBe(0);
 	});
 
 	test("the same picture twice is refused by its re-encoded bytes", async () => {
@@ -55,13 +87,17 @@ describe("which pictures the dialog takes (DEC-058)", () => {
 		).toEqual({
 			problem: ON_THE_MARK,
 		});
+		// An animated picture keeps its first frame, and says so.
 		expect(
 			(await prepareImage(
-				file("g", "image/gif"),
+				file("g", { apng: true }),
 				new Set(),
 				fakeEncode,
 			)) as object,
 		).toMatchObject({ firstFrame: true });
+		expect(
+			(await prepareImage(file("s"), new Set(), fakeEncode)) as object,
+		).toMatchObject({ firstFrame: false });
 	});
 
 	test.each([
@@ -118,7 +154,7 @@ describe("the dialog that adds images to a mark (DEC-058)", () => {
 			"The clipboard holds no image. Copy a screenshot first.",
 		);
 		await d.offer(
-			[file("a"), file("b"), file("<svg/>", "image/svg+xml")],
+			[file("a"), file("b"), new Blob(["<svg/>"], { type: "image/svg+xml" })],
 			"drop",
 		);
 		const rows = () =>

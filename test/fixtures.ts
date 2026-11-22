@@ -83,3 +83,38 @@ export async function putMarked(store: CaseStore, c: Case): Promise<Case> {
 		});
 	return putCase(store, marked);
 }
+
+/** The first bytes of a PNG declaring `width`×`height` (IHDR), `apng` with an acTL; then `tag`. */
+export function pngHeader(
+	width: number,
+	height: number,
+	{ apng = false, tag = "" } = {},
+): Uint8Array {
+	const chunk = (name: string, body: number[]) => {
+		const out = new Uint8Array(12 + body.length);
+		new DataView(out.buffer).setUint32(0, body.length);
+		out.set(new TextEncoder().encode(name), 4);
+		out.set(body, 8);
+		return [...out];
+	};
+	const u32 = (n: number) => [
+		n >>> 24,
+		(n >>> 16) & 255,
+		(n >>> 8) & 255,
+		n & 255,
+	];
+	return new Uint8Array([
+		0x89,
+		0x50,
+		0x4e,
+		0x47,
+		0x0d,
+		0x0a,
+		0x1a,
+		0x0a,
+		...chunk("IHDR", [...u32(width), ...u32(height), 8, 6, 0, 0, 0]),
+		...(apng ? chunk("acTL", [...u32(2), ...u32(0)]) : []),
+		...chunk("IDAT", [0]),
+		...new TextEncoder().encode(tag),
+	]);
+}
