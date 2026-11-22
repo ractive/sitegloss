@@ -774,7 +774,7 @@ describe("what a draw found, judged for the page in front", () => {
 	});
 });
 
-describe("page, the list and the screenshots agree (review of DEC-038)", () => {
+describe("page, the list and the screenshots agree (DEC-038)", () => {
 	const HOME = "https://shop.example/home";
 
 	test("a file whose page is not in its list: made to agree on import, so no mark is hidden and none moves", async () => {

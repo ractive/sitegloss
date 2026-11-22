@@ -141,7 +141,7 @@ describe("the panel's window in Firefox's test build", () => {
 	});
 });
 
-describe("a message from the background only (review of DEC-050)", () => {
+describe("a message from the background only (DEC-050)", () => {
 	const runtime = {
 		id: "ext",
 		getURL: (path: string) => `chrome-extension://ext/${path}`,

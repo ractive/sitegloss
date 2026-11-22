@@ -958,7 +958,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 	});
 });
 
-describe("a case of several pages on the page in front (review of DEC-038)", () => {
+describe("a case of several pages on the page in front (DEC-038)", () => {
 	const KK = "https://www.example.com/kk";
 	const PAY = "https://www.example.com/kk/pay";
 	const CART_PAGE = `<main class="Cart_form"><h1>Warenkorb</h1><button class="Button_primary" type="submit">Weiter</button></main>`;
@@ -1058,7 +1058,7 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 	});
 });
 
-describe("the popover and a mark that takes another number (review B, sync 8)", () => {
+describe("the popover and a mark that takes another number", () => {
 	const PAGE = `<main><h1>Prämien</h1><button>Berechnen</button><p>Tipp</p></main>`;
 	const field = () =>
 		overlay.popover.querySelector("textarea") as HTMLTextAreaElement;
@@ -1130,7 +1130,7 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 		});
 	});
 
-	test("the id is another mark's and two marks have its screenshot and drawing: nothing is asked, and that is said (review B, re-check E)", async () => {
+	test("the id is another mark's and two marks have its screenshot and drawing: nothing is asked, and that is said", async () => {
 		const { before, after } = cases();
 		await reviewer.load(before);
 		overlay.onPick?.(3);

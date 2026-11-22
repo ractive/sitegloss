@@ -711,7 +711,7 @@ describe("webpSize", () => {
 	});
 });
 
-describe("second review", () => {
+describe("one case's file: a copy's title, an element without a selector, the size of case.json", () => {
 	test("a copy's title stays within the limit and the copy validates", async () => {
 		const { store, c } = await stored();
 		const long = { ...c, title: "T".repeat(500) };
@@ -868,7 +868,7 @@ describe("all cases in one file", () => {
 	});
 });
 
-describe("third review: sizes of a file of all cases", () => {
+describe("sizes of a file of all cases", () => {
 	const MB = 1024 * 1024;
 	const limits = (maxCaseBytes: number, maxAllBytes: number): FileLimits => ({
 		maxCaseBytes,

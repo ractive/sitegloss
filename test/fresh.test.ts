@@ -52,7 +52,7 @@ describe("a case created by New case for this page (DEC-026)", () => {
 		expect(firstTitle({ url: "", title: "" })).toBe("Untitled case");
 	});
 
-	test("a page title of invisible characters gives the short address (review of PR 57)", () => {
+	test("a page title of invisible characters gives the short address", () => {
 		expect(firstTitle(page({ title: "\u200b\u2060" }))).toBe(
 			"shop.example/cart",
 		);
@@ -95,7 +95,7 @@ describe("an untouched case goes when it is left (DEC-026)", () => {
 		expect(isUntouched(linked)).toBe(false);
 	});
 
-	test("its only mark taken out by the toolbar's Undo: the user's, it stays (review of PR 57)", () => {
+	test("its only mark taken out by the toolbar's Undo: the user's, it stays", () => {
 		// Undo frees the number and records that a mark was stored.
 		const undone = {
 			...withOneMark(fresh()),
@@ -120,7 +120,7 @@ describe("an untouched case goes when it is left (DEC-026)", () => {
 		expect(isUntouched({ ...fresh(), verdict: "  " }, " ")).toBe(true);
 	});
 
-	test("a title typed in Rename and not saved: the user's, as a typed summary (review of PR 57)", () => {
+	test("a title typed in Rename and not saved: the user's, as a typed summary", () => {
 		expect(isUntouched(fresh(), undefined, "Checkout bugs")).toBe(false);
 		// The field opened and left as it was, or emptied: nothing typed.
 		expect(isUntouched(fresh(), undefined, "  Your cart ")).toBe(true);
@@ -137,7 +137,7 @@ describe("an untouched case goes when it is left (DEC-026)", () => {
 	});
 });
 
-describe("never on doubt: a page that may hold a mark keeps the case (review of PR 57)", () => {
+describe("never on doubt: a page that may hold a mark keeps the case", () => {
 	const state = (change: Partial<OverlayState> = {}): OverlayState => ({
 		visible: false,
 		url: "https://shop.example/cart",

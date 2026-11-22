@@ -463,7 +463,7 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 	});
 });
 
-describe("two sites' home pages in one case (review of DEC-050)", () => {
+describe("two sites' home pages in one case (DEC-050)", () => {
 	const PAY = "https://pay.example/";
 	const lost = (n: number): MarkMatch => ({
 		markId: `m${n}`,
@@ -512,7 +512,7 @@ describe("two sites' home pages in one case (review of DEC-050)", () => {
 	});
 });
 
-describe("a mark's link waits for its page (review of DEC-050, 6 and 7)", () => {
+describe("a mark's link waits for its page (DEC-050)", () => {
 	const p: PendingShow = {
 		tabId: 4,
 		caseId: "c_shop",
@@ -597,7 +597,7 @@ describe("a mark's link waits for its page (review of DEC-050, 6 and 7)", () => 
 	});
 });
 
-describe("open_case and what the panel knew of a draw (review of DEC-050, 8)", () => {
+describe("open_case and what the panel knew of a draw (DEC-050)", () => {
 	test("only a draw of that case on that tab stays; the same case on another tab is dropped", () => {
 		expect(keepsLoaded({ caseId: "c_a", tabId: 2 }, "c_a", 2)).toBe(true);
 		expect(keepsLoaded({ caseId: "c_a", tabId: 1 }, "c_a", 2)).toBe(false);

@@ -324,7 +324,7 @@ describe("questions", () => {
 		);
 	});
 
-	test("the panel shows all of the arguments; a notification they do not fit in only refuses (CR-03)", async () => {
+	test("the panel shows all of the arguments; a notification they do not fit in only refuses", async () => {
 		const host = fakeHost();
 		const questions = new Questions(host);
 		// Harmless at the start, the rest unseen before: the whole of it now.
@@ -617,7 +617,7 @@ describe("questions", () => {
 	});
 });
 
-describe("Stop AI access (CR-08)", () => {
+describe("Stop AI access", () => {
 	test("disconnects first; a write that fails still lets the others run, and comes back", async () => {
 		const done: string[] = [];
 		const write =

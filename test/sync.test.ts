@@ -860,7 +860,7 @@ describe("the sync to Downloads (DEC-025)", () => {
 		]);
 	});
 
-	test("a renamed case keeps the file it was first written under: nothing is left behind (review of PR 57)", async () => {
+	test("a renamed case keeps the file it was first written under: nothing is left behind", async () => {
 		const c = await add("c_1", "Example Domain");
 		await sync.request();
 		await putCase(cases, {

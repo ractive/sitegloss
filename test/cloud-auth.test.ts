@@ -948,7 +948,7 @@ describe("the events stream", () => {
 	});
 });
 
-describe("the chosen server answers, nobody it points at (review B, 2)", () => {
+describe("the chosen server answers, nobody it points at", () => {
 	type Served = ReturnType<typeof Bun.serve>;
 	const up: Served[] = [];
 	const serve = (
@@ -1125,7 +1125,7 @@ describe("the chosen server answers, nobody it points at (review B, 2)", () => {
 	});
 });
 
-describe("an answer is read up to what an answer may be (review B, 11)", () => {
+describe("an answer is read up to what an answer may be", () => {
 	test("JSON: a page of changes can be asked for in fewer things; an answer over the limit is given up", async () => {
 		const urls: string[] = [];
 		let read = 0;
@@ -1185,7 +1185,7 @@ describe("the sign-ins under way", () => {
 	});
 });
 
-describe("small answers are read as small (review B, re-check C)", () => {
+describe("small answers are read as small", () => {
 	/** An answer that goes on for 80 MiB, and counts what was taken of it. */
 	function huge(status = 200) {
 		let pulled = 0;

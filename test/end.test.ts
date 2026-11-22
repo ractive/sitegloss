@@ -366,7 +366,7 @@ test("what a new case records of the page: address, title, language, window", as
 	expect(pageInfo(doc).lang).toBe("");
 });
 
-test("a rename while a mark is being added is not reverted (review of PR 57)", async () => {
+test("a rename while a mark is being added is not reverted", async () => {
 	let release: () => void = () => undefined;
 	const held = new Promise<void>((r) => {
 		release = r;
@@ -389,7 +389,7 @@ test("a rename while a mark is being added is not reverted (review of PR 57)", a
 	expect(status?.textContent).toBe("Mark 3 added to “Login button”");
 });
 
-test("a mark the page moved away from gets its screenshot again by itself once the page stands still (review of PR 57)", async () => {
+test("a mark the page moved away from gets its screenshot again by itself once the page stands still", async () => {
 	window.document.body.innerHTML = `<main style="height: 3000px"><p id="text">Some text</p></main>`;
 	const { a, overlay } = adder();
 	a.show({ target });
@@ -412,7 +412,7 @@ test("a mark the page moved away from gets its screenshot again by itself once t
 	expect(window.scrollY).toBe(400);
 });
 
-test("a failed mark takes the next number of the case the toolbar is shown for (review of PR 57)", async () => {
+test("a failed mark takes the next number of the case the toolbar is shown for", async () => {
 	answer = noShots;
 	const { a, overlay } = adder();
 	a.show({ target });

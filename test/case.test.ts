@@ -1017,7 +1017,7 @@ describe("a case's title (DEC-026)", () => {
 		);
 	});
 
-	test("a title of invisible characters only is refused (review of PR 57)", () => {
+	test("a title of invisible characters only is refused", () => {
 		for (const title of [
 			"\u200b",
 			"\u200b \u00a0\u2060",
@@ -1185,7 +1185,7 @@ describe("a mark's ends (DEC-047)", () => {
 	});
 });
 
-describe("the thread's rules (review of DEC-046)", () => {
+describe("the thread's rules (DEC-046)", () => {
 	const base = (): Case => {
 		const c = withOneMark(sampleCase());
 		return {

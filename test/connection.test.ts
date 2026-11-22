@@ -380,7 +380,7 @@ describe("the worker's connection with client 0.18", () => {
 		return { w, ids, listed, log };
 	}
 
-	test("Review of PR 58, 1: with relay 0.10.2 each Disconnect gets its own answer, and an app the relay does not know leaves the list", async () => {
+	test("two Disconnects at once each get their own answer, and an app the relay does not know leaves the list", async () => {
 		const { w, ids, listed } = await twoDisconnects();
 		// The relay names the grant its unknown_id is for: One leaves the
 		// list (client 0.16.1), with its Always allow, and nothing is said.
@@ -393,7 +393,7 @@ describe("the worker's connection with client 0.18", () => {
 		expect(kept).not.toContain(ids["One"] as string);
 	});
 
-	test("Review of PR 58, 1: with a relay before 0.10.2 (its errors name nothing) the Disconnects go one at a time", async () => {
+	test("with a relay before 0.10.2 (its errors name nothing) the Disconnects go one at a time", async () => {
 		olderRelay();
 		try {
 			const { w, listed, log } = await twoDisconnects();
@@ -416,7 +416,7 @@ describe("the worker's connection with client 0.18", () => {
 		}
 	});
 
-	test("Review of PR 59, 1: with an older relay, an answer that comes after its revoke timed out is not taken for the next", async () => {
+	test("with a relay before 0.10.2, an answer that comes after its revoke timed out is not taken for the next", async () => {
 		olderRelay();
 		const realSetTimeout = globalThis.setTimeout;
 		try {
@@ -452,7 +452,7 @@ describe("the worker's connection with client 0.18", () => {
 		}
 	});
 
-	test("Review of PR 58, 2: a Disconnect sent and then cut off by Stop could not be confirmed", async () => {
+	test("a Disconnect sent and then cut off by Stop could not be confirmed; the next connection's list says what happened", async () => {
 		const { w, ids } = await paired(["One"]);
 		store.slowMs = 300;
 		w.send({ type: "revoke", grantId: ids["One"] });
@@ -470,7 +470,7 @@ describe("the worker's connection with client 0.18", () => {
 		await until(() => w.last().grants.length === 0);
 	});
 
-	test("Review of PR 58, 2: a Disconnect while off was not sent: not connected, try again", async () => {
+	test("a Disconnect while off is not sent: not connected, try again", async () => {
 		const { w, ids } = await paired(["One"]);
 		w.send({ type: "stop" });
 		await until(() => w.last().state === "disconnected");
@@ -484,7 +484,7 @@ describe("the worker's connection with client 0.18", () => {
 	});
 
 	test.each([false, true])(
-		"Review of PR 58, 3: a session the relay ends as rate_limited says why (Keep AI access on %p)",
+		"a session the relay ends as rate_limited says why, and tries again only with Keep AI access on (on: %p)",
 		async (keepOn) => {
 			const { w } = await paired([]);
 			if (keepOn) {
@@ -513,7 +513,7 @@ describe("the worker's connection with client 0.18", () => {
 		},
 	);
 
-	test("Review of PR 58, 4: after a takeover, Disconnect all apps clears it even when the connect after it fails", async () => {
+	test("after a takeover, Disconnect all apps clears it even when the connect after it fails", async () => {
 		const first = await paired([]);
 		const secret = await first.kv.get(secretKey());
 		first.w.send({ type: "stop" });
@@ -610,7 +610,7 @@ describe("the worker's connection with client 0.18", () => {
 	});
 });
 
-describe("filling in the code on the relay's pairing page, in the worker (DEC-044, its review, the library's filler)", () => {
+describe("filling in the code on the relay's pairing page, in the worker, with the library's filler (DEC-044)", () => {
 	const relay = startTestRelay({ maxSessionsPerIp: 50 });
 	/** The pairing page's origin: a test build fills in the origin it is given. */
 	const PAGE_ORIGIN = "https://pair.example";
@@ -652,7 +652,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		return { w, kv };
 	}
 
-	test("Review 3: off by default, also with access to every site: a pairing page gets no script and no question; Fill in the code for me turns it on and is kept", async () => {
+	test("off by default, also with access to every site: a pairing page gets no script and no question; Fill in the code for me turns it on and is kept", async () => {
 		const { w, kv } = await connected();
 		await w.connection.pageLoaded(7, PAGE);
 		await Bun.sleep(20);
@@ -702,7 +702,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		}
 	});
 
-	test("Review 3: Stop filling in the code withdraws a waiting question and gives the relay's site back; with access to all sites it keeps that", async () => {
+	test("Stop filling in the code withdraws a waiting question and gives the relay's site back; with access to all sites it keeps that", async () => {
 		const { w, kv } = await connected({ fillCode: true }, [`${PAGE_ORIGIN}/*`]);
 		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
@@ -719,7 +719,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(fake.removed).toEqual([]);
 	});
 
-	test("Review 2: Stop AI access withdraws a waiting question at once", async () => {
+	test("Stop AI access withdraws a waiting question at once", async () => {
 		const { w } = await connected({ fillCode: true });
 		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
@@ -734,7 +734,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(fake.filled).toEqual([]);
 	});
 
-	test("Review 2: a yes queued behind Stop AI access (the panel's commands run in order) fills in nothing", async () => {
+	test("a yes queued behind Stop AI access (the panel's commands run in order) fills in nothing", async () => {
 		const { w } = await connected({ fillCode: true });
 		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
@@ -789,7 +789,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		["Stop filling in the code", { type: "fill-code", on: false }],
 		["another relay", { type: "set-relay", relay: "http://127.0.0.1:9/" }],
 	] as const)
-		test(`Review of #27, 1: ${what} while a yes waits for its code: nothing is filled in, no AI app is connected`, async () => {
+		test(`${what} while a yes waits for its code: nothing is filled in, no AI app is connected`, async () => {
 			const codes = holdCodes();
 			try {
 				const { w } = await connected({ fillCode: true });
@@ -809,7 +809,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 			}
 		});
 
-	test("Review of #27, 6: upgraded from 0.3.0, the relay's site goes back once; never again, nor with all sites, nor once the setting is stored", async () => {
+	test("upgraded from 0.3.0, the relay's site goes back once; never again, nor with all sites, nor once the setting is stored", async () => {
 		const SITE = "https://tab-mcp.ractive.ch/*";
 		const permissions = {
 			granted: new Set<string>(),
@@ -847,7 +847,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(permissions.removed).toEqual([SITE]);
 	});
 
-	test("Review 2: another relay withdraws a waiting question", async () => {
+	test("another relay withdraws a waiting question", async () => {
 		const { w } = await connected({ fillCode: true });
 		await w.connection.pageLoaded(7, PAGE);
 		await until(() => w.last().fill !== undefined);
@@ -908,7 +908,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		}
 	});
 
-	test("Review of #29, 1: a panel's pairing view from before a relay switch does not keep a yes from turning pairing on with the new relay", async () => {
+	test("a panel's pairing view from before a relay switch does not keep a yes from turning pairing on with the new relay", async () => {
 		const other = startTestRelay({ maxSessionsPerIp: 50 });
 		try {
 			const { w } = await connected({ fillCode: true });

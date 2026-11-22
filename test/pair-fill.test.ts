@@ -212,7 +212,7 @@ describe("which page counts", () => {
 		});
 	});
 
-	test("Review 7: a look-alike origin, another port of the relay's host, a frame or another extension's script gets no question; a form for another app opens no port", async () => {
+	test("a look-alike origin, another port of the relay's host, a frame or another extension's script gets no question; a form for another app opens no port", async () => {
 		const f = setup();
 		f.load(1, "https://tab-mcp.ractive.ch:8443/authorize", pairingPage());
 		f.load(
@@ -299,7 +299,7 @@ describe("the question and the fill", () => {
 		expect(t.port?.connected).toBe(false);
 	});
 
-	test("Review 1: the relay's wrong-code page (same tab, same request) within 30 s is asked about again, never filled without a yes; each yes fills once", async () => {
+	test("the relay's wrong-code page (same tab, same request) within 30 s is asked about again, never filled without a yes; each yes fills once", async () => {
 		const f = setup();
 		const first = f.load(1, PAGE, pairingPage({ requestId: "r_1" }));
 		await turns();
@@ -332,7 +332,7 @@ describe("the question and the fill", () => {
 		expect(f.notices.filter((n) => n !== undefined)).toHaveLength(3);
 	});
 
-	test("Review 1 and 2: a yes whose code is on its way fills in nothing once its tab loaded another page, a look-alike or another request", async () => {
+	test("a yes whose code is on its way fills in nothing once its tab loaded another page, a look-alike or another request", async () => {
 		const f = setup();
 		f.setCode(undefined);
 		f.load(1, PAGE, pairingPage({ requestId: "r_1" }));
@@ -353,7 +353,7 @@ describe("the question and the fill", () => {
 		expect(f.holds).toEqual([true, false]);
 	});
 
-	test("Review 2: withdrawn (AI access off, turned off, another relay), the question goes at once, and a yes waiting for its code fills in nothing", async () => {
+	test("withdrawn (AI access off, turned off, another relay), the question goes at once, and a yes waiting for its code fills in nothing", async () => {
 		const f = setup();
 		f.load(1, PAGE, pairingPage());
 		await turns();
@@ -381,7 +381,7 @@ describe("the question and the fill", () => {
 		expect(f.holds).toEqual([true, false]);
 	});
 
-	test("Review 5: a pairing page in another tab while a question waits is not asked about, and the panel says so; the same tab's new page replaces its question", async () => {
+	test("a pairing page in another tab while a question waits is not asked about, and the panel says so; the same tab's new page replaces its question", async () => {
 		const f = setup();
 		f.load(1, PAGE, pairingPage({ host: "first.example" }));
 		await turns();
@@ -402,7 +402,7 @@ describe("the question and the fill", () => {
 		expect(f.question.question?.id).not.toBe(first as string);
 	});
 
-	test("Review of #29, 2: a code that comes for one tab leaves what the panel says about a page in another tab that was not asked about; it clears only its own tab's", async () => {
+	test("a code that comes for one tab leaves what the panel says about a page in another tab that was not asked about; it clears only its own tab's", async () => {
 		const BUSY_FETCHING =
 			"An AI app at second.example (it calls itself “Claude”) also opened the relay's page while Sitegloss was filling in the code on another one. Reload that page in a moment to be asked, or type the code there.";
 		const BUSY_QUESTION =
@@ -465,7 +465,7 @@ describe("the question and the fill", () => {
 		expect(f.question.problem).toBeUndefined();
 	});
 
-	test("Review 6: pairing is held on from the yes until a while after the fill, also when Connect's post leaves the page; the AI app connecting lets it go at once", async () => {
+	test("pairing is held on from the yes until a while after the fill, also when Connect's post leaves the page; the AI app connecting lets it go at once", async () => {
 		const f = setup({ holdMs: 40, grants: [] });
 		const t = f.load(1, PAGE, pairingPage());
 		await turns();
@@ -549,7 +549,7 @@ describe("the question and the fill", () => {
 	});
 });
 
-describe("Review 4: which code is filled in, by Sitegloss's clock", () => {
+describe("which code is filled in, by Sitegloss's clock", () => {
 	test("the current one while it has 5 s left", async () => {
 		const f = setup();
 		f.setCode({
@@ -564,8 +564,8 @@ describe("Review 4: which code is filled in, by Sitegloss's clock", () => {
 	});
 });
 
-describe("the library's filler as Sitegloss needs it (raised against its release candidate)", () => {
-	test("Point 3: code and failed say which page, its tab and AI app; a second tab while a code is on its way is told so, the same tab is asked", async () => {
+describe("the library's filler as Sitegloss needs it", () => {
+	test("code and failed say which page, its tab and AI app; a second tab while a code is on its way is told so, the same tab is asked", async () => {
 		const f = setup();
 		f.setCode(undefined);
 		f.load(2, PAGE, pairingPage({ host: "first.example", name: "" }));
@@ -597,7 +597,7 @@ describe("the library's filler as Sitegloss needs it (raised against its release
 		expect(f.question.question?.host).toBe("third.example");
 	});
 
-	test("Point 6: a fill that ends without its code keeps pairing on while an earlier fill's code may still be checked; that AI app connecting lets it go, once", async () => {
+	test("a fill that ends without its code keeps pairing on while an earlier fill's code may still be checked; that AI app connecting lets it go, once", async () => {
 		const f = setup({ holdMs: 10_000, grants: [] });
 		const a = f.load(1, PAGE, pairingPage({ host: "first.example" }));
 		await turns();

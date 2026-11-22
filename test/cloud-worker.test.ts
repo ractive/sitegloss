@@ -796,7 +796,7 @@ describe("each server is kept apart (DEC-041)", () => {
 	});
 });
 
-describe("a case kept on this device stays there, whoever names its id (review B, 1)", () => {
+describe("a case kept on this device stays there, whoever names its id", () => {
 	const modes = () => data.get(KEYS.modes) as Record<string, string>;
 	const comments = (s: FakeServer, id: string) =>
 		s

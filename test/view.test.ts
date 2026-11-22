@@ -4464,7 +4464,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 	});
 });
 
-describe("the second link names the origin in front (review of DEC-050)", () => {
+describe("the second link names the origin in front (DEC-050)", () => {
 	test("the same host on another scheme says the scheme; another port says the port; a page none of the case's still offers it", () => {
 		const base = withOneMark(sampleCase("c_scheme"));
 		const c: Case = {

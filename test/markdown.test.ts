@@ -127,7 +127,7 @@ const HOSTILE: [string, string, string][] = [
 	],
 ];
 
-describe("Markdown in what someone wrote does nothing in case.md (CR-09)", () => {
+describe("Markdown in what someone wrote does nothing in case.md", () => {
 	const plain = structure(caseMarkdown(caseWith("plain")));
 
 	for (const [name, text, fence] of HOSTILE)
