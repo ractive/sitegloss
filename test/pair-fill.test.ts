@@ -212,6 +212,22 @@ describe("which page counts", () => {
 		});
 	});
 
+	test("a look-alike origin, another port of the relay's host, a frame or another extension's script gets no question; a form for another app opens no port", async () => {
+		const f = setup();
+		f.load(1, "https://tab-mcp.ractive.ch:8443/authorize", pairingPage());
+		f.load(
+			2,
+			"https://tab-mcp.ractive.ch.example.com/authorize",
+			pairingPage(),
+		);
+		f.load(3, PAGE, pairingPage(), { framed: true });
+		f.load(4, PAGE, pairingPage(), { extension: "another-extension" });
+		const other = f.load(5, PAGE, pairingPage({ app: "tab-mcp-extension" }));
+		await turns();
+		expect(f.question.question).toBeUndefined();
+		expect(other.port).toBeUndefined();
+	});
+
 	test("not as documented: no port, no question", async () => {
 		const f = setup();
 		const pages = [
@@ -314,6 +330,27 @@ describe("the question and the fill", () => {
 		}
 		// One question per page load: the filled page's port asks nothing more.
 		expect(f.notices.filter((n) => n !== undefined)).toHaveLength(3);
+	});
+
+	test("a yes whose code is on its way fills in nothing once its tab loaded another page, a look-alike or another request", async () => {
+		const f = setup();
+		f.setCode(undefined);
+		f.load(1, PAGE, pairingPage({ requestId: "r_1" }));
+		await turns();
+		f.question.answer(f.question.question?.id as string, true);
+		await turns();
+		// The AI app's page sends the tab elsewhere, with a look-alike form.
+		const evil = f.load(1, "https://evil.example/authorize", pairingPage());
+		const next = f.load(2, PAGE, pairingPage({ requestId: "r_2" }));
+		f.sendCode({
+			code: "BCDF-GHJK",
+			expiresAt: new Date(f.now + 60_000).toISOString(),
+		});
+		await turns();
+		expect(evil.submitted).toEqual([]);
+		expect(next.submitted).toEqual([]);
+		// Nothing went into a page: pairing is let go at once.
+		expect(f.holds).toEqual([true, false]);
 	});
 
 	test("withdrawn (AI access off, turned off, another relay), the question goes at once, and a yes waiting for its code fills in nothing", async () => {
