@@ -73,7 +73,13 @@ import {
 	markedElementAt,
 } from "./anchor.ts";
 import type { PageBlur } from "./blur.ts";
-import { type IconName, icon, type Overlay, ring } from "./overlay.ts";
+import {
+	type IconName,
+	icon,
+	type Overlay,
+	ring,
+	withSaveKey,
+} from "./overlay.ts";
 
 export type Tool = "element" | "box" | "arrow" | "pen" | "note";
 
@@ -668,6 +674,7 @@ export class MarkAdder {
 		done.className = "primary";
 		done.dataset["action"] = "comment-done";
 		done.textContent = "Done";
+		withSaveKey(done);
 		done.addEventListener("click", () => this.#commitComment());
 		const remove = doc.createElement("button");
 		remove.type = "button";

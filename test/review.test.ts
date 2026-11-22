@@ -603,7 +603,16 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(field().getAttribute("aria-label")).toBe("Comment of mark 1");
 		expect(overlay.popover.querySelector(".pin")?.textContent).toBe("1");
 		expect(button("mark-delete").textContent).toBe("Delete mark");
-		expect(button("mark-done").textContent).toBe("Done");
+		// Cmd+Enter (Ctrl+Enter) in the field presses Done: the button shows
+		// it, and its name stays "Done".
+		const done = button("mark-done");
+		expect(done.firstChild?.textContent).toBe("Done");
+		expect(done.querySelector(".keys")?.getAttribute("aria-hidden")).toBe(
+			"true",
+		);
+		expect(done.getAttribute("aria-keyshortcuts")).toMatch(
+			/^(Meta|Control)\+Enter$/,
+		);
 		expect(overlay.items[0]?.focused).toBe(true);
 		expect(overlay.placed).toBeGreaterThan(0);
 		expect(asked).toEqual([

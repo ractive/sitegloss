@@ -57,6 +57,7 @@ import {
 	type ReviewItem,
 	reviewColour,
 	ring,
+	withSaveKey,
 } from "./overlay.ts";
 
 interface Entry {
@@ -816,7 +817,9 @@ export class Reviewer {
 					note: note.value,
 				});
 			};
-			const done = button("Reopen", "mark-reopen-done", reopen, true);
+			const done = withSaveKey(
+				button("Reopen", "mark-reopen-done", reopen, true),
+			);
 			done.disabled = true;
 			note.addEventListener("input", () => {
 				if (!open.busy) done.disabled = note.value.trim() === "";
@@ -902,7 +905,9 @@ export class Reviewer {
 				row(
 					"row",
 					remove,
-					button("Done", "mark-done", () => void this.#done(), true),
+					withSaveKey(
+						button("Done", "mark-done", () => void this.#done(), true),
+					),
 				),
 			];
 			focus = field;
