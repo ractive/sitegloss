@@ -2580,10 +2580,10 @@ describe("the thread and closing (DEC-046)", () => {
 			expect.stringMatching(/^Tess Tester · /),
 			expect.stringMatching(/^Dana Developer via Claude · .* · on mark 1$/),
 		]);
-		// Tess's own has Edit and Delete; Dana's has none.
+		// Tess's own has Edit and Delete comment; Dana's has none.
 		expect(
-			items[0]?.querySelector('[data-action="comment-delete"]'),
-		).not.toBeNull();
+			items[0]?.querySelector('[data-action="comment-delete"]')?.textContent,
+		).toBe("Delete comment");
 		expect(
 			items[1]?.querySelector('[data-action="comment-delete"]'),
 		).toBeNull();

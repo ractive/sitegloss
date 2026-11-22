@@ -238,7 +238,7 @@ function item(
 							}, ARMED_MS);
 						},
 					},
-					isArmed ? "Really delete?" : "Delete",
+					isArmed ? "Really delete?" : "Delete comment",
 				),
 			)
 		: undefined;
