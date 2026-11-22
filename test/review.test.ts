@@ -1048,35 +1048,71 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 	const statuses = (matches: { status: string }[] | undefined) =>
 		matches?.map((m) => m.status);
 
+	/**
+	 * An app shell: a header every route has, with the logo marked on the
+	 * cart (mark 1), and the route's own content in `main`; mark 2 is the
+	 * payment page's help link.
+	 */
+	const HEADER = `<header class="Shell_header"><a class="Logo_home" href="/">Acme</a></header>`;
+	function shell(): Case {
+		doc.body.innerHTML = `${HEADER}${PAY_PAGE}`;
+		const help = describeElement($("a.Help_link"));
+		doc.body.innerHTML = `${HEADER}${CART_PAGE}`;
+		const logo = describeElement($("a.Logo_home"));
+		const mark = (n: number, shotId: string, element: typeof logo) =>
+			({
+				id: `m${n}`,
+				number: n,
+				shot: shotId,
+				shape: { kind: "element", rect: element.rect },
+				element,
+			}) as Mark;
+		return {
+			...flow(),
+			marks: [mark(1, "s1", logo), mark(2, "s2", help)],
+		};
+	}
+	/** The router goes on: the address and `main` change, the header stays. */
+	const route = (path: string, main: string) => {
+		(doc.defaultView as unknown as Window).history.pushState({}, "", path);
+		$("main").outerHTML = main;
+	};
+
 	test("a single-page app goes on to its next route: its marks are drawn and the previous route's go", async () => {
-		const c = flow();
-		doc.body.innerHTML = CART_PAGE;
+		const c = shell();
+		doc.body.innerHTML = `${HEADER}${CART_PAGE}`;
 		const first = await reviewer.load(c);
 		expect(statuses(first.matches)).toEqual(["found", "lost"]);
-		// The app navigates within the page: the address and the content change.
-		go("/kk/pay", PAY_PAGE);
+		const logo = $("a.Logo_home");
+		route("/kk/pay", PAY_PAGE);
 		expect(location.href).toBe(PAY);
+		// The logo is still there, and still not the payment page's mark.
+		expect(logo.isConnected).toBe(true);
 		// Asked about that one mark at once (an AI app's get_mark_element).
 		expect(reviewer.target("m2")?.match.status).toBe("found");
-		expect(reviewer.target("m2")?.element).toBe($("a"));
+		expect(reviewer.target("m2")?.element).toBe($("a.Help_link"));
+		expect(reviewer.target("m1")?.element).toBeUndefined();
 		// The panel's question: what is there now, for the page it shows now.
 		const now = await reviewer.matches(c.id);
 		expect(now?.url).toBe(PAY);
 		expect(statuses(now?.matches)).toEqual(["lost", "found"]);
+		expect(now?.matches[0]?.candidates).toHaveLength(0);
 		expect(overlay.items.map((i) => i.number)).toEqual([2]);
 		expect(bar()).toContain("1 of 1 found");
 		expect(await reviewer.matches("c_other")).toBeNull();
 	});
 
 	test("by itself too, a moment later, and for content that comes after the address", async () => {
-		const c = flow();
-		doc.body.innerHTML = CART_PAGE;
+		const c = shell();
+		doc.body.innerHTML = `${HEADER}${CART_PAGE}`;
 		await reviewer.load(c);
+		expect(overlay.items.map((i) => i.number)).toEqual([1]);
 		// The address first, the route's content only after a second.
-		go("/kk/pay", `<main><p>Lädt…</p></main>`);
+		route("/kk/pay", `<main><p>Lädt…</p></main>`);
 		await Bun.sleep(TICK_MS * 1.4);
+		// The logo's mark went with its route, though the logo stayed.
 		expect(overlay.items).toHaveLength(0);
-		doc.body.innerHTML = PAY_PAGE;
+		route("/kk/pay", PAY_PAGE);
 		await until(() => overlay.items.length > 0);
 		expect(overlay.items.map((i) => i.number)).toEqual([2]);
 		expect(overlay.items[0]?.found).toBe(true);
