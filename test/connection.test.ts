@@ -418,30 +418,39 @@ describe("the worker's connection with client 0.18", () => {
 
 	test("Review of PR 59, 1: with an older relay, an answer that comes after its revoke timed out is not taken for the next", async () => {
 		olderRelay();
+		const realSetTimeout = globalThis.setTimeout;
 		try {
 			const { w, ids } = await paired(["One", "Two"]);
-			// One's store write takes longer than the library waits (15 s), and
-			// then fails; Two goes next in the queue.
-			store.slowMs = 16_000;
+			// The library waits 15 s for a revoke's answer (its `timing`, not
+			// exported): here 500 ms, for the revokes only.
+			globals["setTimeout"] = ((fn: () => void, ms?: number) =>
+				realSetTimeout(
+					fn,
+					ms === 15_000 ? 500 : ms,
+				)) as typeof globalThis.setTimeout;
+			// One's store write takes longer than the library waits, and then
+			// fails, before Two (next in the queue) times out.
+			store.slowMs = 750;
 			store.failing = true;
 			w.send({ type: "revoke", grantId: ids["One"] });
 			w.send({ type: "revoke", grantId: ids["Two"] });
-			await until(() => grant(w, "One")?.problem !== undefined, 16_000);
+			await until(() => grant(w, "One")?.problem !== undefined);
 			expect(grant(w, "One")?.problem).toBe(
 				"One was not disconnected: the relay did not answer. Try again.",
 			);
 			// One's late store_unavailable, naming nothing, rejects Two's.
-			await until(() => grant(w, "Two")?.problem !== undefined, 5000);
+			await until(() => grant(w, "Two")?.problem !== undefined);
 			expect(grant(w, "Two")?.problem).toBe(
 				"Two was not disconnected: the relay's answer may be for an earlier Disconnect it was slow to answer. Try again.",
 			);
 			expect(grant(w, "Two")?.allowAll).toBe(true);
 		} finally {
+			globals["setTimeout"] = realSetTimeout;
 			globals["WebSocket"] = before.WebSocket;
 			store.slowMs = 0;
 			store.failing = false;
 		}
-	}, 30_000);
+	});
 
 	test("Review of PR 58, 2: a Disconnect sent and then cut off by Stop could not be confirmed", async () => {
 		const { w, ids } = await paired(["One"]);
