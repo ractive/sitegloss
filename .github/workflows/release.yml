@@ -11,10 +11,13 @@ name: Release
 #
 #   git tag v0.1.0 <merge commit on main> && git push origin v0.1.0
 #
-# The build job runs third-party code (bun install, the tests, Chrome,
-# Firefox, ff-rdp) with a read-only token (contents and attestations: read,
-# the latter for checking ff-rdp's attestation); only the release job, which
-# runs none, may write.
+# First the full end-to-end sets, Chromium's and Firefox's (e2e.yml, the job
+# e2e, DEC-053): the build waits for them, so a red run builds and releases
+# nothing. The jobs e2e and build run third-party code (bun install, the
+# tests, Chrome, Firefox, ff-rdp) with a read-only token (contents read; the
+# e2e jobs also attestations, for checking ff-rdp's attestation, and actions,
+# which only a nightly run uses); only the release job, which runs none, may
+# write.
 #
 # The release job also attests all four zips: a signed statement (SLSA build
 # provenance, through Sigstore) that this workflow built a file with that
@@ -49,21 +52,23 @@ permissions:
   contents: read
 
 env:
+  # Pinned as in ci.yml (test/workflows.test.ts holds every workflow to one value).
   CHROME_VERSION: "156.0.8078.80"
-  # Firefox and ff-rdp for the Firefox end-to-end tests, pinned as in ci.yml
-  # (test/workflows.test.ts holds the two in step).
-  FIREFOX_VERSION: "160.0"
-  FIREFOX_SHA256: fde774e9757c8878534c05ec210db592bf6a1b244c57941ffb2e364c04f35fcd
-  FF_RDP_VERSION: "0.5.0"
 
 jobs:
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+      attestations: read
+      actions: read
+
   build:
+    needs: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: read
-      # gh attestation verify reads ff-rdp's attestation: read-only too.
-      attestations: read
     outputs:
       commit: ${{ steps.tag.outputs.commit }}
     steps:
@@ -100,35 +105,12 @@ jobs:
         id: chrome
         with:
           chrome-version: ${{ env.CHROME_VERSION }}
-      - name: Install Firefox ${{ env.FIREFOX_VERSION }}
-        run: |
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/firefox.tar.xz" \
-            "https://archive.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.xz"
-          echo "${FIREFOX_SHA256}  $RUNNER_TEMP/firefox.tar.xz" | sha256sum --check --strict
-          tar -xJf "$RUNNER_TEMP/firefox.tar.xz" -C "$RUNNER_TEMP"
-          "$RUNNER_TEMP/firefox/firefox" --version
-      - name: Install ff-rdp ${{ env.FF_RDP_VERSION }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          archive="ff-rdp-v${FF_RDP_VERSION}-x86_64-unknown-linux-musl.tar.gz"
-          gh release download "v${FF_RDP_VERSION}" --repo ractive/ff-rdp \
-            --pattern "$archive" --dir "$RUNNER_TEMP"
-          # Built from that tag of ractive/ff-rdp by the release workflow it
-          # calls (ractive/release-workflows), or the job stops here.
-          gh attestation verify "$RUNNER_TEMP/$archive" --repo ractive/ff-rdp \
-            --signer-repo ractive/release-workflows \
-            --source-ref "refs/tags/v${FF_RDP_VERSION}"
-          mkdir -p "$RUNNER_TEMP/ff-rdp"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/ff-rdp"
-          "$RUNNER_TEMP/ff-rdp/ff-rdp" --version
       - run: bun install --frozen-lockfile
-      # The unit tests and both end-to-end suites: Chromium's and Firefox's.
+      # Biome, the type check, the unit tests and the end-to-end smoke set
+      # (the full sets ran in the job e2e).
       - run: bun run verify
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
-          FIREFOX_PATH: ${{ runner.temp }}/firefox/firefox
-          FF_RDP_PATH: ${{ runner.temp }}/ff-rdp/ff-rdp
       - run: bun scripts/build.ts --zip
       - run: bun scripts/build.ts --store --zip --outdir dist-store
       - run: bun scripts/build.ts --firefox --store --zip

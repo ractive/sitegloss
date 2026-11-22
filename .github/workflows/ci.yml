@@ -1,5 +1,10 @@
 name: CI
 
+# On every pull request and push to main: Biome, the type check, the unit
+# tests and the smoke set of the end-to-end tests (bun run verify, DEC-053),
+# then the packages. The full end-to-end sets, Chromium's and Firefox's, run
+# in e2e.yml: nightly, on a release tag, and by hand.
+
 on:
   push:
     branches: [main]
@@ -13,24 +18,13 @@ env:
   # on purpose. Branded Chrome ignores --load-extension, so the extension tests
   # need Chrome for Testing.
   CHROME_VERSION: "156.0.8078.80"
-  # Firefox and ff-rdp for the Firefox end-to-end tests (test/e2e/firefox/),
-  # pinned the same way: Firefox from Mozilla's release archive, checked
-  # against its SHA256SUMS line; ff-rdp from its GitHub release, checked
-  # against the build attestation its release workflow made. Bump on purpose:
-  # FIREFOX_SHA256 is the line for linux-x86_64/en-US/firefox-<version>.tar.xz
-  # in https://archive.mozilla.org/pub/firefox/releases/<version>/SHA256SUMS.
-  FIREFOX_VERSION: "160.0"
-  FIREFOX_SHA256: fde774e9757c8878534c05ec210db592bf6a1b244c57941ffb2e364c04f35fcd
-  FF_RDP_VERSION: "0.5.0"
 
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     permissions:
       contents: read
-      # gh attestation verify reads ff-rdp's attestation.
-      attestations: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,35 +36,11 @@ jobs:
         id: chrome
         with:
           chrome-version: ${{ env.CHROME_VERSION }}
-      - name: Install Firefox ${{ env.FIREFOX_VERSION }}
-        run: |
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/firefox.tar.xz" \
-            "https://archive.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.xz"
-          echo "${FIREFOX_SHA256}  $RUNNER_TEMP/firefox.tar.xz" | sha256sum --check --strict
-          tar -xJf "$RUNNER_TEMP/firefox.tar.xz" -C "$RUNNER_TEMP"
-          "$RUNNER_TEMP/firefox/firefox" --version
-      - name: Install ff-rdp ${{ env.FF_RDP_VERSION }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          archive="ff-rdp-v${FF_RDP_VERSION}-x86_64-unknown-linux-musl.tar.gz"
-          gh release download "v${FF_RDP_VERSION}" --repo ractive/ff-rdp \
-            --pattern "$archive" --dir "$RUNNER_TEMP"
-          # Built from that tag of ractive/ff-rdp by the release workflow it
-          # calls (ractive/release-workflows), or the job stops here.
-          gh attestation verify "$RUNNER_TEMP/$archive" --repo ractive/ff-rdp \
-            --signer-repo ractive/release-workflows \
-            --source-ref "refs/tags/v${FF_RDP_VERSION}"
-          mkdir -p "$RUNNER_TEMP/ff-rdp"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/ff-rdp"
-          "$RUNNER_TEMP/ff-rdp/ff-rdp" --version
       - run: bun install --frozen-lockfile
-      # The unit tests and both end-to-end suites: Chromium's and Firefox's.
+      # Biome, the type check, the unit tests and the end-to-end smoke set.
       - run: bun run verify
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
-          FIREFOX_PATH: ${{ runner.temp }}/firefox/firefox
-          FF_RDP_PATH: ${{ runner.temp }}/ff-rdp/ff-rdp
       # The packages of this commit, downloadable from the run's page: the
       # extension with the fixed key for "Load unpacked", the store package,
       # and the Firefox build's package for addons.mozilla.org.
