@@ -431,11 +431,11 @@ if (import.meta.main) {
 			outdir: { type: "string" },
 		},
 	});
-	// Firefox installs no unsigned zip for good: only the store's is of use.
 	if (values.store && values.test) {
 		console.error("a store package is never a test build: --store or --test");
 		process.exit(2);
 	}
+	// Firefox installs no unsigned zip for good: only the store's is of use.
 	if (values.firefox && values.zip && !values.store) {
 		console.error("--firefox --zip packs only the store package: add --store");
 		process.exit(2);
