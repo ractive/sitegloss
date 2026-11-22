@@ -798,9 +798,17 @@ inBothSets("the side panel's page", () => {
 			await page.goto(`${h.base}/v1`);
 			await page.activate();
 			await openPanel();
-			await testWaits(h.control, { searchAgainMs: SEARCH_AGAIN_MS });
+			// Searches again at 1 and 3 steps after the first draw: a step long
+			// enough that the Hide comes before the last one, and the first
+			// draw's time kept, to show that it did.
+			const step = 1000;
+			await testWaits(h.control, { searchAgainMs: step });
+			await wrapSend(`(tabId, message, send) => {
+				if (message.type === "case:load") globalThis.firstLoadAt ??= Date.now();
+				return send(tabId, message);
+			}`);
 			await openCase(saved?.id as string);
-			// One of two found: it is looked for again, at 1 and 3 steps.
+			// One of two found: it is looked for again.
 			await h.control.waitFor(
 				`${id("case-hint")}.textContent.includes("1 of 2 marks found")`,
 			);
@@ -809,7 +817,12 @@ inBothSets("the side panel's page", () => {
 				async () => (await pageCase(tabId)) === null,
 				"the marks to go",
 			);
-			await Bun.sleep(4 * SEARCH_AGAIN_MS);
+			const hiddenAfter = await h.control.eval<number>(
+				"Date.now() - globalThis.firstLoadAt",
+			);
+			expect(hiddenAfter).toBeLessThan(3 * step);
+			// Past the last search again.
+			await Bun.sleep(3 * step + 500 - hiddenAfter);
 			expect(await pageCase(tabId)).toBeNull();
 			expect(await h.control.eval(`${id("load-case")}.textContent`)).toBe(
 				"Show marks",
