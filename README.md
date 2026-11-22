@@ -271,8 +271,8 @@ and URLs without their query string, fragment or user name and password.
 ### A relay on your computer, for Claude Code
 
 The relay must allow Sitegloss's origin, `chrome-extension://ldmcfigcnobhnbaigehcaodheklibeon`,
-and be relay 0.12.0 or later (Sitegloss uses `@ractive-ch/tab-mcp-client` 0.18, which
-older relays do not take):
+and be relay 0.12.0 or later (Sitegloss's `@ractive-ch/tab-mcp-client` has not worked
+with older relays since its 0.17):
 
 ```sh
 docker run --rm -p 127.0.0.1:8080:8080 \
