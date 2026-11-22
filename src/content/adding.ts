@@ -1,5 +1,5 @@
 /**
- * Annotating a page: the tools (element, box, arrow, pen, note), a comment for
+ * Adding marks to a page: the tools (element, box, arrow, pen, note), a comment for
  * each mark, undo, and adding the marks to a case.
  *
  * The toolbar always adds to a case (DEC-014, DEC-026): the one "New case for
@@ -45,8 +45,8 @@ import {
 } from "../lib/element.ts";
 import { atShot, siblingsOf, withLook } from "../lib/look.ts";
 import type {
-	AnnotateTarget,
 	CaptureResult,
+	MarkTarget,
 	NumberCheck,
 	OverlayState,
 	SaveResult,
@@ -54,7 +54,7 @@ import type {
 	WorkerRequest,
 	WorkerResponse,
 } from "../lib/messages.ts";
-import { type AnnotationDraft, cropRectFor } from "../lib/save.ts";
+import { cropRectFor, type MarkDraft } from "../lib/save.ts";
 import { parentOf, shadowTrees } from "../lib/shadow.ts";
 import {
 	type Afterwards,
@@ -175,7 +175,7 @@ function normalizeRect(a: Point, b: Point): Rect {
 	};
 }
 
-export class Annotator {
+export class MarkAdder {
 	readonly overlay: Overlay;
 	/**
 	 * Marks drawn and not in the case yet: a comment being typed, one on its
@@ -189,7 +189,7 @@ export class Annotator {
 	#drag: Drag | null = null;
 	#preview: Shape | null = null;
 	#editing: Draft | null = null;
-	#target: AnnotateTarget | undefined;
+	#target: MarkTarget | undefined;
 	#blurForms = false;
 	#message = "";
 	#frame = 0;
@@ -290,7 +290,7 @@ export class Annotator {
 		win?.addEventListener(
 			"keydown",
 			(e) => {
-				if (!overlay.annotating || e.key !== "Escape") return;
+				if (!overlay.addingMarks || e.key !== "Escape") return;
 				if (this.#editing !== null) this.#commitComment();
 				else if (this.#tool !== null) this.setTool(null);
 				else return;
@@ -317,7 +317,7 @@ export class Annotator {
 
 	state(): OverlayState {
 		const state: OverlayState = {
-			visible: this.overlay.annotating,
+			visible: this.overlay.addingMarks,
 			url: location.href,
 			title: document.title,
 			drafts: this.#drafts.length,
@@ -347,7 +347,7 @@ export class Annotator {
 			// Marks done and not on their way yet go into it now.
 			this.#addDone();
 		}
-		this.overlay.setAnnotating(true);
+		this.overlay.setAddingMarks(true);
 		// What happened while the toolbar was away is not known.
 		this.#mutated = true;
 		this.#watch();
@@ -360,7 +360,7 @@ export class Annotator {
 		if (this.#activity.defer({ kind: "hide" })) return;
 		if (this.#editing !== null) this.#commitComment();
 		this.setTool(null);
-		this.overlay.setAnnotating(false);
+		this.overlay.setAddingMarks(false);
 		this.#observer?.disconnect();
 		// Shown again, the page may look different: the next mark takes a new shot.
 		this.#shown = undefined;
@@ -376,7 +376,7 @@ export class Annotator {
 	}
 
 	#watch(): void {
-		if (!this.overlay.annotating) return;
+		if (!this.overlay.addingMarks) return;
 		// Shadow roots too: a mutation inside one is not reported outside it.
 		for (const root of shadowTrees(this.overlay.doc, this.overlay.host))
 			this.#observer?.observe(root, {
@@ -557,7 +557,7 @@ export class Annotator {
 
 	/** Number the marks not in the case on from the case's next number. */
 	#renumber(): void {
-		let next = this.#target?.nextAnnotation ?? 1;
+		let next = this.#target?.nextMark ?? 1;
 		for (const draft of this.#drafts) draft.number = next++;
 		if (this.#editing === null) return;
 		const { number } = this.#editing;
@@ -570,7 +570,7 @@ export class Annotator {
 	}
 
 	#nextNumber(): number {
-		const first = this.#target?.nextAnnotation ?? 1;
+		const first = this.#target?.nextMark ?? 1;
 		return Math.max(first - 1, ...this.#drafts.map((d) => d.number)) + 1;
 	}
 
@@ -755,7 +755,7 @@ export class Annotator {
 	}
 
 	#render(): void {
-		if (!this.overlay.annotating) return;
+		if (!this.overlay.addingMarks) return;
 		const s = this.#scroll();
 		const toWindow = (shape: Shape) => translateShape(shape, -s.x, -s.y);
 		const hover =
@@ -819,7 +819,7 @@ export class Annotator {
 	 */
 	caseChanged(c: Case, loaded: boolean): void {
 		if (this.#target?.caseId !== c.id) return;
-		const numbers = new Set(c.annotations.map((x) => x.number));
+		const numbers = new Set(c.marks.map((x) => x.number));
 		this.#savedMarks = loaded
 			? []
 			: this.#savedMarks.filter((d) => numbers.has(d.number));
@@ -867,7 +867,7 @@ export class Annotator {
 		if (discard) await this.#discardLeft();
 		else await this.#finish();
 		// Shown for another case meanwhile, or a mark is still not in this one.
-		if (this.#target?.caseId !== caseId || this.overlay.annotating) return;
+		if (this.#target?.caseId !== caseId || this.overlay.addingMarks) return;
 		this.#forgetTarget();
 	}
 
@@ -1360,7 +1360,7 @@ export class Annotator {
 	// --- what an add stores ---------------------------------------------------
 
 	/** What the case stores for a draft that has its screenshot. */
-	#annotationOf(d: Draft): AnnotationDraft {
+	#markOf(d: Draft): MarkDraft {
 		const { view, shape, box, siblings } = d.shot as NonNullable<Draft["shot"]>;
 		return {
 			id: `a${d.number}`,
@@ -1426,7 +1426,7 @@ export class Annotator {
 	}
 
 	/** Why a draft queued for one case is not added to `target`, another one. */
-	#notFor(draft: Draft, target: AnnotateTarget): string {
+	#notFor(draft: Draft, target: MarkTarget): string {
 		const was = draft.queuedFor;
 		if (was === undefined || was.caseId === target.caseId)
 			return this.#failed.get(draft) ?? "";
@@ -1450,8 +1450,8 @@ export class Annotator {
 	#fail(draft: Draft, why: string): void {
 		this.#failed.set(draft, why);
 		this.#message = "";
-		if (!this.overlay.annotating) {
-			this.overlay.setAnnotating(true);
+		if (!this.overlay.addingMarks) {
+			this.overlay.setAddingMarks(true);
 			this.#mutated = true;
 			this.#watch();
 		}
@@ -1549,7 +1549,7 @@ export class Annotator {
 			const isFree = async () => {
 				const check = await ask<NumberCheck>({
 					type: "case:number",
-					caseId: (target as AnnotateTarget).caseId,
+					caseId: (target as MarkTarget).caseId,
 					number: draft.number,
 				});
 				return check;
@@ -1558,7 +1558,7 @@ export class Annotator {
 				const check = await isFree();
 				if (!check.free) {
 					// An AI app took the number: the marks not added yet move on.
-					target = { ...target, nextAnnotation: check.next };
+					target = { ...target, nextMark: check.next };
 					this.#advance(target.caseId, check.next);
 					this.#renumber();
 				}
@@ -1581,7 +1581,7 @@ export class Annotator {
 							title: target.title,
 							page: view.page,
 							shots: [view.shot],
-							annotations: [this.#annotationOf(draft)],
+							marks: [this.#markOf(draft)],
 							keepPending: true,
 							alsoDrawn,
 						},
@@ -1595,11 +1595,8 @@ export class Annotator {
 			this.#drafts = this.#drafts.filter((d) => d !== draft);
 			this.#savedMarks.push(draft);
 			// Undo reaches only what was added while the toolbar is up.
-			if (this.overlay.annotating) this.#added.push(draft);
-			this.#advance(
-				target.caseId,
-				Math.max(target.nextAnnotation, draft.number + 1),
-			);
+			if (this.overlay.addingMarks) this.#added.push(draft);
+			this.#advance(target.caseId, Math.max(target.nextMark, draft.number + 1));
 			this.#message = `Mark ${draft.number} added to “${this.#titleOf(target)}”`;
 			this.#retire();
 			added = true;
@@ -1616,13 +1613,13 @@ export class Annotator {
 	 * target as it is now: a rename meanwhile (`setTitle`) stays (review of
 	 * PR 57), and a target switched to another case is left alone.
 	 */
-	#advance(caseId: string, nextAnnotation: number): void {
+	#advance(caseId: string, nextMark: number): void {
 		if (this.#target?.caseId !== caseId) return;
-		this.#target = { ...this.#target, nextAnnotation };
+		this.#target = { ...this.#target, nextMark };
 	}
 
 	/** The case's title as the toolbar knows it now: renamed meanwhile, perhaps. */
-	#titleOf(target: AnnotateTarget): string {
+	#titleOf(target: MarkTarget): string {
 		return this.#target?.caseId === target.caseId
 			? this.#target.title
 			: target.title;
@@ -1645,7 +1642,7 @@ export class Annotator {
 			const result = await ask<UndoResult>({
 				type: "case:undo-add",
 				caseId: target.caseId,
-				annotationId: `a${draft.number}`,
+				markId: `a${draft.number}`,
 			});
 			this.#added = this.#added.filter((d) => d !== draft);
 			this.#savedMarks = this.#savedMarks.filter((d) => d !== draft);

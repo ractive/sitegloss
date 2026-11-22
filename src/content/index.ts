@@ -24,7 +24,7 @@ import type {
 	Released,
 } from "../lib/messages.ts";
 import { PageActivity } from "./activity.ts";
-import { Annotator, pageInfo } from "./annotator.ts";
+import { MarkAdder, pageInfo } from "./adding.ts";
 import { PageBlur } from "./blur.ts";
 import { HOST_ID, Overlay } from "./overlay.ts";
 import { LoadReplaced, Reviewer } from "./review.ts";
@@ -106,13 +106,13 @@ function mark(
 	};
 }
 
-/** An annotation's element read for an AI app (`get_mark_element`). */
+/** A mark's element read for an AI app (`get_mark_element`). */
 function inspect(
 	overlay: Overlay,
 	reviewer: Reviewer,
 	request: {
 		caseId: string;
-		annotationId: string;
+		markId: string;
 		mark?: string;
 		casePage: string;
 		selector?: string;
@@ -126,10 +126,10 @@ function inspect(
 	// predates a renumbering): the asker loads the case again.
 	if (
 		request.mark !== undefined &&
-		!reviewer.holds(request.annotationId, request.mark)
+		!reviewer.holds(request.markId, request.mark)
 	)
 		return null;
-	const target = reviewer.target(request.annotationId);
+	const target = reviewer.target(request.markId);
 	if (target === undefined) return null;
 	const { match } = target;
 	const n = match.number;
@@ -143,7 +143,7 @@ function inspect(
 			};
 		// Without an element to start from, a selector could name anything
 		// of any page; only the mark's own page is searched (DEC-038).
-		if (!reviewer.isOwn(request.annotationId))
+		if (!reviewer.isOwn(request.markId))
 			return {
 				ok: false,
 				reason: "other-page",
@@ -192,10 +192,10 @@ function start(): void {
 	// behind; its script can no longer be reached, so take the page over.
 	document.getElementById(HOST_ID)?.remove();
 	const overlay = new Overlay(document);
-	const annotator = new Annotator(overlay, pageBlur, activity);
+	const adder = new MarkAdder(overlay, pageBlur, activity);
 	const reviewer = new Reviewer(overlay);
 	const state = () => {
-		const s = annotator.state();
+		const s = adder.state();
 		const loaded = reviewer.caseId;
 		return loaded === undefined ? s : { ...s, loadedCase: loaded };
 	};
@@ -209,7 +209,7 @@ function start(): void {
 			if (sender.id !== chrome.runtime.id) return false;
 			switch (message.type) {
 				case "overlay:show":
-					annotator.show({
+					adder.show({
 						target: message.target,
 						...(message.blurForms !== undefined
 							? { blurForms: message.blurForms }
@@ -220,7 +220,7 @@ function start(): void {
 				case "overlay:end":
 					// Answered once the toolbar is finished: hidden, or up with a
 					// mark that is not in the case yet.
-					annotator
+					adder
 						.end(message.caseId, {
 							discard: message.discard ?? false,
 							retry: message.retry ?? false,
@@ -234,18 +234,18 @@ function start(): void {
 					sendResponse(state());
 					break;
 				case "overlay:title":
-					annotator.setTitle(message.caseId, message.title);
+					adder.setTitle(message.caseId, message.title);
 					sendResponse(state());
 					break;
 				case "page:info":
 					sendResponse(pageInfo(document));
 					break;
 				case "overlay:settings":
-					annotator.setBlurForms(message.blurForms);
+					adder.setBlurForms(message.blurForms);
 					sendResponse(state());
 					break;
 				case "page:captured":
-					annotator.captured();
+					adder.captured();
 					break;
 				case "case:load":
 					if (activity.busy !== undefined) {
@@ -257,7 +257,7 @@ function start(): void {
 						(result) => {
 							// A toolbar adding to the case: the loaded marks draw its own.
 							if (reviewer.caseId === message.case.id)
-								annotator.caseLoaded(message.case.id);
+								adder.caseLoaded(message.case.id);
 							sendResponse(result);
 						},
 						(error: unknown) =>
@@ -280,7 +280,7 @@ function start(): void {
 				case "case:update":
 					reviewer.update(message.case).then(
 						(result) => {
-							annotator.caseChanged(
+							adder.caseChanged(
 								message.case,
 								reviewer.caseId === message.case.id,
 							);
@@ -297,8 +297,8 @@ function start(): void {
 					sendResponse(
 						reviewer.caseId === message.caseId &&
 							(message.mark === undefined ||
-								reviewer.holds(message.annotationId, message.mark))
-							? (reviewer.show(message.annotationId, message.candidate) ?? null)
+								reviewer.holds(message.markId, message.mark))
+							? (reviewer.show(message.markId, message.candidate) ?? null)
 							: null,
 					);
 					break;

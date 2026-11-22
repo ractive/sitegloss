@@ -1,5 +1,5 @@
 /**
- * Loading a case onto the page in front: each annotation's element is looked
+ * Loading a case onto the page in front: each mark's element is looked
  * for by its details (match.ts) and its mark drawn again on that element, moved
  * and scaled with it: solid when found, dashed when only probable or tied; its
  * colour is its status (DEC-024). A mark without an element goes where it was. An element that a
@@ -14,12 +14,12 @@ import {
 	type PageSearch,
 } from "../lib/candidates.ts";
 import {
-	type Annotation,
 	type Case,
 	caseCounts,
 	MARK_CHANGED,
 	MAX_COMMENT,
 	MAX_REOPEN_NOTE,
+	type Mark,
 	type MarkStatus,
 	markFor,
 	markKey,
@@ -45,10 +45,10 @@ import {
 } from "../lib/element.ts";
 import { clearTextCache } from "../lib/match.ts";
 import type {
-	AnnotationMatch,
 	CandidateInfo,
 	LoadResult,
 	MarkAnswer,
+	MarkMatch,
 	MarkRequest,
 } from "../lib/messages.ts";
 import {
@@ -59,10 +59,10 @@ import {
 } from "./overlay.ts";
 
 interface Entry {
-	annotation: Annotation;
+	mark: Mark;
 	/** The best elements worth showing, best first. */
 	candidates: Candidate[];
-	match: AnnotationMatch;
+	match: MarkMatch;
 }
 
 /** Asks the side panel that shows the case (DEC-027). */
@@ -104,7 +104,7 @@ const CHOICE_LABEL: Record<ResolveChoice, string> = {
  */
 interface OpenMark {
 	/** The mark's id as it is now: it follows the mark when the id changes. */
-	annotationId: string;
+	markId: string;
 	/**
 	 * Which mark the popover was opened on (`markKey`). The team's sync can
 	 * give the mark another number while the popover is open, and the id it
@@ -135,11 +135,11 @@ function typed(open: OpenMark): string {
 	return open.draft;
 }
 
-/** Let the page run between annotations: loading a big case takes a while. */
+/** Let the page run between marks: loading a big case takes a while. */
 const yieldToPage = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /** The same mark, as far as the page is concerned: where and on what. */
-function sameMark(a: Annotation, b: Annotation): boolean {
+function sameMark(a: Mark, b: Mark): boolean {
 	return (
 		a.shot === b.shot &&
 		JSON.stringify(a.shape) === JSON.stringify(b.shape) &&
@@ -264,12 +264,10 @@ export class Reviewer {
 		clearTextCache(); // what an abandoned load left behind
 		const search = this.#search();
 		const entries: Entry[] = [];
-		for (const annotation of [...c.annotations].sort(
-			(a, b) => a.number - b.number,
-		)) {
+		for (const mark of [...c.marks].sort((a, b) => a.number - b.number)) {
 			await yieldToPage();
 			if (generation !== this.#generation) throw new LoadReplaced();
-			entries.push(this.#find(search, annotation, c));
+			entries.push(this.#find(search, mark, c));
 		}
 		this.#closeMark();
 		this.#case = c;
@@ -313,31 +311,31 @@ export class Reviewer {
 		}
 		if (this.#case?.id !== c.id) return null;
 		const generation = this.#generation;
-		const byId = new Map(c.annotations.map((a) => [a.id, a]));
+		const byId = new Map(c.marks.map((a) => [a.id, a]));
 		const kept: Entry[] = [];
-		const search: Annotation[] = [];
+		const search: Mark[] = [];
 		for (const e of this.#entries) {
-			const annotation = byId.get(e.annotation.id);
-			if (annotation === undefined) continue;
+			const mark = byId.get(e.mark.id);
+			if (mark === undefined) continue;
 			// A replaced copy (an import) may give the id to another mark.
-			if (sameMark(annotation, e.annotation)) {
-				const next = { ...e, annotation };
+			if (sameMark(mark, e.mark)) {
+				const next = { ...e, mark };
 				// Still to be looked for again, as the entry it replaces was.
 				if (this.#stale.delete(e)) this.#stale.add(next);
 				kept.push(next);
-			} else search.push(annotation);
+			} else search.push(mark);
 		}
-		const known = new Set(this.#entries.map((e) => e.annotation.id));
-		search.push(...c.annotations.filter((a) => !known.has(a.id)));
+		const known = new Set(this.#entries.map((e) => e.mark.id));
+		search.push(...c.marks.filter((a) => !known.has(a.id)));
 		if (search.length > 0) {
 			const page = this.#search();
-			for (const annotation of search) {
+			for (const mark of search) {
 				await yieldToPage();
 				if (generation !== this.#generation || this.#case?.id !== c.id)
 					return null;
-				kept.push(this.#find(page, annotation, c));
+				kept.push(this.#find(page, mark, c));
 			}
-			kept.sort((a, b) => a.annotation.number - b.annotation.number);
+			kept.sort((a, b) => a.mark.number - b.mark.number);
 			clearTextCache();
 		}
 		this.#case = c;
@@ -385,7 +383,7 @@ export class Reviewer {
 			if (this.#late.looks === 0 || --this.#late.ticks > 0) return false;
 			this.#late = { looks: this.#late.looks - 1, ticks: 3 };
 			for (const entry of this.#entries)
-				if (entry.match.status === "lost" && this.#own(entry.annotation))
+				if (entry.match.status === "lost" && this.#own(entry.mark))
 					this.#stale.add(entry);
 			if (this.#stale.size === 0) return false;
 		}
@@ -394,7 +392,7 @@ export class Reviewer {
 		for (const entry of [...this.#stale]) {
 			this.#stale.delete(entry);
 			if (this.#entries.includes(entry)) {
-				const fresh = this.#find(search, entry.annotation);
+				const fresh = this.#find(search, entry.mark);
 				entry.candidates = fresh.candidates;
 				entry.match = fresh.match;
 			}
@@ -435,8 +433,8 @@ export class Reviewer {
 	 * Whether the mark's own page is the page in front: by path and hash
 	 * route, whatever the host (DEC-050).
 	 */
-	#own(annotation: Annotation, c: Case | undefined = this.#case): boolean {
-		return c !== undefined && onPageInFront(c, annotation, location.href);
+	#own(mark: Mark, c: Case | undefined = this.#case): boolean {
+		return c !== undefined && onPageInFront(c, mark, location.href);
 	}
 
 	/**
@@ -453,38 +451,38 @@ export class Reviewer {
 			found &&
 			c !== undefined &&
 			pageInFront(c, location.href) !== undefined &&
-			!this.#own(entry.annotation, c)
+			!this.#own(entry.mark, c)
 				? { ...match, otherPage: true }
 				: match;
 	}
 
 	#find(
 		search: PageSearch,
-		annotation: Annotation,
+		mark: Mark,
 		c: Case | undefined = this.#case,
 	): Entry {
-		const entry = this.#findOnPage(search, annotation);
+		const entry = this.#findOnPage(search, mark);
 		this.#judgePage(entry, c);
 		return entry;
 	}
 
-	#findOnPage(search: PageSearch, annotation: Annotation): Entry {
+	#findOnPage(search: PageSearch, mark: Mark): Entry {
 		const base = {
-			annotationId: annotation.id,
-			number: annotation.number,
+			markId: mark.id,
+			number: mark.number,
 			current: 0,
 		};
-		const stored = annotation.element;
+		const stored = mark.element;
 		if (stored === null)
 			return {
-				annotation,
+				mark,
 				candidates: [],
 				match: { ...base, status: "no-element", score: 0, candidates: [] },
 			};
 		const found = findCandidates(search, stored);
 		const { status, candidates, truncated } = found;
 		return {
-			annotation,
+			mark,
 			candidates,
 			match: {
 				...base,
@@ -514,7 +512,7 @@ export class Reviewer {
 	}
 
 	#findAgain(entry: Entry): void {
-		const fresh = this.#find(this.#search(), entry.annotation);
+		const fresh = this.#find(this.#search(), entry.mark);
 		entry.candidates = fresh.candidates;
 		entry.match = fresh.match;
 		clearTextCache();
@@ -536,36 +534,34 @@ export class Reviewer {
 	}
 
 	/**
-	 * Whether the mark under `annotationId` in the case as loaded here is the
+	 * Whether the mark under `markId` in the case as loaded here is the
 	 * mark `key` names (`markKey`); a copy from before a renumbering has
 	 * another mark there.
 	 */
-	holds(annotationId: string, key: string): boolean {
+	holds(markId: string, key: string): boolean {
 		const c = this.#case;
-		const entry = this.#entries.find((e) => e.annotation.id === annotationId);
+		const entry = this.#entries.find((e) => e.mark.id === markId);
 		return (
-			c !== undefined &&
-			entry !== undefined &&
-			markKey(c, entry.annotation) === key
+			c !== undefined && entry !== undefined && markKey(c, entry.mark) === key
 		);
 	}
 
-	/** Whether the loaded mark `annotationId` is a mark of the page in front (`onPageInFront`). */
-	isOwn(annotationId: string): boolean {
-		const entry = this.#entries.find((e) => e.annotation.id === annotationId);
-		return entry !== undefined && this.#own(entry.annotation);
+	/** Whether the loaded mark `markId` is a mark of the page in front (`onPageInFront`). */
+	isOwn(markId: string): boolean {
+		const entry = this.#entries.find((e) => e.mark.id === markId);
+		return entry !== undefined && this.#own(entry.mark);
 	}
 
-	/** Scroll to an annotation's element (or another candidate) and focus it. */
-	show(annotationId: string, candidate?: number): AnnotationMatch | undefined {
-		const entry = this.#entries.find((e) => e.annotation.id === annotationId);
+	/** Scroll to a mark's element (or another candidate) and focus it. */
+	show(markId: string, candidate?: number): MarkMatch | undefined {
+		const entry = this.#entries.find((e) => e.mark.id === markId);
 		if (entry === undefined) return undefined;
 		this.#fresh(entry);
 		const count = entry.candidates.length;
 		if (candidate !== undefined && count > 0)
 			entry.match.current = ((candidate % count) + count) % count;
 		entry.match.score = entry.candidates[entry.match.current]?.score ?? 0;
-		this.#focused = annotationId;
+		this.#focused = markId;
 		const element = this.#element(entry);
 		if (element !== undefined)
 			element.scrollIntoView({
@@ -573,31 +569,30 @@ export class Reviewer {
 				inline: "nearest",
 				behavior: "instant",
 			});
-		else if (entry.match.status === "no-element")
-			this.#scrollTo(entry.annotation);
+		else if (entry.match.status === "no-element") this.#scrollTo(entry.mark);
 		this.overlay.setReviewing(true);
 		this.#render();
 		return entry.match;
 	}
 
 	/**
-	 * The element an annotation's mark is drawn on now (looked for again when a
+	 * The element a mark's mark is drawn on now (looked for again when a
 	 * re-render replaced it), without scrolling or focusing anything.
 	 */
 	target(
-		annotationId: string,
-	): { element: Element | undefined; match: AnnotationMatch } | undefined {
-		const entry = this.#entries.find((e) => e.annotation.id === annotationId);
+		markId: string,
+	): { element: Element | undefined; match: MarkMatch } | undefined {
+		const entry = this.#entries.find((e) => e.mark.id === markId);
 		if (entry === undefined) return undefined;
 		this.#fresh(entry);
 		return { element: this.#element(entry), match: entry.match };
 	}
 
 	/** Bring a mark without an element to the middle of the window. */
-	#scrollTo(annotation: Annotation): void {
+	#scrollTo(mark: Mark): void {
 		const win = this.overlay.doc.defaultView;
-		if (win === null || this.#whereItWas(annotation) === undefined) return;
-		const b = shapeBounds(this.#stored(annotation));
+		if (win === null || this.#whereItWas(mark) === undefined) return;
+		const b = shapeBounds(this.#stored(mark));
 		win.scrollTo({
 			left: b.x + b.width / 2 - win.innerWidth / 2,
 			top: b.y + b.height / 2 - win.innerHeight / 2,
@@ -613,22 +608,18 @@ export class Reviewer {
 	 */
 	pick(number: number): void {
 		const c = this.#case;
-		const entry = this.#entries.find((e) => e.annotation.number === number);
+		const entry = this.#entries.find((e) => e.mark.number === number);
 		if (c === undefined || entry === undefined) return;
-		const { annotation } = entry;
+		const { mark } = entry;
 		// Open for this mark already: what is being typed stays.
-		if (
-			this.#open?.annotationId === annotation.id &&
-			!this.overlay.popover.hidden
-		)
-			return;
+		if (this.#open?.markId === mark.id && !this.overlay.popover.hidden) return;
 		const open: OpenMark = {
-			annotationId: annotation.id,
-			mark: markKey(c, annotation),
+			markId: mark.id,
+			mark: markKey(c, mark),
 			mode: "main",
-			base: annotation.comment,
-			draft: annotation.comment,
-			status: markStatus(annotation),
+			base: mark.comment,
+			draft: mark.comment,
+			status: markStatus(mark),
 			field: undefined,
 			problem: this.overlay.doc.createElement("p"),
 			controls: [],
@@ -647,39 +638,35 @@ export class Reviewer {
 				void this.#ask({
 					type: "mark:comment",
 					caseId: c.id,
-					annotationId: annotation.id,
+					markId: mark.id,
 					text,
 				});
 		});
 		this.#open = open;
 		// Its element is outlined, as after the panel's Show.
-		this.#focused = annotation.id;
+		this.#focused = mark.id;
 		this.#fill(open);
 		void this.#ask({
 			type: "mark:picked",
 			caseId: c.id,
-			annotationId: annotation.id,
+			markId: mark.id,
 		});
 	}
 
 	/** The open popover's mark, as the case has it now. */
-	#openAnnotation():
-		| { c: Case; open: OpenMark; annotation: Annotation }
-		| undefined {
+	#openMark(): { c: Case; open: OpenMark; mark: Mark } | undefined {
 		const c = this.#case;
 		const open = this.#open;
 		if (c === undefined || open === undefined) return undefined;
-		const annotation = this.#entries.find(
-			(e) => e.annotation.id === open.annotationId,
-		)?.annotation;
-		return annotation === undefined ? undefined : { c, open, annotation };
+		const mark = this.#entries.find((e) => e.mark.id === open.markId)?.mark;
+		return mark === undefined ? undefined : { c, open, mark };
 	}
 
 	/** Draw the popover's view (`open.mode`) and put it at its mark. */
 	#fill(open: OpenMark): void {
-		const now = this.#openAnnotation();
+		const now = this.#openMark();
 		if (now === undefined || now.open !== open) return;
-		const { annotation } = now;
+		const { mark } = now;
 		const doc = this.overlay.doc;
 		// What was typed in the view that goes stays the draft.
 		typed(open);
@@ -716,7 +703,7 @@ export class Reviewer {
 		const pin = doc.createElement("span");
 		pin.className = "pin";
 		pin.style.background = reviewColour({ status: open.status });
-		pin.textContent = String(annotation.number);
+		pin.textContent = String(mark.number);
 		const label = doc.createElement("div");
 		label.className = "label";
 		const back = () => {
@@ -727,14 +714,14 @@ export class Reviewer {
 		let content: Node[];
 		let focus: HTMLElement;
 		if (open.mode === "resolve") {
-			label.append(pin, `Mark ${annotation.number} is`);
-			const name = `sitegloss-resolution-${annotation.id}`;
+			label.append(pin, `Mark ${mark.number} is`);
+			const name = `sitegloss-resolution-${mark.id}`;
 			const chosen: ResolveChoice =
 				open.status === "open" ? "fixed" : open.status;
 			const choices = doc.createElement("div");
 			choices.className = "choices";
 			choices.setAttribute("role", "radiogroup");
-			choices.setAttribute("aria-label", `Mark ${annotation.number} is`);
+			choices.setAttribute("aria-label", `Mark ${mark.number} is`);
 			for (const kind of RESOLVE_CHOICES) {
 				const radio = doc.createElement("input");
 				radio.type = "radio";
@@ -751,15 +738,15 @@ export class Reviewer {
 			note.className = "note";
 			note.placeholder = "Note (optional): what was done, or why";
 			note.maxLength = MAX_COMMENT;
-			note.setAttribute("aria-label", `Note for mark ${annotation.number}`);
-			note.value = annotation.resolution?.note ?? "";
+			note.setAttribute("aria-label", `Note for mark ${mark.number}`);
+			note.value = mark.resolution?.note ?? "";
 			const save = () => {
 				const kind = (choices.querySelector<HTMLInputElement>("input:checked")
 					?.value ?? chosen) as ResolveChoice;
 				void this.#settle(open, {
 					type: "mark:resolve",
 					caseId: now.c.id,
-					annotationId: annotation.id,
+					markId: mark.id,
 					kind,
 					note: note.value,
 				});
@@ -787,7 +774,7 @@ export class Reviewer {
 			note.placeholder = "What is still wrong? The developer reads this first.";
 			note.setAttribute(
 				"aria-label",
-				`What is still wrong with mark ${annotation.number}`,
+				`What is still wrong with mark ${mark.number}`,
 			);
 			const reopen = () => {
 				// The developer reads it first: a reopen says why.
@@ -795,7 +782,7 @@ export class Reviewer {
 				void this.#settle(open, {
 					type: "mark:reopen",
 					caseId: now.c.id,
-					annotationId: annotation.id,
+					markId: mark.id,
 					note: note.value,
 				});
 			};
@@ -824,7 +811,7 @@ export class Reviewer {
 				label.append(state);
 			}
 			const field = doc.createElement("textarea");
-			field.setAttribute("aria-label", `Comment of mark ${annotation.number}`);
+			field.setAttribute("aria-label", `Comment of mark ${mark.number}`);
 			field.placeholder = "What is wrong, or what should change?";
 			field.maxLength = MAX_COMMENT;
 			field.value = open.draft;
@@ -854,7 +841,7 @@ export class Reviewer {
 								void this.#settle(open, {
 									type: "mark:verify",
 									caseId: now.c.id,
-									annotationId: annotation.id,
+									markId: mark.id,
 								}),
 						),
 					);
@@ -914,7 +901,7 @@ export class Reviewer {
 		// the panel refuses when the case has another mark under that id.
 		const answer = await this.#ask({
 			...request,
-			annotationId: open.annotationId,
+			markId: open.markId,
 			mark: open.mark,
 		});
 		if (this.#open !== open) return false;
@@ -930,14 +917,14 @@ export class Reviewer {
 
 	/** A comment typed is stored before anything else is done with the mark. */
 	async #keep(open: OpenMark): Promise<boolean> {
-		const now = this.#openAnnotation();
+		const now = this.#openMark();
 		if (now === undefined || now.open !== open) return false;
 		const text = typed(open).trim();
 		if (text === open.base) return true;
 		const kept = await this.#request(open, {
 			type: "mark:comment",
 			caseId: now.c.id,
-			annotationId: open.annotationId,
+			markId: open.markId,
 			text,
 		});
 		if (kept) {
@@ -971,7 +958,7 @@ export class Reviewer {
 
 	/** Delete mark: asked twice, as in the panel; the mark leaves the case. */
 	async #delete(): Promise<void> {
-		const now = this.#openAnnotation();
+		const now = this.#openMark();
 		if (now === undefined || now.open.busy) return;
 		const { open } = now;
 		const remove = open.remove;
@@ -994,7 +981,7 @@ export class Reviewer {
 			await this.#request(open, {
 				type: "mark:delete",
 				caseId: now.c.id,
-				annotationId: now.annotation.id,
+				markId: now.mark.id,
 			})
 		)
 			this.#closeMark();
@@ -1010,30 +997,30 @@ export class Reviewer {
 		if (open === undefined) return;
 		// Its mark, under whatever id it has now. Gone: the popover goes,
 		// with what was typed.
-		const annotation = markFor(c, open.annotationId, open.mark);
-		if (annotation === undefined) {
+		const mark = markFor(c, open.markId, open.mark);
+		if (mark === undefined) {
 			this.#closeMark();
 			return;
 		}
 		// The id is another mark's, and more than one mark has this one's
 		// screenshot and drawing: a change is not applied to the first found.
 		// It is refused and said, and what was typed stays to be read.
-		if (annotation === "ambiguous") {
+		if (mark === "ambiguous") {
 			open.lost = true;
 			open.problem.textContent = MARK_CHANGED;
 			open.problem.hidden = false;
 			return;
 		}
 		open.lost = false;
-		const moved = annotation.id !== open.annotationId;
-		open.annotationId = annotation.id;
+		const moved = mark.id !== open.markId;
+		open.markId = mark.id;
 		const untouched = typed(open).trim() === open.base;
-		open.base = annotation.comment;
+		open.base = mark.comment;
 		if (untouched) {
-			open.draft = annotation.comment;
-			if (open.field !== undefined) open.field.value = annotation.comment;
+			open.draft = mark.comment;
+			if (open.field !== undefined) open.field.value = mark.comment;
 		}
-		const status = markStatus(annotation);
+		const status = markStatus(mark);
 		// Another number: the popover says the one the mark has now, and what
 		// is being typed stays (`#fill` keeps it).
 		if (moved && !open.busy) {
@@ -1082,24 +1069,20 @@ export class Reviewer {
 	}
 
 	/** A mark in document coordinates, as it was on its shot. */
-	#stored(annotation: Annotation): Shape {
-		const shot = this.#case?.shots.find((s) => s.id === annotation.shot);
-		return translateShape(
-			annotation.shape,
-			shot?.scrollX ?? 0,
-			shot?.scrollY ?? 0,
-		);
+	#stored(mark: Mark): Shape {
+		const shot = this.#case?.shots.find((s) => s.id === mark.shot);
+		return translateShape(mark.shape, shot?.scrollX ?? 0, shot?.scrollY ?? 0);
 	}
 
 	/** A mark on its element, whose box is `rect` now. */
 	#onElement(entry: Entry, rect: Rect): ReviewItem {
-		const { annotation } = entry;
-		const details = annotation.element;
+		const { mark } = entry;
+		const details = mark.element;
 		return {
-			number: annotation.number,
+			number: mark.number,
 			shape: details
-				? shapeOnBox(this.#stored(annotation), details.rect, rect)
-				: annotation.shape,
+				? shapeOnBox(this.#stored(mark), details.rect, rect)
+				: mark.shape,
 			rect,
 			// The shown candidate itself decides the colour.
 			// And only on the mark's own page: elsewhere it may be a look-alike.
@@ -1107,27 +1090,27 @@ export class Reviewer {
 				entry.match.status !== "ambiguous" &&
 				entry.match.otherPage !== true &&
 				entry.candidates[entry.match.current]?.found === true,
-			focused: annotation.id === this.#focused,
-			status: markStatus(annotation),
+			focused: mark.id === this.#focused,
+			status: markStatus(mark),
 		};
 	}
 
 	/** A mark without an element, where it was; its page may be another route. */
-	#whereItWas(annotation: Annotation): ReviewItem | undefined {
+	#whereItWas(mark: Mark): ReviewItem | undefined {
 		// Only on its own page: a case spans pages (DEC-038).
-		if (!this.#own(annotation)) return undefined;
+		if (!this.#own(mark)) return undefined;
 		const win = this.overlay.doc.defaultView;
 		return {
-			number: annotation.number,
+			number: mark.number,
 			shape: translateShape(
-				this.#stored(annotation),
+				this.#stored(mark),
 				-(win?.scrollX ?? 0),
 				-(win?.scrollY ?? 0),
 			),
 			rect: null,
 			found: false,
-			focused: annotation.id === this.#focused,
-			status: markStatus(annotation),
+			focused: mark.id === this.#focused,
+			status: markStatus(mark),
 		};
 	}
 
@@ -1138,11 +1121,11 @@ export class Reviewer {
 		let open: ReviewItem | undefined;
 		const add = (entry: Entry, item: ReviewItem) => {
 			items.push(item);
-			if (entry.annotation.id === this.#open?.annotationId) open = item;
+			if (entry.mark.id === this.#open?.markId) open = item;
 		};
 		for (const entry of this.#entries) {
 			if (entry.match.status === "no-element") {
-				const item = this.#whereItWas(entry.annotation);
+				const item = this.#whereItWas(entry.mark);
 				if (item !== undefined) add(entry, item);
 				continue;
 			}
@@ -1171,7 +1154,7 @@ export class Reviewer {
 		// Verified and closed marks are drawn, faded, but no longer counted;
 		// open ones and those to verify are what to look at.
 		const active = this.#entries.filter((e) => {
-			const status = markStatus(e.annotation);
+			const status = markStatus(e.mark);
 			return status === "open" || status === "fixed";
 		});
 		// Not one found on a page that is not its own: maybe a look-alike.

@@ -78,7 +78,7 @@ describe("a mark added at the server without a live page", () => {
 		await addMarkAtServer("c_mcp");
 		await dana.engine.request();
 		const c = (await dana.store.getCase("c_mcp")) as Case;
-		const a = c.annotations.find((x) => x.number === 2);
+		const a = c.marks.find((x) => x.number === 2);
 		expect(a?.comment).toBe("Added by Claude at the server");
 		expect(a?.element).toBeNull();
 		// Cut around the box with the margin a drawn mark's crop has.
@@ -104,7 +104,7 @@ describe("a mark added at the server without a live page", () => {
 		await addMarkAtServer("c_mcp");
 		await plain.engine.request();
 		const c = (await plain.store.getCase("c_mcp")) as Case;
-		const a = c.annotations.find((x) => x.number === 2);
+		const a = c.marks.find((x) => x.number === 2);
 		const crop = await plain.store.getImage("c_mcp", a?.crop as string);
 		const shot = await plain.store.getImage(
 			"c_mcp",
@@ -123,7 +123,7 @@ describe("a mark added at the server without a live page", () => {
 		await dana.engine.request();
 		expect(cuts).toEqual([]);
 		const c = (await dana.store.getCase("c_mcp")) as Case;
-		const a = c.annotations.find((x) => x.number === 2);
+		const a = c.marks.find((x) => x.number === 2);
 		const crop = await dana.store.getImage("c_mcp", a?.crop as string);
 		const shot = await dana.store.getImage(
 			"c_mcp",

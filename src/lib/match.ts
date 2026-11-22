@@ -1,5 +1,5 @@
 /**
- * Finding an annotation's element in another environment: every candidate is
+ * Finding a mark's element in another environment: every candidate is
  * scored by the weighted similarity of its details to the stored ones (after
  * Similo; see kb/design/overview.md). Pure, so it is tested without a browser.
  */

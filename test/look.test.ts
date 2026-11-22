@@ -215,11 +215,11 @@ describe("what a case keeps of a look", () => {
 		// A file with a look: kept as far as it is within the rules; a bad
 		// entry is left out and the case imports.
 		const c = withOneMark(sampleCase("c_look", "2026-11-21T10:00:00.000Z"));
-		const first = c.annotations[0];
+		const first = c.marks[0];
 		if (first === undefined) throw new Error("the sample has a mark");
 		const file = {
 			...c,
-			annotations: [
+			marks: [
 				{
 					...first,
 					element: {
@@ -229,11 +229,11 @@ describe("what a case keeps of a look", () => {
 						siblings: "not a list",
 					},
 				},
-				...c.annotations.slice(1),
+				...c.marks.slice(1),
 			],
 		};
 		const read = validateCase(JSON.parse(JSON.stringify(file)));
-		expect(read.annotations[0]?.element).toEqual({
+		expect(read.marks[0]?.element).toEqual({
 			...element,
 			styles: { color: "red" },
 		});

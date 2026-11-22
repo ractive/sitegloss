@@ -7,10 +7,10 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-	type Annotation,
 	type Case,
 	exactPage,
 	isOfferedOn,
+	type Mark,
 	markAddress,
 	onPageInFront,
 	pageAt,
@@ -27,8 +27,8 @@ import {
 } from "../src/lib/case.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
-import type { AnnotationMatch } from "../src/lib/messages.ts";
-import { type AnnotationDraft, type Crop, saveCase } from "../src/lib/save.ts";
+import type { MarkMatch } from "../src/lib/messages.ts";
+import { type Crop, type MarkDraft, saveCase } from "../src/lib/save.ts";
 import { MemoryStore } from "../src/lib/store.ts";
 import { keepsLoaded } from "../src/sidepanel/ai-open.ts";
 import { findsOn } from "../src/sidepanel/follow.ts";
@@ -61,7 +61,7 @@ const shot = (id: string, url: string, query?: string, width = 1280): Shot => ({
 	...(query === undefined ? {} : { query }),
 });
 
-const mark = (n: number, shotId: string): Annotation => ({
+const mark = (n: number, shotId: string): Mark => ({
 	id: `a${n}`,
 	number: n,
 	shot: shotId,
@@ -102,7 +102,7 @@ function shopCase(): Case {
 			{ url: SEARCH, title: "Search", lang: "en" },
 		],
 		shots: [shot("s1", HOME), shot("s2", SEARCH, "q=shoes&sort=price", 390)],
-		annotations: [mark(1, "s1"), mark(2, "s2")],
+		marks: [mark(1, "s1"), mark(2, "s2")],
 	};
 }
 
@@ -157,7 +157,7 @@ describe("the same page: exact for the offer, by path for drawing", () => {
 			),
 		).toBe(false);
 		// A case with no screenshot yet: its page.
-		const fresh = { ...c, shots: [], annotations: [] };
+		const fresh = { ...c, shots: [], marks: [] };
 		expect(isOfferedOn(fresh, HOME)).toBe(true);
 		expect(isOfferedOn(fresh, "http://localhost:3000/")).toBe(false);
 	});
@@ -194,8 +194,8 @@ describe("the same page: exact for the offer, by path for drawing", () => {
 
 	test("a draw on localhost's home page judges production's home page marks as the page's own", () => {
 		const c = shopCase();
-		const found = (n: number): AnnotationMatch => ({
-			annotationId: `a${n}`,
+		const found = (n: number): MarkMatch => ({
+			markId: `a${n}`,
 			number: n,
 			status: "lost",
 			score: 0,
@@ -216,7 +216,7 @@ describe("the same page: exact for the offer, by path for drawing", () => {
 });
 
 describe("a screenshot keeps its query", () => {
-	const draft = (n: number, shotId: string): AnnotationDraft => ({
+	const draft = (n: number, shotId: string): MarkDraft => ({
 		id: `a${n}`,
 		number: n,
 		shot: shotId,
@@ -267,7 +267,7 @@ describe("a screenshot keeps its query", () => {
 						...(sent === undefined ? {} : { query: sent }),
 					},
 				],
-				annotations: [draft(n, id)],
+				marks: [draft(n, id)],
 			},
 			crop,
 			new Date(NOW),
@@ -292,10 +292,8 @@ describe("a screenshot keeps its query", () => {
 		// Nothing kept: no field at all. What a sender says is never taken.
 		c = await add(store, 3, `${SEARCH}?session=1`, "q=planted");
 		expect(c.shots[2]).not.toHaveProperty("query");
-		expect(markAddress(c, c.annotations[0] as Annotation)).toBe(
-			`${SEARCH}?q=shoes`,
-		);
-		expect(markAddress(c, c.annotations[2] as Annotation)).toBe(SEARCH);
+		expect(markAddress(c, c.marks[0] as Mark)).toBe(`${SEARCH}?q=shoes`);
+		expect(markAddress(c, c.marks[2] as Mark)).toBe(SEARCH);
 	});
 
 	test("a hash route's own parameters are not the query", async () => {
@@ -328,7 +326,7 @@ describe("a screenshot keeps its query", () => {
 		await putCase(store, c);
 		for (const path of [
 			...c.shots.map((s) => s.image),
-			...c.annotations.map((a) => a.crop),
+			...c.marks.map((a) => a.crop),
 		])
 			await store.putImage(c.id, path, webpImage());
 		const zip = await exportCase(store, c);
@@ -359,7 +357,7 @@ describe("a screenshot keeps its query", () => {
 		await putCase(store, c);
 		for (const path of [
 			...c.shots.map((s) => s.image),
-			...c.annotations.map((a) => a.crop),
+			...c.marks.map((a) => a.crop),
 		])
 			await store.putImage(c.id, path, webpImage());
 		const imported = await storeImport(
@@ -381,7 +379,7 @@ describe("a screenshot keeps its query", () => {
 			...shopCase(),
 			pages: [{ url: HOME, title: "Shop", lang: "en" }],
 			shots: [shot("s1", HOME)],
-			annotations: [mark(1, "s1")],
+			marks: [mark(1, "s1")],
 		};
 		// The case's page in the first lines, and no mark's.
 		expect(caseMarkdown(one).match(/- Page: </g)).toHaveLength(1);
@@ -397,7 +395,7 @@ describe("a screenshot keeps its query", () => {
 describe("a mark's link", () => {
 	test("where it was made, and the same path and query on the host in front", () => {
 		const c = shopCase();
-		const [home, search] = c.annotations as [Annotation, Annotation];
+		const [home, search] = c.marks as [Mark, Mark];
 		expect(markTargets(c, search, "https://shop.example/cart")).toEqual({
 			made: `${SEARCH}?q=shoes&sort=price`,
 		});
@@ -474,8 +472,8 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 
 describe("two sites' home pages in one case (review of DEC-050)", () => {
 	const PAY = "https://pay.example/";
-	const lost = (n: number): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	const lost = (n: number): MarkMatch => ({
+		markId: `a${n}`,
 		number: n,
 		status: "lost",
 		score: 0,
@@ -489,12 +487,12 @@ describe("two sites' home pages in one case (review of DEC-050)", () => {
 			{ url: PAY, title: "Pay", lang: "en" },
 		],
 		shots: [shot("s1", HOME), shot("s2", PAY)],
-		annotations: [mark(1, "s1"), mark(2, "s2")],
+		marks: [mark(1, "s1"), mark(2, "s2")],
 	});
 
 	test("a mark is the page's own only when its page is the one pageInFront picks: on each site its own, on a third host the first", () => {
 		const c = twoHomes();
-		const [shop, pay] = c.annotations as [Annotation, Annotation];
+		const [shop, pay] = c.marks as [Mark, Mark];
 		for (const [url, own] of [
 			[HOME, [1]],
 			[PAY, [2]],
@@ -510,7 +508,7 @@ describe("two sites' home pages in one case (review of DEC-050)", () => {
 
 	test("the AI tools' onThisPage says the same, and otherPageNote for the other site's mark", () => {
 		const c = twoHomes();
-		const [shop, pay] = c.annotations as [Annotation, Annotation];
+		const [shop, pay] = c.marks as [Mark, Mark];
 		expect(pageView(c, shop, PAY).onThisPage).toBe(false);
 		expect(pageView(c, shop, PAY)).toHaveProperty("otherPageNote");
 		expect(pageView(c, pay, PAY).onThisPage).toBe(true);
@@ -525,20 +523,20 @@ describe("a mark's link waits for its page (review of DEC-050, 6 and 7)", () => 
 	const p: PendingShow = {
 		tabId: 4,
 		caseId: "c_shop",
-		annotationId: "a2",
+		markId: "a2",
 		mark: "key",
 		url: `${SEARCH}?q=shoes`,
 		until: 1000,
 	};
-	const match = (status: AnnotationMatch["status"]): AnnotationMatch => ({
-		annotationId: "a2",
+	const match = (status: MarkMatch["status"]): MarkMatch => ({
+		markId: "a2",
 		number: 2,
 		status,
 		score: 0.9,
 		current: 0,
 		candidates: [],
 	});
-	const drawn = (status: AnnotationMatch["status"], settling = false) => ({
+	const drawn = (status: MarkMatch["status"], settling = false) => ({
 		tabId: 4,
 		caseId: "c_shop",
 		url: `${SEARCH}?q=shoes`,

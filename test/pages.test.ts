@@ -6,10 +6,10 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-	type Annotation,
 	type Case,
 	casePages,
 	MAX_PAGES,
+	type Mark,
 	marksByPage,
 	marksOnPage,
 	markUrl,
@@ -21,16 +21,16 @@ import {
 	samePage,
 	validateCase,
 	viewportAt,
-	withoutAnnotation,
+	withoutMark,
 	withPagesAgreed,
 	withPagesOfShots,
 } from "../src/lib/case.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
-import type { AnnotationMatch } from "../src/lib/messages.ts";
+import type { MarkMatch } from "../src/lib/messages.ts";
 import {
-	type AnnotationDraft,
 	type Crop,
+	type MarkDraft,
 	saveCase,
 	undoAdd,
 } from "../src/lib/save.ts";
@@ -63,7 +63,7 @@ const shot = (id: string, url?: string, width = 1280): Shot => ({
 	...(url === undefined ? {} : { url }),
 });
 
-const mark = (n: number, shotId: string, element = false): Annotation => ({
+const mark = (n: number, shotId: string, element = false): Mark => ({
 	id: `a${n}`,
 	number: n,
 	shot: shotId,
@@ -100,7 +100,7 @@ function flow(): Case {
 			{ url: PAY, title: "Payment", lang: "en" },
 		],
 		shots: [shot("s1", CART), shot("s2", PAY, 390)],
-		annotations: [mark(1, "s1", true), mark(2, "s1"), mark(3, "s2", true)],
+		marks: [mark(1, "s1", true), mark(2, "s1"), mark(3, "s2", true)],
 	};
 }
 
@@ -113,7 +113,7 @@ describe("the pages of a case", () => {
 				shot("s2", "https://www.example.com/kk/step-2"),
 				shot("s3", "https://www.example.com/kk/step-2"),
 			],
-			annotations: [mark(1, "s1"), mark(2, "s2"), mark(3, "s3")],
+			marks: [mark(1, "s1"), mark(2, "s2"), mark(3, "s3")],
 		};
 		expect(old.pages).toBeUndefined();
 		expect(casePages(old)).toEqual([
@@ -121,7 +121,7 @@ describe("the pages of a case", () => {
 			{ url: "https://www.example.com/kk/step-2", title: "", lang: "" },
 		]);
 		// A screenshot without an address is the first page's.
-		expect(markUrl(old, old.annotations[0] as Annotation)).toBe(
+		expect(markUrl(old, old.marks[0] as Mark)).toBe(
 			"https://www.example.com/kk",
 		);
 		expect(marksOnPage(old, "https://www.example.com/kk/step-2")).toBe(2);
@@ -304,13 +304,13 @@ describe("the pages of a case", () => {
 
 	test("deleting a page's last mark takes the page off the list; the first page follows the first one left", () => {
 		const c = flow();
-		const { value } = withoutAnnotation(c, "a3", NOW);
+		const { value } = withoutMark(c, "a3", NOW);
 		expect(casePages(value).map((p) => p.url)).toEqual([CART]);
 		expect(value.page.url).toBe(CART);
 		// The cart's marks go: the payment page is the case's first page now.
-		let rest = withoutAnnotation(c, "a1", NOW).value;
+		let rest = withoutMark(c, "a1", NOW).value;
 		expect(casePages(rest).map((p) => p.url)).toEqual([CART, PAY]);
-		rest = withoutAnnotation(rest, "a2", NOW).value;
+		rest = withoutMark(rest, "a2", NOW).value;
 		expect(rest.pages).toEqual([{ url: PAY, title: "Payment", lang: "en" }]);
 		// The first page is the payment page now, window and all: it was made
 		// at 390, not at the 1280 of the cart that left.
@@ -323,7 +323,7 @@ describe("the pages of a case", () => {
 		});
 		expect(() => validateCase(rest)).not.toThrow();
 		// The last mark of all: the case stays its page's.
-		const none = withoutAnnotation(rest, "a3", NOW).value;
+		const none = withoutMark(rest, "a3", NOW).value;
 		expect(none.pages).toEqual([{ url: PAY, title: "Payment", lang: "en" }]);
 		expect(none.page.url).toBe(PAY);
 	});
@@ -332,9 +332,9 @@ describe("the pages of a case", () => {
 		const old: Case = {
 			...sampleCase("c_old"),
 			shots: [shot("s1"), shot("s2", "https://www.example.com/other")],
-			annotations: [mark(1, "s1"), mark(2, "s2")],
+			marks: [mark(1, "s1"), mark(2, "s2")],
 		};
-		const { value } = withoutAnnotation(old, "a2", NOW);
+		const { value } = withoutMark(old, "a2", NOW);
 		expect(value.pages).toBeUndefined();
 		expect(withPagesOfShots(old)).toBe(old);
 		expect(casePages(value).map((p) => p.url)).toEqual([
@@ -348,7 +348,7 @@ describe("the pages of a case", () => {
 const crop: Crop = async (_image, rects) =>
 	rects.map(() => ({ blob: new Blob(["crop"]), width: 280, height: 160 }));
 
-const draft = (n: number, shotId: string): AnnotationDraft => ({
+const draft = (n: number, shotId: string): MarkDraft => ({
 	id: `a${n}`,
 	number: n,
 	shot: shotId,
@@ -400,7 +400,7 @@ async function add(
 					url,
 				},
 			],
-			annotations: [draft(n, id)],
+			marks: [draft(n, id)],
 		},
 		crop,
 		new Date(at),
@@ -483,7 +483,7 @@ describe("marks on another page go into the open case", () => {
 						capturedAt: NOW,
 					},
 				],
-				annotations: [draft(1, "p_1")],
+				marks: [draft(1, "p_1")],
 			},
 			crop,
 		);
@@ -495,7 +495,7 @@ describe("marks on another page go into the open case", () => {
 		await putCase(store, {
 			...sampleCase("c_old"),
 			shots: [shot("s1")],
-			annotations: [mark(1, "s1")],
+			marks: [mark(1, "s1")],
 		});
 		const c = await add(
 			store,
@@ -516,7 +516,7 @@ describe("marks on another page go into the open case", () => {
 		await add(store, "c_1", 1, CART, "Your cart");
 		const at = new Date().toISOString();
 		const c = await add(store, "c_1", 2, PAY, "Payment", at);
-		const added = c.annotations.find((a) => a.number === 2) as Annotation;
+		const added = c.marks.find((a) => a.number === 2) as Mark;
 		await undoAdd(store, "c_1", "a2", {
 			shot: added.shot,
 			comment: added.comment,
@@ -539,7 +539,7 @@ describe("a case of several pages in a file", () => {
 		webp[27] = 9;
 		for (const path of [
 			...c.shots.map((s) => s.image),
-			...c.annotations.map((a) => a.crop),
+			...c.marks.map((a) => a.crop),
 		])
 			await store.putImage(c.id, path, {
 				blob: new Blob([webp], { type: "image/webp" }),
@@ -601,7 +601,7 @@ describe("a case of several pages in a file", () => {
 			...flow(),
 			pages: [{ url: CART, title: "Your cart", lang: "en" }],
 			shots: [shot("s1", CART)],
-			annotations: [mark(1, "s1")],
+			marks: [mark(1, "s1")],
 		};
 		const md = caseMarkdown(one);
 		expect(md).toContain(`- Page: <${CART}>\n- Page title: Your cart`);
@@ -622,7 +622,7 @@ describe("who did something, in a case synced with a team (DEC-039)", () => {
 	const tess = { id: "u_tess", name: "Tess Tester" };
 	const c: Case = {
 		...flow(),
-		annotations: [
+		marks: [
 			{
 				...mark(1, "s1"),
 				createdBy: tess,
@@ -656,13 +656,13 @@ describe("who did something, in a case synced with a team (DEC-039)", () => {
 
 	test("the format keeps it through a file, and a build before it leaves it out without refusing", () => {
 		const read = validateCase(JSON.parse(JSON.stringify(c)));
-		expect(read.annotations[0]).toEqual(c.annotations[0] as Annotation);
+		expect(read.marks[0]).toEqual(c.marks[0] as Mark);
 		expect(() =>
 			validateCase({
 				...c,
-				annotations: [{ ...c.annotations[0], createdBy: { id: 1 } }],
+				marks: [{ ...c.marks[0], createdBy: { id: 1 } }],
 			}),
-		).toThrow("case.annotations[0].createdBy.id: must be a string");
+		).toThrow("case.marks[0].createdBy.id: must be a string");
 	});
 
 	test("case.md says it, as text", () => {
@@ -682,11 +682,8 @@ describe("who did something, in a case synced with a team (DEC-039)", () => {
 });
 
 describe("what a draw found, judged for the page in front", () => {
-	const match = (
-		n: number,
-		status: AnnotationMatch["status"],
-	): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
+		markId: `a${n}`,
 		number: n,
 		status,
 		score: status === "found" ? 0.9 : 0,
@@ -704,9 +701,9 @@ describe("what a draw found, judged for the page in front", () => {
 					]
 				: [],
 	});
-	const loaded = (url: string, matches: AnnotationMatch[]) => ({
+	const loaded = (url: string, matches: MarkMatch[]) => ({
 		url,
-		matches: new Map(matches.map((m) => [m.annotationId, m])),
+		matches: new Map(matches.map((m) => [m.markId, m])),
 	});
 
 	test("on one of the case's pages, the marks of its other pages are not expected", () => {
@@ -721,7 +718,7 @@ describe("what a draw found, judged for the page in front", () => {
 
 	test("a mark of another page found here all the same (a shared header, or a look-alike) is never sure and never counted", () => {
 		const c = flow();
-		const other: AnnotationMatch = { ...match(3, "found"), otherPage: true };
+		const other: MarkMatch = { ...match(3, "found"), otherPage: true };
 		const all = [match(1, "found"), match(2, "no-element"), other];
 		const url = "http://localhost:3000/cart";
 		expect(matchesHere(c, all, url).map((m) => m.number)).toEqual([1, 2]);
@@ -803,7 +800,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 				{ url: PAY, title: "Payment", lang: "en" },
 			],
 			shots: [shot("s1"), shot("s2", CART), shot("s3", PAY)],
-			annotations: [mark(1, "s1"), mark(2, "s2"), mark(3, "s3")],
+			marks: [mark(1, "s1"), mark(2, "s2"), mark(3, "s3")],
 		};
 		expect(() => validateCase(odd)).not.toThrow();
 		const agreed = withPagesAgreed(odd);
@@ -818,8 +815,8 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			1, 1, 1,
 		]);
 		// The cart's mark goes: mark 1 stays where it was.
-		const rest = withoutAnnotation(agreed, "a2", NOW).value;
-		expect(markUrl(rest, rest.annotations[0] as Annotation)).toBe(HOME);
+		const rest = withoutMark(agreed, "a2", NOW).value;
+		expect(markUrl(rest, rest.marks[0] as Mark)).toBe(HOME);
 		expect(rest.page.url).toBe(HOME);
 
 		// `page` listed, but not first: it is the first.
@@ -848,7 +845,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 		await putCase(source, odd);
 		for (const path of [
 			...odd.shots.map((x) => x.image),
-			...odd.annotations.map((x) => x.crop),
+			...odd.marks.map((x) => x.crop),
 		])
 			await source.putImage(odd.id, path, {
 				blob: new Blob([webp], { type: "image/webp" }),
@@ -865,17 +862,17 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 		const c: Case = {
 			...flow(),
 			shots: [shot("s1"), shot("s2", PAY, 390), shot("s3", CART)],
-			annotations: [mark(1, "s1"), mark(2, "s2"), mark(3, "s3")],
+			marks: [mark(1, "s1"), mark(2, "s2"), mark(3, "s3")],
 			pages: [
 				{ url: PAY, title: "Payment", lang: "en" },
 				{ url: CART, title: "Your cart", lang: "en" },
 			],
 		};
 		// `page` (the cart) is not first in the list; a delete rewrites it.
-		const rest = withoutAnnotation(c, "a3", NOW).value;
+		const rest = withoutMark(c, "a3", NOW).value;
 		expect(rest.page.url).toBe(PAY);
 		// Mark 1's screenshot was the cart's and says so now.
-		expect(markUrl(rest, rest.annotations[0] as Annotation)).toBe(CART);
+		expect(markUrl(rest, rest.marks[0] as Mark)).toBe(CART);
 	});
 
 	test("a hash route at the root and the home page, made on production and marked on localhost: one page each", async () => {
@@ -930,7 +927,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			shots: Array.from({ length: MAX_PAGES }, (_, i) =>
 				shot(`s${i + 1}`, `https://shop.example/step/${i}`),
 			),
-			annotations: Array.from({ length: MAX_PAGES }, (_, i) =>
+			marks: Array.from({ length: MAX_PAGES }, (_, i) =>
 				mark(i + 1, `s${i + 1}`),
 			),
 		};
@@ -955,7 +952,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			"Step 7",
 		);
 		expect(c.pages).toHaveLength(MAX_PAGES);
-		expect(c.annotations).toHaveLength(MAX_PAGES + 1);
+		expect(c.marks).toHaveLength(MAX_PAGES + 1);
 	});
 
 	test("a case from before the list whose first page kept no mark: the next mark's list has no page without a screenshot", async () => {
@@ -965,7 +962,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			...sampleCase("c_old"),
 			page: { ...flow().page, url: CART },
 			shots: [shot("s1", PAY, 390)],
-			annotations: [mark(1, "s1")],
+			marks: [mark(1, "s1")],
 			lastNumber: 2,
 		};
 		expect(old.pages).toBeUndefined();
@@ -988,9 +985,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			shots: Array.from({ length: 1000 }, (_, i) =>
 				shot(`s${i + 1}`, `https://shop.example/p/${i % 200}`),
 			),
-			annotations: Array.from({ length: 1000 }, (_, i) =>
-				mark(i + 1, `s${i + 1}`),
-			),
+			marks: Array.from({ length: 1000 }, (_, i) => mark(i + 1, `s${i + 1}`)),
 		};
 		delete (big as { pages?: unknown }).pages;
 		const started = performance.now();

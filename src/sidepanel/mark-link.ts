@@ -5,14 +5,14 @@
  */
 
 import {
-	type Annotation,
 	type Case,
 	exactPage,
 	hashRoute,
 	isWebPage,
+	type Mark,
 	markAddress,
 } from "../lib/case.ts";
-import type { AnnotationMatch } from "../lib/messages.ts";
+import type { MarkMatch } from "../lib/messages.ts";
 
 export interface MarkTargets {
 	/** Where the mark was made: its screenshot's address with its query. */
@@ -35,7 +35,7 @@ export interface MarkTargets {
  */
 export function markTargets(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	tabUrl: string | undefined,
 ): MarkTargets | undefined {
 	const made = markAddress(c, a);
@@ -75,7 +75,7 @@ export function shortAddress(address: string): string {
 export interface PendingShow {
 	tabId: number;
 	caseId: string;
-	annotationId: string;
+	markId: string;
 	/** `markKey`: the mark meant, whatever number it has by then. */
 	mark: string;
 	url: string;
@@ -87,7 +87,7 @@ export interface DrawnOn {
 	tabId: number;
 	caseId: string;
 	url: string;
-	matches: ReadonlyMap<string, AnnotationMatch>;
+	matches: ReadonlyMap<string, MarkMatch>;
 	settling?: boolean;
 }
 
@@ -102,8 +102,8 @@ export async function tryShow(
 	p: PendingShow | undefined,
 	loaded: DrawnOn | undefined,
 	now: number,
-	show: (p: PendingShow) => Promise<AnnotationMatch | { error: string } | null>,
-): Promise<{ keep: boolean; shown?: AnnotationMatch }> {
+	show: (p: PendingShow) => Promise<MarkMatch | { error: string } | null>,
+): Promise<{ keep: boolean; shown?: MarkMatch }> {
 	if (p === undefined || now > p.until) return { keep: false };
 	if (
 		loaded === undefined ||
@@ -112,7 +112,7 @@ export async function tryShow(
 		!exactPage(loaded.url, p.url)
 	)
 		return { keep: true };
-	const m = loaded.matches.get(p.annotationId);
+	const m = loaded.matches.get(p.markId);
 	if (m === undefined) return { keep: true };
 	const found = m.status !== "lost" && m.status !== "no-element";
 	if (!found && m.status !== "no-element" && loaded.settling)

@@ -65,7 +65,7 @@ describe.skipIf(browserBinary === undefined)("extension", () => {
 		// case is gone (DEC-026).
 		await h.control.eval(PUT_CASE(sampleCase("c_shown")));
 		const state = await h.control.eval<{ visible: boolean; title: string }>(
-			`chrome.tabs.sendMessage(${tabId}, { type: "overlay:show", target: { caseId: "c_shown", title: "Shown", nextAnnotation: 1 } })`,
+			`chrome.tabs.sendMessage(${tabId}, { type: "overlay:show", target: { caseId: "c_shown", title: "Shown", nextMark: 1 } })`,
 		);
 		expect(state.visible).toBe(true);
 		expect(state.title).toBe("Krankenkasse vergleichen (v1)");
@@ -94,7 +94,7 @@ describe.skipIf(browserBinary === undefined)("extension", () => {
 		);
 		await h.control.eval(PUT_CASE(sampleCase("c_shown")));
 		const state = await h.control.eval<{ visible: boolean }>(
-			`chrome.scripting.executeScript({ target: { tabId: ${tabId} }, files: ["content.js"] }).then(() => chrome.tabs.sendMessage(${tabId}, { type: "overlay:show", target: { caseId: "c_shown", title: "Shown", nextAnnotation: 1 } }))`,
+			`chrome.scripting.executeScript({ target: { tabId: ${tabId} }, files: ["content.js"] }).then(() => chrome.tabs.sendMessage(${tabId}, { type: "overlay:show", target: { caseId: "c_shown", title: "Shown", nextMark: 1 } }))`,
 		);
 		expect(state.visible).toBe(true);
 		expect(
@@ -106,7 +106,7 @@ describe.skipIf(browserBinary === undefined)("extension", () => {
 	});
 });
 
-describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
+describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 	let h: Harness;
 
 	beforeAll(async () => {
@@ -189,7 +189,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 		// One screenshot per mark added (DEC-014): marks 1 and 2 shared the
 		// page's picture, each has its own copy with its pin.
 		expect(saved?.shots).toHaveLength(3);
-		const [a1, a2, a3] = saved?.annotations ?? [];
+		const [a1, a2, a3] = saved?.marks ?? [];
 		expect(a1?.shape.kind).toBe("box");
 		expect(a1?.comment).toBe("Contrast too low");
 		expect(a1?.element?.tag).toBe("button");
@@ -550,8 +550,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 			`document.querySelectorAll(".match").length === 3`,
 			10_000,
 		);
-		const row = (id: string) =>
-			`document.querySelector('[data-annotation="${id}"]')`;
+		const row = (id: string) => `document.querySelector('[data-mark="${id}"]')`;
 		const act = (id: string, name: string) =>
 			`${row(id)}.querySelector('[data-mark-action="${name}"]')`;
 		const review = (n: number) =>
@@ -591,7 +590,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 		).toEqual(["null", String(RESOLVED_OPACITY), "true"]);
 		// Shown from the panel, it is looked for: it shows fully.
 		await h.control.eval(
-			`document.querySelector('[data-annotation="a2"] [data-action=show]').click()`,
+			`document.querySelector('[data-mark="a2"] [data-action=show]').click()`,
 		);
 		await v1.page.waitFor(
 			`${review(2)}?.hasAttribute("data-resolved") && ${review(2)}.querySelector("[data-faded]") === null`,
@@ -641,9 +640,9 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 		expect(await v1.page.eval<string>(bar)).toBe("1 of 1 found");
 		const db = await h.control.eval<Db>(READ_DB);
 		const saved = db.cases.find((c) => c.title === "Settled marks");
-		expect(saved?.annotations.map((a) => a.id)).toEqual(["a1", "a2"]);
+		expect(saved?.marks.map((a) => a.id)).toEqual(["a1", "a2"]);
 		expect(saved?.lastNumber).toBe(3);
-		expect(saved?.annotations[0]?.comment).toBe("One, shorter");
+		expect(saved?.marks[0]?.comment).toBe("One, shorter");
 		expect(imagesOf(db, saved?.id ?? "")).not.toContain("crops/a3.webp");
 
 		// Open again, saying why.
@@ -665,8 +664,8 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 		);
 	});
 
-	describe("annotating again after a save (DEC-023)", () => {
-		const annotate = `document.getElementById("annotate")`;
+	describe("marking again after a save (DEC-023)", () => {
+		const newCaseButton = `document.getElementById("new-case")`;
 		const back = `document.getElementById("back")`;
 		const status = `${shadow('[data-role="status"]')}?.textContent`;
 		/** The marks of the case on the page: the toolbar's own, and the loaded case's. */
@@ -729,7 +728,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 			).toBeLessThan(200);
 			const going = titled(await h.control.eval<Db>(READ_DB), "Going on");
 			expect(going).toHaveLength(1);
-			expect(going[0]?.annotations.map((a) => a.number)).toEqual([1, 2]);
+			expect(going[0]?.marks.map((a) => a.number)).toEqual([1, 2]);
 
 			// All cases: no toolbar, no marks, and nothing to continue.
 			await allCases();
@@ -739,19 +738,19 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 			);
 			await caseMarksAre(page, []);
 			await h.control.waitFor(
-				`${annotate}.textContent === "New case for this page"`,
+				`${newCaseButton}.textContent === "New case for this page"`,
 			);
-			await h.control.eval(`${annotate}.click()`);
+			await h.control.eval(`${newCaseButton}.click()`);
 			await page.waitFor(
 				`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
 			);
 			await markElement(page, "h1", "Larger heading");
 			await saveAs(page, "Another one");
 			const db = await h.control.eval<Db>(READ_DB);
-			expect(titled(db, "Going on")[0]?.annotations).toHaveLength(2);
-			expect(
-				titled(db, "Another one")[0]?.annotations.map((a) => a.number),
-			).toEqual([1]);
+			expect(titled(db, "Going on")[0]?.marks).toHaveLength(2);
+			expect(titled(db, "Another one")[0]?.marks.map((a) => a.number)).toEqual([
+				1,
+			]);
 			await inCase("Another one");
 			await allCases();
 			await page.send("Page.close");
@@ -773,7 +772,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 				(up) => !up,
 			);
 			const c = titled(await h.control.eval<Db>(READ_DB), "Comment open")[0];
-			expect(c?.annotations.map((a) => [a.number, a.comment])).toEqual([
+			expect(c?.marks.map((a) => [a.number, a.comment])).toEqual([
 				[1, "First"],
 				[2, "Half typed"],
 			]);
@@ -799,7 +798,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 			};
 			const marksOf = async (title: string) =>
 				(await h.control.eval<Db>(READ_DB)).cases.find((c) => c.title === title)
-					?.annotations.length;
+					?.marks.length;
 
 			await box("Second");
 			await page.waitFor(
@@ -810,7 +809,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 
 			// A new case starts with All cases, then New case for this page.
 			await allCases();
-			await h.control.eval(`${annotate}.click()`);
+			await h.control.eval(`${newCaseButton}.click()`);
 			await page.waitFor(
 				`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
 			);
@@ -840,7 +839,7 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 			);
 			await caseMarksAre(page, []);
 
-			await h.control.eval(`${annotate}.click()`);
+			await h.control.eval(`${newCaseButton}.click()`);
 			await page.waitFor(
 				`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
 			);
@@ -880,9 +879,9 @@ describe.skipIf(browserBinary === undefined)("annotating and saving", () => {
 				`chrome-extension://${h.extensionId}/sidepanel/index.html`,
 			);
 			await h.control.waitFor(
-				`${annotate}.textContent === "New case for this page" && !document.getElementById("home").hidden`,
+				`${newCaseButton}.textContent === "New case for this page" && !document.getElementById("home").hidden`,
 			);
-			await h.control.eval(`${annotate}.click()`);
+			await h.control.eval(`${newCaseButton}.click()`);
 			await page.waitFor(
 				`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
 			);
@@ -978,7 +977,7 @@ describe.skipIf(browserBinary === undefined)(
 
 			// "Show" scrolls the page to the contact paragraph.
 			await h.control.eval(
-				`document.querySelectorAll(".annotation")[2].querySelector("[data-action=show]").click()`,
+				`document.querySelectorAll(".mark")[2].querySelector("[data-action=show]").click()`,
 			);
 			await v2.page.waitFor(
 				`Math.abs(document.querySelector("[data-truth=contact]").getBoundingClientRect().top - innerHeight / 2) < innerHeight / 2`,
@@ -1244,9 +1243,7 @@ describe.skipIf(browserBinary === undefined)("the side panel", () => {
 			`${shadow('[data-role="status"]')}?.textContent.includes("Panel test")`,
 		);
 		await markElement(page, "[data-truth=tip]", "Say how much");
-		await h.control.waitFor(
-			`document.querySelectorAll(".annotation").length === 2`,
-		);
+		await h.control.waitFor(`document.querySelectorAll(".mark").length === 2`);
 		expect(
 			await h.control.eval<{ value: string; focused: boolean; at: number }>(
 				`(() => { const v = document.getElementById("verdict"); return { value: v.value, focused: document.activeElement === v, at: v.selectionStart }; })()`,

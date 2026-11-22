@@ -80,7 +80,7 @@ export interface Db {
 			viewport: { width: number; height: number };
 		};
 		shots: { id: string; scrollY: number }[];
-		annotations: {
+		marks: {
 			id: string;
 			number: number;
 			shot: string;
@@ -225,7 +225,7 @@ export async function showToolbar(
 	await h.control.eval(
 		toTab(tabId, {
 			type: "overlay:show",
-			target: { caseId: c.id, title: c.title, nextAnnotation: 1 },
+			target: { caseId: c.id, title: c.title, nextMark: 1 },
 		}),
 	);
 	await page.waitFor(shadow('[data-action="tool-box"]'));

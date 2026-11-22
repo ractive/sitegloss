@@ -22,7 +22,7 @@ export const ELEMENT_ATTRIBUTES = [
 /** A language tag as `<html lang>` gives it, e.g. `de-CH`. */
 export const LANGUAGE = /^[A-Za-z0-9-]{0,35}$/;
 
-/** The highest annotation number a case may use. */
+/** The highest mark number a case may use. */
 export const MAX_NUMBER = 99_999;
 
 /**
@@ -93,7 +93,7 @@ export type Shape =
 
 export type ShapeKind = Shape["kind"];
 
-/** What Sitegloss knows about an annotation's element (see element.ts). */
+/** What Sitegloss knows about a mark's element (see element.ts). */
 export interface ElementDetails {
 	tag: string;
 	/** A hand-written id (generated ones are left out). */
@@ -350,7 +350,7 @@ export interface Shot {
 	query?: string;
 }
 
-export interface Annotation {
+export interface Mark {
 	id: string;
 	/** Shown on the page and in lists; unique in the case. */
 	number: number;
@@ -593,7 +593,7 @@ export function resolutionStatus(r: Resolution | undefined): MarkStatus {
 	return r.kind;
 }
 
-export const markStatus = (a: Annotation): MarkStatus =>
+export const markStatus = (a: Mark): MarkStatus =>
 	resolutionStatus(a.resolution);
 
 /** What Resolve… and Change… can set: every status but open. */
@@ -643,7 +643,7 @@ export type CaseCounts = Record<StatusGroup, number>;
 /** How many marks are open, to verify, verified and closed. */
 export function caseCounts(c: Case): CaseCounts {
 	const counts: CaseCounts = { open: 0, toVerify: 0, verified: 0, closed: 0 };
-	for (const a of c.annotations) counts[GROUP_OF[markStatus(a)]]++;
+	for (const a of c.marks) counts[GROUP_OF[markStatus(a)]]++;
 	return counts;
 }
 
@@ -683,7 +683,7 @@ export interface Case {
 	 */
 	pages?: CasePage[];
 	shots: Shot[];
-	annotations: Annotation[];
+	marks: Mark[];
 	/** The summary for the developer: what should change, as agreed (DEC-019). */
 	verdict: string | null;
 	/**
@@ -734,8 +734,8 @@ export const MAX_LINK = 2048;
  * The most marks and screenshots a case holds. Marks added one by one have a
  * screenshot each (DEC-014), so there can be as many shots as marks.
  */
-export const MAX_ANNOTATIONS = 1000;
-export const MAX_SHOTS = MAX_ANNOTATIONS;
+export const MAX_MARKS = 1000;
+export const MAX_SHOTS = MAX_MARKS;
 
 export class CaseError extends Error {
 	override name = "CaseError";
@@ -752,7 +752,7 @@ export function newId(prefix: string): string {
 }
 
 export const shotImage = (shotId: string) => `shots/${shotId}.webp`;
-export const cropImage = (annotationId: string) => `crops/${annotationId}.webp`;
+export const cropImage = (markId: string) => `crops/${markId}.webp`;
 /** A screenshot taken for a save that is not committed yet (save.ts). */
 export const pendingImage = (shotId: string) => `pending/${shotId}.webp`;
 
@@ -760,7 +760,7 @@ export const pendingImage = (shotId: string) => `pending/${shotId}.webp`;
 export function caseImages(c: Case): Set<string> {
 	return new Set([
 		...c.shots.map((s) => s.image),
-		...c.annotations.map((a) => a.crop),
+		...c.marks.map((a) => a.crop),
 	]);
 }
 
@@ -828,16 +828,15 @@ export function cutText(text: string, max: number): string {
 /** The IndexedDB key of a case's image. */
 export const imageKey = (caseId: string, path: string) => `${caseId}/${path}`;
 
-/** The next annotation number and shot number of a case. */
+/** The next mark number and shot number of a case. */
 export function nextNumbers(c: Case | undefined): {
-	annotation: number;
+	mark: number;
 	shot: number;
 } {
-	if (c === undefined) return { annotation: 1, shot: 1 };
+	if (c === undefined) return { mark: 1, shot: 1 };
 	const max = (values: number[]) => values.reduce((a, b) => Math.max(a, b), 0);
 	return {
-		annotation:
-			max([...c.annotations.map((a) => a.number), c.lastNumber ?? 0]) + 1,
+		mark: max([...c.marks.map((a) => a.number), c.lastNumber ?? 0]) + 1,
 		shot: max(c.shots.map((s) => Number(s.id.slice(1)) || 0)) + 1,
 	};
 }
@@ -991,12 +990,12 @@ export const samePath = (a: string, b: string): boolean =>
  * is another mark's after the team's sync gave it another number (DEC-039),
  * so what is opened on one mark is held to this, not to the id.
  */
-export function markKey(c: Case, a: Annotation): string {
+export function markKey(c: Case, a: Mark): string {
 	return markKeys(c).get(a.id) ?? drawnKey(c, a);
 }
 
 /** A mark's screenshot time and drawing, as a key. */
-function drawnKey(c: Case, a: Annotation): string {
+function drawnKey(c: Case, a: Mark): string {
 	const shot = c.shots.find((s) => s.id === a.shot);
 	return JSON.stringify([
 		shot?.capturedAt ?? "",
@@ -1016,7 +1015,7 @@ function drawnKey(c: Case, a: Annotation): string {
 function markKeys(c: Case): Map<string, string> {
 	const drawn = new Map<string, string[]>();
 	const of = new Map<string, string>();
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const key = drawnKey(c, a);
 		of.set(a.id, key);
 		drawn.set(key, [...(drawn.get(key) ?? []), a.id]);
@@ -1047,11 +1046,11 @@ export function markFor(
 	c: Case,
 	id: string,
 	key: string,
-): Annotation | "ambiguous" | undefined {
+): Mark | "ambiguous" | undefined {
 	const keys = markKeys(c);
-	const under = c.annotations.find((a) => a.id === id);
+	const under = c.marks.find((a) => a.id === id);
 	if (under !== undefined && keys.get(under.id) === key) return under;
-	const same = c.annotations.filter((a) => keys.get(a.id) === key);
+	const same = c.marks.filter((a) => keys.get(a.id) === key);
 	if (same.length === 1) return same[0];
 	if (same.length > 1) return "ambiguous";
 	let drawn: string;
@@ -1060,7 +1059,7 @@ export function markFor(
 	} catch {
 		return undefined;
 	}
-	return c.annotations.some((a) => drawnKey(c, a) === drawn)
+	return c.marks.some((a) => drawnKey(c, a) === drawn)
 		? "ambiguous"
 		: undefined;
 }
@@ -1074,7 +1073,7 @@ export const shotUrl = (c: Case, shot: Shot | undefined): string =>
 	shot?.url ?? c.page.url;
 
 /** The address of the page a mark is on: its screenshot's. */
-export function markUrl(c: Case, a: Annotation): string {
+export function markUrl(c: Case, a: Mark): string {
 	return shotUrl(
 		c,
 		c.shots.find((s) => s.id === a.shot),
@@ -1114,7 +1113,7 @@ export function marksByPage(c: Case): Map<string, number> {
 		c.shots.map((s) => [s.id, s.url === undefined ? first : pageKey(s.url)]),
 	);
 	const counts = new Map<string, number>();
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const key = pageOf.get(a.shot) ?? first;
 		counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
@@ -1226,7 +1225,7 @@ export function pageInFront(c: Case, url: string): CasePage | undefined {
  * marks are the page's own; on a third host, the first listed page's.
  * Everything that asks "is this mark on the page in front?" asks this.
  */
-export function onPageInFront(c: Case, a: Annotation, url: string): boolean {
+export function onPageInFront(c: Case, a: Mark, url: string): boolean {
 	const page = pageInFront(c, url);
 	return page !== undefined && samePage(page.url, markUrl(c, a));
 }
@@ -1242,7 +1241,7 @@ export function isOfferedOn(c: Case, url: string): boolean {
 }
 
 /** The address a mark was made on, with its query: what opens it again (DEC-050). */
-export function markAddress(c: Case, a: Annotation): string {
+export function markAddress(c: Case, a: Mark): string {
 	const shot = c.shots.find((s) => s.id === a.shot);
 	return withQuery(shotUrl(c, shot), shot?.query);
 }
@@ -1416,7 +1415,7 @@ function element(v: unknown, path: string): ElementDetails | null {
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const SHOT_ID = /^s[1-9]\d{0,5}$/;
 
-/** Ids of cases, shots and annotations: safe in image paths and keys. */
+/** Ids of cases, shots and marks: safe in image paths and keys. */
 export const isSafeId = (value: string) => SAFE_ID.test(value);
 
 function id(v: unknown, path: string): string {
@@ -1469,16 +1468,12 @@ export function validateCase(value: unknown): Case {
 	});
 	const numbers = new Set<number>();
 	const ids = new Set<string>();
-	const annotations = arr(
-		o["annotations"],
-		"case.annotations",
-		MAX_ANNOTATIONS,
-	).map((v, i): Annotation => {
-		const p = `case.annotations[${i}]`;
+	const marks = arr(o["marks"], "case.marks", MAX_MARKS).map((v, i): Mark => {
+		const p = `case.marks[${i}]`;
 		const a = obj(v, p);
-		const annotationId = id(a["id"], `${p}.id`);
-		if (ids.has(annotationId)) fail(`${p}.id`, "is used twice");
-		ids.add(annotationId);
+		const markId = id(a["id"], `${p}.id`);
+		if (ids.has(markId)) fail(`${p}.id`, "is used twice");
+		ids.add(markId);
 		const number = num(a["number"], `${p}.number`);
 		if (
 			!Number.isInteger(number) ||
@@ -1489,18 +1484,18 @@ export function validateCase(value: unknown): Case {
 			fail(`${p}.number`, `must be a unique integer from 1 to ${MAX_NUMBER}`);
 		numbers.add(number);
 		// Saving names new marks a<number>: another scheme would collide later.
-		if (annotationId !== `a${number}`)
+		if (markId !== `a${number}`)
 			fail(`${p}.id`, `must be a${number}, after its number`);
 		const shot = str(a["shot"], `${p}.shot`, 64);
 		if (!shotIds.has(shot)) fail(`${p}.shot`, "names no shot of the case");
 		const crop = str(a["crop"], `${p}.crop`);
-		if (crop !== cropImage(annotationId))
-			fail(`${p}.crop`, `must be ${cropImage(annotationId)}`);
+		if (crop !== cropImage(markId))
+			fail(`${p}.crop`, `must be ${cropImage(markId)}`);
 		const author = a["author"];
 		if (author !== "user" && author !== "ai")
 			fail(`${p}.author`, `must be "user" or "ai"`);
 		return {
-			id: annotationId,
+			id: markId,
 			number,
 			shot,
 			comment: str(a["comment"], `${p}.comment`, MAX_COMMENT),
@@ -1568,7 +1563,7 @@ export function validateCase(value: unknown): Case {
 		},
 		...(pages === undefined ? {} : { pages: pagesOf(pages) }),
 		shots,
-		annotations,
+		marks,
 		verdict:
 			verdict === null || verdict === undefined
 				? null
@@ -1579,13 +1574,13 @@ export function validateCase(value: unknown): Case {
 			: { importedAt: str(importedAt, "case.importedAt", 64) }),
 		...(lastNumber === undefined
 			? {}
-			: { lastNumber: highest(lastNumber, annotations) }),
+			: { lastNumber: highest(lastNumber, marks) }),
 		...(o["closed"] === undefined || o["closed"] === null
 			? {}
 			: { closed: stampOf(o["closed"], "case.closed") }),
 		...(o["comments"] === undefined
 			? {}
-			: { comments: commentsOf(o["comments"], annotations) }),
+			: { comments: commentsOf(o["comments"], marks) }),
 		...(o["summaryBy"] === undefined
 			? {}
 			: { summaryBy: stampOf(o["summaryBy"], "case.summaryBy") }),
@@ -1638,7 +1633,7 @@ function viaOf(value: unknown): { app: FindingApp; at: string } {
  * A case's thread (DEC-046). A comment may name a mark the case no longer
  * has (deleted since): it stays, about "a deleted mark".
  */
-function commentsOf(value: unknown, marks: Annotation[]): CaseComment[] {
+function commentsOf(value: unknown, marks: Mark[]): CaseComment[] {
 	const ids = new Set<string>();
 	const live = new Set(marks.map((a) => a.id));
 	return arr(value, "case.comments", MAX_CASE_COMMENTS).map(
@@ -1847,13 +1842,9 @@ function findingsOf(value: unknown, path: string): { findings?: Finding[] } {
 	return findings.length > 0 ? { findings } : {};
 }
 
-function highest(value: unknown, annotations: readonly Annotation[]): number {
+function highest(value: unknown, marks: readonly Mark[]): number {
 	const n = num(value, "case.lastNumber");
-	if (
-		!Number.isInteger(n) ||
-		n > MAX_NUMBER ||
-		annotations.some((a) => a.number > n)
-	)
+	if (!Number.isInteger(n) || n > MAX_NUMBER || marks.some((a) => a.number > n))
 		fail(
 			"case.lastNumber",
 			"must be an integer no lower than any mark's number",
@@ -1865,17 +1856,15 @@ function highest(value: unknown, annotations: readonly Annotation[]): number {
 
 function changed(
 	c: Case,
-	annotationId: string,
-	change: (a: Annotation) => Annotation,
+	markId: string,
+	change: (a: Mark) => Mark,
 	now: string,
 ): Case {
-	if (!c.annotations.some((a) => a.id === annotationId))
+	if (!c.marks.some((a) => a.id === markId))
 		throw new CaseError("The mark no longer exists.");
 	return {
 		...c,
-		annotations: c.annotations.map((a) =>
-			a.id === annotationId ? change(a) : a,
-		),
+		marks: c.marks.map((a) => (a.id === markId ? change(a) : a)),
 		updatedAt: now,
 	};
 }
@@ -1896,13 +1885,13 @@ export interface ResolutionChange {
  */
 export function withResolution(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	change: ResolutionChange,
 	now: string,
 ): Case {
 	return changed(
 		c,
-		annotationId,
+		markId,
 		(a) => {
 			const note = cutText(change.note?.trim() ?? "", MAX_COMMENT);
 			const verified =
@@ -1931,12 +1920,12 @@ export function withResolution(
  */
 export function withChoice(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	choice: ResolveChoice,
 	note: string,
 	now: string,
 ): Case {
-	const r = c.annotations.find((x) => x.id === annotationId)?.resolution;
+	const r = c.marks.find((x) => x.id === markId)?.resolution;
 	const target = resolutionFor(choice);
 	if (r?.kind === target.kind) {
 		const text = cutText(note.trim(), MAX_COMMENT);
@@ -1948,7 +1937,7 @@ export function withChoice(
 		const verified = target.verified ? (r.verified ?? { at: now }) : undefined;
 		return changed(
 			c,
-			annotationId,
+			markId,
 			(a) => {
 				const { note: _n, verified: _v, ...kept } = r;
 				return {
@@ -1963,12 +1952,7 @@ export function withChoice(
 			now,
 		);
 	}
-	return withResolution(
-		c,
-		annotationId,
-		{ ...resolutionFor(choice), note },
-		now,
-	);
+	return withResolution(c, markId, { ...resolutionFor(choice), note }, now);
 }
 
 /**
@@ -1977,15 +1961,15 @@ export function withChoice(
  */
 export function withVerified(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	app: FindingApp | undefined,
 	now: string,
 ): Case {
-	const a = c.annotations.find((x) => x.id === annotationId);
+	const a = c.marks.find((x) => x.id === markId);
 	if (a?.resolution?.verified) return c;
 	return changed(
 		c,
-		annotationId,
+		markId,
 		(a) => {
 			const r = a.resolution;
 			if (r?.kind !== "fixed")
@@ -2008,7 +1992,7 @@ export function withVerified(
  */
 export function withReopen(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	reopen: {
 		note?: string;
 		app?: FindingApp;
@@ -2017,7 +2001,7 @@ export function withReopen(
 	},
 	now: string,
 ): Case {
-	const a = c.annotations.find((x) => x.id === annotationId);
+	const a = c.marks.find((x) => x.id === markId);
 	if (a !== undefined && a.resolution === undefined) {
 		if (reopen.refuseOpen)
 			throw new CaseError(
@@ -2029,7 +2013,7 @@ export function withReopen(
 		c,
 		changed(
 			c,
-			annotationId,
+			markId,
 			(a) => {
 				const { resolution: was, reopens = [], ...open } = a;
 				if (was === undefined) return a;
@@ -2053,10 +2037,10 @@ export function withReopen(
  */
 function openedBy(c: Case, next: Case): Case {
 	if (next.closed === undefined) return next;
-	const reopened = next.annotations.some(
+	const reopened = next.marks.some(
 		(a) =>
 			a.resolution === undefined &&
-			c.annotations.find((x) => x.id === a.id)?.resolution !== undefined,
+			c.marks.find((x) => x.id === a.id)?.resolution !== undefined,
 	);
 	if (!reopened) return next;
 	const { closed: _c, ...open } = next;
@@ -2065,13 +2049,13 @@ function openedBy(c: Case, next: Case): Case {
 
 export function withComment(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	comment: string,
 	now: string,
 ): Case {
 	return changed(
 		c,
-		annotationId,
+		markId,
 		// The text is the user's now, whoever wrote it first.
 		(a) => ({
 			...a,
@@ -2178,27 +2162,27 @@ export function withLink(c: Case, link: string | undefined, now: string): Case {
  * The case without the mark, and the images that go with it: its crop, and its
  * screenshot when no other mark is on it.
  */
-export function withoutAnnotation(
+export function withoutMark(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	now: string,
 ): { value: Case; images: string[] } {
-	const gone = c.annotations.find((a) => a.id === annotationId);
+	const gone = c.marks.find((a) => a.id === markId);
 	if (gone === undefined) throw new CaseError("The mark no longer exists.");
-	const annotations = c.annotations.filter((a) => a.id !== annotationId);
-	const shotUsed = annotations.some((a) => a.shot === gone.shot);
+	const marks = c.marks.filter((a) => a.id !== markId);
+	const shotUsed = marks.some((a) => a.shot === gone.shot);
 	const shot = c.shots.find((s) => s.id === gone.shot);
 	return {
 		// A page whose last screenshot went with the mark leaves the list.
 		value: withPagesOfShots({
 			...c,
-			annotations,
+			marks,
 			// Its comments stay, about "a deleted mark" (DEC-046).
 			...(c.comments === undefined
 				? {}
 				: {
 						comments: c.comments.map((k) =>
-							k.mark === annotationId
+							k.mark === markId
 								? (({ mark: _m, ...rest }) => ({
 										...rest,
 										markGone: true as const,
@@ -2207,10 +2191,7 @@ export function withoutAnnotation(
 						),
 					}),
 			shots: shotUsed ? c.shots : c.shots.filter((s) => s.id !== gone.shot),
-			lastNumber: Math.max(
-				c.lastNumber ?? 0,
-				...c.annotations.map((a) => a.number),
-			),
+			lastNumber: Math.max(c.lastNumber ?? 0, ...c.marks.map((a) => a.number)),
 			updatedAt: now,
 		}),
 		images: [
@@ -2222,14 +2203,14 @@ export function withoutAnnotation(
 
 // --- findings of AI apps on a mark (DEC-019) ---------------------------------
 
-const withFindings = (a: Annotation, findings: Finding[]): Annotation => {
+const withFindings = (a: Mark, findings: Finding[]): Mark => {
 	const { findings: _, ...rest } = a;
 	return findings.length > 0 ? { ...rest, findings } : rest;
 };
 
 /** The finding text of all the case's marks, in characters. */
 export const findingsTextOf = (c: Case): number =>
-	c.annotations.reduce(
+	c.marks.reduce(
 		(n, a) => (a.findings ?? []).reduce((m, f) => m + textLength(f.text), n),
 		0,
 	);
@@ -2247,7 +2228,7 @@ function withinFindingsText(before: Case, next: Case): Case {
 	return next;
 }
 
-function findingOf(a: Annotation, findingId: string): Finding {
+function findingOf(a: Mark, findingId: string): Finding {
 	const f = a.findings?.find((x) => x.id === findingId);
 	if (f === undefined)
 		throw new CaseError(`Mark ${a.number} has no finding ${findingId}.`);
@@ -2257,13 +2238,13 @@ function findingOf(a: Annotation, findingId: string): Finding {
 /** The case with `finding` added to the mark, after its others. */
 export function withFinding(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	finding: Finding,
 	now: string,
 ): Case {
 	const next = changed(
 		c,
-		annotationId,
+		markId,
 		(a) => {
 			const findings = a.findings ?? [];
 			if (findings.length >= MAX_FINDINGS)
@@ -2283,14 +2264,14 @@ export function withFinding(
 /** The case with the finding's text replaced; `editedAt` is `now`. */
 export function withFindingText(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	findingId: string,
 	text: string,
 	now: string,
 ): Case {
 	const next = changed(
 		c,
-		annotationId,
+		markId,
 		(a) => {
 			findingOf(a, findingId);
 			return withFindings(
@@ -2310,13 +2291,13 @@ export function withFindingText(
 /** The case without the finding. */
 export function withoutFinding(
 	c: Case,
-	annotationId: string,
+	markId: string,
 	findingId: string,
 	now: string,
 ): Case {
 	return changed(
 		c,
-		annotationId,
+		markId,
 		(a) => {
 			findingOf(a, findingId);
 			return withFindings(
@@ -2349,7 +2330,7 @@ function canonicalJson(value: unknown): string {
  * What can change of a mark (its comment, author, status, reopens and
  * findings), as a short text: equal while the mark is unchanged (DEC-046).
  */
-export function markSignature(a: Annotation): string {
+export function markSignature(a: Mark): string {
 	const text = canonicalJson([
 		a.comment,
 		a.author,
@@ -2380,7 +2361,7 @@ export function withMarkVia(
 ): Case {
 	return {
 		...c,
-		annotations: c.annotations.map((a) => {
+		marks: c.marks.map((a) => {
 			if (a.id !== markId) return a;
 			const { via: _v, ...rest } = a;
 			return app === undefined
@@ -2426,10 +2407,7 @@ export function withCaseComment(
 		throw new CaseError(
 			`A case holds at most ${MAX_CASE_COMMENTS} comments: delete one first.`,
 		);
-	if (
-		comment.mark !== undefined &&
-		!c.annotations.some((a) => a.id === comment.mark)
-	)
+	if (comment.mark !== undefined && !c.marks.some((a) => a.id === comment.mark))
 		throw new CaseError("The mark no longer exists.");
 	return changedBy(
 		{

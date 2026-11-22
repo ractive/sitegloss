@@ -8,9 +8,9 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
-	type Annotation,
 	type Case,
 	isOwnFinding,
+	type Mark,
 	markFor,
 	markKey,
 	validateCase,
@@ -18,7 +18,7 @@ import {
 	withComment,
 	withFinding,
 	withLink,
-	withoutAnnotation,
+	withoutMark,
 	withTitle,
 	withVerified,
 } from "../src/lib/case.ts";
@@ -223,10 +223,10 @@ describe("two devices and one team", () => {
 		expect(Object.values(await images(dana, "c_flow"))).not.toContain(
 			"MISSING",
 		);
-		expect(there?.annotations[0]?.element?.selector).toBe("form > button");
+		expect(there?.marks[0]?.element?.selector).toBe("form > button");
 		// The case's first page, and who made the marks.
 		expect(there?.page.url).toBe(CART);
-		expect(there?.annotations[0]?.createdBy).toEqual(TESS);
+		expect(there?.marks[0]?.createdBy).toEqual(TESS);
 		expect(status(dana)?.state).toBe("synced");
 		expect(dana.changed).toContain("c_flow");
 	});
@@ -249,7 +249,7 @@ describe("two devices and one team", () => {
 		await sync(tess, dana);
 		const there = (await dana.store.getCase("c_flow")) as Case;
 		expect(there.importedAt).toBeUndefined();
-		const finding = there.annotations[0]?.findings?.[0];
+		const finding = there.marks[0]?.findings?.[0];
 		expect(finding?.imported).toBeUndefined();
 		expect(finding?.text).toBe("The total wraps");
 		// Written for Tess: Tess's app's own on her device, nobody's on Dana's.
@@ -257,8 +257,7 @@ describe("two devices and one team", () => {
 		expect(finding && isOwnFinding(finding, app.id, TESS.id)).toBe(true);
 		expect(finding && isOwnFinding(finding, app.id, DANA.id)).toBe(false);
 		expect(finding && isOwnFinding(finding, app.id, undefined)).toBe(false);
-		const mine = (await tess.store.getCase("c_flow"))?.annotations[0]
-			?.findings?.[0];
+		const mine = (await tess.store.getCase("c_flow"))?.marks[0]?.findings?.[0];
 		expect(mine?.user).toEqual(TESS);
 		// A finding that never left this device is its app's, as before.
 		expect(
@@ -294,8 +293,8 @@ describe("two devices and one team", () => {
 		);
 		await sync(tess, dana);
 		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.annotations[0]?.resolution?.user).toEqual(DANA);
-		expect(there.annotations[0]?.resolution?.verified?.user).toEqual(TESS);
+		expect(there.marks[0]?.resolution?.user).toEqual(DANA);
+		expect(there.marks[0]?.resolution?.verified?.user).toEqual(TESS);
 	});
 
 	test("two changes to different things of one mark both stay; the same thing: the later one", async () => {
@@ -646,14 +645,14 @@ describe("mark numbers", () => {
 		await dana.engine.request();
 		// Dana's mark is 4 now, everywhere it is named.
 		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(
-			there.annotations.map((a) => [a.id, a.number, a.crop, a.comment]),
-		).toEqual([
-			["a1", 1, "crops/a1.webp", "Total is cut off"],
-			["a2", 2, "crops/a2.webp", "Pay button too pale"],
-			["a3", 3, "crops/a3.webp", "Tess's third"],
-			["a4", 4, "crops/a4.webp", "Dana's third"],
-		]);
+		expect(there.marks.map((a) => [a.id, a.number, a.crop, a.comment])).toEqual(
+			[
+				["a1", 1, "crops/a1.webp", "Total is cut off"],
+				["a2", 2, "crops/a2.webp", "Pay button too pale"],
+				["a3", 3, "crops/a3.webp", "Tess's third"],
+				["a4", 4, "crops/a4.webp", "Dana's third"],
+			],
+		);
 		expect(
 			await (await dana.store.getImage("c_flow", "crops/a4.webp"))?.blob.text(),
 		).toBe(danaCrop);
@@ -685,7 +684,7 @@ describe("mark numbers", () => {
 		await addMark(dana, "c_flow", "Dana's, not sent");
 		await dana.engine.request();
 		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.annotations.map((a) => [a.id, a.comment])).toEqual([
+		expect(there.marks.map((a) => [a.id, a.comment])).toEqual([
 			["a1", "Total is cut off"],
 			["a2", "Pay button too pale"],
 			["a3", "Tess's third"],
@@ -711,7 +710,7 @@ describe("mark numbers", () => {
 		await addMark(tess, "c_flow", "Third");
 		await sync(tess, dana);
 		// Tess takes it out again: the panel's delete, which keeps the number.
-		await change(tess, "c_flow", (c, now) => withoutAnnotation(c, "a3", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "a3", now));
 		await sync(tess, dana);
 		const next = await addMark(dana, "c_flow", "Dana's next");
 		expect(next.number).toBe(4);
@@ -727,9 +726,9 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 		await addMark(tess, "c_flow", "Tess's third");
 		await addMark(dana, "c_flow", "Dana's third", { url: PAY });
 		const before = (await tess.store.getCase("c_flow")) as Case;
-		const mine = before.annotations.find((a) => a.id === "a3") as Annotation;
+		const mine = before.marks.find((a) => a.id === "a3") as Mark;
 		const edit: MarkEdit = {
-			annotationId: "a3",
+			markId: "a3",
 			mark: markKey(before, mine),
 			mode: "comment",
 			kind: "fixed",
@@ -739,42 +738,40 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 		await sync(tess, dana);
 		// Her mark is 4 now, and "a3" is Dana's.
 		const after = (await tess.store.getCase("c_flow")) as Case;
-		expect(after.annotations.map((a) => [a.id, a.comment])).toEqual([
+		expect(after.marks.map((a) => [a.id, a.comment])).toEqual([
 			["a1", "Total is cut off"],
 			["a2", "Pay button too pale"],
 			["a3", "Dana's third"],
 			["a4", "Tess's third"],
 		]);
-		expect(editAfter(edit, after)).toEqual({ ...edit, annotationId: "a4" });
+		expect(editAfter(edit, after)).toEqual({ ...edit, markId: "a4" });
 		// A change is held to the mark it was opened on, not to the id.
 		expect(markFor(after, "a3", edit.mark)).toMatchObject({
 			id: "a4",
 			comment: "Tess's third",
 		});
-		expect(markKey(after, after.annotations[2] as Annotation)).not.toBe(
-			edit.mark,
-		);
+		expect(markKey(after, after.marks[2] as Mark)).not.toBe(edit.mark);
 		// The mark deleted meanwhile: the form closes, and nothing is its mark.
-		const gone = withoutAnnotation(after, "a4", after.updatedAt).value;
+		const gone = withoutMark(after, "a4", after.updatedAt).value;
 		expect(editAfter(edit, gone)).toBeUndefined();
 		expect(markFor(gone, "a3", edit.mark)).toBeUndefined();
 		// A mark that nothing tells apart from the form's mark (the same
 		// element marked twice on one screenshot) came since: neither is the
 		// form's mark, whatever the ids say, and nothing is changed.
 		const twin = {
-			...(after.annotations[3] as Annotation),
+			...(after.marks[3] as Mark),
 			id: "a5",
 			number: 5,
 		};
-		const twins = { ...after, annotations: [...after.annotations, twin] };
+		const twins = { ...after, marks: [...after.marks, twin] };
 		expect(markFor(twins, "a4", edit.mark)).toBe("ambiguous");
 		expect(markFor(twins, "a5", edit.mark)).toBe("ambiguous");
 		expect(markFor(twins, "a3", edit.mark)).toBe("ambiguous");
 		expect(editAfter(edit, twins)).toBeUndefined();
 		// A delete asked once ("Really delete?") follows its mark the same
 		// way: its second click must not find the teammate's mark.
-		const armed = { annotationId: "a3", mark: edit.mark, at: 1 };
-		expect(heldAfter(armed, after)).toEqual({ ...armed, annotationId: "a4" });
+		const armed = { markId: "a3", mark: edit.mark, at: 1 };
+		expect(heldAfter(armed, after)).toEqual({ ...armed, markId: "a4" });
 		expect(heldAfter(armed, gone)).toBeUndefined();
 		expect(heldAfter(armed, before)).toBe(armed);
 		// Unchanged: the same form.
@@ -785,39 +782,35 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 		await shared();
 		await addMark(tess, "c_flow", "Tess's third");
 		const one = (await tess.store.getCase("c_flow")) as Case;
-		const third = one.annotations.find((a) => a.id === "a3") as Annotation;
+		const third = one.marks.find((a) => a.id === "a3") as Mark;
 		// Before: M = a3, T = a4, the same drawing on the same screenshot.
 		const before: Case = {
 			...one,
-			annotations: [
-				...one.annotations.filter((a) => a.id !== "a3"),
+			marks: [
+				...one.marks.filter((a) => a.id !== "a3"),
 				{ ...third, comment: "M" },
 				{ ...third, id: "a4", number: 4, comment: "T" },
 			],
 		};
-		const t = before.annotations[3] as Annotation;
+		const t = before.marks[3] as Mark;
 		const key = markKey(before, t);
 		// Nothing moved: each twin is its own, and can be changed.
 		expect(markFor(before, "a4", key)).toMatchObject({ comment: "T" });
 		expect(
-			markFor(
-				before,
-				"a3",
-				markKey(before, before.annotations[2] as Annotation),
-			),
+			markFor(before, "a3", markKey(before, before.marks[2] as Mark)),
 		).toMatchObject({ comment: "M" });
 		// A teammate's mark takes 3: M is a4, T is a5. What was opened on T
 		// (a4) must not land on M, which has T's id and drawing now.
 		const dana3 = {
-			...(one.annotations[0] as Annotation),
+			...(one.marks[0] as Mark),
 			id: "a3",
 			number: 3,
 			comment: "Dana's",
 		};
 		const after: Case = {
 			...one,
-			annotations: [
-				...one.annotations.filter((a) => a.id !== "a3"),
+			marks: [
+				...one.marks.filter((a) => a.id !== "a3"),
 				dana3,
 				{ ...third, id: "a4", number: 4, comment: "M" },
 				{ ...third, id: "a5", number: 5, comment: "T" },
@@ -832,24 +825,24 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 					loaded: { caseId: "c_flow", tabId: 1 },
 					front: undefined,
 				},
-				{ caseId: "c_flow", annotationId: "a4", mark: key },
+				{ caseId: "c_flow", markId: "a4", mark: key },
 				1,
 			),
 		).toBe("changed");
 		// The panel's form and a "Really delete?" let go.
 		const edit: MarkEdit = {
-			annotationId: "a4",
+			markId: "a4",
 			mark: key,
 			mode: "comment",
 			kind: "fixed",
 			text: "Typed for T",
 		};
 		expect(editAfter(edit, after)).toBeUndefined();
-		expect(heldAfter({ annotationId: "a4", mark: key, at: 1 }, after)).toBe(
+		expect(heldAfter({ markId: "a4", mark: key, at: 1 }, after)).toBe(
 			undefined,
 		);
 		// A confirmed AI call held to T's key finds none at mark 4.
-		expect(markKey(after, after.annotations[3] as Annotation)).not.toBe(key);
+		expect(markKey(after, after.marks[3] as Mark)).not.toBe(key);
 	});
 });
 
@@ -857,7 +850,7 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 	/** Undo the add of a mark, as the toolbar does: its number and its screenshot's id are free again. */
 	async function undo(d: Device, id: string): Promise<void> {
 		const c = (await d.store.getCase("c_flow")) as Case;
-		const a = c.annotations.find((x) => x.id === id) as Annotation;
+		const a = c.marks.find((x) => x.id === id) as Mark;
 		d.clock.now = new Date(d.clock.now.getTime() + 1000);
 		const done = await undoAdd(
 			d.store,
@@ -883,9 +876,9 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 		await shared();
 		await addMark(tess, "c_flow", "Third", { element: true });
 		await sync(tess, dana);
-		const old = (await tess.store.getCase("c_flow"))?.annotations.find(
+		const old = (await tess.store.getCase("c_flow"))?.marks.find(
 			(a) => a.id === "a3",
-		) as Annotation;
+		) as Mark;
 		const before = server.shotsOf("c_flow").map((s) => s.id);
 		await undo(tess, "a3");
 		const again = await addMark(tess, "c_flow", "Third", { element: true });
@@ -894,7 +887,7 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 		await change(tess, "c_flow", (c, now) => ({
 			...c,
 			updatedAt: now,
-			annotations: c.annotations.map((a) =>
+			marks: c.marks.map((a) =>
 				a.id === again.id
 					? { ...a, shape: old.shape, element: old.element }
 					: a,
@@ -919,7 +912,7 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 		await sync(tess, dana);
 		await agree();
 		// And with a run after the Undo: the number is the team's to give.
-		const last = (await tess.store.getCase("c_flow"))?.annotations.at(-1);
+		const last = (await tess.store.getCase("c_flow"))?.marks.at(-1);
 		await undo(tess, last?.id as string);
 		await sync(tess, dana);
 		await addMark(tess, "c_flow", "Once more");
@@ -1043,7 +1036,7 @@ describe("what never changes of a mark is compared as it is sent (review B, sync
 			validateCase({
 				...c,
 				updatedAt: now,
-				annotations: c.annotations.map((a) => ({
+				marks: c.marks.map((a) => ({
 					...a,
 					element:
 						a.element === null
@@ -1074,7 +1067,7 @@ describe("what never changes of a mark is compared as it is sent (review B, sync
 		expect(status(tess)?.state).toBe("synced");
 		// Here it is whole still.
 		expect(
-			(await tess.store.getCase("c_el"))?.annotations[0]?.element?.id,
+			(await tess.store.getCase("c_el"))?.marks[0]?.element?.id,
 		).toHaveLength(600);
 	});
 });
@@ -1149,7 +1142,7 @@ describe("operations written down, and their images (review B, sync 9 and 11)", 
 describe("what the server refused (review B, sync 14)", () => {
 	test("a refusal the fetch settles goes with it: a change to a mark a teammate deleted is not said for ever", async () => {
 		await shared();
-		await change(dana, "c_flow", (c, now) => withoutAnnotation(c, "a2", now));
+		await change(dana, "c_flow", (c, now) => withoutMark(c, "a2", now));
 		await dana.engine.request();
 		await change(tess, "c_flow", (c, now) =>
 			withComment(c, "a2", "Tess edits the deleted mark", now),
@@ -1157,7 +1150,7 @@ describe("what the server refused (review B, sync 14)", () => {
 		await tess.engine.request();
 		// The mark is gone here too, and there is nothing left to say.
 		expect(
-			(await tess.store.getCase("c_flow"))?.annotations.map((a) => a.id),
+			(await tess.store.getCase("c_flow"))?.marks.map((a) => a.id),
 		).toEqual(["a1"]);
 		await tess.engine.request();
 		expect(status(tess)?.problems).toEqual([]);
@@ -1445,7 +1438,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		const files = new Map<string, StoredImage>();
 		for (const path of [
 			...copy.shots.map((s) => s.image),
-			...copy.annotations.map((a) => a.crop),
+			...copy.marks.map((a) => a.crop),
 		]) {
 			const image = await tess.store.getImage(id, path);
 			if (image !== undefined) files.set(path, image);
@@ -1504,7 +1497,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		expect(sent.map((op) => op.type)).toEqual(["case.create"]);
 		expect(dana.api.calls).toContain("GET case c_file");
 		expect(status(dana)?.joins).toEqual({ cases: 1, marks: 1 });
-		expect((await dana.store.getCase("c_file"))?.annotations[1]?.comment).toBe(
+		expect((await dana.store.getCase("c_file"))?.marks[1]?.comment).toBe(
 			"Dana's words",
 		);
 		// Yes: then only what the team lacks goes.
@@ -1559,7 +1552,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		expect(dana.kv.data.get(KEYS.modes)).toEqual({ c_file: "undecided" });
 		expect(status(dana)?.joins).toEqual({ cases: 1, marks: 1 });
 		expect(
-			(await dana.store.getCase("c_file"))?.annotations.map((a) => a.comment),
+			(await dana.store.getCase("c_file"))?.marks.map((a) => a.comment),
 		).toEqual(["Dana's newer words", "Two", "Dana's own third"]);
 		expect(numbered("c_file")).toHaveLength(2);
 		// "Keep them on this device": still nothing, and it stays said.
@@ -1581,7 +1574,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 			[3, "Dana's own third"],
 		]);
 		expect(
-			(await dana.store.getCase("c_file"))?.annotations.map((a) => a.comment),
+			(await dana.store.getCase("c_file"))?.marks.map((a) => a.comment),
 		).toEqual(["One", "Two", "Dana's own third"]);
 		expect(status(dana)?.problems).toEqual([]);
 	});
@@ -1607,7 +1600,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		// The team has the case, and mark 1 says something else here: not
 		// replaced, not sent; asked again, now with what it would replace.
 		expect(
-			(await dana.store.getCase("c_file"))?.annotations.map((a) => a.comment),
+			(await dana.store.getCase("c_file"))?.marks.map((a) => a.comment),
 		).toEqual(["Dana's newer words", "Two", "Dana's own third"]);
 		expect(numbered("c_file")).toEqual([
 			[1, "One"],
@@ -1625,7 +1618,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 			[3, "Dana's own third"],
 		]);
 		expect(
-			(await dana.store.getCase("c_file"))?.annotations.map((a) => a.comment),
+			(await dana.store.getCase("c_file"))?.marks.map((a) => a.comment),
 		).toEqual(["One", "Two", "Dana's own third"]);
 		expect(status(dana)?.state).toBe("synced");
 	});
@@ -1674,7 +1667,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		);
 		await dana.engine.request();
 		expect(
-			(await dana.store.getCase("c_file"))?.annotations.map((a) => a.comment),
+			(await dana.store.getCase("c_file"))?.marks.map((a) => a.comment),
 		).toEqual(["One", "Dana's words in the file"]);
 		expect(numbered("c_file")).toEqual([
 			[1, "One"],
@@ -1708,7 +1701,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		await sync(tess, dana);
 		expect(numbered("c_mine")).toEqual([[1, "One"]]);
 		expect(status(tess)?.state).toBe("synced");
-		expect((await dana.store.getCase("c_mine"))?.annotations).toHaveLength(1);
+		expect((await dana.store.getCase("c_mine"))?.marks).toHaveLength(1);
 	});
 });
 
@@ -1880,7 +1873,7 @@ describe("a book taken up again (review B, sync 4)", () => {
 		await tess.engine.signOut();
 		expect(tess.kv.data.get(KEYS.modes)).toEqual({ c_flow: "local" });
 		// While not syncing: one mark deleted, one edited, one added.
-		await change(tess, "c_flow", (c, now) => withoutAnnotation(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
 		await change(tess, "c_flow", (c, now) =>
 			withComment(c, "a1", "Edited while signed out", now),
 		);
@@ -1918,7 +1911,7 @@ describe("a book taken up again (review B, sync 4)", () => {
 		expect(status(tess)?.problems).toEqual([]);
 		expect(status(tess)?.state).toBe("synced");
 		// From here on a delete is a delete again.
-		await change(tess, "c_flow", (c, now) => withoutAnnotation(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
 		await sync(tess, dana);
 		expect(server.marksOf("c_flow").map((m) => m.comment)).toEqual([
 			"Edited while signed out",
@@ -1933,7 +1926,7 @@ describe("a book taken up again (review B, sync 4)", () => {
 		await signIn(tess);
 		await sync(tess, dana);
 		expect(server.caseOf("c_flow")).toBeDefined();
-		expect((await tess.store.getCase("c_flow"))?.annotations).toHaveLength(2);
+		expect((await tess.store.getCase("c_flow"))?.marks).toHaveLength(2);
 	});
 });
 
@@ -2172,7 +2165,7 @@ describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
 		expect(tess.kv.data.get(KEYS.cursor)).toBe(0);
 		expect(server.marksOf("c_zero")).toHaveLength(2);
 		await dana.engine.request();
-		await change(dana, "c_zero", (c, now) => withoutAnnotation(c, "a2", now));
+		await change(dana, "c_zero", (c, now) => withoutMark(c, "a2", now));
 		await dana.engine.request();
 		await tess.engine.request();
 		expect(
@@ -2195,7 +2188,7 @@ describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
 
 	test("the server in memory answers since=0 as the real one does: as any revision, with what was deleted", async () => {
 		await shared();
-		await change(tess, "c_flow", (c, now) => withoutAnnotation(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
 		await tess.engine.request();
 		const from0 = server.changes(0);
 		expect(from0.removed?.map((r) => r.type).sort()).toEqual(["mark", "shot"]);
@@ -2253,9 +2246,7 @@ describe("the pages of a synced case are the server's (DEC-039)", () => {
 				(p) => p.url === "https://shop.example/done",
 			)?.title,
 		).toBe("Thank you");
-		await change(dana, "c_flow", (c, now) =>
-			withoutAnnotation(c, done.id, now),
-		);
+		await change(dana, "c_flow", (c, now) => withoutMark(c, done.id, now));
 		await sync(dana, tess);
 		expect(server.caseOf("c_flow")?.pages.map((p) => p.url)).toEqual([
 			CART,
@@ -2309,10 +2300,10 @@ describe("the pages of a synced case are the server's (DEC-039)", () => {
 describe("deleting", () => {
 	test("a mark deleted on one device goes on the other, its screenshot with its last mark", async () => {
 		await shared();
-		await change(tess, "c_flow", (c, now) => withoutAnnotation(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
 		await sync(tess, dana);
 		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.annotations.map((a) => a.id)).toEqual(["a1"]);
+		expect(there.marks.map((a) => a.id)).toEqual(["a1"]);
 		expect(there.shots).toHaveLength(1);
 		expect(keys(dana, "c_flow")).toHaveLength(2);
 		expect(server.marksOf("c_flow")).toHaveLength(1);
@@ -2501,7 +2492,7 @@ describe("an image from the server is taken only when it is the image named (rev
 			await dana.engine.request();
 			// The mark with the bad image is not here; everything else is.
 			const there = (await dana.store.getCase("c_flow")) as Case;
-			expect(there.annotations.map((a) => a.comment)).toEqual([
+			expect(there.marks.map((a) => a.comment)).toEqual([
 				"Total is cut off",
 				"Pay button too pale",
 			]);
@@ -2509,7 +2500,7 @@ describe("an image from the server is taken only when it is the image named (rev
 				"MISSING",
 			);
 			expect(
-				(await dana.store.getCase("c_next"))?.annotations.map((a) => a.comment),
+				(await dana.store.getCase("c_next"))?.marks.map((a) => a.comment),
 			).toEqual(["A case after it"]);
 			expect(status(dana)?.state).toBe("problem");
 			expect(status(dana)?.problems).toEqual([
@@ -2558,7 +2549,7 @@ describe("an image from the server is taken only when it is the image named (rev
 				: get(team, asked);
 		await dana.engine.request();
 		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.annotations).toHaveLength(2);
+		expect(there.marks).toHaveLength(2);
 		expect(there.shots).toHaveLength(2);
 		expect(status(dana)?.problems.map((p) => p.text)).toEqual([TEXT]);
 	});
@@ -2592,7 +2583,7 @@ describe("an answer larger than an answer may be (review B, 11)", () => {
 		expect(asked[0]).toBeUndefined();
 		expect(asked.slice(1).every((limit) => limit === SMALL_PAGE)).toBe(true);
 		expect(asked.length).toBeGreaterThan(3);
-		expect((await dana.store.getCase("c_big"))?.annotations).toHaveLength(45);
+		expect((await dana.store.getCase("c_big"))?.marks).toHaveLength(45);
 		expect(status(dana)?.state).toBe("synced");
 	});
 
@@ -2742,7 +2733,7 @@ describe("a contract that has grown", () => {
 			await addMark(tess, "c_many", `Mark ${i}`);
 			await tess.engine.request();
 		}
-		await change(tess, "c_many", (c, now) => withoutAnnotation(c, "a9", now));
+		await change(tess, "c_many", (c, now) => withoutMark(c, "a9", now));
 		await tess.engine.request();
 		const changes = dana.api.changes.bind(dana.api);
 		let asked = 0;
@@ -2762,9 +2753,9 @@ describe("a contract that has grown", () => {
 			look(await tess.store.getCase("c_many")),
 		);
 		expect(
-			(await dana.store.getCase("c_many"))?.annotations.map((a) => a.number),
+			(await dana.store.getCase("c_many"))?.marks.map((a) => a.number),
 		).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]);
-		expect((await dana.store.getCase("c_many"))?.annotations[1]?.comment).toBe(
+		expect((await dana.store.getCase("c_many"))?.marks[1]?.comment).toBe(
 			"Changed between two pages",
 		);
 		expect(Object.values(await images(dana, "c_many"))).not.toContain(
@@ -2952,7 +2943,7 @@ describe("the worker stopped in the middle", () => {
 		};
 		void dana.engine.request();
 		await until(() => stopped);
-		expect((await dana.store.getCase("c_flow"))?.annotations).toHaveLength(3);
+		expect((await dana.store.getCase("c_flow"))?.marks).toHaveLength(3);
 		// The ids were written down first, each with its mark's drawing.
 		expect(Object.keys(book(dana, "c_flow")?.announced?.marks ?? {})).toEqual([
 			"a3",
@@ -2985,7 +2976,7 @@ describe("the worker stopped in the middle", () => {
 		};
 		void dana.engine.request();
 		await until(() => stopped);
-		expect((await dana.store.getCase("c_other"))?.annotations).toHaveLength(2);
+		expect((await dana.store.getCase("c_other"))?.marks).toHaveLength(2);
 		dana.kv.set = put;
 		// A new worker, with what the stopped one had written.
 		dana = restarted(dana);

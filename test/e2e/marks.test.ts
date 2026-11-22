@@ -11,7 +11,7 @@ import {
 	expect,
 	test,
 } from "bun:test";
-import type { Annotation, Shot } from "../../src/lib/case.ts";
+import type { Mark, Shot } from "../../src/lib/case.ts";
 import type { Page } from "./browser.ts";
 import {
 	browserBinary,
@@ -134,8 +134,7 @@ describe.skipIf(browserBinary === undefined)(
 			// The page is back where the user left it.
 			expect(await page.eval<number>("scrollY")).toBe(down);
 			const { c } = await saved("Waited");
-			const shotOf = (n: number) =>
-				c.annotations.find((a) => a.number === n)?.shot;
+			const shotOf = (n: number) => c.marks.find((a) => a.number === n)?.shot;
 			expect(new Set([shotOf(1), shotOf(2)]).size).toBe(2);
 			expect(
 				await countColour(h.control, "Waited", "crops/a1.webp", BLUE),
@@ -176,7 +175,7 @@ describe.skipIf(browserBinary === undefined)(
 			await Bun.sleep(1800);
 			await saveAs(page, "Pushed down");
 			const { c } = await saved("Pushed down");
-			const a = c.annotations[0] as Annotation;
+			const a = c.marks[0] as Mark;
 			const shot = c.shots[0] as Shot;
 			if (a.shape.kind !== "box") throw new Error("not a box");
 			expect(a.element?.selector).toContain("near");
@@ -198,7 +197,7 @@ describe.skipIf(browserBinary === undefined)(
 			await shotsTaken(tabId);
 			await saveAs(page, "After undo");
 			const { c } = await saved("After undo");
-			expect(c.annotations.map((a) => a.shot)).toEqual(["s1", "s2"]);
+			expect(c.marks.map((a) => a.shot)).toEqual(["s1", "s2"]);
 			expect(
 				await countColour(h.control, "After undo", "crops/a2.webp", GREEN),
 			).toBeGreaterThan(1000);
@@ -231,7 +230,7 @@ describe.skipIf(browserBinary === undefined)(
 			await page.click(shadow('[data-action="retry"]'));
 			await saveAs(page, "Failed shot");
 			const { c } = await saved("Failed shot");
-			expect(c.annotations[2]?.shot).not.toBe("s1");
+			expect(c.marks[2]?.shot).not.toBe("s1");
 			expect(
 				await countColour(h.control, "Failed shot", "crops/a3.webp", GREEN),
 			).toBeGreaterThan(1000);
@@ -284,7 +283,7 @@ describe.skipIf(browserBinary === undefined)(
 			).target.caseId;
 			const db = await h.control.eval<Db>(READ_DB);
 			expect(
-				db.cases.find((c) => c.id === caseId)?.annotations.map((a) => a.number),
+				db.cases.find((c) => c.id === caseId)?.marks.map((a) => a.number),
 			).toEqual([1]);
 			await close(page);
 		}, 60_000);
@@ -377,7 +376,7 @@ describe.skipIf(browserBinary === undefined)(
 			expect(
 				await countColour(h.control, "Routes", "shots/s2.webp", ORANGE),
 			).toBeGreaterThan(1000);
-			expect(c.annotations[0]?.element?.text).toBe("Near the top");
+			expect(c.marks[0]?.element?.text).toBe("Near the top");
 			await close(page);
 		}, 60_000);
 
@@ -391,7 +390,7 @@ describe.skipIf(browserBinary === undefined)(
 			await shotsTaken(tabId);
 			await saveAs(page, "Menu");
 			const { c } = await saved("Menu");
-			expect(c.annotations[0]?.element?.text).toBe("Menu item");
+			expect(c.marks[0]?.element?.text).toBe("Menu item");
 			expect(c.shots).toHaveLength(2);
 			expect(
 				await countColour(h.control, "Menu", "shots/s1.webp", BLUE),
@@ -415,7 +414,7 @@ describe.skipIf(browserBinary === undefined)(
 			const { c, images } = await saved("Shared");
 			// Added one by one, each mark has a copy of the one capture (DEC-014).
 			expect(c.shots).toHaveLength(2);
-			expect(c.annotations.map((a) => a.shot)).toEqual(["s1", "s2"]);
+			expect(c.marks.map((a) => a.shot)).toEqual(["s1", "s2"]);
 			expect(
 				images
 					.map((i) => i.key)
@@ -472,7 +471,7 @@ describe.skipIf(browserBinary === undefined)(
 			await Bun.sleep(1000);
 			const marks = async () =>
 				(await h.control.eval<Db>(READ_DB)).cases.find((c) => c.id === caseId)
-					?.annotations.length;
+					?.marks.length;
 			expect(await marks()).toBe(0);
 			await sendToTab(tabId, { type: "page:unblur" });
 			await page.waitFor(
@@ -518,7 +517,7 @@ describe.skipIf(browserBinary === undefined)(
 			await shotsTaken(tabId);
 			await saveAs(page, "Trap");
 			const { c } = await saved("Trap");
-			expect(c.annotations[0]?.comment).toBe("typed despite the trap");
+			expect(c.marks[0]?.comment).toBe("typed despite the trap");
 			await close(page);
 		}, 60_000);
 
@@ -531,7 +530,7 @@ describe.skipIf(browserBinary === undefined)(
 			await shotsTaken(tabId);
 			await saveAs(page, "Dialog");
 			const { c } = await saved("Dialog");
-			expect(c.annotations[0]?.element?.text).toBe("In the dialog");
+			expect(c.marks[0]?.element?.text).toBe("In the dialog");
 			await page.eval(`document.getElementById("dialog").close()`);
 			await page.waitFor(`${HOST}.parentElement === document.documentElement`);
 			await close(page);
@@ -549,7 +548,7 @@ describe.skipIf(browserBinary === undefined)(
 			await markElement(page, "#label", "on http");
 			await shotsTaken(tabId);
 			await saveAs(page, "Plain http");
-			expect((await saved("Plain http")).c.annotations).toHaveLength(1);
+			expect((await saved("Plain http")).c.marks).toHaveLength(1);
 			await close(page);
 		}, 60_000);
 
@@ -591,7 +590,7 @@ describe.skipIf(browserBinary === undefined)(
 				await sendToTab(tabId, {
 					type: "case:show",
 					caseId: "x",
-					annotationId: "a1",
+					markId: "a1",
 				}),
 			).toEqual({
 				error: "An AI app is taking a screenshot; try again in a moment.",
@@ -612,7 +611,7 @@ describe.skipIf(browserBinary === undefined)(
 			await markElement(page, "#item", "two");
 			await saveAs(page, "Fast");
 			const { c, images } = await saved("Fast");
-			expect(c.annotations.map((a) => a.comment)).toEqual(["one", "two"]);
+			expect(c.marks.map((a) => a.comment)).toEqual(["one", "two"]);
 			expect(images.some((i) => i.key.startsWith(`${c.id}/pending/`))).toBe(
 				false,
 			);

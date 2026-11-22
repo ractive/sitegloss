@@ -124,9 +124,7 @@ describe.skipIf(browserBinary === undefined)(
 			const db = await h.control.eval<Db>(READ_DB);
 			const c = db.cases.find((x) => x.id === caseId) as unknown as Case;
 			const mark = (n: number) =>
-				c.annotations.find(
-					(a) => a.number === n,
-				) as Case["annotations"][number];
+				c.marks.find((a) => a.number === n) as Case["marks"][number];
 			const el = (n: number) => mark(n).element as ElementDetails;
 			const path = new URL(await page.eval<string>("location.href")).pathname;
 

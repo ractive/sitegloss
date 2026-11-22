@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	type Annotation,
 	type Case,
 	CaseError,
 	caseCounts,
@@ -21,6 +20,7 @@ import {
 	MAX_REOPENS,
 	MAX_TITLE,
 	MAX_URL,
+	type Mark,
 	markStatus,
 	newId,
 	nextNumbers,
@@ -35,8 +35,8 @@ import {
 	withFinding,
 	withFindingText,
 	withLink,
-	withoutAnnotation,
 	withoutFinding,
+	withoutMark,
 	withReopen,
 	withResolution,
 	withTitle,
@@ -55,7 +55,7 @@ function withMarks(): Case {
 		capturedAt: "2026-11-04T10:00:00Z",
 	});
 	c.shots = [shot("s1"), shot("s2")];
-	c.annotations = [
+	c.marks = [
 		{
 			id: "a1",
 			number: 1,
@@ -122,7 +122,7 @@ const shotOf = (id: string) => ({
 	capturedAt: "2026-11-04T10:00:00Z",
 });
 
-const mark = (n: number, extra: Partial<Annotation> = {}): Annotation => ({
+const mark = (n: number, extra: Partial<Mark> = {}): Mark => ({
 	id: `a${n}`,
 	number: n,
 	shot: "s1",
@@ -137,27 +137,23 @@ const mark = (n: number, extra: Partial<Annotation> = {}): Annotation => ({
 const caseWith = (extra: Partial<Case>): unknown => ({
 	...sampleCase(),
 	shots: [shotOf("s1")],
-	annotations: [mark(1)],
+	marks: [mark(1)],
 	...extra,
 });
 
 describe("validateCase limits", () => {
 	test("accepts a valid case and numbers continue after it", () => {
 		const c = validateCase(caseWith({ shots: [shotOf("s1"), shotOf("s2")] }));
-		expect(nextNumbers(c)).toEqual({ annotation: 2, shot: 3 });
+		expect(nextNumbers(c)).toEqual({ mark: 2, shot: 3 });
 	});
 
 	test.each([
 		[
 			"a number beyond the limit",
-			{ annotations: [mark(1, { number: 1e21 })] },
+			{ marks: [mark(1, { number: 1e21 })] },
 			"number",
 		],
-		[
-			"a fractional number",
-			{ annotations: [mark(1, { number: 1.5 })] },
-			"number",
-		],
+		["a fractional number", { marks: [mark(1, { number: 1.5 })] }, "number"],
 		["an odd shot id", { shots: [shotOf("s1e999")] }, "shots[0].id"],
 		[
 			"a shot id used twice",
@@ -192,13 +188,13 @@ describe("validateCase limits", () => {
 		};
 		const c = validateCase(
 			JSON.parse(
-				JSON.stringify(caseWith({ annotations: [mark(1)] })).replace(
+				JSON.stringify(caseWith({ marks: [mark(1)] })).replace(
 					'"element":null',
 					`"element":${JSON.stringify(element)}`,
 				),
 			),
 		);
-		expect(c.annotations[0]?.element?.attributes).toEqual({ href: "/x" });
+		expect(c.marks[0]?.element?.attributes).toEqual({ href: "/x" });
 	});
 });
 
@@ -217,20 +213,18 @@ describe("findings on a mark", () => {
 	});
 	const withOne = (f: unknown) => {
 		const c = withMarks();
-		(c.annotations[0] as unknown as Record<string, unknown>)["findings"] = f;
+		(c.marks[0] as unknown as Record<string, unknown>)["findings"] = f;
 		return c;
 	};
 
 	test("are kept through validation; an empty list is none", () => {
 		const c = withOne([finding("f_1", { editedAt: "2026-11-10T11:00:00Z" })]);
 		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
-		expect(validateCase(withOne([])).annotations[0]).not.toHaveProperty(
-			"findings",
-		);
+		expect(validateCase(withOne([])).marks[0]).not.toHaveProperty("findings");
 		// Only a finding from a file says so.
 		expect(
 			validateCase(withOne([finding("f_1", { imported: false } as never)]))
-				.annotations[0]?.findings?.[0],
+				.marks[0]?.findings?.[0],
 		).toEqual(finding("f_1"));
 	});
 
@@ -252,26 +246,24 @@ describe("findings on a mark", () => {
 	test("are added, edited and deleted; the comment and its author stay", () => {
 		const c = withMarks();
 		const added = withFinding(c, "a1", finding("f_1", { text: " x " }), "t1");
-		expect(added.annotations[0]?.findings).toEqual([
-			finding("f_1", { text: "x" }),
-		]);
-		expect(added.annotations[0]?.comment).toBe("x");
-		expect(added.annotations[0]?.author).toBe("user");
+		expect(added.marks[0]?.findings).toEqual([finding("f_1", { text: "x" })]);
+		expect(added.marks[0]?.comment).toBe("x");
+		expect(added.marks[0]?.author).toBe("user");
 		expect(added.updatedAt).toBe("t1");
 		const edited = withFindingText(added, "a1", "f_1", "y", "t2");
-		expect(edited.annotations[0]?.findings?.[0]).toMatchObject({
+		expect(edited.marks[0]?.findings?.[0]).toMatchObject({
 			text: "y",
 			at: "2026-11-10T10:00:00Z",
 			editedAt: "t2",
 		});
 		const gone = withoutFinding(edited, "a1", "f_1", "t3");
-		expect(gone.annotations[0]).not.toHaveProperty("findings");
+		expect(gone.marks[0]).not.toHaveProperty("findings");
 		expect(() => withoutFinding(gone, "a1", "f_1", "t4")).toThrow(
 			"Mark 1 has no finding f_1",
 		);
 		// The user's edit of the comment keeps them.
 		expect(
-			withComment(added, "a1", "new", "t5").annotations[0]?.findings,
+			withComment(added, "a1", "new", "t5").marks[0]?.findings,
 		).toHaveLength(1);
 	});
 
@@ -286,12 +278,12 @@ describe("findings on a mark", () => {
 
 	test("a case holds at most MAX_FINDINGS_TEXT of finding text; an edit that shrinks it may pass", () => {
 		const base = withMarks();
-		const first = base.annotations[0] as Annotation;
+		const first = base.marks[0] as Mark;
 		// One mark more than the limit needs, each to hold its most.
 		const marks = MAX_FINDINGS_TEXT / (MAX_FINDING * MAX_FINDINGS) + 1;
 		let c: Case = {
 			...base,
-			annotations: Array.from({ length: marks }, (_, i) => ({
+			marks: Array.from({ length: marks }, (_, i) => ({
 				...first,
 				id: `a${i + 1}`,
 				number: i + 1,
@@ -334,8 +326,8 @@ describe("findings on a mark", () => {
 		// A case over the limit, from a file, may still shrink.
 		const bigger: Case = {
 			...c,
-			annotations: [
-				...c.annotations,
+			marks: [
+				...c.marks,
 				{ ...first, id: "a9", number: 9, findings: [finding("f_1")] },
 			],
 		};
@@ -358,7 +350,7 @@ describe("findings on a mark", () => {
 			finding("f_1", { text: astral }),
 			"t",
 		);
-		expect(added.annotations[0]?.findings?.[0]?.text).toBe(astral);
+		expect(added.marks[0]?.findings?.[0]?.text).toBe(astral);
 		expect(validateCase(JSON.parse(JSON.stringify(added)))).toEqual(added);
 		// One more is cut to MAX_FINDING, between two pairs.
 		const edited = withFindingText(
@@ -368,9 +360,9 @@ describe("findings on a mark", () => {
 			`${astral}${emoji}`,
 			"t",
 		);
-		expect(edited.annotations[0]?.findings?.[0]?.text).toBe(astral);
+		expect(edited.marks[0]?.findings?.[0]?.text).toBe(astral);
 		const odd = `x${astral}`;
-		const cut = withFindingText(added, "a1", "f_1", odd, "t").annotations[0]
+		const cut = withFindingText(added, "a1", "f_1", odd, "t").marks[0]
 			?.findings?.[0]?.text as string;
 		expect(cut).toBe(`x${emoji.repeat(MAX_FINDING - 1)}`);
 		expect(textLength(cut)).toBe(MAX_FINDING);
@@ -380,7 +372,7 @@ describe("findings on a mark", () => {
 		// The comment and the resolution note are cut the same way.
 		const long = emoji.repeat(MAX_COMMENT + 1);
 		const commented = withComment(withMarks(), "a1", long, "t");
-		expect(commented.annotations[0]?.comment).toBe(emoji.repeat(MAX_COMMENT));
+		expect(commented.marks[0]?.comment).toBe(emoji.repeat(MAX_COMMENT));
 		expect(validateCase(commented)).toEqual(commented);
 		const resolved = withResolution(
 			withMarks(),
@@ -388,9 +380,7 @@ describe("findings on a mark", () => {
 			{ kind: "fixed", note: long },
 			"t",
 		);
-		expect(resolved.annotations[0]?.resolution?.note).toBe(
-			emoji.repeat(MAX_COMMENT),
-		);
+		expect(resolved.marks[0]?.resolution?.note).toBe(emoji.repeat(MAX_COMMENT));
 		expect(validateCase(resolved)).toEqual(resolved);
 	});
 
@@ -408,11 +398,11 @@ describe("findings on a mark", () => {
 describe("mark ids", () => {
 	test("must be a<number>, so later saves cannot collide", () => {
 		const c = withMarks();
-		const first = c.annotations[0];
+		const first = c.marks[0];
 		if (first === undefined) throw new Error("no mark");
 		const odd = {
 			...c,
-			annotations: [{ ...first, id: "a7", crop: "crops/a7.webp" }],
+			marks: [{ ...first, id: "a7", crop: "crops/a7.webp" }],
 		};
 		expect(() => validateCase(odd)).toThrow(`must be a${first.number}`);
 	});
@@ -637,8 +627,8 @@ describe("settling, editing and deleting a mark", () => {
 	/** Marks 1 and 2 on s1, mark 3 alone on s2. */
 	function three(): Case {
 		const c = withMarks();
-		const [first] = c.annotations as [Annotation];
-		c.annotations = [
+		const [first] = c.marks as [Mark];
+		c.marks = [
 			first,
 			{ ...first, id: "a2", number: 2, crop: "crops/a2.webp" },
 			{ ...first, id: "a3", number: 3, shot: "s2", crop: "crops/a3.webp" },
@@ -654,7 +644,7 @@ describe("settling, editing and deleting a mark", () => {
 			{ kind: "wontfix", note: "  Legal wants it  " },
 			NOW,
 		);
-		expect(done.annotations[1]?.resolution).toEqual({
+		expect(done.marks[1]?.resolution).toEqual({
 			kind: "wontfix",
 			note: "Legal wants it",
 			at: NOW,
@@ -662,7 +652,7 @@ describe("settling, editing and deleting a mark", () => {
 		expect(done.updatedAt).toBe(NOW);
 		expect(validateCase(JSON.parse(JSON.stringify(done)))).toEqual(done);
 		const open = withReopen(done, "a2", {}, NOW);
-		expect("resolution" in (open.annotations[1] as object)).toBe(false);
+		expect("resolution" in (open.marks[1] as object)).toBe(false);
 	});
 
 	test("an empty note is no note", () => {
@@ -672,51 +662,49 @@ describe("settling, editing and deleting a mark", () => {
 			{ kind: "fixed", note: " " },
 			NOW,
 		);
-		expect(done.annotations[0]?.resolution).toEqual({ kind: "fixed", at: NOW });
+		expect(done.marks[0]?.resolution).toEqual({ kind: "fixed", at: NOW });
 	});
 
 	test("a resolution of another kind is refused on import", () => {
 		const c = three();
 		const bad = JSON.parse(JSON.stringify(c));
-		bad.annotations[0].resolution = { kind: "duplicate", at: NOW };
-		expect(() => validateCase(bad)).toThrow(
-			"case.annotations[0].resolution.kind",
-		);
+		bad.marks[0].resolution = { kind: "duplicate", at: NOW };
+		expect(() => validateCase(bad)).toThrow("case.marks[0].resolution.kind");
 	});
 
 	test("a comment edited is the user's", () => {
 		const c = three();
-		c.annotations[2] = { ...(c.annotations[2] as Annotation), author: "ai" };
+		c.marks[2] = { ...(c.marks[2] as Mark), author: "ai" };
 		const edited = withComment(c, "a3", "  Shorter  ", NOW);
-		expect(edited.annotations[2]?.comment).toBe("Shorter");
-		expect(edited.annotations[2]?.author).toBe("user");
+		expect(edited.marks[2]?.comment).toBe("Shorter");
+		expect(edited.marks[2]?.author).toBe("user");
 	});
 
 	test("a mark gone: its crop goes, the shared screenshot stays", () => {
-		const { value, images } = withoutAnnotation(three(), "a2", NOW);
-		expect(value.annotations.map((a) => a.id)).toEqual(["a1", "a3"]);
+		const { value, images } = withoutMark(three(), "a2", NOW);
+		expect(value.marks.map((a) => a.id)).toEqual(["a1", "a3"]);
 		expect(value.shots.map((s) => s.id)).toEqual(["s1", "s2"]);
 		expect(images).toEqual(["crops/a2.webp"]);
 		expect(validateCase(JSON.parse(JSON.stringify(value)))).toEqual(value);
 	});
 
 	test("the last mark on a screenshot takes the screenshot with it", () => {
-		const { value, images } = withoutAnnotation(three(), "a3", NOW);
+		const { value, images } = withoutMark(three(), "a3", NOW);
 		expect(value.shots.map((s) => s.id)).toEqual(["s1"]);
 		expect(images).toEqual(["crops/a3.webp", "shots/s2.webp"]);
 	});
 
 	test("a deleted mark's number is not given again", () => {
-		const { value } = withoutAnnotation(three(), "a3", NOW);
+		const { value } = withoutMark(three(), "a3", NOW);
 		expect(value.lastNumber).toBe(3);
-		expect(nextNumbers(value).annotation).toBe(4);
+		expect(nextNumbers(value).mark).toBe(4);
 		const bad = JSON.parse(JSON.stringify(three()));
 		bad.lastNumber = 2;
 		expect(() => validateCase(bad)).toThrow("case.lastNumber");
 	});
 
 	test("a mark that is gone already says so", () => {
-		expect(() => withoutAnnotation(three(), "a9", NOW)).toThrow(
+		expect(() => withoutMark(three(), "a9", NOW)).toThrow(
 			"The mark no longer exists.",
 		);
 		expect(() => withComment(three(), "a9", "x", NOW)).toThrow(
@@ -736,7 +724,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		host: "claude.ai",
 	};
 	const one = (): Case => withMarks();
-	const statusOf = (c: Case) => markStatus(c.annotations[0] as Annotation);
+	const statusOf = (c: Case) => markStatus(c.marks[0] as Mark);
 	const roundTrip = (c: Case) => validateCase(JSON.parse(JSON.stringify(c)));
 
 	test("each status from what is stored", () => {
@@ -762,13 +750,13 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			{ kind: "fixed", note: "Darker text, 7:1 now" },
 			T1,
 		);
-		expect(fixed.annotations[0]?.resolution).toEqual({
+		expect(fixed.marks[0]?.resolution).toEqual({
 			kind: "fixed",
 			note: "Darker text, 7:1 now",
 			at: T1,
 		});
 		const verified = withVerified(fixed, "a1", undefined, T2);
-		expect(verified.annotations[0]?.resolution?.verified).toEqual({ at: T2 });
+		expect(verified.marks[0]?.resolution?.verified).toEqual({ at: T2 });
 		expect(verified.updatedAt).toBe(T2);
 		// open → fixed and verified at once (the panel's choice).
 		const atOnce = withResolution(
@@ -777,14 +765,14 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			{ kind: "fixed", verified: true },
 			T1,
 		);
-		expect(atOnce.annotations[0]?.resolution).toEqual({
+		expect(atOnce.marks[0]?.resolution).toEqual({
 			kind: "fixed",
 			at: T1,
 			verified: { at: T1 },
 		});
 		// verified → open: the whole resolution moves into the reopen.
 		const reopened = withReopen(verified, "a1", { note: "Still pale" }, T3);
-		const a = reopened.annotations[0] as Annotation;
+		const a = reopened.marks[0] as Mark;
 		expect(a.resolution).toBeUndefined();
 		expect(a.reopens).toEqual([
 			{
@@ -803,7 +791,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		for (const kind of ["wontfix", "cantreproduce"] as const) {
 			const closed = withResolution(c, "a1", { kind }, T1);
 			const back = withReopen(closed, "a1", { note: "Not so" }, T2);
-			expect(back.annotations[0]?.reopens?.[0]?.was.kind).toBe(kind);
+			expect(back.marks[0]?.reopens?.[0]?.was.kind).toBe(kind);
 		}
 		// Change: a verified fix stays verified as it was when chosen again...
 		const kept = withResolution(
@@ -812,7 +800,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			{ kind: "fixed", verified: true, note: "Hover too" },
 			T3,
 		);
-		expect(kept.annotations[0]?.resolution).toEqual({
+		expect(kept.marks[0]?.resolution).toEqual({
 			kind: "fixed",
 			note: "Hover too",
 			at: T3,
@@ -823,13 +811,13 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			statusOf(withResolution(verified, "a1", { kind: "fixed" }, T3)),
 		).toBe("fixed");
 		const wontfix = withResolution(verified, "a1", { kind: "wontfix" }, T3);
-		expect(wontfix.annotations[0]?.resolution).toEqual({
+		expect(wontfix.marks[0]?.resolution).toEqual({
 			kind: "wontfix",
 			at: T3,
 		});
 		// A reopen stays when the mark is settled again.
 		const again = withResolution(reopened, "a1", { kind: "fixed" }, T4);
-		expect(again.annotations[0]?.reopens?.length).toBe(1);
+		expect(again.marks[0]?.reopens?.length).toBe(1);
 		expect(roundTrip(again)).toEqual(again);
 	});
 
@@ -842,7 +830,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		);
 		const verified = withVerified(fixed, "a1", undefined, T2);
 		const typo = withChoice(verified, "a1", "verified", "Hover state, too", T3);
-		expect(typo.annotations[0]?.resolution).toEqual({
+		expect(typo.marks[0]?.resolution).toEqual({
 			kind: "fixed",
 			note: "Hover state, too",
 			at: T1,
@@ -854,15 +842,15 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			withChoice(verified, "a1", "verified", " Hover state too ", T3),
 		).toBe(verified);
 		expect(
-			withChoice(fixed, "a1", "fixed", "Other", T3).annotations[0]?.resolution,
+			withChoice(fixed, "a1", "fixed", "Other", T3).marks[0]?.resolution,
 		).toEqual({ kind: "fixed", note: "Other", at: T1, app: CLAUDE });
 		// The same kind: when and who stay, only the verification changes.
 		expect(
-			withChoice(verified, "a1", "fixed", "Hover state too", T3).annotations[0]
+			withChoice(verified, "a1", "fixed", "Hover state too", T3).marks[0]
 				?.resolution,
 		).toEqual({ kind: "fixed", note: "Hover state too", at: T1, app: CLAUDE });
 		expect(
-			withChoice(fixed, "a1", "verified", "Hover state too", T3).annotations[0]
+			withChoice(fixed, "a1", "verified", "Hover state too", T3).marks[0]
 				?.resolution,
 		).toEqual({
 			kind: "fixed",
@@ -873,7 +861,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		});
 		// Another kind: the resolution is the user's, now.
 		expect(
-			withChoice(verified, "a1", "wontfix", "", T3).annotations[0]?.resolution,
+			withChoice(verified, "a1", "wontfix", "", T3).marks[0]?.resolution,
 		).toEqual({ kind: "wontfix", at: T3 });
 		expect(statusOf(withChoice(one(), "a1", "verified", "", T3))).toBe(
 			"verified",
@@ -911,15 +899,13 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			T1,
 		);
 		const back = withReopen(fixed, "a1", { note: "Still" }, T2);
-		expect(back.annotations[0]?.reopens?.[0]?.was.note?.length).toBe(
-			MAX_REOPEN_NOTE,
-		);
+		expect(back.marks[0]?.reopens?.[0]?.was.note?.length).toBe(MAX_REOPEN_NOTE);
 		// A file with a longer one is read cut the same way, not refused.
 		const file = JSON.parse(JSON.stringify(back));
-		file.annotations[0].reopens[0].was.note = "z".repeat(MAX_COMMENT);
-		expect(
-			validateCase(file).annotations[0]?.reopens?.[0]?.was.note?.length,
-		).toBe(MAX_REOPEN_NOTE);
+		file.marks[0].reopens[0].was.note = "z".repeat(MAX_COMMENT);
+		expect(validateCase(file).marks[0]?.reopens?.[0]?.was.note?.length).toBe(
+			MAX_REOPEN_NOTE,
+		);
 	});
 
 	test("only a fixed mark can be verified", () => {
@@ -933,8 +919,8 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		);
 		// "verified" on another kind is no verification.
 		expect(
-			withResolution(c, "a1", { kind: "wontfix", verified: true }, T1)
-				.annotations[0]?.resolution,
+			withResolution(c, "a1", { kind: "wontfix", verified: true }, T1).marks[0]
+				?.resolution,
 		).toEqual({ kind: "wontfix", at: T1 });
 	});
 
@@ -947,7 +933,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			T3,
 		);
 		const verified = withVerified(fixed, "a1", CLAUDE, T4);
-		expect(verified.annotations[0]?.resolution).toEqual({
+		expect(verified.marks[0]?.resolution).toEqual({
 			kind: "fixed",
 			note: "Hover state too",
 			at: T3,
@@ -955,10 +941,10 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			verified: { at: T4, app: CLAUDE },
 		});
 		const back = withReopen(verified, "a1", { app: CLAUDE }, T4);
-		expect(back.annotations[0]?.reopens?.[0]).toEqual({
+		expect(back.marks[0]?.reopens?.[0]).toEqual({
 			at: T4,
 			app: CLAUDE,
-			was: verified.annotations[0]?.resolution as never,
+			was: verified.marks[0]?.resolution as never,
 		});
 		expect(roundTrip(back)).toEqual(back);
 		expect(roundTrip(verified)).toEqual(verified);
@@ -970,7 +956,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			c = withResolution(c, "a1", { kind: "fixed", note: `Fix ${i}` }, T1);
 			c = withReopen(c, "a1", { note: `Still ${i}` }, T2);
 		}
-		const reopens = c.annotations[0]?.reopens ?? [];
+		const reopens = c.marks[0]?.reopens ?? [];
 		expect(reopens.length).toBe(MAX_REOPENS);
 		expect(reopens[0]?.note).toBe("Still 3");
 		expect(reopens[0]?.was).toEqual({ kind: "fixed", note: "Fix 3", at: T1 });
@@ -981,29 +967,25 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			{ note: "x".repeat(MAX_REOPEN_NOTE + 50) },
 			T2,
 		);
-		expect(long.annotations[0]?.reopens?.[0]?.note?.length).toBe(
-			MAX_REOPEN_NOTE,
-		);
+		expect(long.marks[0]?.reopens?.[0]?.note?.length).toBe(MAX_REOPEN_NOTE);
 		// A file with more keeps the newest; an empty list is none.
 		const file = JSON.parse(JSON.stringify(c));
-		file.annotations[0].reopens = [
-			...file.annotations[0].reopens,
-			...file.annotations[0].reopens.slice(0, 5),
+		file.marks[0].reopens = [
+			...file.marks[0].reopens,
+			...file.marks[0].reopens.slice(0, 5),
 		];
 		const read = validateCase(file);
-		expect(read.annotations[0]?.reopens?.length).toBe(MAX_REOPENS);
-		expect(read.annotations[0]?.reopens?.at(-1)?.note).toBe("Still 7");
-		file.annotations[0].reopens = [];
-		expect("reopens" in (validateCase(file).annotations[0] as object)).toBe(
-			false,
-		);
+		expect(read.marks[0]?.reopens?.length).toBe(MAX_REOPENS);
+		expect(read.marks[0]?.reopens?.at(-1)?.note).toBe("Still 7");
+		file.marks[0].reopens = [];
+		expect("reopens" in (validateCase(file).marks[0] as object)).toBe(false);
 	});
 
 	test("a case without the new fields validates and serializes unchanged", () => {
 		// As the build before Verify wrote it (its validateCase, then
 		// JSON.stringify): every kind, a finding, importedAt, lastNumber.
 		const OLD_BUILD =
-			'{"format":"sitegloss/1","id":"c_old","title":"From before Verify","createdAt":"2026-11-04T10:00:00Z","updatedAt":"2026-11-05T10:00:00Z","page":{"url":"https://www.example.com/kk","title":"KK","lang":"de","viewport":{"width":1280,"height":800,"dpr":2},"userAgent":"UA"},"shots":[{"id":"s1","image":"shots/s1.webp","scrollX":0,"scrollY":0,"viewport":{"width":1280,"height":800,"dpr":2},"capturedAt":"2026-11-04T10:00:00Z"}],"annotations":[{"id":"a1","number":1,"shot":"s1","comment":"Comment 1","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a1.webp","element":null},{"id":"a2","number":2,"shot":"s1","comment":"Comment 2","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a2.webp","element":null,"resolution":{"kind":"fixed","note":"Darker","at":"2026-11-05T09:00:00Z"},"findings":[{"id":"f_1","text":"Padding","app":{"id":"https://claude.ai/oauth","name":"Claude","host":"claude.ai"},"at":"2026-11-05T08:00:00Z","editedAt":"2026-11-05T08:30:00Z","imported":true}]},{"id":"a3","number":3,"shot":"s1","comment":"Comment 3","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a3.webp","element":null,"resolution":{"kind":"wontfix","at":"2026-11-05T09:00:00Z"}},{"id":"a4","number":4,"shot":"s1","comment":"Comment 4","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a4.webp","element":null,"resolution":{"kind":"cantreproduce","note":"Not on dev","at":"2026-11-05T09:00:00Z"}}],"verdict":"Use the dark button.","importedAt":"2026-11-05T11:00:00Z","lastNumber":5}';
+			'{"format":"sitegloss/1","id":"c_old","title":"From before Verify","createdAt":"2026-11-04T10:00:00Z","updatedAt":"2026-11-05T10:00:00Z","page":{"url":"https://www.example.com/kk","title":"KK","lang":"de","viewport":{"width":1280,"height":800,"dpr":2},"userAgent":"UA"},"shots":[{"id":"s1","image":"shots/s1.webp","scrollX":0,"scrollY":0,"viewport":{"width":1280,"height":800,"dpr":2},"capturedAt":"2026-11-04T10:00:00Z"}],"marks":[{"id":"a1","number":1,"shot":"s1","comment":"Comment 1","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a1.webp","element":null},{"id":"a2","number":2,"shot":"s1","comment":"Comment 2","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a2.webp","element":null,"resolution":{"kind":"fixed","note":"Darker","at":"2026-11-05T09:00:00Z"},"findings":[{"id":"f_1","text":"Padding","app":{"id":"https://claude.ai/oauth","name":"Claude","host":"claude.ai"},"at":"2026-11-05T08:00:00Z","editedAt":"2026-11-05T08:30:00Z","imported":true}]},{"id":"a3","number":3,"shot":"s1","comment":"Comment 3","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a3.webp","element":null,"resolution":{"kind":"wontfix","at":"2026-11-05T09:00:00Z"}},{"id":"a4","number":4,"shot":"s1","comment":"Comment 4","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/a4.webp","element":null,"resolution":{"kind":"cantreproduce","note":"Not on dev","at":"2026-11-05T09:00:00Z"}}],"verdict":"Use the dark button.","importedAt":"2026-11-05T11:00:00Z","lastNumber":5}';
 		expect(JSON.stringify(validateCase(JSON.parse(OLD_BUILD)))).toBe(OLD_BUILD);
 		const plain = JSON.stringify(one());
 		expect(JSON.stringify(validateCase(JSON.parse(plain)))).toBe(plain);
@@ -1011,40 +993,38 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 
 	test("verified on wontfix is dropped, not refused; a bad one on a fix is", () => {
 		const file = JSON.parse(JSON.stringify(one()));
-		file.annotations[0].resolution = {
+		file.marks[0].resolution = {
 			kind: "wontfix",
 			at: T1,
 			verified: { at: T2 },
 		};
-		expect(validateCase(file).annotations[0]?.resolution).toEqual({
+		expect(validateCase(file).marks[0]?.resolution).toEqual({
 			kind: "wontfix",
 			at: T1,
 		});
-		file.annotations[0].resolution = { kind: "fixed", at: T1, verified: 1 };
+		file.marks[0].resolution = { kind: "fixed", at: T1, verified: 1 };
 		expect(() => validateCase(file)).toThrow(
-			"case.annotations[0].resolution.verified",
+			"case.marks[0].resolution.verified",
 		);
-		file.annotations[0].resolution = { kind: "fixed", at: T1 };
-		file.annotations[0].reopens = [{ at: T2, was: { kind: "duplicate" } }];
+		file.marks[0].resolution = { kind: "fixed", at: T1 };
+		file.marks[0].reopens = [{ at: T2, was: { kind: "duplicate" } }];
 		expect(() => validateCase(file)).toThrow(
-			"case.annotations[0].reopens[0].was.kind",
+			"case.marks[0].reopens[0].was.kind",
 		);
-		file.annotations[0].reopens = [
+		file.marks[0].reopens = [
 			{
 				at: T2,
 				note: "x".repeat(MAX_REOPEN_NOTE + 1),
 				was: { kind: "fixed", at: T1 },
 			},
 		];
-		expect(() => validateCase(file)).toThrow(
-			"case.annotations[0].reopens[0].note",
-		);
+		expect(() => validateCase(file)).toThrow("case.marks[0].reopens[0].note");
 	});
 
 	test("caseCounts: open, to verify, verified, closed", () => {
 		const c = withMarks();
-		const [first] = c.annotations as [Annotation];
-		c.annotations = [1, 2, 3, 4, 5].map((n) => ({
+		const [first] = c.marks as [Mark];
+		c.marks = [1, 2, 3, 4, 5].map((n) => ({
 			...first,
 			id: `a${n}`,
 			number: n,
@@ -1060,7 +1040,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			verified: 1,
 			closed: 2,
 		});
-		expect(caseCounts({ ...c, annotations: [] })).toEqual({
+		expect(caseCounts({ ...c, marks: [] })).toEqual({
 			open: 0,
 			toVerify: 0,
 			verified: 0,
@@ -1241,21 +1221,21 @@ describe("a mark's ends (DEC-047)", () => {
 			selector: ".pp-badge",
 		};
 		const c = withOneMark(sampleCase());
-		const a = c.annotations[0] as Case["annotations"][number];
+		const a = c.marks[0] as Case["marks"][number];
 		const back = validateCase(
 			JSON.parse(
 				JSON.stringify({
 					...c,
-					annotations: [{ ...a, ends: { start: element, end: null } }],
+					marks: [{ ...a, ends: { start: element, end: null } }],
 				}),
 			),
 		);
-		expect(back.annotations[0]?.ends).toEqual({ start: element, end: null });
-		expect(validateCase(c).annotations[0]?.ends).toBeUndefined();
+		expect(back.marks[0]?.ends).toEqual({ start: element, end: null });
+		expect(validateCase(c).marks[0]?.ends).toBeUndefined();
 		expect(() =>
 			validateCase({
 				...c,
-				annotations: [{ ...a, ends: { start: { tag: 5 }, end: null } }],
+				marks: [{ ...a, ends: { start: { tag: 5 }, end: null } }],
 			}),
 		).toThrow();
 	});

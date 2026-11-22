@@ -422,7 +422,7 @@ export class CloudSync {
 			for (const c of cases)
 				if (
 					!books.has(c.id) &&
-					(c.annotations.length > 0 || c.lastNumber !== undefined)
+					(c.marks.length > 0 || c.lastNumber !== undefined)
 				)
 					changed.push({
 						...emptyBook(c.id, elsewhere.has(c.id) ? "local" : "undecided"),
@@ -715,7 +715,7 @@ export class CloudSync {
 			// read first, or has no mark yet (not sent until it has one).
 			if (mayKey !== undefined && heldBack(book, c, mayKey)) continue;
 			if (book?.reread !== undefined && blocks(book.reread)) continue;
-			if (book?.shadow === undefined && c.annotations.length === 0) continue;
+			if (book?.shadow === undefined && c.marks.length === 0) continue;
 			waiting++;
 		}
 		return {
@@ -951,7 +951,7 @@ export class CloudSync {
 			// Nothing of it could go at the last look, and nothing changed since.
 			if (heldBack(book, c, mayKey)) continue;
 			// A case without marks is not sent until it has one (as the folder sync).
-			if (book.shadow === undefined && c.annotations.length === 0) continue;
+			if (book.shadow === undefined && c.marks.length === 0) continue;
 			if (book.shadow === undefined && !all) {
 				more = true;
 				continue;
@@ -1176,7 +1176,7 @@ export class CloudSync {
 		// again after a delete).
 		relink(c, next);
 		const shadow = next.shadow as NonNullable<CaseBook["shadow"]>;
-		const marks = new Set(c.annotations.map((a) => a.id));
+		const marks = new Set(c.marks.map((a) => a.id));
 		const shots = new Set(c.shots.map((s) => s.id));
 		for (const [id, wire] of Object.entries(next.marks))
 			if (!marks.has(id)) delete next.marks[id];
@@ -1359,7 +1359,7 @@ export class CloudSync {
 				if (shot !== undefined) wanted.add(shot.image);
 			} else if (op.type === "mark.create") {
 				const id = markOf.get(op.mark.id);
-				const mark = c.annotations.find((a) => a.id === id);
+				const mark = c.marks.find((a) => a.id === id);
 				if (mark !== undefined) wanted.add(mark.crop);
 			}
 		}
@@ -2215,7 +2215,7 @@ export class CloudSync {
 		const announce =
 			given === undefined || newMarks.length > 0 || newShots.length > 0;
 		if (announce) {
-			const marks = new Map(first.value.annotations.map((a) => [a.id, a]));
+			const marks = new Map(first.value.marks.map((a) => [a.id, a]));
 			const shots = new Map(first.value.shots.map((s) => [s.id, s]));
 			await this.#books.put({
 				...known,

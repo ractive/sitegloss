@@ -257,14 +257,14 @@ describe("the sync to a folder (DEC-021)", () => {
 		await sync.request();
 		expect(folder.writes).toEqual(["login.sitegloss.zip"]);
 		// Its marks deleted later: the file it has is written again, empty.
-		await change(marked, { annotations: [], shots: [], lastNumber: 1 });
+		await change(marked, { marks: [], shots: [], lastNumber: 1 });
 		await sync.request();
 		expect(folder.writes).toEqual([
 			"login.sitegloss.zip",
 			"login.sitegloss.zip",
 		]);
 		const file = folder.files.get("login.sitegloss.zip") as Uint8Array;
-		expect((await readExport(file)).case.annotations).toEqual([]);
+		expect((await readExport(file)).case.marks).toEqual([]);
 	});
 
 	test("a renamed case gets its new file, and its old one goes", async () => {

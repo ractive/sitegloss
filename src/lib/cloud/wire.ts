@@ -6,7 +6,6 @@
  */
 
 import {
-	type Annotation,
 	CASE_FORMAT,
 	type Case,
 	type CaseComment,
@@ -34,6 +33,7 @@ import {
 	MAX_TITLE,
 	MAX_URL,
 	MAX_VERDICT,
+	type Mark,
 	type MarkEnds,
 	markSignature,
 	pageAt,
@@ -138,7 +138,7 @@ export function opKey(op: Op): string {
 
 /** A case's highest mark number used, a deleted mark's too. */
 export const highestNumber = (c: Case): number =>
-	Math.max(c.lastNumber ?? 0, ...c.annotations.map((a) => a.number));
+	Math.max(c.lastNumber ?? 0, ...c.marks.map((a) => a.number));
 
 export function caseContent(c: Case): CaseContent {
 	return {
@@ -149,7 +149,7 @@ export function caseContent(c: Case): CaseContent {
 	};
 }
 
-export function markContent(a: Annotation): MarkContent {
+export function markContent(a: Mark): MarkContent {
 	return {
 		comment: a.comment,
 		author: a.author,
@@ -203,7 +203,7 @@ export function carryVia(before: Case | undefined, after: Case): Case {
 }
 
 /** The AI app a mark's last change was made through, while the mark is as it left it. */
-export function markViaOf(a: Annotation): { via?: AppRef } {
+export function markViaOf(a: Mark): { via?: AppRef } {
 	return a.via !== undefined && a.via.of === markSignature(a)
 		? { via: appOut(a.via.app) }
 		: {};
@@ -220,7 +220,7 @@ export function markViaOf(a: Annotation): { via?: AppRef } {
  * took them in would make every one of them another drawing, deleted and
  * made again for the whole team (the lesson of `ends`, DEC-047).
  */
-export function fixedOf(a: Pick<Annotation, "shape" | "element">): string {
+export function fixedOf(a: Pick<Mark, "shape" | "element">): string {
 	const element = elementIn(elementOut(a.element));
 	return hashText(
 		canonical([
@@ -305,7 +305,7 @@ export function pageOfShot(
 }
 
 export function newMarkOf(
-	a: Annotation,
+	a: Mark,
 	id: string,
 	shotId: string,
 	crop: ImageRef,
@@ -408,7 +408,7 @@ export function settleAnnounced(
 	const loose = new Set<string>();
 	const told = book.announced;
 	if (told === undefined) return loose;
-	const marks = new Map((c?.annotations ?? []).map((a) => [a.id, a]));
+	const marks = new Map((c?.marks ?? []).map((a) => [a.id, a]));
 	const shots = new Map((c?.shots ?? []).map((s) => [s.id, s]));
 	for (const [id, fixed] of Object.entries(told.marks)) {
 		const a = marks.get(id);
@@ -474,7 +474,7 @@ export function relink(c: Case, book: CaseBook): void {
 		)
 			delete book.shots[s.id];
 	}
-	const here = new Set(c.annotations.map((a) => a.id));
+	const here = new Set(c.marks.map((a) => a.id));
 	for (const id of Object.keys(book.marks))
 		if (!here.has(id) && shadow.marks[book.marks[id] as string] === undefined)
 			delete book.marks[id];
@@ -488,7 +488,7 @@ export function relink(c: Case, book: CaseBook): void {
 			.filter(([id]) => !here.has(id))
 			.map(([, wire]) => wire),
 	]);
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const wire = book.marks[a.id];
 		const before = wire === undefined ? undefined : shadow.marks[wire];
 		if (wire === undefined || before === undefined) continue;
@@ -504,7 +504,7 @@ export function relink(c: Case, book: CaseBook): void {
 	);
 	const orphans = Object.entries(shadow.marks).filter(([id]) => !stood.has(id));
 	if (orphans.length === 0) return;
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		if (book.marks[a.id] !== undefined) continue;
 		const shot = book.shots[a.shot];
 		if (shot === undefined) continue;
@@ -576,10 +576,10 @@ export function deriveOps(
 	}
 	const marks = shadow?.marks ?? {};
 	const shots = shadow?.shots ?? {};
-	const byId = new Map(c.annotations.map((a) => [a.id, a]));
+	const byId = new Map(c.marks.map((a) => [a.id, a]));
 	// A mark whose drawing is another one now (a file replaced the case) is
 	// another mark: the old one goes, this one is new.
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const wire = book.marks[a.id];
 		const before = wire === undefined ? undefined : marks[wire];
 		if (before !== undefined && before.fixed !== fixedOf(a))
@@ -616,7 +616,7 @@ export function deriveOps(
 			shot: newShotOf(c, shot, id, ref),
 		});
 	}
-	const sorted = [...c.annotations].sort((x, y) => x.number - y.number);
+	const sorted = [...c.marks].sort((x, y) => x.number - y.number);
 	for (const a of sorted) {
 		const wire = book.marks[a.id];
 		if (wire !== undefined && marks[wire] !== undefined) continue;
@@ -1105,7 +1105,7 @@ export function differing(
 	c: Case,
 	theirs: Readonly<Record<string, TheirMark>>,
 ): number {
-	const here = new Map(c.annotations.map((a) => [a.number, a]));
+	const here = new Map(c.marks.map((a) => [a.number, a]));
 	let n = 0;
 	for (const mark of Object.values(theirs)) {
 		const a = here.get(mark.number);
@@ -1183,14 +1183,14 @@ function caseOf(w: WireCase, shots: readonly WireShot[]): Case {
 		},
 		pages: pages.length > 0 ? pages : [first],
 		shots: [],
-		annotations: [],
+		marks: [],
 		verdict: null,
 		// As the server says: a case someone imported from a file stays one.
 		...(typeof w.importedAt === "string" ? { importedAt: w.importedAt } : {}),
 	};
 }
 
-const withContent = (a: Annotation, content: MarkContent): Annotation => {
+const withContent = (a: Mark, content: MarkContent): Mark => {
 	const { resolution: _r, reopens: _o, findings: _f, ...rest } = a;
 	return {
 		...rest,
@@ -1270,24 +1270,24 @@ export function renumber(
 ): Case {
 	const moves = new Map<string, number>();
 	for (const [id, number] of to) {
-		const a = c.annotations.find((x) => x.id === id);
+		const a = c.marks.find((x) => x.id === id);
 		if (a !== undefined && a.number !== number) moves.set(id, number);
 	}
 	if (moves.size === 0) return c;
 	const targets = new Set(moves.values());
 	let free = freeNumber(c, targets);
-	for (const a of c.annotations)
+	for (const a of c.marks)
 		if (!moves.has(a.id) && targets.has(a.number)) moves.set(a.id, free++);
-	const marks: Record<string, string> = {};
+	const wireIds: Record<string, string> = {};
 	const renamed = new Map<string, string>();
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const number = moves.get(a.id);
 		renamed.set(a.id, number === undefined ? a.id : `a${number}`);
 	}
 	for (const [id, wire] of Object.entries(book.marks))
-		marks[renamed.get(id) ?? id] = wire;
-	book.marks = marks;
-	const annotations = c.annotations.map((a) => {
+		wireIds[renamed.get(id) ?? id] = wire;
+	book.marks = wireIds;
+	const marks = c.marks.map((a) => {
 		const number = moves.get(a.id);
 		if (number === undefined) return a;
 		const id = `a${number}`;
@@ -1302,7 +1302,7 @@ export function renumber(
 	for (const path of out.images.keys()) out.deleteImages.delete(path);
 	return {
 		...c,
-		annotations: annotations.sort((x, y) => x.number - y.number),
+		marks: marks.sort((x, y) => x.number - y.number),
 		// A comment follows its mark to its new id (DEC-046).
 		...(c.comments === undefined
 			? {}
@@ -1317,10 +1317,7 @@ export function renumber(
 		...(c.lastNumber === undefined
 			? {}
 			: {
-					lastNumber: Math.max(
-						c.lastNumber,
-						...annotations.map((a) => a.number),
-					),
+					lastNumber: Math.max(c.lastNumber, ...marks.map((a) => a.number)),
 				}),
 	};
 }
@@ -1423,13 +1420,13 @@ export function mergeCase(
 	const emptied = new Set<string>();
 	for (const wire of removedMarks) {
 		const id = markHere.get(wire);
-		const a = c.annotations.find((x) => x.id === id);
+		const a = c.marks.find((x) => x.id === id);
 		if (a !== undefined) {
 			out.deleteImages.add(a.crop);
 			emptied.add(a.shot);
 			c = {
 				...c,
-				annotations: c.annotations.filter((x) => x !== a),
+				marks: c.marks.filter((x) => x !== a),
 				// Its comments stay, about "a deleted mark".
 				...(c.comments === undefined
 					? {}
@@ -1487,7 +1484,7 @@ export function mergeCase(
 
 	// Marks: what changed of those that are here, and new ones.
 	const numbers = new Map<string, number>();
-	const added: { mark: Annotation; wire: string; crop: unknown }[] = [];
+	const added: { mark: Mark; wire: string; crop: unknown }[] = [];
 	for (const w of [...incoming.marks].sort((x, y) => x.number - y.number)) {
 		if (removedMarks.has(w.id)) continue;
 		const content = contentIn(w);
@@ -1496,7 +1493,7 @@ export function mergeCase(
 		const drawn = { shape: shapeIn(w.shape), element: elementIn(w.element) };
 		const creator = userIn(w.createdBy).user;
 		// The server's record of who did what (DEC-046): shown, never compared.
-		const records = (a: Annotation): Annotation => {
+		const records = (a: Mark): Mark => {
 			const { createdVia: _v, commentBy: _b, ...rest } = a;
 			return {
 				...rest,
@@ -1517,7 +1514,7 @@ export function mergeCase(
 			fixed: fixedOf(drawn),
 		};
 		const id = markHere.get(w.id);
-		const a = c.annotations.find((x) => x.id === id);
+		const a = c.marks.find((x) => x.id === id);
 		if (a !== undefined) {
 			const kept = withContent(
 				a,
@@ -1529,12 +1526,12 @@ export function mergeCase(
 				kept.ends === undefined && w.ends !== undefined
 					? { ...kept, ends: endsIn(w.ends) }
 					: kept;
-			const next: Annotation = records(
+			const next: Mark = records(
 				creator === undefined ? merged : { ...merged, createdBy: creator },
 			);
 			c = {
 				...c,
-				annotations: c.annotations.map((x) => (x === a ? next : x)),
+				marks: c.marks.map((x) => (x === a ? next : x)),
 			};
 			if (a.number !== w.number) numbers.set(a.id, w.number);
 			continue;
@@ -1585,7 +1582,7 @@ export function mergeCase(
 		incoming.case?.lastNumber ?? 0,
 		shadow.case.lastNumber,
 	]);
-	for (const a of c.annotations)
+	for (const a of c.marks)
 		if (!numbers.has(a.id) && claimed.has(a.number)) numbers.set(a.id, free++);
 	c = renumber(c, book, numbers, crops, out);
 	for (const x of added) {
@@ -1595,7 +1592,7 @@ export function mergeCase(
 	if (added.length > 0)
 		c = {
 			...c,
-			annotations: [...c.annotations, ...added.map((x) => x.mark)].sort(
+			marks: [...c.marks, ...added.map((x) => x.mark)].sort(
 				(x, y) => x.number - y.number,
 			),
 		};
@@ -1618,7 +1615,7 @@ export function mergeCase(
 		if (id === undefined) continue;
 		// With a mark made here on it, not sent yet: the screenshot keeps its
 		// id and is sent again with the mark, which brings it back.
-		if (c.annotations.some((a) => a.shot === id)) continue;
+		if (c.marks.some((a) => a.shot === id)) continue;
 		delete book.shots[id];
 		emptied.add(id);
 	}
@@ -1626,8 +1623,7 @@ export function mergeCase(
 	// deleted here (the server deletes it with its last mark, too).
 	for (const id of emptied) {
 		const shot = c.shots.find((s) => s.id === id);
-		if (shot === undefined || c.annotations.some((a) => a.shot === id))
-			continue;
+		if (shot === undefined || c.marks.some((a) => a.shot === id)) continue;
 		out.deleteImages.add(shot.image);
 		const wire = book.shots[id];
 		if (wire !== undefined) delete shadow.shots[wire];
@@ -1828,7 +1824,7 @@ export function isClean(c: Case, book: CaseBook, me?: string): boolean {
 	if (shadow === undefined) return false;
 	if (casePatch(caseContent(c), shadow.case) !== undefined) return false;
 	const wires = new Set<string>();
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const wire = book.marks[a.id];
 		const before = wire === undefined ? undefined : shadow.marks[wire];
 		if (wire === undefined || before === undefined) return false;
@@ -1877,7 +1873,7 @@ function adopt(
 	const shadow = next.shadow as Shadow;
 	const shotOf = new Map<string, string>();
 	for (const w of incoming.marks) {
-		const a = c.annotations.find(
+		const a = c.marks.find(
 			(x) =>
 				x.number === w.number &&
 				fixedOf(x) ===

@@ -132,9 +132,7 @@ describe("a 0.3.0 browser on the same team", () => {
 		}));
 		await sync();
 		const here = (await tess.store.getCase("c_flow")) as Case;
-		expect(here.annotations[0]?.comment).toBe(
-			"Total is cut off on small screens",
-		);
+		expect(here.marks[0]?.comment).toBe("Total is cut off on small screens");
 		expect(here.comments?.map((k) => k.id)).toEqual(["k_case", "k_mark"]);
 		expect(here.closed).toBeDefined();
 		expect(server.commentsOf("c_flow")).toHaveLength(2);
@@ -273,7 +271,7 @@ describe("0.3.0's data opened by this build sends nothing nobody did (review of 
 						withResolution(
 							{
 								...c,
-								annotations: c.annotations.map((a) => {
+								marks: c.marks.map((a) => {
 									const shape = shapes[a.id];
 									return shape === undefined ? a : { ...a, shape };
 								}),
@@ -389,7 +387,7 @@ describe("0.3.0's data opened by this build sends nothing nobody did (review of 
 		expect(server.marksOf("c_rich")).toHaveLength(7);
 		// The case here is the team's, mark for mark.
 		const here = (await dana.store.getCase("c_rich")) as unknown as Case;
-		expect(here.annotations.map((a) => [a.number, a.shape.kind])).toEqual([
+		expect(here.marks.map((a) => [a.number, a.shape.kind])).toEqual([
 			[1, "box"],
 			[2, "box"],
 			[3, "arrow"],
@@ -398,9 +396,9 @@ describe("0.3.0's data opened by this build sends nothing nobody did (review of 
 			[6, "box"],
 			[7, "note"],
 		]);
-		expect(here.annotations[1]?.resolution?.kind).toBe("fixed");
-		expect(here.annotations[2]?.reopens).toHaveLength(1);
-		expect(here.annotations[3]?.findings?.[0]?.id).toBe("f_1");
+		expect(here.marks[1]?.resolution?.kind).toBe("fixed");
+		expect(here.marks[2]?.reopens).toHaveLength(1);
+		expect(here.marks[3]?.findings?.[0]?.id).toBe("f_1");
 	});
 });
 
@@ -473,7 +471,7 @@ describe("a mark's look (DEC-048) beside 0.3.0", () => {
 		// As the toolbar records it with the mark, before the first sync.
 		await change(tess, "c_look", (c) => ({
 			...c,
-			annotations: c.annotations.map((a) =>
+			marks: c.marks.map((a) =>
 				a.element === null ? a : { ...a, element: { ...a.element, ...look } },
 			),
 		}));
@@ -497,7 +495,7 @@ describe("a mark's look (DEC-048) beside 0.3.0", () => {
 		expect(lastStatus()?.state).toBe("synced");
 		// This build, read back from the server: the same mark, nothing to send.
 		const here = (await tess.store.getCase("c_look")) as Case;
-		expect(here.annotations[0]?.element).toMatchObject(look);
+		expect(here.marks[0]?.element).toMatchObject(look);
 	});
 });
 
@@ -518,7 +516,7 @@ describe("a file this build writes", () => {
 				now,
 				CLAUDE,
 			),
-			annotations: k.annotations.map((a) => ({ ...a, createdVia: CLAUDE })),
+			marks: k.marks.map((a) => ({ ...a, createdVia: CLAUDE })),
 			createdVia: CLAUDE,
 		}));
 		expect(c.via?.app.name).toBe("Claude");
@@ -530,7 +528,7 @@ describe("a file this build writes", () => {
 		);
 		// This browser's notes for its sync are not in the file.
 		expect("via" in json || "createdVia" in json).toBe(false);
-		expect("createdVia" in (json.annotations[0] ?? {})).toBe(true);
+		expect("createdVia" in (json.marks[0] ?? {})).toBe(true);
 		// 0.3.0: the case and its marks, nothing else.
 		const old = validateCase030(json);
 		expect(old.annotations.map((a) => a.comment)).toEqual(["Total is cut off"]);
@@ -554,7 +552,7 @@ describe("a file this build writes", () => {
 			["k_2", "a1", "Claude", true],
 		]);
 		expect(back.closed?.app?.name).toBe("Claude");
-		expect(back.annotations[0]?.createdVia).toBeUndefined();
+		expect(back.marks[0]?.createdVia).toBeUndefined();
 		expect(back.via).toBeUndefined();
 		expect(back.createdVia).toBeUndefined();
 	});
@@ -572,7 +570,7 @@ describe("a file this build writes", () => {
 		};
 		const c = await change(tess, "c_file_look", (k) => ({
 			...k,
-			annotations: k.annotations.map((a) =>
+			marks: k.marks.map((a) =>
 				a.element === null ? a : { ...a, element: { ...a.element, ...look } },
 			),
 		}));
@@ -582,7 +580,7 @@ describe("a file this build writes", () => {
 				(await readZip(zip)).get("case.json") as Uint8Array,
 			),
 		);
-		expect(json.annotations[0]?.element).toMatchObject(look);
+		expect(json.marks[0]?.element).toMatchObject(look);
 		const old = validateCase030(json);
 		const element = old.annotations[0]?.element as unknown as Record<
 			string,
@@ -592,7 +590,7 @@ describe("a file this build writes", () => {
 		for (const key of ["styles", "backdrop", "siblings"])
 			expect(key in element).toBe(false);
 		const back = await storeImport(new MemoryStore(), await readExport(zip));
-		expect(back.annotations[0]?.element).toMatchObject(look);
+		expect(back.marks[0]?.element).toMatchObject(look);
 	});
 });
 

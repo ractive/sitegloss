@@ -343,12 +343,12 @@ async function handle(
 				tabId !== undefined &&
 				sender.documentId !== undefined
 			)
-				for (const draft of request.request.annotations) {
-					const a = saved.annotations.find((x) => x.number === draft.number);
+				for (const draft of request.request.marks) {
+					const a = saved.marks.find((x) => x.number === draft.number);
 					if (a !== undefined)
 						await added.record({
 							caseId: saved.id,
-							annotationId: a.id,
+							markId: a.id,
 							shot: a.shot,
 							comment: a.comment,
 							tabId,
@@ -359,7 +359,7 @@ async function handle(
 			return {
 				caseId: saved.id,
 				title: saved.title,
-				annotations: saved.annotations.length,
+				marks: saved.marks.length,
 			} satisfies SaveResult;
 		}
 		case "case:number":
@@ -370,11 +370,11 @@ async function handle(
 				request.number,
 			)) satisfies NumberCheck;
 		case "case:undo-add": {
-			if (!isSafeId(request.caseId) || !isSafeId(request.annotationId))
+			if (!isSafeId(request.caseId) || !isSafeId(request.markId))
 				throw new Error("invalid id");
 			const mark = await added.find(
 				request.caseId,
-				request.annotationId,
+				request.markId,
 				sender.tab?.id,
 				sender.documentId,
 			);
@@ -382,12 +382,7 @@ async function handle(
 				throw new Error(
 					`this page did not add that mark; delete it in the ${PANEL} if it should go.`,
 				);
-			const result = await undoAdd(
-				store,
-				request.caseId,
-				request.annotationId,
-				mark,
-			);
+			const result = await undoAdd(store, request.caseId, request.markId, mark);
 			await added.remove(mark);
 			if (result.removed)
 				await broadcast({ type: "cases:changed", caseId: request.caseId });

@@ -194,9 +194,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await page.waitFor(`${status} === "Mark 2 added to “Straight in”"`, 20_000);
 		await drawnAre(page, { drafts: [], saved: ["1", "2"] });
 		// The case view follows.
-		await panel.waitFor(
-			`document.querySelectorAll(".annotation").length === 2`,
-		);
+		await panel.waitFor(`document.querySelectorAll(".mark").length === 2`);
 
 		// A comment closed with Escape keeps its mark: it goes in too. Nothing
 		// moved: it shares the screenshot of mark 2, and its shot shows both.
@@ -206,12 +204,10 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await page.type("Say how much");
 		await pressEscape(page);
 		await page.waitFor(`${status} === "Mark 3 added to “Straight in”"`, 20_000);
-		await panel.waitFor(
-			`document.querySelectorAll(".annotation").length === 3`,
-		);
+		await panel.waitFor(`document.querySelectorAll(".mark").length === 3`);
 
 		const { c, db } = await caseTitled("Straight in");
-		expect(c.annotations.map((a) => [a.number, a.comment, a.shot])).toEqual([
+		expect(c.marks.map((a) => [a.number, a.comment, a.shot])).toEqual([
 			[1, "First", "s1"],
 			[2, "Too pale", "s2"],
 			[3, "Say how much", "s3"],
@@ -251,9 +247,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		const panel = await addMarks(page, "Taken back");
 		await markElement(page, "[data-truth=submit]", "Undo me");
 		await page.waitFor(`${status} === "Mark 2 added to “Taken back”"`, 20_000);
-		await panel.waitFor(
-			`document.querySelectorAll(".annotation").length === 2`,
-		);
+		await panel.waitFor(`document.querySelectorAll(".mark").length === 2`);
 
 		await page.click(shadow('[data-action="undo"]'));
 		await page.waitFor(
@@ -261,11 +255,9 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			20_000,
 		);
 		await drawnAre(page, { drafts: [], saved: ["1"] });
-		await panel.waitFor(
-			`document.querySelectorAll(".annotation").length === 1`,
-		);
+		await panel.waitFor(`document.querySelectorAll(".mark").length === 1`);
 		const { c, db } = await caseTitled("Taken back");
-		expect(c.annotations.map((a) => a.number)).toEqual([1]);
+		expect(c.marks.map((a) => a.number)).toEqual([1]);
 		expect(c.shots.map((s) => s.id)).toEqual(["s1"]);
 		expect(imagesOf(db, c.id)).toEqual(["crops/a1.webp", "shots/s1.webp"]);
 		// Nothing more to take back: the saved case is not this toolbar's to undo.
@@ -276,9 +268,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await markElement(page, "[data-truth=tip]", "Instead");
 		await page.waitFor(`${status} === "Mark 2 added to “Taken back”"`, 20_000);
 		const after = await caseTitled("Taken back");
-		expect(
-			after.c.annotations.map((a) => [a.number, a.comment, a.shot]),
-		).toEqual([
+		expect(after.c.marks.map((a) => [a.number, a.comment, a.shot])).toEqual([
 			[1, "First", "s1"],
 			[2, "Instead", "s2"],
 		]);
@@ -331,7 +321,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await drawnAre(page, { drafts: [], saved: ["1", "2"] });
 		expect(await buttons(page)).not.toContain("Add mark 2");
 		const after = await caseTitled("Gone for a moment");
-		expect(after.c.annotations.map((a) => a.comment)).toEqual([
+		expect(after.c.marks.map((a) => a.comment)).toEqual([
 			"First",
 			"Kept anyway",
 		]);
@@ -364,7 +354,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		// Shown again, the mark is gone, and nothing was added meanwhile.
 		await addMarks(page, "Discarded");
 		await drawnAre(page, { drafts: [], saved: ["1"] });
-		expect((await caseTitled("Discarded")).c.annotations).toHaveLength(1);
+		expect((await caseTitled("Discarded")).c.marks).toHaveLength(1);
 		await page.click(shadow('[data-action="close"]'));
 		await page.send("Page.close");
 	}, 90_000);
@@ -385,17 +375,18 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await page.waitFor(`${alert}?.includes("it was for “Case A”")`, 10_000);
 		await Bun.sleep(1500);
 		const b = (await caseTitled("Case B")).c;
-		expect(b.annotations.map((x) => x.comment)).toEqual(["First"]);
-		expect((await caseTitled("Case A")).c.annotations).toHaveLength(1);
+		expect(b.marks.map((x) => x.comment)).toEqual(["First"]);
+		expect((await caseTitled("Case A")).c.marks).toHaveLength(1);
 		// B's own mark is on the page: opening B drew it (DEC-022).
 		await drawnAre(page, { drafts: ["2"], saved: ["1"] });
 
 		// "Add mark 2" is the user's choice: then it goes into B.
 		await page.click(shadow('[data-action="retry"]'));
 		await page.waitFor(`${status} === "Mark 2 added to “Case B”"`, 20_000);
-		expect(
-			(await caseTitled("Case B")).c.annotations.map((x) => x.comment),
-		).toEqual(["First", "Meant for A"]);
+		expect((await caseTitled("Case B")).c.marks.map((x) => x.comment)).toEqual([
+			"First",
+			"Meant for A",
+		]);
 		await page.click(shadow('[data-action="close"]'));
 		await page.send("Page.close");
 	}, 90_000);
@@ -419,20 +410,20 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 	};
 
 	/** "New case for this page" in the panel, on the tab `page` in front. */
-	async function annotate(page: Page): Promise<Page> {
+	async function startNewCase(page: Page): Promise<Page> {
 		await page.activate();
 		const panel = h.control;
 		await panel.waitFor(
-			`!document.getElementById("home").hidden && !document.getElementById("annotate").disabled && document.getElementById("page").textContent.endsWith(new URL(${JSON.stringify(await page.eval<string>("location.href"))}).pathname)`,
+			`!document.getElementById("home").hidden && !document.getElementById("new-case").disabled && document.getElementById("page").textContent.endsWith(new URL(${JSON.stringify(await page.eval<string>("location.href"))}).pathname)`,
 			10_000,
 		);
-		await panel.eval(`document.getElementById("annotate").click()`);
+		await panel.eval(`document.getElementById("new-case").click()`);
 		return panel;
 	}
 
 	test("New case for this page creates the case and opens it; a mark goes in without a save; Rename (DEC-026)", async () => {
 		const { page, tabId } = await h.open("v1");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		// At once: the page's title, the case view, the toolbar adding to it.
 		const title = "Krankenkasse vergleichen (v1)";
 		await inCase(panel, title);
@@ -445,7 +436,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			`document.getElementById("tab-line").textContent === "Adding marks: draw on the page. Each mark is saved into this case when its comment is done."`,
 		);
 		const made = { c: await openOne(panel) };
-		expect(made.c.annotations).toEqual([]);
+		expect(made.c.marks).toEqual([]);
 		expect(made.c.shots).toEqual([]);
 		expect(made.c.page.url).toBe(`${h.base}/v1`);
 		expect(made.c.page.title).toBe(title);
@@ -458,7 +449,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			20_000,
 		);
 		await panel.waitFor(
-			`[...document.querySelectorAll(".annotation")].map((a) => a.textContent).join().includes("Too pale")`,
+			`[...document.querySelectorAll(".mark")].map((a) => a.textContent).join().includes("Too pale")`,
 			10_000,
 		);
 
@@ -491,7 +482,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await page.waitFor(`${status} === "Adding to “Submit button contrast”"`);
 		const renamed = await caseTitled("Submit button contrast");
 		expect(renamed.c.id).toBe(made.c.id);
-		expect(renamed.c.annotations.map((a) => a.comment)).toEqual(["Too pale"]);
+		expect(renamed.c.marks.map((a) => a.comment)).toEqual(["Too pale"]);
 
 		// The next mark goes into it under its new title.
 		await markElement(page, "h1", "Too long");
@@ -584,7 +575,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 	test("All cases with no mark: the case goes again; with one mark it stays (DEC-026)", async () => {
 		const { page, tabId } = await h.open("v1");
 		const title = "Krankenkasse vergleichen (v1)";
-		let panel = await annotate(page);
+		let panel = await startNewCase(page);
 		await inCase(panel, title);
 		const first = await openOne(panel);
 		await allCases(panel);
@@ -602,7 +593,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		);
 
 		// Done adding, then back, with no mark: gone too.
-		panel = await annotate(page);
+		panel = await startNewCase(page);
 		await inCase(panel, title);
 		const second = await openOne(panel);
 		await panel.eval(`document.getElementById("add-marks").click()`);
@@ -618,14 +609,14 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 		// A mark, then Undo: it has had a mark, so it is the user's and stays,
 		// empty (review of PR 57).
-		panel = await annotate(page);
+		panel = await startNewCase(page);
 		await inCase(panel, title);
 		const third = await openOne(panel);
 		await markElement(page, "h1", "Undone");
 		await page.waitFor(`${status}?.startsWith("Mark 1 added to")`, 20_000);
 		await page.click(shadow('[data-action="undo"]'));
 		await page.waitFor(`${status}?.startsWith("Mark 1 taken out of")`, 20_000);
-		expect((await openOne(panel)).annotations).toEqual([]);
+		expect((await openOne(panel)).marks).toEqual([]);
 		await allCases(panel);
 		await home(panel);
 		await panel.waitFor(
@@ -634,11 +625,11 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		const undone = (await h.control.eval<Db>(READ_DB)).cases.find(
 			(c) => c.id === third.id,
 		);
-		expect(undone?.annotations).toEqual([]);
+		expect(undone?.marks).toEqual([]);
 		expect(undone?.lastNumber).toBe(0);
 
 		// One mark: it stays, and shows in the list.
-		panel = await annotate(page);
+		panel = await startNewCase(page);
 		await inCase(panel, title);
 		await markElement(page, "h1", "Kept");
 		await page.waitFor(`${status}?.startsWith("Mark 1 added to")`, 20_000);
@@ -649,7 +640,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			`[...document.querySelectorAll("[data-case]")].some((e) => e.dataset.case === ${JSON.stringify(kept.id)})`,
 		);
 		const db = await h.control.eval<Db>(READ_DB);
-		expect(db.cases.find((c) => c.id === kept.id)?.annotations).toHaveLength(1);
+		expect(db.cases.find((c) => c.id === kept.id)?.marks).toHaveLength(1);
 		await page.send("Page.close");
 	}, 120_000);
 
@@ -681,7 +672,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 				});
 			return send(tabId, message);
 		}`);
-		const panel = await annotate(a.page);
+		const panel = await startNewCase(a.page);
 		await h.control.waitFor(`typeof globalThis.releaseInfo === "function"`);
 		await b.page.activate();
 		const windowId = await h.control.eval<number>(
@@ -739,7 +730,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			}
 			return send(tabId, message);
 		}`);
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		await markElement(page, "h1", "Too long");
 		await panel.waitFor(
@@ -759,17 +750,17 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await wrapSend(`(tabId, message, send) =>
 			message.type === "page:info" && globalThis.mute ? new Promise(() => {}) : send(tabId, message)`);
 		await h.control.eval("globalThis.mute = true");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		await panel.waitFor(
 			`document.getElementById("hint").textContent === "This page did not answer. Reload it and try again."`,
 			15_000,
 		);
 		expect(
-			await panel.eval<boolean>(`document.getElementById("annotate").disabled`),
+			await panel.eval<boolean>(`document.getElementById("new-case").disabled`),
 		).toBe(false);
 		// The button works again once the page answers.
 		await h.control.eval("globalThis.mute = false");
-		await panel.eval(`document.getElementById("annotate").click()`);
+		await panel.eval(`document.getElementById("new-case").click()`);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		await until(
 			() => toolbarUp(tabId),
@@ -780,7 +771,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 	test("a toolbar button pressed while the toolbar draws itself again still takes the click", async () => {
 		const { page, tabId } = await h.open("v1");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		const pen = shadow('[data-action="tool-pen"]');
 		const at = await page.centreOf(pen);
@@ -803,7 +794,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 	test("an empty case whose toolbar holds a comment on another tab stays when left (review of PR 57)", async () => {
 		const a = await h.open("v1");
-		let panel = await annotate(a.page);
+		let panel = await startNewCase(a.page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		const made = await openOne(panel);
 		// A mark whose comment is still being typed: on the page only.
@@ -839,7 +830,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			(await h.control.eval<Db>(READ_DB)).cases.some((c) => c.id === id);
 
 		// Renamed.
-		let panel = await annotate(page);
+		let panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		const renamed = await openOne(panel);
 		await renameInPanel(panel, renamed.id, "Checkout bugs");
@@ -849,7 +840,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		expect(await stays(renamed.id)).toBe(true);
 
 		// A summary typed and not saved.
-		panel = await annotate(page);
+		panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		const typed = await openOne(panel);
 		await panel.eval(`(() => {
@@ -867,7 +858,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 	test("the tab closed while the case has a mark: the case stays open (review of PR 57)", async () => {
 		const { page } = await h.open("v1");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		await markElement(page, "h1", "Kept");
 		await page.waitFor(`${status}?.startsWith("Mark 1 added")`, 20_000);
@@ -888,7 +879,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 	test("the tab closed with an untouched case's toolbar: the case goes, the panel on Home (DEC-026)", async () => {
 		const { page } = await h.open("v1");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		const made = await openOne(panel);
 		await page.send("Page.close");
@@ -901,7 +892,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 	test("the case deleted elsewhere while adding: the toolbar goes, the panel on Home (DEC-026)", async () => {
 		const { page, tabId } = await h.open("v1");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		const title = "Krankenkasse vergleichen (v1)";
 		await inCase(panel, title);
 		await markElement(page, "h1", "In it");
@@ -934,7 +925,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 
 	test("the case deleted elsewhere with a mark not in it yet: that loss is said (DEC-026)", async () => {
 		const { page, tabId } = await h.open("v1");
-		const panel = await annotate(page);
+		const panel = await startNewCase(page);
 		const title = "Krankenkasse vergleichen (v1)";
 		await inCase(panel, title);
 		const c = await openOne(panel);
@@ -997,7 +988,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		// The case's marks leave the page, its toolbar is no longer its.
 		await drawnAre(page, { drafts: [], saved: [] });
 		await panel.waitFor(
-			`document.getElementById("annotate").textContent === "New case for this page"`,
+			`document.getElementById("new-case").textContent === "New case for this page"`,
 		);
 		expect(
 			await h.control.eval<string | null>(
@@ -1005,7 +996,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			),
 		).toBeNull();
 
-		await panel.eval(`document.getElementById("annotate").click()`);
+		await panel.eval(`document.getElementById("new-case").click()`);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		await page.waitFor(
 			`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
@@ -1015,10 +1006,8 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			`${status} === "Mark 1 added to “Krankenkasse vergleichen (v1)”"`,
 			20_000,
 		);
-		expect(
-			(await caseTitled("Closed after adding")).c.annotations,
-		).toHaveLength(2);
-		expect((await openOne(panel)).annotations.map((a) => a.comment)).toEqual([
+		expect((await caseTitled("Closed after adding")).c.marks).toHaveLength(2);
+		expect((await openOne(panel)).marks.map((a) => a.comment)).toEqual([
 			"Another case's",
 		]);
 		await page.click(shadow('[data-action="close"]'));
@@ -1069,7 +1058,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			(up) => !up,
 		);
 		expect(
-			(await caseTitled("Blocked once")).c.annotations.map((a) => a.comment),
+			(await caseTitled("Blocked once")).c.marks.map((a) => a.comment),
 		).toEqual(["First", "Second"]);
 		await page.send("Page.close");
 	}, 120_000);
@@ -1100,7 +1089,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			(up) => !up,
 		);
 		await drawnAre(page, { drafts: [], saved: [] });
-		expect((await caseTitled("Left behind")).c.annotations).toHaveLength(1);
+		expect((await caseTitled("Left behind")).c.marks).toHaveLength(1);
 		await page.send("Page.close");
 	}, 90_000);
 });

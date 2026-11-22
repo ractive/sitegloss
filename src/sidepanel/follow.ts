@@ -11,7 +11,7 @@ import {
 	pageInFront,
 	samePage,
 } from "../lib/case.ts";
-import type { AnnotationMatch } from "../lib/messages.ts";
+import type { MarkMatch } from "../lib/messages.ts";
 import { shortUrl } from "./dom.ts";
 import type { Loaded } from "./state.ts";
 
@@ -119,14 +119,14 @@ export function newsLetsIn(
 }
 
 /** A match that has its element on the page, sure or not. */
-export const isFound = (m: AnnotationMatch): boolean =>
+export const isFound = (m: MarkMatch): boolean =>
 	m.status !== "lost" && m.status !== "no-element";
 
 /**
  * A match drawn dashed on the page (review.ts): its element is only probable
  * or one of several, or the mark recorded none and sits where it was.
  */
-export const isUnsure = (m: AnnotationMatch): boolean =>
+export const isUnsure = (m: MarkMatch): boolean =>
 	m.status === "no-element" ||
 	// Found on a page that is not the mark's own: maybe only a look-alike.
 	m.otherPage === true ||
@@ -141,12 +141,12 @@ export const isUnsure = (m: AnnotationMatch): boolean =>
  */
 export function dashDrawn(
 	c: Case,
-	matches: readonly AnnotationMatch[],
+	matches: readonly MarkMatch[],
 	url: string,
 ): boolean {
 	return matches.some((m) => {
 		if (!isUnsure(m)) return false;
-		const a = c.annotations.find((x) => x.id === m.annotationId);
+		const a = c.marks.find((x) => x.id === m.markId);
 		if (a === undefined || a.shape.kind === "note") return false;
 		if (m.status !== "no-element") return true;
 		return onPageInFront(c, a, url);
@@ -165,17 +165,17 @@ export function dashDrawn(
  */
 export function findsOn(
 	c: Case,
-	matches: readonly AnnotationMatch[],
+	matches: readonly MarkMatch[],
 	url: string,
-): { own: AnnotationMatch[]; also: number; elsewhere: number } {
+): { own: MarkMatch[]; also: number; elsewhere: number } {
 	if (pageInFront(c, url) === undefined)
 		return { own: [...matches], also: 0, elsewhere: 0 };
-	const pageOf = new Map(c.annotations.map((a) => [a.id, a]));
-	const own: AnnotationMatch[] = [];
+	const pageOf = new Map(c.marks.map((a) => [a.id, a]));
+	const own: MarkMatch[] = [];
 	let also = 0;
 	let elsewhere = 0;
 	for (const m of matches) {
-		const a = pageOf.get(m.annotationId);
+		const a = pageOf.get(m.markId);
 		if (a === undefined || onPageInFront(c, a, url)) own.push(m);
 		else if (isFound(m)) also++;
 		else elsewhere++;
@@ -186,9 +186,9 @@ export function findsOn(
 /** The matches of the marks whose page is the page at `url` (`findsOn`). */
 export function matchesHere(
 	c: Case,
-	matches: readonly AnnotationMatch[],
+	matches: readonly MarkMatch[],
 	url: string,
-): AnnotationMatch[] {
+): MarkMatch[] {
 	return findsOn(c, matches, url).own;
 }
 
@@ -199,7 +199,7 @@ export function matchesHere(
  */
 export function noneHere(
 	c: Case,
-	matches: readonly AnnotationMatch[],
+	matches: readonly MarkMatch[],
 	url: string,
 ): boolean {
 	return noneFound(findsOn(c, matches, url).own);
@@ -234,7 +234,7 @@ export function movedOn(
  * was drawn (`dashed`, see `dashDrawn`).
  */
 export function foundText(
-	matches: readonly AnnotationMatch[],
+	matches: readonly MarkMatch[],
 	page: string,
 	dashed: boolean,
 	elsewhere = 0,
@@ -284,7 +284,7 @@ export function foundLine(
  * A case of marks without elements (boxes, arrows on nothing) says nothing
  * about the page.
  */
-export function noneFound(matches: readonly AnnotationMatch[]): boolean {
+export function noneFound(matches: readonly MarkMatch[]): boolean {
 	const withElement = matches.filter((m) => m.status !== "no-element");
 	return withElement.length > 0 && !withElement.some(isFound);
 }

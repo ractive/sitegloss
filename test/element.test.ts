@@ -299,7 +299,7 @@ describe("limits", () => {
 					capturedAt: "2026-11-04T10:00:00Z",
 				},
 			],
-			annotations: [
+			marks: [
 				{
 					id: "a1",
 					number: 1,

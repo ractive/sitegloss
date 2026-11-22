@@ -5,7 +5,6 @@
  */
 
 import {
-	type Annotation,
 	appLabel,
 	type Case,
 	type CaseComment,
@@ -17,6 +16,7 @@ import {
 	type FindingApp,
 	isSafeId,
 	isWebPage,
+	type Mark,
 	markAddress,
 	markStatus,
 	marksByPage,
@@ -126,7 +126,7 @@ const by = (app: FindingApp | undefined, user?: UserRef) =>
 /** A comment in the case's thread (DEC-046): who, when, about which mark, then its text. */
 function threadComment(c: Case, k: CaseComment): string {
 	const mark = k.mark
-		? c.annotations.find((a) => a.id === k.mark)?.number
+		? c.marks.find((a) => a.id === k.mark)?.number
 		: undefined;
 	const about =
 		mark !== undefined
@@ -152,7 +152,7 @@ function was(r: Resolution): string {
 }
 
 /** A mark's status, its note, its verification and why it came back. */
-function status(a: Annotation): string[] {
+function status(a: Mark): string[] {
 	const r = a.resolution;
 	const lines: string[] = [];
 	// A verified fix: who fixed it and when on a line of its own, so the
@@ -209,7 +209,7 @@ const namesPage = (several: boolean, shot: Shot | undefined): boolean =>
 	several || shot?.query !== undefined;
 
 /** A mark; `page`: its page's address, said where the case has several. */
-function annotation(a: Annotation, page: string | undefined): string {
+function markSection(a: Mark, page: string | undefined): string {
 	const lines = [
 		`### ${a.number}. ${KIND[a.shape.kind]}${a.author === "ai" ? " (by an AI app)" : ""}`,
 		"",
@@ -309,14 +309,14 @@ export function caseMarkdown(c: Case): string {
 				]
 			: []),
 		"",
-		`## Marks (${c.annotations.length})`,
+		`## Marks (${c.marks.length})`,
 		"",
-		...[...c.annotations]
+		...[...c.marks]
 			.sort((a, b) => a.number - b.number)
 			// Where it was made, with its query (DEC-050): in a case of one
 			// page only where its screenshot has a query.
 			.map((a) =>
-				annotation(
+				markSection(
 					a,
 					namesPage(
 						several,

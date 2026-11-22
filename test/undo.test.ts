@@ -23,7 +23,7 @@ function area(): SessionArea & { data: Map<string, unknown> } {
 
 const mark = (n: number, more: Partial<AddedMark> = {}): AddedMark => ({
 	caseId: "c_1",
-	annotationId: `a${n}`,
+	markId: `a${n}`,
 	shot: `s${n}`,
 	comment: `comment ${n}`,
 	tabId: 7,
@@ -80,7 +80,7 @@ describe("AddLedger: Undo only for marks this page added", () => {
 		);
 		const kept = store.data.get("addedMarks") as AddedMark[];
 		expect(kept).toHaveLength(MAX_REMEMBERED);
-		expect(kept[0]?.annotationId).toBe("a6");
+		expect(kept[0]?.markId).toBe("a6");
 	});
 
 	test("a ledger started again (the worker stopped) reads what was recorded", async () => {

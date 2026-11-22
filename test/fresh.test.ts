@@ -36,7 +36,7 @@ describe("a case created by New case for this page (DEC-026)", () => {
 				{ url: "https://shop.example/cart", title: "Your cart", lang: "en" },
 			],
 			shots: [],
-			annotations: [],
+			marks: [],
 			verdict: null,
 		});
 	});
@@ -99,7 +99,7 @@ describe("an untouched case goes when it is left (DEC-026)", () => {
 		// Undo frees the number and records that a mark was stored.
 		const undone = {
 			...withOneMark(fresh()),
-			annotations: [],
+			marks: [],
 			shots: [],
 			lastNumber: 0,
 		};
@@ -108,7 +108,7 @@ describe("an untouched case goes when it is left (DEC-026)", () => {
 
 	test("its marks deleted in the side panel: the user's, it stays", () => {
 		expect(
-			isUntouched({ ...fresh(), lastNumber: 2, annotations: [], shots: [] }),
+			isUntouched({ ...fresh(), lastNumber: 2, marks: [], shots: [] }),
 		).toBe(false);
 	});
 
@@ -146,7 +146,7 @@ describe("never on doubt: a page that may hold a mark keeps the case (review of 
 		saving: false,
 		...change,
 	});
-	const target = { caseId: "c_new", title: "Cart", nextAnnotation: 1 };
+	const target = { caseId: "c_new", title: "Cart", nextMark: 1 };
 
 	test("no content script anywhere, or toolbars of other cases: nothing holds it", () => {
 		expect(mayHold([], "c_new")).toBe(false);

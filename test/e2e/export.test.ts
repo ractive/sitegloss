@@ -156,7 +156,7 @@ describe.skipIf(browserBinary === undefined)(
 			const copy = both.cases.find((c) => c.id !== saved.id);
 			if (copy === undefined) throw new Error("no copy");
 			expect(copy.title).toBe("Round trip (copy)");
-			expect(copy.annotations.map((a) => a.comment)).toEqual([
+			expect(copy.marks.map((a) => a.comment)).toEqual([
 				"Too pale",
 				"Say how much",
 			]);

@@ -1,7 +1,7 @@
 import { CASE_FORMAT, type Case } from "../src/lib/case.ts";
 import type { CaseStore } from "../src/lib/store.ts";
 
-/** A case without shots or annotations. */
+/** A case without shots or marks. */
 export function sampleCase(
 	id = "c_1",
 	updatedAt = "2026-11-04T10:00:00Z",
@@ -20,7 +20,7 @@ export function sampleCase(
 			userAgent: "test",
 		},
 		shots: [],
-		annotations: [],
+		marks: [],
 		verdict: null,
 	};
 }
@@ -47,7 +47,7 @@ export function withOneMark(c: Case): Case {
 				capturedAt: "2026-11-04T10:00:00Z",
 			},
 		],
-		annotations: [
+		marks: [
 			{
 				id: "a1",
 				number: 1,

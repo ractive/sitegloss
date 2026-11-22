@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { Annotation, Case, Shot } from "../../src/lib/case.ts";
+import type { Case, Mark, Shot } from "../../src/lib/case.ts";
 import type { Page } from "./browser.ts";
 import {
 	browserBinary,
@@ -103,8 +103,8 @@ describe.skipIf(browserBinary === undefined)(
 			// Two marks more, as a team would bring them: a box on nothing on
 			// the home page, and one on another page with its own query.
 			const s1 = c.shots[0] as Shot;
-			const a1 = c.annotations[0] as Annotation;
-			const box = (n: number, shot: string): Annotation => ({
+			const a1 = c.marks[0] as Mark;
+			const box = (n: number, shot: string): Mark => ({
 				...a1,
 				id: `a${n}`,
 				number: n,
@@ -132,7 +132,7 @@ describe.skipIf(browserBinary === undefined)(
 						{ url: `${h.base}/v2`, title: "Version 2", lang: "de" },
 					],
 					shots: [s1, s2],
-					annotations: [a1, box(2, "s1"), box(3, "s2")],
+					marks: [a1, box(2, "s1"), box(3, "s2")],
 				},
 			]);
 			await page.send("Page.close");
@@ -208,7 +208,7 @@ describe.skipIf(browserBinary === undefined)(
 				15_000,
 			);
 			const row = (n: number) =>
-				`document.querySelector('[data-annotation="a${n}"]')`;
+				`document.querySelector('[data-mark="a${n}"]')`;
 			const host = new URL(other).host;
 			expect(
 				await h.control.eval<string>(

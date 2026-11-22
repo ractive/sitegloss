@@ -5,8 +5,8 @@
  */
 
 import {
-	type Annotation,
 	type Case,
+	type Mark,
 	markStatus,
 	markUrl,
 	pendingImage,
@@ -15,7 +15,7 @@ import type { Api, Me } from "../src/lib/cloud/api.ts";
 import { type CloudStatus, KEYS } from "../src/lib/cloud/book.ts";
 import { CloudSync, type EngineDeps } from "../src/lib/cloud/engine.ts";
 import { memoryKv } from "../src/lib/kv.ts";
-import { type AnnotationDraft, type Crop, saveCase } from "../src/lib/save.ts";
+import { type Crop, type MarkDraft, saveCase } from "../src/lib/save.ts";
 import { MemoryStore } from "../src/lib/store.ts";
 import { newCase } from "../src/sidepanel/fresh.ts";
 import { putCase } from "./fixtures.ts";
@@ -145,15 +145,12 @@ export async function addMark(
 		number?: number;
 		element?: boolean;
 	} = {},
-): Promise<Annotation> {
+): Promise<Mark> {
 	const c = await d.store.getCase(caseId);
 	const number =
 		options.number ??
-		Math.max(
-			0,
-			c?.lastNumber ?? 0,
-			...(c?.annotations.map((a) => a.number) ?? []),
-		) + 1;
+		Math.max(0, c?.lastNumber ?? 0, ...(c?.marks.map((a) => a.number) ?? [])) +
+			1;
 	const url = options.url ?? CART;
 	const id = `p_${d.name}_${++shots}`;
 	d.clock.now = new Date(d.clock.now.getTime() + 1000);
@@ -163,7 +160,7 @@ export async function addMark(
 		width: 2560,
 		height: 1600,
 	});
-	const draft: AnnotationDraft = {
+	const draft: MarkDraft = {
 		id: `a${number}`,
 		number,
 		shot: id,
@@ -204,12 +201,12 @@ export async function addMark(
 					url,
 				},
 			],
-			annotations: [draft],
+			marks: [draft],
 		},
 		crop,
 		new Date(at),
 	);
-	return saved.annotations.find((a) => a.number === number) as Annotation;
+	return saved.marks.find((a) => a.number === number) as Mark;
 }
 
 /** Change the case on the device, as the panel does: one transaction. */
@@ -236,7 +233,7 @@ export function look(c: Case | undefined) {
 		link: c.link ?? null,
 		summary: c.verdict,
 		pages: (c.pages ?? []).map((p) => p.url),
-		marks: [...c.annotations]
+		marks: [...c.marks]
 			.sort((a, b) => a.number - b.number)
 			.map((a) => ({
 				number: a.number,
@@ -262,7 +259,7 @@ export async function images(
 ): Promise<Record<string, string>> {
 	const c = await d.store.getCase(caseId);
 	const out: Record<string, string> = {};
-	for (const a of c?.annotations ?? []) {
+	for (const a of c?.marks ?? []) {
 		const cropped = await d.store.getImage(caseId, a.crop);
 		out[`crop ${a.number}`] = cropped ? await tagOf(cropped.blob) : "MISSING";
 		const shot = c?.shots.find((s) => s.id === a.shot);

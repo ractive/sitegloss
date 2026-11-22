@@ -751,7 +751,7 @@ export class Sync {
 		const todo = all.filter(
 			(c) =>
 				byCase[c.id]?.version !== versionOf(c) &&
-				(c.annotations.length > 0 || byCase[c.id] !== undefined),
+				(c.marks.length > 0 || byCase[c.id] !== undefined),
 		);
 		if (todo.length === 0)
 			return this.#report(

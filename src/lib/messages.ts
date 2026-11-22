@@ -16,10 +16,10 @@ import type { MatchStatus } from "./match.ts";
 import type { SaveRequest } from "./save.ts";
 
 /** The case a toolbar adds its marks to (DEC-026: there is always one). */
-export interface AnnotateTarget {
+export interface MarkTarget {
 	caseId: string;
 	title: string;
-	nextAnnotation: number;
+	nextMark: number;
 }
 
 /** What the side panel (or the service worker) asks the content script. */
@@ -27,7 +27,7 @@ export type ContentRequest =
 	| {
 			type: "overlay:show";
 			/** Add to this case: a toolbar never draws a case of its own. */
-			target: AnnotateTarget;
+			target: MarkTarget;
 			/** Blur form fields while capturing (password fields always). */
 			blurForms?: boolean;
 	  }
@@ -58,14 +58,14 @@ export type ContentRequest =
 	 */
 	| { type: "case:load"; case: Case }
 	/**
-	 * Scroll to one annotation's element, or to another candidate
-	 * (`AnnotationMatch`, or `{ error }` while the page is busy).
+	 * Scroll to one mark's element, or to another candidate
+	 * (`MarkMatch`, or `{ error }` while the page is busy).
 	 */
 	| {
 			type: "case:show";
 			/** `null` comes back when another case (or none) is loaded. */
 			caseId: string;
-			annotationId: string;
+			markId: string;
 			/**
 			 * Which mark is meant (`markKey`), where the asker knows: `null`
 			 * comes back when the page's copy of the case has another mark
@@ -102,15 +102,15 @@ export type ContentRequest =
 			blurForms: boolean;
 	  }
 	/**
-	 * Read the element of a loaded case's annotation (or, with `selector`, one
+	 * Read the element of a loaded case's mark (or, with `selector`, one
 	 * relative to it) from the page: markup, styles, matching rules
 	 * (`InspectResult`; `null` when another case, or none, is loaded, or the
-	 * loaded copy lacks the annotation). Changes nothing on the page.
+	 * loaded copy lacks the mark). Changes nothing on the page.
 	 */
 	| {
 			type: "element:inspect";
 			caseId: string;
-			annotationId: string;
+			markId: string;
 			/** As for `case:show`. */
 			mark?: string;
 			/**
@@ -163,7 +163,7 @@ export type InspectResult =
 			ok: true;
 			url: string;
 			title: string;
-			match: AnnotationMatch;
+			match: MarkMatch;
 			/** How `selector` found the element; `mark` without one. */
 			relation: Relation;
 			/** A selector that finds the inspected element (empty in a shadow root). */
@@ -179,10 +179,10 @@ export type InspectResult =
 			 */
 			reason: "busy" | "lost" | "no-element" | "other-page" | "selector";
 			error: string;
-			match?: AnnotationMatch;
+			match?: MarkMatch;
 	  };
 
-/** One of the best elements for an annotation on this page. */
+/** One of the best elements for a mark on this page. */
 export interface CandidateInfo {
 	score: number;
 	/** One line about the element (element.ts `summarize`). */
@@ -194,11 +194,11 @@ export interface CandidateInfo {
 	found: boolean;
 }
 
-/** Where an annotation's element is on this page. */
-export interface AnnotationMatch {
-	annotationId: string;
+/** Where a mark's element is on this page. */
+export interface MarkMatch {
+	markId: string;
 	number: number;
-	/** `no-element`: the annotation recorded no element. */
+	/** `no-element`: the mark recorded no element. */
 	status: MatchStatus | "no-element";
 	/** The shown candidate's score (0 for lost). */
 	score: number;
@@ -224,7 +224,7 @@ export interface LoadReplacedAnswer {
 export interface LoadResult {
 	caseId: string;
 	url: string;
-	matches: AnnotationMatch[];
+	matches: MarkMatch[];
 	/**
 	 * A newer load of the case overtook this one (an AI app's load_case, the
 	 * panel's own draw) and this is its result: the marks are that load's.
@@ -243,7 +243,7 @@ export interface OverlayState {
 	 */
 	drafts: number;
 	saving: boolean;
-	target?: AnnotateTarget;
+	target?: MarkTarget;
 	/** The case whose marks are drawn. */
 	loadedCase?: string;
 }
@@ -256,7 +256,7 @@ export type WorkerRequest =
 	/** Whether a mark can take `number` in the case (`NumberCheck`). */
 	| { type: "case:number"; caseId: string; number: number }
 	/** The toolbar's Undo: take out the mark it just added (`UndoResult`, save.ts `undoAdd`). */
-	| { type: "case:undo-add"; caseId: string; annotationId: string }
+	| { type: "case:undo-add"; caseId: string; markId: string }
 	/** Remove the pending screenshots of a save that was given up. */
 	| { type: "images:discard"; caseId: string; shotIds: string[] };
 
@@ -301,7 +301,7 @@ export interface UndoResult {
 export interface SaveResult {
 	caseId: string;
 	title: string;
-	annotations: number;
+	marks: number;
 }
 
 /**
@@ -424,20 +424,20 @@ export function isCloudRequest(message: unknown): message is CloudRequest {
  * answers when no panel shows the case.
  */
 export type MarkRequest = (
-	| { type: "mark:picked"; caseId: string; annotationId: string }
-	| { type: "mark:comment"; caseId: string; annotationId: string; text: string }
-	| { type: "mark:delete"; caseId: string; annotationId: string }
+	| { type: "mark:picked"; caseId: string; markId: string }
+	| { type: "mark:comment"; caseId: string; markId: string; text: string }
+	| { type: "mark:delete"; caseId: string; markId: string }
 	/** Resolve… and Change…: how it is settled, with a note or "". */
 	| {
 			type: "mark:resolve";
 			caseId: string;
-			annotationId: string;
+			markId: string;
 			kind: ResolveChoice;
 			note: string;
 	  }
-	| { type: "mark:verify"; caseId: string; annotationId: string }
+	| { type: "mark:verify"; caseId: string; markId: string }
 	/** Reopen…: with what is still wrong, which the panel requires. */
-	| { type: "mark:reopen"; caseId: string; annotationId: string; note: string }
+	| { type: "mark:reopen"; caseId: string; markId: string; note: string }
 ) & {
 	/**
 	 * Which mark the popover was opened on (`markKey`): its id is another
@@ -478,7 +478,7 @@ export function isMarkRequest(message: unknown): message is MarkRequest {
 	return (
 		MARK_REQUESTS.has(m["type"] as string) &&
 		typeof m["caseId"] === "string" &&
-		typeof m["annotationId"] === "string" &&
+		typeof m["markId"] === "string" &&
 		(m["type"] !== "mark:comment" || typeof m["text"] === "string") &&
 		(m["type"] !== "mark:reopen" || typeof m["note"] === "string") &&
 		(m["type"] !== "mark:resolve" ||

@@ -7,9 +7,9 @@ import {
 	test,
 } from "bun:test";
 import { Window } from "happy-dom";
-import type { Annotation, Case } from "../src/lib/case.ts";
+import type { Case, Mark } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
-import type { AnnotationMatch } from "../src/lib/messages.ts";
+import type { MarkMatch } from "../src/lib/messages.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
 import { sampleCase, withOneMark } from "./fixtures.ts";
@@ -95,14 +95,14 @@ describe("the tab", () => {
 		expect(notice.querySelector("svg.notice-icon")).not.toBeNull();
 		expect(notice.textContent).toContain("Click the Sitegloss icon");
 		// It stands above New case for this page, and the hint below says nothing.
-		expect(notice.nextElementSibling).toBe(el("annotate"));
+		expect(notice.nextElementSibling).toBe(el("new-case"));
 		expect(el("hint").hidden).toBe(true);
 		expect(allow().hidden).toBe(false);
 		allow().click();
 		expect(asked).toEqual(["all"]);
-		// Annotating needs the page: off, and its title points at the notice.
-		expect(el<HTMLButtonElement>("annotate").disabled).toBe(true);
-		expect(el("annotate").title).toContain("see the notice");
+		// Marking needs the page: off, and its title points at the notice.
+		expect(el<HTMLButtonElement>("new-case").disabled).toBe(true);
+		expect(el("new-case").title).toContain("see the notice");
 	});
 
 	test("without an address although Sitegloss may run on all sites: Chrome's own pages, no button", () => {
@@ -112,13 +112,13 @@ describe("the tab", () => {
 		expect(el("access-notice").hidden).toBe(false);
 		expect(text("access-notice")).toContain("cannot run on this tab");
 		expect(allow().hidden).toBe(true);
-		expect(el<HTMLButtonElement>("annotate").disabled).toBe(true);
+		expect(el<HTMLButtonElement>("new-case").disabled).toBe(true);
 	});
 
 	test("a tab still loading has no address yet: no notice", () => {
 		home({ id: 1, url: "", title: "", size: undefined, loading: true });
 		expect(el("access-notice").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("annotate").disabled).toBe(false);
+		expect(el<HTMLButtonElement>("new-case").disabled).toBe(false);
 	});
 
 	test("with an address: no notice, New case for this page on", () => {
@@ -131,7 +131,7 @@ describe("the tab", () => {
 		expect(text("page")).toBe("www.example.com/kk");
 		expect(el("hint").hidden).toBe(true);
 		expect(el("access-notice").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("annotate").disabled).toBe(false);
+		expect(el<HTMLButtonElement>("new-case").disabled).toBe(false);
 	});
 
 	test("a hint of its own goes first", () => {
@@ -167,10 +167,7 @@ describe("the case list", () => {
 });
 
 describe("a mark's status and actions", () => {
-	const mark = (
-		n: number,
-		resolution?: Annotation["resolution"],
-	): Annotation => ({
+	const mark = (n: number, resolution?: Mark["resolution"]): Mark => ({
 		id: `a${n}`,
 		number: n,
 		shot: "s1",
@@ -185,7 +182,7 @@ describe("a mark's status and actions", () => {
 	let n = 0;
 	const twoMarks = (): Case => ({
 		...sampleCase(`c_marks${++n}`),
-		annotations: [
+		marks: [
 			mark(1),
 			mark(2, {
 				kind: "wontfix",
@@ -196,7 +193,7 @@ describe("a mark's status and actions", () => {
 	});
 	const row = (id: string) =>
 		window.document.querySelector(
-			`[data-annotation="${id}"]`,
+			`[data-mark="${id}"]`,
 		) as unknown as HTMLElement;
 	const action = (id: string, name: string) =>
 		row(id).querySelector(
@@ -232,7 +229,7 @@ describe("a mark's status and actions", () => {
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					annotationId: "a1",
+					markId: "a1",
 					mark: "",
 					mode: "resolve",
 					kind: "fixed",
@@ -266,7 +263,7 @@ describe("a mark's status and actions", () => {
 		const editing = (updatedAt: string) =>
 			caseState({ ...c, updatedAt }, (s) => {
 				s.markEdit = {
-					annotationId: "a1",
+					markId: "a1",
 					mark: "",
 					mode: "comment",
 					kind: "fixed",
@@ -289,7 +286,7 @@ describe("a mark's status and actions", () => {
 	test("AI findings show under the comment with their app; Delete asks once more", () => {
 		const c: Case = {
 			...twoMarks(),
-			annotations: [
+			marks: [
 				{
 					...mark(1),
 					findings: [
@@ -322,7 +319,7 @@ describe("a mark's status and actions", () => {
 		render(
 			caseState(c, (s) => {
 				s.findingDeleteArmed = {
-					annotationId: "a1",
+					markId: "a1",
 					mark: "",
 					findingId: "f_2",
 					at: 1,
@@ -364,7 +361,7 @@ describe("a mark's status and actions", () => {
 		});
 		const c: Case = {
 			...twoMarks(),
-			annotations: [
+			marks: [
 				{ ...mark(1), findings: [finding("f_1")] },
 				{ ...mark(2), findings: [finding("f_1")] },
 			],
@@ -372,7 +369,7 @@ describe("a mark's status and actions", () => {
 		render(
 			caseState(c, (s) => {
 				s.findingDeleteArmed = {
-					annotationId: "a2",
+					markId: "a2",
 					mark: "",
 					findingId: "f_1",
 					at: 1,
@@ -380,8 +377,8 @@ describe("a mark's status and actions", () => {
 			}),
 			noActions,
 		);
-		const button = (annotationId: string) =>
-			row(annotationId).querySelector(
+		const button = (markId: string) =>
+			row(markId).querySelector(
 				'[data-finding="f_1"] [data-finding-action="delete"]',
 			) as unknown as HTMLButtonElement;
 		expect(button("a1").textContent).toBe("Delete");
@@ -394,7 +391,7 @@ describe("a mark's status and actions", () => {
 		const c = twoMarks();
 		render(
 			caseState(c, (s) => {
-				s.markDeleteArmed = { annotationId: "a1", mark: "", at: 1 };
+				s.markDeleteArmed = { markId: "a1", mark: "", at: 1 };
 			}),
 			noActions,
 		);
@@ -408,8 +405,8 @@ describe("a mark's status and actions", () => {
 		const actions = actionsWith({
 			showMatch: (_caseId, a, candidate) => shown.push([a.id, candidate]),
 		});
-		const found: AnnotationMatch = {
-			annotationId: "a1",
+		const found: MarkMatch = {
+			markId: "a1",
 			number: 1,
 			status: "found",
 			score: 1,
@@ -419,8 +416,8 @@ describe("a mark's status and actions", () => {
 			],
 		};
 		// A note or box: no element to find, but Show still scrolls to it.
-		const noElement: AnnotationMatch = {
-			annotationId: "a2",
+		const noElement: MarkMatch = {
+			markId: "a2",
 			number: 2,
 			status: "no-element",
 			score: 0,
@@ -518,7 +515,7 @@ describe("a mark's status and actions", () => {
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					annotationId: "a2",
+					markId: "a2",
 					mark: "",
 					mode: "comment",
 					kind: "fixed",
@@ -540,8 +537,8 @@ describe("a mark's status and actions", () => {
 
 	test("a closed mark says its state in a word, and the counts read apart", () => {
 		const c = twoMarks();
-		const found: AnnotationMatch = {
-			annotationId: "a1",
+		const found: MarkMatch = {
+			markId: "a1",
 			number: 1,
 			status: "lost",
 			score: 0,
@@ -586,7 +583,7 @@ describe("Verify (DEC-023)", () => {
 		name: "Claude",
 		host: "claude.ai",
 	};
-	const mark = (n: number, more: Partial<Annotation> = {}): Annotation => ({
+	const mark = (n: number, more: Partial<Mark> = {}): Mark => ({
 		id: `a${n}`,
 		number: n,
 		shot: "s1",
@@ -601,7 +598,7 @@ describe("Verify (DEC-023)", () => {
 	/** Open, to verify, verified, won't fix; mark 1 reopened once. */
 	const fourMarks = (): Case => ({
 		...sampleCase(`c_verify${++n}`),
-		annotations: [
+		marks: [
 			mark(1, {
 				reopens: [
 					{
@@ -635,15 +632,15 @@ describe("Verify (DEC-023)", () => {
 	});
 	const row = (id: string) =>
 		window.document.querySelector(
-			`[data-annotation="${id}"]`,
+			`[data-mark="${id}"]`,
 		) as unknown as HTMLElement;
 	const actionsOf = (id: string) =>
 		[...row(id).querySelectorAll(".mark-actions [data-mark-action]")].map(
 			(b) => b.textContent,
 		);
 	const rows = () =>
-		[...window.document.querySelectorAll("li.annotation")].map((li) =>
-			li.getAttribute("data-annotation"),
+		[...window.document.querySelectorAll("li.mark")].map((li) =>
+			li.getAttribute("data-mark"),
 		);
 
 	test("the status block: a bar and the chips in order, counts above zero", () => {
@@ -705,7 +702,7 @@ describe("Verify (DEC-023)", () => {
 		expect(at?.getAttribute("data-group")).toBe("open");
 		expect(at?.getAttribute("aria-pressed")).toBe("true");
 		// A case without marks: no block, no gap for one.
-		render(caseState({ ...c, id: "c_none", annotations: [] }), noActions);
+		render(caseState({ ...c, id: "c_none", marks: [] }), noActions);
 		expect(window.document.querySelector("#case-status")).toBeNull();
 		expect(
 			(
@@ -720,25 +717,25 @@ describe("Verify (DEC-023)", () => {
 		const c = fourMarks();
 		const open = (id: string) =>
 			window.document
-				.querySelector(`[data-annotation="${id}"]`)
+				.querySelector(`[data-mark="${id}"]`)
 				?.hasAttribute("data-open");
 		render(caseState(c), noActions);
 		expect(open("a3")).toBe(false);
 		const picked = (at: number) =>
 			caseState(c, (s) => {
-				s.picked = { caseId: c.id, annotationId: "a3", at };
+				s.picked = { caseId: c.id, markId: "a3", at };
 			});
 		render(picked(1), noActions);
 		expect(open("a3")).toBe(true);
 		expect(
 			window.document
-				.querySelector('[data-annotation="a3"]')
+				.querySelector('[data-mark="a3"]')
 				?.hasAttribute("data-picked"),
 		).toBe(true);
 		// Closed by hand: the same click does not open it again.
 		(
 			window.document.querySelector(
-				'[data-annotation="a3"] .mark-toggle',
+				'[data-mark="a3"] .mark-toggle',
 			) as unknown as HTMLElement
 		).click();
 		expect(open("a3")).toBe(false);
@@ -749,7 +746,7 @@ describe("Verify (DEC-023)", () => {
 		expect(open("a3")).toBe(true);
 		render(
 			caseState(c, (s) => {
-				s.picked = { caseId: "c_other", annotationId: "a1", at: 3 };
+				s.picked = { caseId: "c_other", markId: "a1", at: 3 };
 			}),
 			noActions,
 		);
@@ -817,7 +814,7 @@ describe("Verify (DEC-023)", () => {
 		const none: Case = {
 			...c,
 			updatedAt: "2026-11-15T10:00:00Z",
-			annotations: c.annotations.filter((a) => a.id !== "a2"),
+			marks: c.marks.filter((a) => a.id !== "a2"),
 		};
 		render(filtered(none), noActions);
 		expect(rows()).toEqual(["a1", "a3", "a4"]);
@@ -826,7 +823,7 @@ describe("Verify (DEC-023)", () => {
 		const added: Case = {
 			...c,
 			updatedAt: "2026-11-15T11:00:00Z",
-			annotations: [...c.annotations, mark(5)],
+			marks: [...c.marks, mark(5)],
 		};
 		render(filtered(added), noActions);
 		expect(rows()).toEqual(["a1", "a2", "a3", "a4", "a5"]);
@@ -839,7 +836,7 @@ describe("Verify (DEC-023)", () => {
 
 	test("nothing open or to verify: a line says so", () => {
 		const c = fourMarks();
-		c.annotations = c.annotations.slice(2);
+		c.marks = c.marks.slice(2);
 		render(caseState(c), noActions);
 		expect(
 			window.document.querySelector("#case-status .all-done")?.textContent,
@@ -925,9 +922,9 @@ describe("Verify (DEC-023)", () => {
 		const verified: Case = {
 			...c,
 			updatedAt: "2026-11-14T15:00:00Z",
-			annotations: [
+			marks: [
 				{
-					...(c.annotations[0] as Annotation),
+					...(c.marks[0] as Mark),
 					resolution: {
 						kind: "fixed",
 						note: "Hover state too",
@@ -969,9 +966,9 @@ describe("Verify (DEC-023)", () => {
 			...c,
 			updatedAt: "2026-11-15T10:00:00Z",
 			importedAt: "2026-11-15T10:00:00Z",
-			annotations: [
+			marks: [
 				{
-					...(c.annotations[1] as Annotation),
+					...(c.marks[1] as Mark),
 					resolution: {
 						kind: "fixed",
 						at: "2026-11-14T09:00:00Z",
@@ -1008,7 +1005,7 @@ describe("Verify (DEC-023)", () => {
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					annotationId: "a1",
+					markId: "a1",
 					mark: "",
 					mode: "resolve",
 					kind: "fixed",
@@ -1055,7 +1052,7 @@ describe("Verify (DEC-023)", () => {
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					annotationId: "a2",
+					markId: "a2",
 					mark: "",
 					mode: "reopen",
 					kind: "fixed",
@@ -1112,12 +1109,12 @@ describe("Verify (DEC-023)", () => {
 	test("the import prompt says what differs: the counts of both copies", () => {
 		const here = {
 			...sampleCase("c_back"),
-			annotations: [mark(1), mark(2), mark(3)],
+			marks: [mark(1), mark(2), mark(3)],
 		};
 		const file: Case = {
 			...here,
 			updatedAt: "2026-11-14T10:00:00Z",
-			annotations: [
+			marks: [
 				mark(1),
 				mark(2, { resolution: { kind: "fixed", at: "2026-11-14T09:00:00Z" } }),
 				mark(3, { resolution: { kind: "fixed", at: "2026-11-14T09:00:00Z" } }),
@@ -1201,7 +1198,7 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		});
 	const withMark = (): Case => ({
 		...sampleCase("c_reach"),
-		annotations: [
+		marks: [
 			{
 				id: "a1",
 				number: 1,
@@ -1227,7 +1224,7 @@ describe("a case on a tab Sitegloss may not run on", () => {
 				[
 					"a1",
 					{
-						annotationId: "a1",
+						markId: "a1",
 						number: 1,
 						status: "no-element",
 						score: 0,
@@ -1328,11 +1325,8 @@ describe("a case on a tab Sitegloss may not run on", () => {
 });
 
 describe("none of the case's marks found (DEC-022)", () => {
-	const match = (
-		n: number,
-		status: AnnotationMatch["status"],
-	): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
+		markId: `a${n}`,
 		number: n,
 		status,
 		score: status === "lost" ? 0 : 0.9,
@@ -1352,7 +1346,7 @@ describe("none of the case's marks found (DEC-022)", () => {
 	});
 	const on = (
 		url: string,
-		matches: AnnotationMatch[],
+		matches: MarkMatch[],
 		settling = false,
 	): PanelState => {
 		const c = sampleCase("c_none");
@@ -1362,7 +1356,7 @@ describe("none of the case's marks found (DEC-022)", () => {
 				caseId: c.id,
 				tabId: 1,
 				url: "https://www.example.com/kk",
-				matches: new Map(matches.map((m) => [m.annotationId, m])),
+				matches: new Map(matches.map((m) => [m.markId, m])),
 				settling,
 			};
 		});
@@ -1413,8 +1407,8 @@ describe("none of the case's marks found (DEC-022)", () => {
 });
 
 describe("what the panel's draw found, under the case's buttons", () => {
-	const found = (n: number): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	const found = (n: number): MarkMatch => ({
+		markId: `a${n}`,
 		number: n,
 		status: "found",
 		score: 1,
@@ -1439,7 +1433,7 @@ describe("what the panel's draw found, under the case's buttons", () => {
 				url: c.page.url,
 				matches: new Map(
 					Array.from({ length: n }, (_, i) => found(i + 1)).map((m) => [
-						m.annotationId,
+						m.markId,
 						m,
 					]),
 				),
@@ -1543,7 +1537,7 @@ describe("a case of several pages (DEC-038)", () => {
 		capturedAt: "2026-11-19T09:00:00.000Z",
 		url,
 	});
-	const mark = (n: number, shotId: string): Annotation => ({
+	const mark = (n: number, shotId: string): Mark => ({
 		id: `a${n}`,
 		number: n,
 		shot: shotId,
@@ -1570,13 +1564,10 @@ describe("a case of several pages (DEC-038)", () => {
 			{ url: PAY, title: "Payment", lang: "en" },
 		],
 		shots: [shot("s1", CART, 1280), shot("s2", PAY, 390)],
-		annotations: [mark(1, "s1"), mark(2, "s1"), mark(3, "s2")],
+		marks: [mark(1, "s1"), mark(2, "s1"), mark(3, "s2")],
 	});
-	const match = (
-		n: number,
-		status: AnnotationMatch["status"],
-	): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
+		markId: `a${n}`,
 		number: n,
 		status,
 		score: status === "found" ? 0.9 : 0,
@@ -1690,21 +1681,20 @@ describe("a case of several pages (DEC-038)", () => {
 
 	test("a mark of another page is on another page, not lost; none found is said of the page's own", () => {
 		const c = flow("c_judged");
-		const on = (url: string, matches: AnnotationMatch[]) =>
+		const on = (url: string, matches: MarkMatch[]) =>
 			caseState(c, (s) => {
 				s.tab = { id: 1, url, title: "", size: undefined };
 				s.loaded = {
 					caseId: c.id,
 					tabId: 1,
 					url,
-					matches: new Map(matches.map((m) => [m.annotationId, m])),
+					matches: new Map(matches.map((m) => [m.markId, m])),
 				};
 				s.caseHint = { kind: "found" };
 			});
 		const word = (n: number) =>
-			el("case-view").querySelector(
-				`[data-annotation="a${n}"] .mark-sub .state`,
-			)?.textContent;
+			el("case-view").querySelector(`[data-mark="a${n}"] .mark-sub .state`)
+				?.textContent;
 		const cart = "http://localhost:3000/cart";
 		render(
 			on(cart, [match(1, "found"), match(2, "found"), match(3, "lost")]),
@@ -1717,7 +1707,7 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(word(1)).toContain("Found here");
 		expect(word(3)).toBe("On another page");
 		// Not red, and no "Not found" in its row.
-		const row = el("case-view").querySelector('[data-annotation="a3"]');
+		const row = el("case-view").querySelector('[data-mark="a3"]');
 		expect(row?.getAttribute("data-colour")).toBeNull();
 		expect(row?.textContent).toContain("Marked on shop.example/checkout/pay");
 		expect(row?.textContent).not.toContain("Not found");
@@ -1759,7 +1749,7 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(word(3)).toBe("Also on this page?");
 		expect(
 			el("case-view")
-				.querySelector('[data-annotation="a3"]')
+				.querySelector('[data-mark="a3"]')
 				?.getAttribute("data-colour"),
 		).toBe("unsure");
 		expect(el("case-hint").textContent).toBe(
@@ -2449,7 +2439,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 					capturedAt: "2026-11-19T09:00:00.000Z",
 				},
 			],
-			annotations: [
+			marks: [
 				{
 					id: "a1",
 					number: 1,
@@ -2483,7 +2473,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			],
 		};
 		render(caseState(marked), noActions);
-		const mark = el("case-view").querySelector('[data-annotation="a1"]');
+		const mark = el("case-view").querySelector('[data-mark="a1"]');
 		const history = [...(mark?.querySelectorAll(".history li") ?? [])].map(
 			(li) => li.textContent,
 		);
@@ -2564,7 +2554,7 @@ describe("the thread and closing (DEC-046)", () => {
 		// The mark says it has a comment.
 		expect(
 			window.document.querySelector(
-				"[data-annotation] .comments-count, .comments-count",
+				"[data-mark] .comments-count, .comments-count",
 			)?.textContent,
 		).toBe("1 comment");
 	});
@@ -3048,7 +3038,7 @@ describe("settings and errors at home", () => {
 	});
 });
 
-describe("the annotate button (DEC-023, DEC-026)", () => {
+describe("the New case button (DEC-023, DEC-026)", () => {
 	const c = sampleCase();
 	const overlay = (
 		change: Partial<NonNullable<PanelState["overlay"]>> = {},
@@ -3071,7 +3061,7 @@ describe("the annotate button (DEC-023, DEC-026)", () => {
 		state.overlay = o;
 		state.cases = cases;
 		render(state, noActions);
-		const button = el<HTMLButtonElement>("annotate");
+		const button = el<HTMLButtonElement>("new-case");
 		return {
 			label: button.textContent,
 			primary: button.classList.contains("primary"),
@@ -3080,7 +3070,7 @@ describe("the annotate button (DEC-023, DEC-026)", () => {
 	};
 
 	test("one state: New case for this page, the one primary, whatever the page shows", () => {
-		const target = { caseId: c.id, title: c.title, nextAnnotation: 2 };
+		const target = { caseId: c.id, title: c.title, nextMark: 2 };
 		for (const o of [
 			undefined,
 			overlay(),
@@ -3126,7 +3116,7 @@ describe("the annotate button (DEC-023, DEC-026)", () => {
 		// No case for the page: as before, the new case is the one primary.
 		at("https://example.com/none", [own, elsewhere]);
 		expect(el("here").hidden).toBe(true);
-		expect(primary("annotate")).toBe(true);
+		expect(primary("new-case")).toBe(true);
 		expect(el("cases-heading").textContent).toBe("Cases");
 		expect(rows("other")).toEqual(["c_own", "c_else"]);
 
@@ -3141,8 +3131,8 @@ describe("the annotate button (DEC-023, DEC-026)", () => {
 		expect(el("here").contains(el("open-here") as never)).toBe(true);
 		expect(el("open-here").hidden).toBe(false);
 		expect(primary("open-here")).toBe(true);
-		expect(primary("annotate")).toBe(false);
-		expect(el("annotate").textContent).toBe("New case for this page");
+		expect(primary("new-case")).toBe(false);
+		expect(el("new-case").textContent).toBe("New case for this page");
 		// The list below holds the others, and says so.
 		expect(el("cases-heading").textContent).toBe("Other cases");
 		expect(rows("other")).toEqual(["c_else"]);
@@ -3156,7 +3146,7 @@ describe("the annotate button (DEC-023, DEC-026)", () => {
 		);
 		expect(rows("here")).toEqual(["c_own", "c_second"]);
 		expect(el("open-here").hidden).toBe(true);
-		expect(primary("annotate")).toBe(false);
+		expect(primary("new-case")).toBe(false);
 
 		// Every case is the page's: the list below says there are no others.
 		at(c.page.url, [own]);
@@ -3167,12 +3157,12 @@ describe("the annotate button (DEC-023, DEC-026)", () => {
 		at("https://example.com/none", [own]);
 		expect(el("here").hidden).toBe(true);
 		expect(el("open-here").hidden).toBe(true);
-		expect(primary("annotate")).toBe(true);
+		expect(primary("new-case")).toBe(true);
 	});
 
 	test("no hint lines for drafts: there are no drafts (DEC-026)", () => {
 		home(overlay({ visible: true, drafts: 3 }));
-		expect(el("annotate-hint")).toBeNull();
+		expect(el("new-case-hint")).toBeNull();
 		expect(el("hint").hidden).toBe(true);
 	});
 });
@@ -3646,7 +3636,7 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 			actions,
 		);
 		el("add-marks").click();
-		const target = { caseId: c.id, title: c.title, nextAnnotation: 2 };
+		const target = { caseId: c.id, title: c.title, nextMark: 2 };
 		render(
 			caseState(c, (s) => {
 				s.tab = tab;
@@ -3691,7 +3681,7 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		// With a mark: a case without one has nothing to show or hide.
 		const c: Case = {
 			...sampleCase("c_tabline"),
-			annotations: [
+			marks: [
 				{
 					id: "a1",
 					number: 1,
@@ -3725,7 +3715,7 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		expect(el("load-case").textContent).toBe("Show marks");
 		// A case without marks has nothing to show or hide: no button, also
 		// while the toolbar adds to it.
-		const empty = { ...c, id: "c_empty", annotations: [] };
+		const empty = { ...c, id: "c_empty", marks: [] };
 		render(
 			caseState(empty, (s) => {
 				s.tab = tab;
@@ -3786,9 +3776,9 @@ describe("a loaded mark", () => {
 		shape: { kind: "element", rect: element.rect },
 		crop: "crops/a1.webp",
 		element,
-	} as Annotation;
+	} as Mark;
 	const shownAs = (summary: string, visible = true, current = 0) =>
-		caseState({ ...sampleCase("c_m"), annotations: [mark] }, (s) => {
+		caseState({ ...sampleCase("c_m"), marks: [mark] }, (s) => {
 			s.loaded = {
 				caseId: "c_m",
 				tabId: 1,
@@ -3797,7 +3787,7 @@ describe("a loaded mark", () => {
 					[
 						"a1",
 						{
-							annotationId: "a1",
+							markId: "a1",
 							number: 1,
 							status: "found",
 							score: 1,
@@ -3824,7 +3814,7 @@ describe("a loaded mark", () => {
 	});
 
 	const colour = () =>
-		document.querySelector<HTMLElement>(".annotation")?.dataset["colour"];
+		document.querySelector<HTMLElement>(".mark")?.dataset["colour"];
 
 	test("its number has the colour of its mark on the page", () => {
 		render(shownAs(summarize(element)), noActions);
@@ -3844,7 +3834,7 @@ describe("a loaded mark", () => {
 
 	test("the pin: its colour is the status, its fill the match (DEC-024)", async () => {
 		const at = "2026-11-14T09:00:00Z";
-		const marks: Annotation[] = [
+		const marks: Mark[] = [
 			{ ...mark, id: "a1", number: 1 },
 			{ ...mark, id: "a2", number: 2, resolution: { kind: "fixed", at } },
 			{
@@ -3864,12 +3854,12 @@ describe("a loaded mark", () => {
 		});
 		const match = (
 			n: number,
-			status: AnnotationMatch["status"],
+			status: MarkMatch["status"],
 			candidates: ReturnType<typeof candidate>[],
-		): [string, AnnotationMatch] => [
+		): [string, MarkMatch] => [
 			`a${n}`,
 			{
-				annotationId: `a${n}`,
+				markId: `a${n}`,
 				number: n,
 				status,
 				score: candidates[0]?.score ?? 0,
@@ -3878,7 +3868,7 @@ describe("a loaded mark", () => {
 			},
 		];
 		render(
-			caseState({ ...sampleCase("c_pin"), annotations: marks }, (s) => {
+			caseState({ ...sampleCase("c_pin"), marks: marks }, (s) => {
 				s.loaded = {
 					caseId: "c_pin",
 					tabId: 1,
@@ -3893,7 +3883,7 @@ describe("a loaded mark", () => {
 			}),
 			noActions,
 		);
-		const pins = [...document.querySelectorAll<HTMLElement>(".annotation")].map(
+		const pins = [...document.querySelectorAll<HTMLElement>(".mark")].map(
 			(li) => [
 				li.querySelector(".number")?.textContent,
 				li.dataset["status"],
@@ -3931,10 +3921,10 @@ describe("a loaded mark", () => {
 		);
 		expect(rule(".number")).toContain("box-shadow: 0 0 0 2px var(--paper);");
 		// Unsure: a dashed ring outside it. Not found: hollow.
-		expect(rule('.annotation[data-colour="unsure"] .number')).toContain(
+		expect(rule('.mark[data-colour="unsure"] .number')).toContain(
 			"outline: 1.5px dashed var(--tone, var(--st-open));",
 		);
-		const hollow = rule('.annotation[data-colour="lost"] .number');
+		const hollow = rule('.mark[data-colour="lost"] .number');
 		expect(hollow).toContain("background: var(--paper);");
 		expect(hollow).toContain("inset 0 0 0 2px var(--tone, var(--st-open))");
 		expect(hollow).toContain("color: var(--tone, var(--st-open));");
@@ -4475,9 +4465,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 			}),
 			actionsWith({ openMarkPage: (_c, _a, where) => void asked.push(where) }),
 		);
-		const mark = window.document.querySelector(
-			'[data-annotation="a1"] .mark-page',
-		);
+		const mark = window.document.querySelector('[data-mark="a1"] .mark-page');
 		expect(mark?.textContent).toBe(
 			"Marked on shop.example/search?q=shoes · Open on localhost:3000",
 		);
@@ -4511,7 +4499,7 @@ describe("the second link names the origin in front (review of DEC-050)", () => 
 				}),
 				noActions,
 			);
-			return window.document.querySelector('[data-annotation="a1"] .mark-page')
+			return window.document.querySelector('[data-mark="a1"] .mark-page')
 				?.textContent;
 		};
 		expect(line("http://shop.example/cart")).toBe(

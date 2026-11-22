@@ -271,7 +271,7 @@ describe.skipIf(
 							withResolution(
 								{
 									...c,
-									annotations: c.annotations.map((a) => {
+									marks: c.marks.map((a) => {
 										const shape = shapes[a.id];
 										return shape === undefined ? a : { ...a, shape };
 									}),
@@ -339,7 +339,7 @@ describe.skipIf(
 						| Case
 						| undefined;
 				},
-				(c) => c?.annotations.length === 2,
+				(c) => c?.marks.length === 2,
 				60_000,
 			);
 			await synced(panel);
@@ -440,7 +440,7 @@ describe.skipIf(
 				await panel.click(row(title));
 				await panel.waitFor(`!!${id("export-case")}`);
 				await panel.waitFor(
-					`document.querySelectorAll("[data-annotation]").length === ${count}`,
+					`document.querySelectorAll("[data-mark]").length === ${count}`,
 					15_000,
 				);
 				await panel.click(id("back"));

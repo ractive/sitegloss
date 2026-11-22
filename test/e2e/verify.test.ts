@@ -35,8 +35,7 @@ interface CallResult {
 	content: { type: string; text?: string }[];
 }
 
-const row = (id: string) =>
-	`document.querySelector('[data-annotation="${id}"]')`;
+const row = (id: string) => `document.querySelector('[data-mark="${id}"]')`;
 const act = (id: string, name: string) =>
 	`${row(id)}?.querySelector('[data-mark-action="${name}"]')`;
 const chips = `[...document.querySelectorAll("#case-status .chip")].map((b) => b.textContent.trim())`;
@@ -130,7 +129,7 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 		await panel.click(replace);
 		await until(storedCases, (cases) =>
 			cases.some(
-				(c) => c.id === tester.id && c.annotations[0]?.resolution !== undefined,
+				(c) => c.id === tester.id && c.marks[0]?.resolution !== undefined,
 			),
 		);
 		// The marks to verify: their pill, and Verified in the head.
@@ -152,18 +151,14 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 		await panel.click(
 			`document.querySelector('#case-status .chip[data-group="toVerify"]')`,
 		);
-		await panel.waitFor(
-			`document.querySelectorAll("li.annotation").length === 2`,
-		);
+		await panel.waitFor(`document.querySelectorAll("li.mark").length === 2`);
 		expect(
 			await panel.eval<string>(
 				`document.getElementById("marks-filtered").textContent`,
 			),
 		).toBe("Showing 2 of 3 marks. Show all");
 		await panel.click(`document.querySelector('[data-action="show-all"]')`);
-		await panel.waitFor(
-			`document.querySelectorAll("li.annotation").length === 3`,
-		);
+		await panel.waitFor(`document.querySelectorAll("li.mark").length === 3`);
 
 		// Verified, from the collapsed head: the bar and the chips move.
 		await panel.click(
@@ -190,7 +185,7 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 			),
 		).toBe("Reopened: Still pale on hover");
 		const stored = (await storedCases()).find((c) => c.id === tester.id);
-		expect(stored?.annotations[1]?.reopens).toEqual([
+		expect(stored?.marks[1]?.reopens).toEqual([
 			{
 				note: "Still pale on hover",
 				at: expect.any(String),
@@ -203,7 +198,7 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 				},
 			},
 		]);
-		expect(stored?.annotations[0]?.resolution?.verified).toEqual({
+		expect(stored?.marks[0]?.resolution?.verified).toEqual({
 			at: expect.any(String),
 		});
 	}, 90_000);
@@ -240,7 +235,7 @@ describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
 					capturedAt: "2026-11-13T10:00:00Z",
 				},
 			],
-			annotations: [
+			marks: [
 				{
 					id: "a1",
 					number: 1,

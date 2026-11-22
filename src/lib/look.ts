@@ -2,7 +2,7 @@
  * How a marked element looked when the mark was made (DEC-048): its computed
  * styles, the colour behind it, and its siblings' boxes. Read once per mark,
  * for the mark's own element, when it is made (by hand or by an AI app's
- * add_annotation); never for a page's candidates (candidates.ts, review.ts),
+ * add_mark); never for a page's candidates (candidates.ts, review.ts),
  * whose scan has a time budget, and never for a stroke's ends. Matching and
  * the sync's fingerprint take no part of it.
  *

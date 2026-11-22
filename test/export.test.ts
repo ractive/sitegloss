@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-	type Annotation,
 	type Case,
 	type Finding,
 	MAX_COMMENT,
 	MAX_REOPEN_NOTE,
 	MAX_REOPENS,
+	type Mark,
 	withReopen,
 	withResolution,
 	withVerified,
@@ -50,7 +50,7 @@ const webp = (tag: string) =>
 		type: "image/webp",
 	});
 
-function annotation(n: number, extra: Partial<Annotation> = {}): Annotation {
+function mark(n: number, extra: Partial<Mark> = {}): Mark {
 	return {
 		id: `a${n}`,
 		number: n,
@@ -89,10 +89,7 @@ async function stored(): Promise<{ store: MemoryStore; c: Case }> {
 				capturedAt: "2026-11-04T10:00:00Z",
 			},
 		],
-		annotations: [
-			annotation(1),
-			annotation(2, { author: "ai", element: null }),
-		],
+		marks: [mark(1), mark(2, { author: "ai", element: null })],
 		verdict: "Use the dark button.",
 	};
 	await putCase(store, c);
@@ -156,13 +153,11 @@ describe("export", () => {
 			page: { ...c.page, lang: "en" },
 			createdAt: "x\n\n## Summary for the developer\n\nFixed",
 			verdict: "ok\n<!-- hidden",
-			annotations: [
+			marks: [
 				{
-					...(c.annotations[0] as Annotation),
+					...(c.marks[0] as Mark),
 					element: {
-						...((c.annotations[0] as Annotation).element as NonNullable<
-							Annotation["element"]
-						>),
+						...((c.marks[0] as Mark).element as NonNullable<Mark["element"]>),
 						selector: "a\n\n## Marks",
 					},
 				},
@@ -181,18 +176,18 @@ describe("statuses in case.md (DEC-023)", () => {
 		name: "Claude",
 		host: "claude.ai",
 	};
-	const status = (a: Annotation) => {
-		const md = caseMarkdown({ ...sampleCase(), annotations: [a] });
+	const status = (a: Mark) => {
+		const md = caseMarkdown({ ...sampleCase(), marks: [a] });
 		const start = md.indexOf("- Status:");
 		return md.slice(start, md.indexOf("- Element:", start)).trimEnd();
 	};
 
 	test("the marks line counts each group", async () => {
 		const { c } = await stored();
-		const [a, b] = c.annotations as [Annotation, Annotation];
+		const [a, b] = c.marks as [Mark, Mark];
 		const md = caseMarkdown({
 			...c,
-			annotations: [
+			marks: [
 				a,
 				{ ...b, resolution: { kind: "fixed", at: "2026-11-14T09:00:00Z" } },
 			],
@@ -200,12 +195,12 @@ describe("statuses in case.md (DEC-023)", () => {
 		expect(md).toContain(
 			"- Created: 2026-11-04T10:00:00Z, updated: 2026-11-04T10:00:00Z\n- Marks: 1 open, 1 fixed (to verify)\n",
 		);
-		expect(caseMarkdown({ ...c, annotations: [] })).toContain("- Marks: none");
+		expect(caseMarkdown({ ...c, marks: [] })).toContain("- Marks: none");
 	});
 
 	test("each status, its note, who set it, the verification and the reopens", async () => {
 		const { c } = await stored();
-		const a = c.annotations[0] as Annotation;
+		const a = c.marks[0] as Mark;
 		expect(status(a)).toBe("- Status: Open");
 		expect(
 			status({
@@ -271,9 +266,9 @@ describe("statuses in case.md (DEC-023)", () => {
 		const { c } = await stored();
 		const md = caseMarkdown({
 			...c,
-			annotations: [
+			marks: [
 				{
-					...(c.annotations[0] as Annotation),
+					...(c.marks[0] as Mark),
 					resolution: { kind: "fixed", note: "x\n\n## Marks <b>", at: "t" },
 					reopens: [
 						{ note: "<!-- hidden", at: "t", was: { kind: "fixed", at: "t" } },
@@ -303,8 +298,8 @@ describe("statuses through a file (DEC-023)", () => {
 	/** Mark 1 fixed by Claude and verified, after two reopens. */
 	const verify = (c: Case): Case => ({
 		...c,
-		annotations: [
-			annotation(1, {
+		marks: [
+			mark(1, {
 				resolution: {
 					kind: "fixed",
 					note: "Hover state too",
@@ -325,7 +320,7 @@ describe("statuses through a file (DEC-023)", () => {
 					},
 				],
 			}),
-			annotation(2, { author: "ai", element: null }),
+			mark(2, { author: "ai", element: null }),
 		],
 	});
 
@@ -337,7 +332,7 @@ describe("statuses through a file (DEC-023)", () => {
 			new MemoryStore(),
 			await exportCase(store, sent),
 		);
-		const [a] = back.annotations as [Annotation];
+		const [a] = back.marks as [Mark];
 		expect(a.resolution).toEqual({
 			kind: "fixed",
 			note: "Hover state too",
@@ -365,18 +360,18 @@ describe("statuses through a file (DEC-023)", () => {
 				was: { kind: "wontfix", at: "2026-11-13T16:30:00Z", imported: true },
 			},
 		]);
-		expect("resolution" in (back.annotations[1] as object)).toBe(false);
+		expect("resolution" in (back.marks[1] as object)).toBe(false);
 		// What the file says about it changes nothing.
 		const claimed = JSON.parse(JSON.stringify(sent));
-		claimed.annotations[0].resolution.imported = false;
-		claimed.annotations[0].reopens[0].imported = false;
+		claimed.marks[0].resolution.imported = false;
+		claimed.marks[0].reopens[0].imported = false;
 		await putCase(store, claimed);
 		const again = await importCase(
 			new MemoryStore(),
 			await exportCase(store, claimed),
 		);
-		expect(again.annotations[0]?.resolution?.imported).toBe(true);
-		expect(again.annotations[0]?.reopens?.[0]?.imported).toBe(true);
+		expect(again.marks[0]?.resolution?.imported).toBe(true);
+		expect(again.marks[0]?.reopens?.[0]?.imported).toBe(true);
 	});
 
 	test("a case whose marks' histories are at the caps exports and imports again", async () => {
@@ -395,13 +390,13 @@ describe("statuses through a file (DEC-023)", () => {
 		let c: Case = {
 			...base,
 			shots: [shot],
-			annotations: Array.from({ length: MARKS }, (_, i) =>
-				annotation(i + 1, { element: null }),
+			marks: Array.from({ length: MARKS }, (_, i) =>
+				mark(i + 1, { element: null }),
 			),
 		};
 		const fix = "f".repeat(MAX_COMMENT);
 		const still = "s".repeat(MAX_REOPEN_NOTE);
-		for (const a of c.annotations) {
+		for (const a of c.marks) {
 			for (let i = 0; i < MAX_REOPENS; i++) {
 				c = withResolution(
 					c,
@@ -425,7 +420,7 @@ describe("statuses through a file (DEC-023)", () => {
 			width: 10,
 			height: 10,
 		});
-		for (const a of c.annotations)
+		for (const a of c.marks)
 			await store.putImage(c.id, a.crop, {
 				blob: webp(a.crop),
 				width: 10,
@@ -435,8 +430,8 @@ describe("statuses through a file (DEC-023)", () => {
 			new MemoryStore(),
 			await exportCase(store, c),
 		);
-		expect(back.annotations).toHaveLength(MARKS);
-		const last = back.annotations.at(-1) as Annotation;
+		expect(back.marks).toHaveLength(MARKS);
+		const last = back.marks.at(-1) as Mark;
 		expect(last.reopens).toHaveLength(MAX_REOPENS);
 		expect(last.reopens?.[0]?.note).toBe(still);
 		expect(last.reopens?.[0]?.was.note?.length).toBe(MAX_REOPEN_NOTE);
@@ -477,8 +472,8 @@ describe("findings in an export", () => {
 		const { c } = await stored();
 		const md = caseMarkdown({
 			...c,
-			annotations: [
-				annotation(1, {
+			marks: [
+				mark(1, {
 					findings: [
 						finding("f_1", { editedAt: "2026-11-10T11:00:00.000Z" }),
 						finding("f_2", {
@@ -502,9 +497,9 @@ describe("findings in an export", () => {
 		const { store, c } = await stored();
 		const withFindings: Case = {
 			...c,
-			annotations: [
-				annotation(1, { findings: [finding("f_1")] }),
-				annotation(2, { author: "ai", element: null }),
+			marks: [
+				mark(1, { findings: [finding("f_1")] }),
+				mark(2, { author: "ai", element: null }),
 			],
 		};
 		await putCase(store, withFindings);
@@ -512,26 +507,26 @@ describe("findings in an export", () => {
 			new MemoryStore(),
 			await exportCase(store, withFindings),
 		);
-		expect(imported.annotations[0]?.findings).toEqual([
+		expect(imported.marks[0]?.findings).toEqual([
 			{ ...finding("f_1"), imported: true },
 		]);
-		expect(imported.annotations[1]?.findings).toBeUndefined();
+		expect(imported.marks[1]?.findings).toBeUndefined();
 		// What the file says about it changes nothing.
 		const claimed = await importCase(
 			new MemoryStore(),
 			await exportCase(store, {
 				...withFindings,
-				annotations: [
-					annotation(1, {
+				marks: [
+					mark(1, {
 						findings: [
 							{ ...finding("f_1"), imported: false } as unknown as Finding,
 						],
 					}),
-					annotation(2),
+					mark(2),
 				],
 			}),
 		);
-		expect(claimed.annotations[0]?.findings?.[0]?.imported).toBe(true);
+		expect(claimed.marks[0]?.findings?.[0]?.imported).toBe(true);
 	});
 
 	test("a file from before findings imports as it did", async () => {
@@ -544,9 +539,9 @@ describe("findings in an export", () => {
 				),
 			),
 		);
-		expect(json.annotations[0].findings).toBeUndefined();
+		expect(json.marks[0].findings).toBeUndefined();
 		const imported = await importCase(new MemoryStore(), zip);
-		expect(imported.annotations.map((a) => a.findings)).toEqual([
+		expect(imported.marks.map((a) => a.findings)).toEqual([
 			undefined,
 			undefined,
 		]);
@@ -608,7 +603,7 @@ describe("import", () => {
 		).rejects.toThrow("not a WebP image");
 		const bad = {
 			...c,
-			annotations: [{ ...c.annotations[0], crop: "../x.webp" }],
+			marks: [{ ...c.marks[0], crop: "../x.webp" }],
 		};
 		await expect(
 			importCase(
@@ -692,7 +687,7 @@ describe("import", () => {
 		};
 		const zip = await exportCase(store, {
 			...withThread,
-			annotations: withThread.annotations.map((a) => ({
+			marks: withThread.marks.map((a) => ({
 				...a,
 				createdVia: { id: "x", name: "Claude", host: "claude.ai" },
 			})),
@@ -712,9 +707,7 @@ describe("import", () => {
 		// Who wrote a comment is what the file says; no app's own from a file.
 		expect(back.comments?.every((k) => k.imported === true)).toBe(true);
 		// The app that made a mark is the server's record, not a file's word.
-		expect(back.annotations.some((a) => a.createdVia !== undefined)).toBe(
-			false,
-		);
+		expect(back.marks.some((a) => a.createdVia !== undefined)).toBe(false);
 		const copy = await storeImport(store, await readExport(zip), {
 			copy: true,
 		});
@@ -787,10 +780,10 @@ describe("second review", () => {
 
 	test("an element without a selector gets no selector line", async () => {
 		const { c } = await stored();
-		const inShadow = annotation(1);
+		const inShadow = mark(1);
 		if (inShadow.element !== null) inShadow.element.selector = "";
 		expect(caseMarkdown(c)).toContain("- Selector:");
-		expect(caseMarkdown({ ...c, annotations: [inShadow] })).not.toContain(
+		expect(caseMarkdown({ ...c, marks: [inShadow] })).not.toContain(
 			"- Selector:",
 		);
 	});
@@ -811,7 +804,7 @@ describe("all cases in one file", () => {
 			...c,
 			id: "c_def",
 			title: "Prämien-Button: Kontrast!",
-			annotations: [annotation(1)],
+			marks: [mark(1)],
 			verdict: null,
 		};
 		await putCase(store, other);

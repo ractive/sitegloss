@@ -20,8 +20,8 @@ import {
 	withChoice,
 	withClosed,
 	withComment,
-	withoutAnnotation,
 	withoutCaseComment,
+	withoutMark,
 } from "../src/lib/case.ts";
 import { eventsUrl, httpApi } from "../src/lib/cloud/api.ts";
 import {
@@ -86,7 +86,7 @@ serverTest("against a real server", () => {
 		expect(account.teamId).toBe(team?.id as string);
 		expect(status(tess.device)?.state).toBe("synced");
 		const demo = (await tess.device.store.getCase("demo_case_1")) as Case;
-		expect(demo.annotations.length).toBeGreaterThanOrEqual(5);
+		expect(demo.marks.length).toBeGreaterThanOrEqual(5);
 		expect(demo.pages?.length).toBe(2);
 		expect(demo.importedAt).toBeUndefined();
 		expect(
@@ -94,7 +94,7 @@ serverTest("against a real server", () => {
 		).not.toContain("MISSING");
 		const crop = await tess.device.store.getImage(
 			"demo_case_1",
-			demo.annotations[0]?.crop as string,
+			demo.marks[0]?.crop as string,
 		);
 		const head = new Uint8Array(
 			(await crop?.blob.arrayBuffer()) ?? new ArrayBuffer(0),
@@ -130,7 +130,7 @@ serverTest("against a real server", () => {
 		expect(await images(dana.device, id)).toEqual(
 			await images(tess.device, id),
 		);
-		expect(there.annotations[0]?.createdBy?.name).toBe("Tess Tester");
+		expect(there.marks[0]?.createdBy?.name).toBe("Tess Tester");
 		// The pages are the server's, made from the screenshots: each with
 		// the title its first screenshot named, though no list was ever sent.
 		expect(there.pages).toEqual([
@@ -149,7 +149,7 @@ serverTest("against a real server", () => {
 		expect(heard.length).toBeGreaterThan(before);
 		await tess.device.engine.request();
 		const mine = (await tess.device.store.getCase(id)) as Case;
-		expect(mine.annotations[0]?.resolution).toMatchObject({
+		expect(mine.marks[0]?.resolution).toMatchObject({
 			kind: "fixed",
 			note: "Widened the column",
 			user: { name: "Dana Developer" },
@@ -218,9 +218,7 @@ serverTest("against a real server", () => {
 			["https://shop.example/done", "Thank you"],
 		]);
 		for (const gone of [done.id, local.id])
-			await change(dana.device, id, (c, now) =>
-				withoutAnnotation(c, gone, now),
-			);
+			await change(dana.device, id, (c, now) => withoutMark(c, gone, now));
 		await sync(dana.device, tess.device);
 		expect(
 			(await tess.device.store.getCase(id))?.pages?.map((p) => p.url),
@@ -296,7 +294,7 @@ serverTest("against a real server", () => {
 		await addMark(tess.device, caseId, "Pay button too pale", { url: PAY });
 		await tess.device.engine.request();
 		const marks = (await tess.device.store.getCase(caseId)) as Case;
-		const first = marks.annotations[0]?.id as string;
+		const first = marks.marks[0]?.id as string;
 		// By hand on the case; through Claude on mark 1; closed through Claude.
 		await change(tess.device, caseId, (c, now) =>
 			withCaseComment(
@@ -332,7 +330,7 @@ serverTest("against a real server", () => {
 				k.app?.name ?? null,
 				k.mark === undefined
 					? null
-					: there.annotations.find((a) => a.id === k.mark)?.number,
+					: there.marks.find((a) => a.id === k.mark)?.number,
 			]),
 		).toEqual([
 			[`k_${caseId}_1`, "Both pages checked.", "Tess Tester", null, null],
@@ -363,9 +361,7 @@ serverTest("against a real server", () => {
 		expect(old.statuses.at(-1)?.problems).toEqual([]);
 		await tess.device.engine.request();
 		const mine = (await tess.device.store.getCase(caseId)) as Case;
-		expect(mine.annotations[0]?.comment).toBe(
-			"Total is cut off on small screens",
-		);
+		expect(mine.marks[0]?.comment).toBe("Total is cut off on small screens");
 		expect(mine.comments).toHaveLength(2);
 		expect(mine.closed).toBeDefined();
 
@@ -415,7 +411,7 @@ serverTest("against a real server", () => {
 		expect(old.statuses.at(-1)?.problems).toEqual([]);
 		await tess.device.engine.request();
 		const reopened = (await tess.device.store.getCase(caseId)) as Case;
-		expect(reopened.annotations.map((a) => a.comment)).toContain("From 0.3.0");
+		expect(reopened.marks.map((a) => a.comment)).toContain("From 0.3.0");
 		expect(reopened.closed).toBeUndefined();
 
 		await removeCase(tess.device, caseId);
@@ -456,7 +452,7 @@ serverTest("an arrow's ends at a real server (DEC-047; its DEC-020)", () => {
 		};
 		await change(tess.device, caseId, (c, now) => ({
 			...c,
-			annotations: c.annotations.map((x) =>
+			marks: c.marks.map((x) =>
 				x.id === a.id
 					? {
 							...x,
@@ -474,8 +470,7 @@ serverTest("an arrow's ends at a real server (DEC-047; its DEC-020)", () => {
 		await tess.device.engine.request();
 		expect(status(tess.device)?.problems).toEqual([]);
 		await dana.device.engine.request();
-		const there = ((await dana.device.store.getCase(caseId)) as Case)
-			.annotations[0];
+		const there = ((await dana.device.store.getCase(caseId)) as Case).marks[0];
 		expect(there?.ends?.start?.testId).toBe("badge");
 		expect(there?.ends?.start?.classes).toEqual(["pp-badge"]);
 		expect(there?.ends?.end).toBeNull();
@@ -486,8 +481,7 @@ serverTest("an arrow's ends at a real server (DEC-047; its DEC-020)", () => {
 		await tess.device.engine.request();
 		expect(status(tess.device)?.problems).toEqual([]);
 		await dana.device.engine.request();
-		const after = ((await dana.device.store.getCase(caseId)) as Case)
-			.annotations[0];
+		const after = ((await dana.device.store.getCase(caseId)) as Case).marks[0];
 		expect(after?.comment).toBe("From the badge to the price, on mobile");
 		expect(after?.ends?.start?.testId).toBe("badge");
 		await removeCase(tess.device, caseId);
@@ -523,7 +517,7 @@ serverTest("a mark's look at a real server (DEC-048; its DEC-021)", () => {
 		};
 		await change(tess.device, caseId, (c, now) => ({
 			...c,
-			annotations: c.annotations.map((x) =>
+			marks: c.marks.map((x) =>
 				x.id === a.id && x.element !== null
 					? { ...x, element: { ...x.element, ...look } }
 					: x,
@@ -533,8 +527,7 @@ serverTest("a mark's look at a real server (DEC-048; its DEC-021)", () => {
 		await tess.device.engine.request();
 		expect(status(tess.device)?.problems).toEqual([]);
 		await dana.device.engine.request();
-		const there = ((await dana.device.store.getCase(caseId)) as Case)
-			.annotations[0];
+		const there = ((await dana.device.store.getCase(caseId)) as Case).marks[0];
 		expect(there?.element).toMatchObject(look);
 		// Both again: neither has anything to send.
 		const sent: string[] = [];
@@ -726,8 +719,7 @@ serverTest("a browser's 0.3.0 data, opened by this build", () => {
 		await dana.device.engine.request();
 		await engine.request();
 		expect(
-			((await old.store.getCase(caseId)) as unknown as Case).annotations[0]
-				?.comment,
+			((await old.store.getCase(caseId)) as unknown as Case).marks[0]?.comment,
 		).toBe("Total is cut off on small screens");
 
 		await removeCase(dana.device, caseId);

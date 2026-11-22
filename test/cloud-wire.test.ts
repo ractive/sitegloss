@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { Annotation, Case, ElementDetails } from "../src/lib/case.ts";
+import type { Case, ElementDetails, Mark } from "../src/lib/case.ts";
 import type { Op, WireMark, WireShot } from "../src/lib/cloud/api.ts";
 import { type CaseBook, emptyBook } from "../src/lib/cloud/book.ts";
 import {
@@ -30,7 +30,7 @@ import { sampleCase } from "./fixtures.ts";
 
 const NOW = "2026-11-19T12:00:00.000Z";
 
-const mark = (n: number, shot = "s1"): Annotation => ({
+const mark = (n: number, shot = "s1"): Mark => ({
 	id: `a${n}`,
 	number: n,
 	shot,
@@ -41,7 +41,7 @@ const mark = (n: number, shot = "s1"): Annotation => ({
 	element: null,
 });
 
-function local(marks: Annotation[] = [mark(1), mark(2)]): Case {
+function local(marks: Mark[] = [mark(1), mark(2)]): Case {
 	return {
 		...sampleCase("c_1", "2026-11-19T10:00:00.000Z"),
 		pages: [{ url: "https://www.example.com/kk", title: "KK", lang: "de" }],
@@ -56,7 +56,7 @@ function local(marks: Annotation[] = [mark(1), mark(2)]): Case {
 				url: "https://www.example.com/kk",
 			},
 		],
-		annotations: marks,
+		marks: marks,
 	};
 }
 
@@ -161,7 +161,7 @@ describe("the operations a case becomes", () => {
 			...c,
 			title: "Another title",
 			verdict: "Fix the contrast",
-			annotations: [
+			marks: [
 				{
 					...mark(1),
 					comment: "Edited",
@@ -228,12 +228,7 @@ describe("the operations a case becomes", () => {
 		]);
 		const { book } = synced(c);
 		const wire = book.marks["a2"] as string;
-		const { ops } = deriveOps(
-			{ ...c, annotations: [mark(1)] },
-			book,
-			ref,
-			newId,
-		);
+		const { ops } = deriveOps({ ...c, marks: [mark(1)] }, book, ref, newId);
 		expect(ops).toEqual([
 			{ opId: expect.any(String), type: "mark.delete", markId: wire },
 			{
@@ -269,7 +264,7 @@ describe("the operations a case becomes", () => {
 		// The case says a5 now; the book still says a2.
 		const moved: Case = {
 			...c,
-			annotations: [
+			marks: [
 				mark(1),
 				{ ...mark(2), id: "a5", number: 5, crop: "crops/a5.webp" },
 			],
@@ -383,9 +378,7 @@ describe("numbers", () => {
 		]);
 		// The server says the mark here called 2 is 3.
 		const next = renumber(c, book, new Map([["a2", 3]]), crops, out);
-		expect(
-			next.annotations.map((a) => [a.id, a.number, a.crop, a.comment]),
-		).toEqual([
+		expect(next.marks.map((a) => [a.id, a.number, a.crop, a.comment])).toEqual([
 			["a1", 1, "crops/a1.webp", "comment 1"],
 			["a3", 3, "crops/a3.webp", "comment 2"],
 			["a4", 4, "crops/a4.webp", "comment 3"],
@@ -487,7 +480,7 @@ describe("a case that is here and at the server, with no record of what the serv
 			{ teamId: "team_1", whole: true, now: NOW },
 		);
 		expect(merged?.value.title).toBe("The team's title");
-		expect(merged?.value.annotations.map((a) => a.comment)).toEqual([
+		expect(merged?.value.marks.map((a) => a.comment)).toEqual([
 			"As the team has it",
 			"comment 2",
 			"comment 3",
@@ -561,7 +554,7 @@ describe("a mark's look: computed styles, backdrop, siblings (DEC-048)", () => {
 		};
 		const drawings: Record<
 			keyof typeof before,
-			Pick<Annotation, "shape" | "element">
+			Pick<Mark, "shape" | "element">
 		> = {
 			element: {
 				shape: { kind: "element", rect: button.rect },
@@ -582,7 +575,7 @@ describe("a mark's look: computed styles, backdrop, siblings (DEC-048)", () => {
 		};
 		for (const [name, drawing] of Object.entries(drawings) as [
 			keyof typeof before,
-			Pick<Annotation, "shape" | "element">,
+			Pick<Mark, "shape" | "element">,
 		][]) {
 			expect(fixedOf(drawing)).toBe(before[name]);
 			if (drawing.element !== null)
@@ -593,7 +586,7 @@ describe("a mark's look: computed styles, backdrop, siblings (DEC-048)", () => {
 	});
 
 	test("goes out once, with mark.create, within what the server keeps; never in mark.patch", () => {
-		const styled: Annotation = {
+		const styled: Mark = {
 			...mark(1),
 			shape: { kind: "element", rect: button.rect },
 			element: {
@@ -621,7 +614,7 @@ describe("a mark's look: computed styles, backdrop, siblings (DEC-048)", () => {
 	});
 
 	test("a mark the build before synced makes no operation, with or without a look here", () => {
-		const plain: Annotation = {
+		const plain: Mark = {
 			...mark(1),
 			shape: { kind: "element", rect: button.rect },
 			element: button,

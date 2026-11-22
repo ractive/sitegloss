@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type Annotation, type Case, markKey } from "../src/lib/case.ts";
+import { type Case, type Mark, markKey } from "../src/lib/case.ts";
 import { markAsked } from "../src/sidepanel/picked.ts";
 import { sampleCase } from "./fixtures.ts";
 
 describe("which panel answers a page about a mark (DEC-027)", () => {
-	const mark: Annotation = {
+	const mark: Mark = {
 		id: "a1",
 		number: 1,
 		shot: "s1",
@@ -14,8 +14,8 @@ describe("which panel answers a page about a mark (DEC-027)", () => {
 		crop: "crops/a1.webp",
 		element: null,
 	};
-	const c: Case = { ...sampleCase("c_open"), annotations: [mark] };
-	const request = { caseId: c.id, annotationId: mark.id };
+	const c: Case = { ...sampleCase("c_open"), marks: [mark] };
+	const request = { caseId: c.id, markId: mark.id };
 	const showing = {
 		open: c,
 		loaded: { caseId: c.id, tabId: 7 },
@@ -84,26 +84,26 @@ describe("which panel answers a page about a mark (DEC-027)", () => {
 	});
 
 	test("a mark the case no longer has is this panel's to say so", () => {
-		expect(markAsked(showing, { ...request, annotationId: "a_gone" }, 7)).toBe(
+		expect(markAsked(showing, { ...request, markId: "a_gone" }, 7)).toBe(
 			"gone",
 		);
 	});
 
 	test("the page says which mark its popover is on: the id alone is another mark's after a renumbering", () => {
-		const other: Annotation = {
+		const other: Mark = {
 			...mark,
 			comment: "A teammate's",
 			shape: { kind: "note", at: { x: 50, y: 50 } },
 		};
-		const moved: Annotation = { ...mark, id: "a2", number: 2 };
-		const now = { ...showing, open: { ...c, annotations: [other, moved] } };
+		const moved: Mark = { ...mark, id: "a2", number: 2 };
+		const now = { ...showing, open: { ...c, marks: [other, moved] } };
 		const key = markKey(c, mark);
 		// Asked for "a1", which is the teammate's mark now: its own, under its new id.
 		expect(markAsked(now, { ...request, mark: key }, 7)).toBe(moved);
 		// Gone from the case.
 		expect(
 			markAsked(
-				{ ...showing, open: { ...c, annotations: [other] } },
+				{ ...showing, open: { ...c, marks: [other] } },
 				{ ...request, mark: key },
 				7,
 			),
@@ -112,7 +112,7 @@ describe("which panel answers a page about a mark (DEC-027)", () => {
 		const twin = { ...moved, id: "a3", number: 3 };
 		expect(
 			markAsked(
-				{ ...showing, open: { ...c, annotations: [other, moved, twin] } },
+				{ ...showing, open: { ...c, marks: [other, moved, twin] } },
 				{ ...request, mark: key },
 				7,
 			),

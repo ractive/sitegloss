@@ -1,5 +1,5 @@
 /**
- * The side panel: the tab in front, annotating it, the saved cases, and the
+ * The side panel: the tab in front, marking it, the saved cases, and the
  * connection to an AI app. Actions change the panel's one state (state.ts);
  * view.ts draws it (DEC-011).
  */
@@ -11,7 +11,6 @@ import {
 	requestPermissions,
 } from "../lib/browser.ts";
 import {
-	type Annotation,
 	type Case,
 	casePages,
 	cleanLink,
@@ -20,6 +19,7 @@ import {
 	MARK_CHANGED,
 	MAX_COMMENT,
 	MAX_LINK,
+	type Mark,
 	markFor,
 	markKey,
 	markStatus,
@@ -34,9 +34,9 @@ import {
 	withClosed,
 	withComment,
 	withLink,
-	withoutAnnotation,
 	withoutCaseComment,
 	withoutFinding,
+	withoutMark,
 	withReopen,
 	withTitle,
 	withVerified,
@@ -52,13 +52,13 @@ import {
 	storeImport,
 } from "../lib/export.ts";
 import {
-	type AnnotationMatch,
 	type Broadcast,
 	isMarkRequest,
 	isOpenCaseRequest,
 	type LoadReplacedAnswer,
 	type LoadResult,
 	type MarkAnswer,
+	type MarkMatch,
 	type MarkRequest,
 	type OpenCaseAnswer,
 	type OpenCaseRequest,
@@ -294,7 +294,7 @@ async function showPending(): Promise<void> {
 		chrome.tabs.sendMessage(q.tabId, {
 			type: "case:show",
 			caseId: q.caseId,
-			annotationId: q.annotationId,
+			markId: q.markId,
 			mark: q.mark,
 		}),
 	);
@@ -303,7 +303,7 @@ async function showPending(): Promise<void> {
 	if (p === undefined || shown === undefined) return;
 	update((s) => {
 		if (s.loaded?.tabId === p.tabId && s.loaded.caseId === p.caseId)
-			s.loaded.matches.set(p.annotationId, shown);
+			s.loaded.matches.set(p.markId, shown);
 	});
 }
 
@@ -376,7 +376,7 @@ async function loadInto(
 			s.loaded = {
 				caseId: c.id,
 				tabId,
-				matches: new Map(result.matches.map((m) => [m.annotationId, m])),
+				matches: new Map(result.matches.map((m) => [m.markId, m])),
 				url: result.url,
 				settling,
 			};
@@ -445,7 +445,7 @@ async function readMatches(
 		s.loaded = {
 			caseId: c.id,
 			tabId,
-			matches: new Map(result.matches.map((m) => [m.annotationId, m])),
+			matches: new Map(result.matches.map((m) => [m.markId, m])),
 			url: result.url,
 			settling: again,
 		};
@@ -479,7 +479,7 @@ async function readLoaded(c: Case, tabId: number): Promise<void> {
 		s.loaded = {
 			caseId: c.id,
 			tabId,
-			matches: new Map(result.matches.map((m) => [m.annotationId, m])),
+			matches: new Map(result.matches.map((m) => [m.markId, m])),
 			url: result.url,
 		};
 	});
@@ -601,7 +601,7 @@ async function follow(): Promise<void> {
 	if (step.clear !== undefined) takeOff(step.clear);
 	// A case without marks (just created, DEC-026) has nothing to draw: its
 	// first mark draws it (refreshCase).
-	if (front === undefined || c.annotations.length === 0) return;
+	if (front === undefined || c.marks.length === 0) return;
 	// The page went on to its next route with the case drawn on it: what was
 	// found is read again, for the page it shows now (DEC-038's review).
 	if (movedOn(state.loaded, c.id, front, pageCase)) {
@@ -826,16 +826,14 @@ async function refreshCase(): Promise<void> {
 	if (c === undefined) return closeCase();
 	const opened = state.current?.id !== c.id;
 	const first =
-		!opened &&
-		state.current?.annotations.length === 0 &&
-		c.annotations.length > 0;
+		!opened && state.current?.marks.length === 0 && c.marks.length > 0;
 	update((s) => {
 		s.current = c;
 		// What can no longer be told from another mark is let go, and said.
 		const lost = [s.markEdit, s.markDeleteArmed, s.findingDeleteArmed].some(
 			(held) =>
 				held !== undefined &&
-				markFor(c, held.annotationId, held.mark) === "ambiguous",
+				markFor(c, held.markId, held.mark) === "ambiguous",
 		);
 		// An open form stays on its mark, whatever the mark's id is now; so
 		// does a delete asked once (its second click must not find another
@@ -854,7 +852,7 @@ async function refreshCase(): Promise<void> {
 	const urls = new Map<string, string>();
 	for (const path of [
 		...c.shots.map((x) => x.image),
-		...c.annotations.map((a) => a.crop),
+		...c.marks.map((a) => a.crop),
 	]) {
 		const image = await store.getImage(c.id, path);
 		if (image !== undefined) urls.set(path, URL.createObjectURL(image.blob));
@@ -1234,7 +1232,10 @@ function announce(caseId: string): void {
  * marks"), or on `tabId`, the tab "New case for this page" was clicked for
  * (DEC-026), whatever tab is in front by then.
  */
-async function startAnnotating(target: Case, tabId?: number): Promise<boolean> {
+async function startAddingMarks(
+	target: Case,
+	tabId?: number,
+): Promise<boolean> {
 	// Under the case's buttons, and only where there is something to say
 	// (what a draw found stays).
 	const say = (text: string | undefined) => {
@@ -1251,7 +1252,7 @@ async function startAnnotating(target: Case, tabId?: number): Promise<boolean> {
 			target: {
 				caseId: target.id,
 				title: target.title,
-				nextAnnotation: nextNumbers(target).annotation,
+				nextMark: nextNumbers(target).mark,
 			},
 		});
 		toolbarOn.add(tab.id);
@@ -1446,7 +1447,7 @@ async function askPage(tabId: number): Promise<PageInfo | undefined> {
  * panel writes the case, as it writes every change to a case but a mark's
  * add (the worker's, from the page).
  */
-async function annotate(): Promise<void> {
+async function startNewCase(): Promise<void> {
 	if (creating) return;
 	creating = true;
 	try {
@@ -1481,7 +1482,7 @@ async function annotate(): Promise<void> {
 		announce(c.id);
 		update((s) => (s.hint = undefined));
 		openCase(c.id);
-		await startAnnotating(c, tabId);
+		await startAddingMarks(c, tabId);
 	} catch (error) {
 		update((s) => (s.hint = `Could not start a case: ${message(error)}`));
 	} finally {
@@ -1619,7 +1620,7 @@ async function refreshDownloads(): Promise<void> {
 }
 
 const actions: Actions = {
-	annotate: () => void annotate(),
+	startNewCase: () => void startNewCase(),
 
 	openCase,
 	closeCase: () => void leaveCase(),
@@ -1723,7 +1724,7 @@ const actions: Actions = {
 			pendingShow = {
 				tabId,
 				caseId: c.id,
-				annotationId: a.id,
+				markId: a.id,
 				mark: markKey(c, a),
 				url,
 				until: Date.now() + SHOW_WAIT_MS,
@@ -1744,10 +1745,10 @@ const actions: Actions = {
 					.sendMessage(tabId, {
 						type: "case:show",
 						caseId: c.id,
-						annotationId: a.id,
+						markId: a.id,
 						mark: p.mark,
 					})
-					.catch(() => null)) as AnnotationMatch | { error: string } | null;
+					.catch(() => null)) as MarkMatch | { error: string } | null;
 				if (shown !== null && !("error" in shown) && pendingShow === p)
 					pendingShow = undefined;
 				return;
@@ -1855,7 +1856,7 @@ const actions: Actions = {
 		void (async () => {
 			const tab = await activeTab();
 			if (tab?.id === undefined) return;
-			if (!(await startAnnotating(c, tab.id))) return;
+			if (!(await startAddingMarks(c, tab.id))) return;
 			// Adding to a case shows its marks on the tab too (the owner): a Hide
 			// there holds no longer, and a new mark is drawn like the others.
 			if (hiddenOn.delete(tab.id)) update(() => undefined);
@@ -1995,7 +1996,7 @@ const actions: Actions = {
 		update((s) => {
 			s.markDeleteArmed = undefined;
 			s.markEdit = {
-				annotationId: a.id,
+				markId: a.id,
 				mark: markKey(c, a),
 				mode,
 				kind: status === "open" ? "fixed" : status,
@@ -2047,7 +2048,7 @@ const actions: Actions = {
 		update((s) => {
 			const highest = Math.max(
 				0,
-				...(s.current?.annotations.map((a) => a.number) ?? []),
+				...(s.current?.marks.map((a) => a.number) ?? []),
 			);
 			s.markFilter =
 				group === undefined ? undefined : { caseId, group, upTo: highest };
@@ -2063,11 +2064,11 @@ const actions: Actions = {
 
 	deleteMark(c, a) {
 		const armed = state.markDeleteArmed;
-		if (armed?.annotationId !== a.id) {
+		if (armed?.markId !== a.id) {
 			const at = Date.now();
 			update((s) => {
 				s.markEdit = undefined;
-				s.markDeleteArmed = { annotationId: a.id, mark: markKey(c, a), at };
+				s.markDeleteArmed = { markId: a.id, mark: markKey(c, a), at };
 			});
 			setTimeout(() => {
 				update((s) => {
@@ -2082,18 +2083,18 @@ const actions: Actions = {
 		deleting.add(a.id);
 		const now = new Date().toISOString();
 		void changeMark(c, a, (current, id) =>
-			withoutAnnotation(current, id, now),
+			withoutMark(current, id, now),
 		).finally(() => deleting.delete(a.id));
 	},
 
 	deleteFinding(c, a, findingId) {
 		const armed = state.findingDeleteArmed;
-		if (armed?.annotationId !== a.id || armed.findingId !== findingId) {
+		if (armed?.markId !== a.id || armed.findingId !== findingId) {
 			const at = Date.now();
 			update(
 				(s) =>
 					(s.findingDeleteArmed = {
-						annotationId: a.id,
+						markId: a.id,
 						mark: markKey(c, a),
 						findingId,
 						at,
@@ -2123,7 +2124,7 @@ const actions: Actions = {
 			deleting.delete(key);
 			update((s) => {
 				const armed = s.findingDeleteArmed;
-				if (armed?.annotationId === a.id && armed.findingId === findingId)
+				if (armed?.markId === a.id && armed.findingId === findingId)
 					s.findingDeleteArmed = undefined;
 			});
 		});
@@ -2172,7 +2173,7 @@ const actions: Actions = {
 		})();
 	},
 
-	showMatch(caseId, a: Annotation, candidate) {
+	showMatch(caseId, a: Mark, candidate) {
 		const loaded = state.loaded;
 		if (loaded === undefined || loaded.caseId !== caseId) return;
 		const hint = caseHintWriter();
@@ -2181,9 +2182,9 @@ const actions: Actions = {
 				const m = (await chrome.tabs.sendMessage(loaded.tabId, {
 					type: "case:show",
 					caseId,
-					annotationId: a.id,
+					markId: a.id,
 					candidate,
-				})) as AnnotationMatch | { error: string } | null;
+				})) as MarkMatch | { error: string } | null;
 				if (m === null) {
 					await forgetLoaded({
 						hint: "The case is no longer loaded on that tab. Load it again to see its marks there.",
@@ -2293,8 +2294,8 @@ chrome.permissions.onRemoved.addListener(() => {
 	void refreshTab();
 });
 
-byId<HTMLButtonElement>("annotate").addEventListener("click", () =>
-	actions.annotate(),
+byId<HTMLButtonElement>("new-case").addEventListener("click", () =>
+	actions.startNewCase(),
 );
 
 exportAllButton.addEventListener("click", () => {
@@ -2432,7 +2433,7 @@ async function redrawLoaded(c: Case): Promise<void> {
 			if (s.loaded?.caseId === c.id && s.loaded.tabId === tabId)
 				s.loaded = {
 					...s.loaded,
-					matches: new Map(result.matches.map((m) => [m.annotationId, m])),
+					matches: new Map(result.matches.map((m) => [m.markId, m])),
 					url: result.url,
 				};
 		});
@@ -2452,14 +2453,14 @@ const deleting = new Set<string>();
 /** Answers why it was not saved, if it was not (the hint says so too). */
 async function changeMark(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	/** `id`: the mark's id in the case as it is stored now. */
 	change: (current: Case, id: string) => { value: Case; images?: string[] },
 	{ keepEdit = false } = {},
 ): Promise<string | undefined> {
 	const hint = caseHintWriter();
 	const caseId = c.id;
-	let annotationId = a.id;
+	let markId = a.id;
 	// Which mark it is about, whatever its id is by now: the team's sync can
 	// give a mark another number while its form is open, and the id it had
 	// is then a teammate's mark (DEC-039).
@@ -2475,7 +2476,7 @@ async function changeMark(
 				);
 			// Not to be told from another mark: not applied to the first found.
 			if (now === "ambiguous") throw new Error(MARK_CHANGED);
-			annotationId = now.id;
+			markId = now.id;
 			const next = change(current, now.id);
 			return {
 				value: validateCase(next.value),
@@ -2484,10 +2485,8 @@ async function changeMark(
 		});
 		update((s) => {
 			// Another mark's form, opened meanwhile, stays.
-			if (!keepEdit && s.markEdit?.annotationId === annotationId)
-				s.markEdit = undefined;
-			if (s.markDeleteArmed?.annotationId === annotationId)
-				s.markDeleteArmed = undefined;
+			if (!keepEdit && s.markEdit?.markId === markId) s.markEdit = undefined;
+			if (s.markDeleteArmed?.markId === markId) s.markDeleteArmed = undefined;
 			if (s.current?.id === caseId) s.current = saved;
 		});
 		announce(caseId);
@@ -2542,7 +2541,7 @@ function answerMark(
 			update((s) => {
 				// Its row shows, whatever the list was filtered by.
 				s.markFilter = undefined;
-				s.picked = { caseId: c.id, annotationId: a.id, at: Date.now() };
+				s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
 			});
 			answer({ ok: true });
 			return false;
@@ -2587,9 +2586,7 @@ function answerMark(
 				return false;
 			}
 			deleting.add(a.id);
-			void changeMark(c, a, (current, id) =>
-				withoutAnnotation(current, id, now),
-			)
+			void changeMark(c, a, (current, id) => withoutMark(current, id, now))
 				.then(done)
 				.finally(() => deleting.delete(a.id));
 			return true;

@@ -13,7 +13,6 @@ import {
 	PANEL,
 } from "../lib/browser.ts";
 import {
-	type Annotation,
 	appLabel,
 	byline,
 	type Case,
@@ -28,6 +27,7 @@ import {
 	MAX_REOPEN_NOTE,
 	MAX_TITLE,
 	MAX_VERDICT,
+	type Mark,
 	type MarkStatus,
 	markStatus,
 	marksByPage,
@@ -45,7 +45,7 @@ import {
 	viewportAt,
 } from "../lib/case.ts";
 import { summarize } from "../lib/element.ts";
-import type { AnnotationMatch, CandidateInfo } from "../lib/messages.ts";
+import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
 import {
 	type CloudActions,
 	caseSync,
@@ -75,7 +75,7 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	/** Close the case (filed away, not frozen) or open it again (DEC-046). */
 	setCaseClosed(caseId: string, closed: boolean): void;
 	/** "New case for this page": a new case, stored at once and opened (DEC-026). */
-	annotate(): void;
+	startNewCase(): void;
 	openCase(id: string): void;
 	/** "← All cases": end the toolbar adding to the case, then close it (DEC-023). */
 	closeCase(): void;
@@ -84,24 +84,20 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	loadOntoTab(c: Case): void;
 	hideFromTab(c: Case): void;
 	/** Open a mark's form: settle it, edit its comment, or reopen it. */
-	editMark(
-		c: Case,
-		a: Annotation,
-		mode: "resolve" | "comment" | "reopen",
-	): void;
+	editMark(c: Case, a: Mark, mode: "resolve" | "comment" | "reopen"): void;
 	typeMark(change: { kind?: ResolveChoice; text?: string }): void;
 	cancelMarkEdit(): void;
-	resolveMark(c: Case, a: Annotation, kind: ResolveChoice, note: string): void;
+	resolveMark(c: Case, a: Mark, kind: ResolveChoice, note: string): void;
 	/** "Verified" on a fixed mark: the fix holds (DEC-023). */
-	verifyMark(c: Case, a: Annotation): void;
+	verifyMark(c: Case, a: Mark): void;
 	/** "Reopen" in its form: the note says what is still wrong. */
-	reopenMark(c: Case, a: Annotation, note: string): void;
+	reopenMark(c: Case, a: Mark, note: string): void;
 	/** A status chip: show only those marks; `undefined`: all of them. */
 	filterMarks(caseId: string, group: StatusGroup | undefined): void;
-	saveComment(c: Case, a: Annotation, text: string): void;
-	deleteMark(c: Case, a: Annotation): void;
+	saveComment(c: Case, a: Mark, text: string): void;
+	deleteMark(c: Case, a: Mark): void;
 	/** An AI app's finding on a mark: the first click asks, the second deletes. */
-	deleteFinding(c: Case, a: Annotation, findingId: string): void;
+	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
 	/**
@@ -109,7 +105,7 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	 * path and query on the host in front (`here`), in the tab in front, and
 	 * show the mark there once the page has its marks.
 	 */
-	openMarkPage(c: Case, a: Annotation, where: "made" | "here"): void;
+	openMarkPage(c: Case, a: Mark, where: "made" | "here"): void;
 	/** Chrome's prompt for "Allow on all sites"; call it in the click. */
 	allowAllSites(): void;
 	/** Sitegloss's page in chrome://extensions ("Allow access to file URLs"). */
@@ -140,7 +136,7 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	deleteCase(c: Case): void;
 	typeVerdict(caseId: string, text: string): void;
 	saveVerdict(caseId: string, text: string): void;
-	showMatch(caseId: string, a: Annotation, candidate: number): void;
+	showMatch(caseId: string, a: Mark, candidate: number): void;
 	importReplace(): void;
 	importCopy(): void;
 	importCancel(): void;
@@ -153,9 +149,9 @@ const caseView = byId<HTMLElement>("case-view");
 const settingsView = byId<HTMLElement>("settings");
 const pageText = byId<HTMLParagraphElement>("page");
 const hint = byId<HTMLParagraphElement>("hint");
-const annotate = byId<HTMLButtonElement>("annotate");
+const newCaseButton = byId<HTMLButtonElement>("new-case");
 /** Its title in index.html, for when Sitegloss may run on the tab. */
-const annotateTitle = annotate.title;
+const newCaseTitle = newCaseButton.title;
 const casesList = byId<HTMLDivElement>("cases");
 const casesHeading = byId<HTMLHeadingElement>("cases-heading");
 /** The cases of the page in front, under "This page", with the offer to open one. */
@@ -348,7 +344,7 @@ function renderAccess(n: Notice, state: PanelState): void {
 /** The actions of the last render, for the home view's notice made once. */
 let lastActions: Actions | undefined;
 const homeAccess = accessNotice("access-notice", () => lastActions as Actions);
-annotate.before(homeAccess.el);
+newCaseButton.before(homeAccess.el);
 
 const sizeOf = (s: Size) => `${s.width}×${s.height}`;
 
@@ -434,7 +430,7 @@ function caseItem(
 	/** Under "This page", a closed case says so: elsewhere it stands under Closed. */
 	sayClosed = false,
 ): HTMLLIElement {
-	const count = c.annotations.length;
+	const count = c.marks.length;
 	// The bar beside it is a picture; the words say the same.
 	const counts = countsText(caseCounts(c));
 	return h(
@@ -536,7 +532,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 	openHere.title = one
 		? `Open “${one.title}” and show its marks on the page in this tab`
 		: "";
-	annotate.classList.toggle("primary", own.length === 0);
+	newCaseButton.classList.toggle("primary", own.length === 0);
 	casesHeading.textContent = own.length > 0 ? "Other cases" : "Cases";
 	casesList.replaceChildren(
 		state.cases.length === 0
@@ -701,8 +697,8 @@ function renderHome(state: PanelState, actions: Actions): void {
 	setHint(byId<HTMLElement>("web-app-note"), webAppNote(state));
 	const ok = access(state) === "yes";
 	// Always a new case, stored and opened at once (DEC-023, DEC-026).
-	annotate.disabled = !ok;
-	annotate.title = ok ? annotateTitle : NEEDS_ACCESS;
+	newCaseButton.disabled = !ok;
+	newCaseButton.title = ok ? newCaseTitle : NEEDS_ACCESS;
 	importError.hidden = state.importError === undefined;
 	importErrorText.textContent = state.importError ?? "";
 	// One import at a time, and no export of all cases while it stores them.
@@ -732,7 +728,7 @@ function renderHome(state: PanelState, actions: Actions): void {
 // --- one case ------------------------------------------------------------------
 
 /** The colour of the mark on the page: the shown candidate decides (review.ts). */
-function colourOf(m: AnnotationMatch): "found" | "unsure" | "lost" {
+function colourOf(m: MarkMatch): "found" | "unsure" | "lost" {
 	if (m.status === "lost") return "lost";
 	// On a page that is not the mark's own it may be a look-alike (DEC-038).
 	const sure =
@@ -743,7 +739,7 @@ function colourOf(m: AnnotationMatch): "found" | "unsure" | "lost" {
 }
 
 /** Where the mark is on the tab in front, in words: the number's colour says it too, but not to everyone. */
-function matchWord(m: AnnotationMatch | undefined): string | undefined {
+function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
 	if (m.otherPage === true && m.status !== "lost") return "Also on this page?";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
@@ -758,7 +754,7 @@ const PILL: Record<MarkStatus, string | undefined> = {
 	cantreproduce: RESOLUTION_LABEL.cantreproduce,
 };
 
-function matchText(m: AnnotationMatch): string {
+function matchText(m: MarkMatch): string {
 	if (m.current > 0)
 		return `Candidate ${m.current + 1} of ${m.candidates.length} (${percent(m.score)})`;
 	// Found, but on a page that is not the mark's own (DEC-038).
@@ -782,7 +778,7 @@ function matchText(m: AnnotationMatch): string {
 
 /** What is news about the element shown: the mark names the one it expected. */
 function shownText(
-	a: Annotation,
+	a: Mark,
 	shown: CandidateInfo | undefined,
 ): string | undefined {
 	if (shown === undefined) return undefined;
@@ -794,14 +790,14 @@ function shownText(
 }
 
 /** Whether the page can scroll to the mark: then its head offers Show. */
-const canShow = (m: AnnotationMatch | undefined): m is AnnotationMatch =>
+const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 	m !== undefined && (m.candidates.length > 0 || m.status === "no-element");
 
-/** Crops shown large (`caseId:annotationId`); the rest are small. */
+/** Crops shown large (`caseId:markId`); the rest are small. */
 const zoomed = new Set<string>();
 
 /** A mark's crop, small at first: a click shows it large, another small again. */
-function cropView(caseId: string, a: Annotation, src: string): HTMLElement {
+function cropView(caseId: string, a: Mark, src: string): HTMLElement {
 	const key = `${caseId}:${a.id}`;
 	const button: HTMLButtonElement = h(
 		"button",
@@ -825,8 +821,8 @@ function cropView(caseId: string, a: Annotation, src: string): HTMLElement {
 
 function matchView(
 	caseId: string,
-	a: Annotation,
-	m: AnnotationMatch,
+	a: Mark,
+	m: MarkMatch,
 	actions: Actions,
 ): HTMLElement {
 	const shown = m.candidates[m.current];
@@ -1521,7 +1517,7 @@ function marksText(c: Case): string {
  * only a picture. A span: it also sits inside a case's button in the list.
  */
 function statusBar(c: Case): HTMLElement | null {
-	if (c.annotations.length === 0) return null;
+	if (c.marks.length === 0) return null;
 	const n = caseCounts(c);
 	return h(
 		"span",
@@ -1550,7 +1546,7 @@ function statusBlock(
 	filter: StatusGroup | undefined,
 	actions: Actions,
 ): HTMLElement | null {
-	if (c.annotations.length === 0) return null;
+	if (c.marks.length === 0) return null;
 	const n = caseCounts(c);
 	return h(
 		"div",
@@ -1659,7 +1655,7 @@ export function byWhom(
 }
 
 /** What became of the mark, oldest first: each reopen, then how it is settled now. */
-function historyList(a: Annotation): HTMLElement | null {
+function historyList(a: Mark): HTMLElement | null {
 	const lines: HistoryLine[] = [];
 	for (const r of a.reopens ?? [])
 		lines.push(...resolutionHistory(r.was), {
@@ -1713,7 +1709,7 @@ const VERIFIED_TITLE = "The fix holds on the page you checked";
 const REOPEN_TITLE =
 	"Open the mark again, with a note on what is still wrong; how it was settled stays in its history";
 
-const verifyButton = (c: Case, a: Annotation, actions: Actions) =>
+const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton(
 		"Verified",
 		"verify",
@@ -1722,7 +1718,7 @@ const verifyButton = (c: Case, a: Annotation, actions: Actions) =>
 		true,
 	);
 
-const reopenButton = (c: Case, a: Annotation, actions: Actions) =>
+const reopenButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton("Reopen…", "reopen", REOPEN_TITLE, () =>
 		actions.editMark(c, a, "reopen"),
 	);
@@ -1730,7 +1726,7 @@ const reopenButton = (c: Case, a: Annotation, actions: Actions) =>
 /** The buttons a mark's status calls for, the strong one first (DEC-023). */
 function markActions(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	armed: boolean,
 	actions: Actions,
 ): HTMLElement {
@@ -1809,7 +1805,7 @@ const CHOICE_LABEL: Record<ResolveChoice, string> = {
 
 function resolveForm(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	kind: ResolveChoice,
 	note: string,
 	actions: Actions,
@@ -1886,7 +1882,7 @@ function resolveForm(
 
 function commentForm(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	text: string,
 	actions: Actions,
 ): HTMLElement {
@@ -1939,7 +1935,7 @@ function commentForm(
 /** Reopen…: what is still wrong, which the developer reads first (DEC-023). */
 function reopenForm(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	text: string,
 	actions: Actions,
 ): HTMLElement {
@@ -2143,7 +2139,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		state.drawing === state.tab?.id &&
 		here === undefined;
 	// A case without marks has nothing to show or hide.
-	p.loadButton.hidden = !ok || none || looking || c.annotations.length === 0;
+	p.loadButton.hidden = !ok || none || looking || c.marks.length === 0;
 	p.loadButton.textContent = p.loadedHere ? "Hide marks" : "Show marks";
 	p.loadButton.title = p.loadedHere
 		? "Take this case's marks off the page in this tab; they stay off on this tab until you show them again"
@@ -2240,7 +2236,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const filter =
 		f?.caseId === c.id &&
 		caseCounts(c)[f.group] > 0 &&
-		c.annotations.every((a) => a.number <= f.upTo)
+		c.marks.every((a) => a.number <= f.upTo)
 			? f.group
 			: undefined;
 	// The status block: under the marks' heading, where its chips filter the
@@ -2263,14 +2259,14 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const loaded = state.loaded?.caseId === c.id ? state.loaded : undefined;
 	const edit = state.markEdit;
 	if (edit === undefined) focusedForm = undefined;
-	const markArmed = state.markDeleteArmed?.annotationId;
+	const markArmed = state.markDeleteArmed?.markId;
 	const findingArmed = state.findingDeleteArmed;
 	// A mark's pin was clicked on the page (DEC-027): its row opens, once.
 	const picked =
 		state.picked?.caseId === c.id && state.picked.at !== p.pickedAt
 			? state.picked
 			: undefined;
-	if (picked !== undefined) openMarks.add(`${c.id}:${picked.annotationId}`);
+	if (picked !== undefined) openMarks.add(`${c.id}:${picked.markId}`);
 	const marksKey = JSON.stringify([
 		picked?.at ?? null,
 		filter ?? null,
@@ -2278,15 +2274,15 @@ function renderCase(state: PanelState, actions: Actions): void {
 		images?.version,
 		loaded ? [loaded.url, ...loaded.matches.values()] : null,
 		// What is typed stays out: a key press redraws nothing.
-		edit ? [edit.annotationId, edit.mode] : null,
+		edit ? [edit.markId, edit.mode] : null,
 		// A mark's link offers the host in front too (DEC-050).
 		tabOrigin(state.tab?.url),
 		markArmed ?? null,
-		findingArmed ? [findingArmed.annotationId, findingArmed.findingId] : null,
+		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
 		ok,
 	]);
 	if (marksKey !== p.marksKey) {
-		const sorted = [...c.annotations]
+		const sorted = [...c.marks]
 			.sort((x, y) => x.number - y.number)
 			.filter(
 				(a) => filter === undefined || GROUP_OF[markStatus(a)] === filter,
@@ -2309,12 +2305,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 				match: elsewhere ? undefined : match,
 				tabUrl: state.tab?.url,
 				elsewhere,
-				edit: edit?.annotationId === a.id ? edit : undefined,
+				edit: edit?.markId === a.id ? edit : undefined,
 				armed: markArmed === a.id,
 				findingArmed:
-					findingArmed?.annotationId === a.id
-						? findingArmed.findingId
-						: undefined,
+					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
 				actions,
 				canReach: ok,
 				changed: () => syncToggleAll(),
@@ -2328,7 +2322,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 				const open = !items.every((li) => li.hasAttribute("data-open"));
 				// A mark being edited keeps its form in view.
 				for (const li of items)
-					if (open || li.dataset["annotation"] !== edit?.annotationId)
+					if (open || li.dataset["mark"] !== edit?.markId)
 						setOpen(c.id, li, open);
 				syncToggleAll();
 			},
@@ -2357,7 +2351,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 					"h2",
 					{ id: "marks-heading" },
 					"Marks ",
-					h("span", { class: "count" }, String(c.annotations.length)),
+					h("span", { class: "count" }, String(c.marks.length)),
 				),
 				// Kept across redraws, like the status block under the bar.
 				h("div", { class: "marks-tools" }, toggleAll, p.loadButton),
@@ -2368,7 +2362,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 				: h(
 						"p",
 						{ class: "meta filtered", id: "marks-filtered" },
-						`Showing ${items.length} of ${c.annotations.length} marks. `,
+						`Showing ${items.length} of ${c.marks.length} marks. `,
 						h(
 							"button",
 							{
@@ -2381,7 +2375,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 						),
 					),
 			items.length > 0
-				? h("ol", { class: "annotations" }, ...items)
+				? h("ol", { class: "marks" }, ...items)
 				: filter === undefined
 					? h(
 							"p",
@@ -2395,9 +2389,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		if (kept !== undefined && !kept.hidden) kept.focus();
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
-			const row = items.find(
-				(li) => li.dataset["annotation"] === picked.annotationId,
-			);
+			const row = items.find((li) => li.dataset["mark"] === picked.markId);
 			// Its head under the sticky bars, its actions in view where they fit.
 			row?.setAttribute("data-picked", "");
 			row?.scrollIntoView?.({ block: "nearest" });
@@ -2434,11 +2426,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 
 // --- a mark in the list -------------------------------------------------------
 
-/** Marks shown open (`caseId:annotationId`); the rest show only their head. */
+/** Marks shown open (`caseId:markId`); the rest show only their head. */
 const openMarks = new Set<string>();
 
 function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
-	const key = `${caseId}:${li.dataset["annotation"]}`;
+	const key = `${caseId}:${li.dataset["mark"]}`;
 	if (open) openMarks.add(key);
 	else openMarks.delete(key);
 	li.toggleAttribute("data-open", open);
@@ -2449,7 +2441,7 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 
 interface MarkContext {
 	crop: string | undefined;
-	match: AnnotationMatch | undefined;
+	match: MarkMatch | undefined;
 	/** The tab in front's address: a mark's link offers its host (DEC-050). */
 	tabUrl: string | undefined;
 	/** It is of another page of the case than the tab in front shows. */
@@ -2469,13 +2461,13 @@ interface MarkContext {
  * One mark: a head (its number, comment and Show) that opens and closes the
  * rest (crop, where it is, its actions). A mark being edited stays open.
  */
-function markItem(c: Case, a: Annotation, x: MarkContext): HTMLElement {
+function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const { match: m, edit, actions } = x;
 	const bodyId = `mark-body-${a.id}`;
 	const status = markStatus(a);
 	const li: HTMLElement = h("li", {
-		class: "annotation",
-		"data-annotation": a.id,
+		class: "mark",
+		"data-mark": a.id,
 		"data-status": status,
 		...(m ? { "data-colour": colourOf(m) } : {}),
 		// Verified and closed step back; a mark to verify is to be looked at.
@@ -2575,7 +2567,7 @@ function tabOrigin(url: string | undefined): string | null {
  */
 function markPlace(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	tabUrl: string | undefined,
 	actions: Actions,
 ): HTMLElement {
@@ -2625,8 +2617,8 @@ function markPlace(
  */
 function markSubline(
 	c: Case,
-	a: Annotation,
-	m: AnnotationMatch | undefined,
+	a: Mark,
+	m: MarkMatch | undefined,
 	buttons: boolean,
 	actions: Actions,
 	elsewhere = false,
@@ -2689,7 +2681,7 @@ function findingTime(at: string, editedAt: string | undefined): string {
  */
 function findingsList(
 	c: Case,
-	a: Annotation,
+	a: Mark,
 	armed: string | undefined,
 	actions: Actions,
 ): HTMLElement | null {
