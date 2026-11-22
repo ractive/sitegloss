@@ -1111,11 +1111,16 @@ describe("an answer is read up to what an answer may be", () => {
 			given,
 		],
 	])(
-		"%s: one byte over its limit is given up unread",
+		"%s: one byte over its limit is given up unread; unsaid, read up to that limit and no further",
 		async (_what, max, status, run, shape) => {
 			const answer = endless(max + 1, status);
 			await expect(run(answer.response())).rejects.toMatchObject(shape);
 			expect(answer.taken.pieces).toBeLessThan(3);
+			// Its limit is this one, not a smaller one.
+			const unsaid = endless(undefined, status);
+			await expect(run(unsaid.response())).rejects.toMatchObject(shape);
+			expect(unsaid.taken.pieces).toBeGreaterThanOrEqual(Math.floor(max / MB));
+			expect(unsaid.taken.pieces).toBeLessThan(Math.ceil(max / MB) + 4);
 		},
 	);
 });

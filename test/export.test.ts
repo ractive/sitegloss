@@ -962,4 +962,16 @@ describe("sizes of a file of all cases", () => {
 			globalThis.Blob = RealBlob;
 		}
 	});
+
+	test("a case's images are checked again when it is stored", async () => {
+		const { store, cases } = await sized([1000, 2000]);
+		const zip = await exportAllCases(store, cases);
+		const read = await readExports(zip);
+		// The bytes of the second case's screenshot, changed after the check.
+		const at = new TextDecoder("latin1").decode(zip).lastIndexOf("RIFF");
+		zip[at] = 0;
+		await expect(
+			storeImport(new MemoryStore(), read[1] as (typeof read)[number]),
+		).rejects.toThrow("In case-1/:");
+	});
 });
