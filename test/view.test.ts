@@ -211,7 +211,7 @@ describe("a mark's status and actions", () => {
 			/^Won't fix .+ · Legal wants it$/,
 		);
 		expect(row("m1").querySelector(".history")).toBeNull();
-		expect(chips()).toEqual(["● Open 1", "– Closed 1"]);
+		expect(chips()).toEqual(["● Open 1", "– Dismissed 1"]);
 		expect(action("m1", "resolve").textContent).toBe("Resolve…");
 		expect(action("m2", "reopen").textContent).toBe("Reopen…");
 	});
@@ -535,7 +535,7 @@ describe("a mark's status and actions", () => {
 		expect(isOpen("m2")).toBe(true);
 	});
 
-	test("a closed mark says its state in a word, and the counts read apart", () => {
+	test("a dismissed mark says its state in a word, and the counts read apart", () => {
 		const c = twoMarks();
 		const found: MarkMatch = {
 			markId: "m1",
@@ -566,13 +566,13 @@ describe("a mark's status and actions", () => {
 		expect(window.document.getElementById("marks-heading")?.textContent).toBe(
 			"Marks 2",
 		);
-		// The bar: one open, one closed, each its share; above the actions.
+		// The bar: one open, one dismissed, each its share; above the actions.
 		const bar = [
 			...window.document.querySelectorAll("#case-status .progress > span"),
 		].map((s) => [s.getAttribute("data-kind"), s.getAttribute("style")]);
 		expect(bar).toEqual([
 			["open", "flex-grow: 1"],
-			["closed", "flex-grow: 1"],
+			["dismissed", "flex-grow: 1"],
 		]);
 	});
 });
@@ -648,12 +648,12 @@ describe("Verify (DEC-023)", () => {
 		const bar = [
 			...window.document.querySelectorAll("#case-status .progress > span"),
 		].map((s) => s.getAttribute("data-kind"));
-		expect(bar).toEqual(["open", "toVerify", "verified", "closed"]);
+		expect(bar).toEqual(["open", "toVerify", "verified", "dismissed"]);
 		expect(
 			[...window.document.querySelectorAll("#case-status .chip")].map((b) =>
 				(b.textContent ?? "").trim(),
 			),
-		).toEqual(["● Open 1", "◐ To verify 1", "✓ Verified 1", "– Closed 1"]);
+		).toEqual(["● Open 1", "◐ To verify 1", "✓ Verified 1", "– Dismissed 1"]);
 		expect(window.document.querySelector(".all-done")).toBeNull();
 	});
 
@@ -840,7 +840,7 @@ describe("Verify (DEC-023)", () => {
 		render(caseState(c), noActions);
 		expect(
 			window.document.querySelector("#case-status .all-done")?.textContent,
-		).toBe("✓ All marks are verified or closed.");
+		).toBe("✓ All marks are verified or dismissed.");
 	});
 
 	test("each status: its pill, its strong button and the others", () => {
@@ -889,7 +889,7 @@ describe("Verify (DEC-023)", () => {
 				.querySelector('.mark-sub [data-mark-action="verify"]')
 				?.getAttribute("title"),
 		).toBe("The fix holds on the page you checked");
-		// A mark to verify is drawn in full; verified and closed step back.
+		// A mark to verify is drawn in full; verified and dismissed step back.
 		expect(row("m2").hasAttribute("data-resolved")).toBe(false);
 		expect(row("m2").dataset["status"]).toBe("fixed");
 		expect(row("m3").dataset["resolved"]).toBe("fixed");
@@ -989,7 +989,7 @@ describe("Verify (DEC-023)", () => {
 		expect(lines[1]).toMatch(/^Verified .+, as the file says$/);
 	});
 
-	test("the crop of a verified or closed mark is not greyed", async () => {
+	test("the crop of a verified or dismissed mark is not greyed", async () => {
 		const css = await Bun.file(
 			new URL("../src/sidepanel/style.css", import.meta.url),
 		).text();
@@ -1097,13 +1097,13 @@ describe("Verify (DEC-023)", () => {
 			`[data-case="${c.id}"]`,
 		) as unknown as HTMLElement;
 		expect(item.textContent).toContain(
-			"4 marks (1 open, 1 to verify, 1 verified, 1 closed)",
+			"4 marks (1 open, 1 to verify, 1 verified, 1 dismissed)",
 		);
 		expect(
 			[...item.querySelectorAll(".progress > span")].map((s) =>
 				s.getAttribute("data-kind"),
 			),
-		).toEqual(["open", "toVerify", "verified", "closed"]);
+		).toEqual(["open", "toVerify", "verified", "dismissed"]);
 	});
 
 	test("the import prompt says what differs: the counts of both copies", () => {
@@ -3897,8 +3897,8 @@ describe("a loaded mark", () => {
 			['[data-status="fixed"],\n[data-group="toVerify"]', "--st-verify"],
 			['[data-status="verified"],\n[data-group="verified"]', "--st-verified"],
 			[
-				'[data-status="wontfix"],\n[data-status="cantreproduce"],\n[data-group="closed"]',
-				"--st-closed",
+				'[data-status="wontfix"],\n[data-status="cantreproduce"],\n[data-group="dismissed"]',
+				"--st-dismissed",
 			],
 		] as const)
 			expect(rule(selector)).toContain(`--tone: var(${tone});`);

@@ -105,15 +105,15 @@ const PANEL: Row[] = [
 		TEXT,
 	],
 	[
-		"--st-closed",
-		["--paper", "--st-closed-bg"],
+		"--st-dismissed",
+		["--paper", "--st-dismissed-bg"],
 		[6.11, 5.63],
 		[8.26, 6.26],
 		TEXT,
 	],
 	[
 		"--on-pin",
-		["--st-open", "--st-verify", "--st-verified", "--st-closed"],
+		["--st-open", "--st-verify", "--st-verified", "--st-dismissed"],
 		[6.06, 7.04, 6.44, 6.72],
 		[7.53, 8.88, 9.85, 8.26],
 		TEXT,
@@ -137,7 +137,7 @@ const PANEL: Row[] = [
  */
 const USED: Row[] = [
 	// A history's verb on the open mark's sheet.
-	["--st-closed", ["--sheet"], [6.72], [7.48], TEXT],
+	["--st-dismissed", ["--sheet"], [6.72], [7.48], TEXT],
 	// "Paused: …" in the sync section, on paper.
 	["--warn", ["--paper"], [7.01], [12.02], TEXT],
 	// The banner's problem line, and quiet text and links on a notice.
@@ -189,7 +189,7 @@ describe("the page's fixed colours", () => {
 		STATUS_COLOUR.open,
 		STATUS_COLOUR.toVerify,
 		STATUS_COLOUR.verified,
-		STATUS_COLOUR.closed,
+		STATUS_COLOUR.dismissed,
 	];
 	const STROKES = [4.53, 5.76, 5.08, 4.97];
 
@@ -215,7 +215,7 @@ describe("the page's fixed colours", () => {
 		});
 
 	for (const [i, status] of (
-		["open", "verify", "verified", "closed"] as const
+		["open", "verify", "verified", "dismissed"] as const
 	).entries()) {
 		const stroke = strokes[i] as string;
 		const want = STROKES[i] as number;

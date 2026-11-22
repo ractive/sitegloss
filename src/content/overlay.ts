@@ -58,11 +58,11 @@ export const STATUS_COLOUR: Record<StatusGroup, string> = {
 	open: MARK_COLOUR,
 	toVerify: "#4f53e0",
 	verified: "#1a7f37",
-	closed: "#667085",
+	dismissed: "#667085",
 };
 /** A mark fixed and waiting to be verified: drawn in full, to be checked (DEC-023). */
 export const TO_VERIFY_COLOUR = STATUS_COLOUR.toVerify;
-/** How much of a verified or closed mark's shape shows; its pin stays solid to be found. */
+/** How much of a verified or dismissed mark's shape shows; its pin stays solid to be found. */
 export const RESOLVED_OPACITY = 0.35;
 /** How much wider than its stroke a shape's casing is. */
 export const CASING_EXTRA = 3;
@@ -331,7 +331,7 @@ export interface ReviewItem {
 	/** The shown candidate is a confident, unambiguous match. */
 	found: boolean;
 	focused: boolean;
-	/** Its status: a verified or closed mark is drawn faded, so the others stand out. */
+	/** Its status: a verified or dismissed mark is drawn faded, so the others stand out. */
 	status: MarkStatus;
 }
 
@@ -339,7 +339,7 @@ export interface ReviewItem {
 export const isSettled = (status: MarkStatus): boolean =>
 	status === "verified" || status === "wontfix" || status === "cantreproduce";
 
-/** A loaded mark's colour: its status (open, to verify, verified, closed). */
+/** A loaded mark's colour: its status (open, to verify, verified, dismissed). */
 export function reviewColour(item: Pick<ReviewItem, "status">): string {
 	return STATUS_COLOUR[GROUP_OF[item.status]];
 }

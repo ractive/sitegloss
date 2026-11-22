@@ -332,7 +332,7 @@ describe("tools", () => {
 				url: "https://www.example.com/kk",
 				pages: ["https://www.example.com/kk"],
 				pageCount: 1,
-				marks: { open: 2, toVerify: 0, verified: 0, closed: 0 },
+				marks: { open: 2, toVerify: 0, verified: 0, dismissed: 0 },
 				summary: null,
 				updatedAt: "2026-11-04T10:00:00Z",
 			},
@@ -363,7 +363,7 @@ describe("tools", () => {
 				url: "https://www.example.com/kk",
 				pages: ["https://www.example.com/kk"],
 				pageCount: 1,
-				marks: { open: 0, toVerify: 0, verified: 0, closed: 0 },
+				marks: { open: 0, toVerify: 0, verified: 0, dismissed: 0 },
 				summary: null,
 				updatedAt: "2026-11-04T10:00:00Z",
 			},
@@ -1014,7 +1014,7 @@ describe("tools", () => {
 			expect(reopen).toContain("Mark 2:");
 			expect(reopen).not.toContain("change nothing");
 			expect(reopen).not.toContain("will refuse");
-			// A reopen keeps the verified fix; then the mark may be closed.
+			// A reopen keeps the verified fix; then the mark may be dismissed.
 			const verified = (await stored())?.resolution;
 			await status(2, "open", "Not fixed after all");
 			expect((await stored())?.reopens?.[0]?.was).toEqual(verified as never);
@@ -1103,7 +1103,7 @@ describe("tools", () => {
 				open: 1,
 				toVerify: 0,
 				verified: 1,
-				closed: 0,
+				dismissed: 0,
 			});
 		});
 

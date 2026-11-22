@@ -1494,9 +1494,9 @@ function renderLink(state: PanelState, p: CaseParts, c: Case): void {
 
 // --- a mark's status and its actions ---------------------------------------
 
-/** "2 open, 1 to verify, 1 closed": the groups with marks; nothing while every mark is open. */
+/** "2 open, 1 to verify, 1 dismissed": the groups with marks; nothing while every mark is open. */
 function countsText(n: Record<StatusGroup, number>): string | undefined {
-	if (n.toVerify + n.verified + n.closed === 0) return undefined;
+	if (n.toVerify + n.verified + n.dismissed === 0) return undefined;
 	return STATUS_GROUPS.filter((g) => n[g] > 0)
 		.map((g) => `${n[g]} ${GROUP_LABEL[g].toLowerCase()}`)
 		.join(", ");
@@ -1512,7 +1512,7 @@ function marksText(c: Case): string {
 }
 
 /**
- * How far the case has come, as a bar: open, to verify, verified, closed
+ * How far the case has come, as a bar: open, to verify, verified, dismissed
  * (DEC-023). The chips or the counts beside it say it in words: the bar is
  * only a picture. A span: it also sits inside a case's button in the list.
  */
@@ -1533,7 +1533,7 @@ const CHIP_SIGN: Record<StatusGroup, string> = {
 	open: "●",
 	toVerify: "◐",
 	verified: "✓",
-	closed: "–",
+	dismissed: "–",
 };
 
 /**
@@ -1581,7 +1581,7 @@ function statusBlock(
 					"p",
 					{ class: "meta all-done" },
 					h("span", { class: "sign", "aria-hidden": "true" }, "✓"),
-					" All marks are verified or closed.",
+					" All marks are verified or dismissed.",
 				)
 			: null,
 	);
@@ -2470,7 +2470,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 		"data-mark": a.id,
 		"data-status": status,
 		...(m ? { "data-colour": colourOf(m) } : {}),
-		// Verified and closed step back; a mark to verify is to be looked at.
+		// Verified and dismissed step back; a mark to verify is to be looked at.
 		...(a.resolution && status !== "fixed"
 			? { "data-resolved": a.resolution.kind }
 			: {}),

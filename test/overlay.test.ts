@@ -124,19 +124,19 @@ describe("a mark on the page", () => {
 		expect(group.querySelector("[data-number]")).not.toBeNull();
 	});
 
-	test("the colour is the status: open as on the screenshot, to verify indigo, verified green, closed grey", () => {
+	test("the colour is the status: open as on the screenshot, to verify indigo, verified green, dismissed grey", () => {
 		const want = {
 			open: MARK_COLOUR,
 			fixed: o.STATUS_COLOUR.toVerify,
 			verified: o.STATUS_COLOUR.verified,
-			wontfix: o.STATUS_COLOUR.closed,
-			cantreproduce: o.STATUS_COLOUR.closed,
+			wontfix: o.STATUS_COLOUR.dismissed,
+			cantreproduce: o.STATUS_COLOUR.dismissed,
 		} as const;
 		expect(o.STATUS_COLOUR).toEqual({
 			open: "#e5195f",
 			toVerify: "#4f53e0",
 			verified: "#1a7f37",
-			closed: "#667085",
+			dismissed: "#667085",
 		});
 		const statuses = Object.keys(want) as (keyof typeof want)[];
 		overlay.renderReview(
@@ -190,7 +190,7 @@ describe("a mark on the page", () => {
 		expect(dash(3)).toEqual(dash(2));
 	});
 
-	test("verified and closed marks are faded with their casing, the pin solid; open and to verify show fully; focused, any does", () => {
+	test("verified and dismissed marks are faded with their casing, the pin solid; open and to verify show fully; focused, any does", () => {
 		expect(o.RESOLVED_OPACITY).toBe(0.35);
 		const statuses = [
 			"open",

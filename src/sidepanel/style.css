@@ -32,8 +32,8 @@
 	--st-verify-bg: #e8e9fd;
 	--st-verified: #166d2d;
 	--st-verified-bg: #dff2e3;
-	--st-closed: #535c6e;
-	--st-closed-bg: #e9ebef;
+	--st-dismissed: #535c6e;
+	--st-dismissed-bg: #e9ebef;
 	--on-pin: #ffffff;
 	/* Messages */
 	--danger: #b3261e;
@@ -86,8 +86,8 @@
 		--st-verify-bg: #22244d;
 		--st-verified: #72d18c;
 		--st-verified-bg: #13301d;
-		--st-closed: #a6aebd;
-		--st-closed-bg: #272c38;
+		--st-dismissed: #a6aebd;
+		--st-dismissed-bg: #272c38;
 		--on-pin: #11141a;
 		--danger: #ff8f85;
 		--danger-bg: #3a1714;
@@ -523,7 +523,7 @@ textarea + .row {
  * A mark's status as a colour: `--tone` for text and fills, `--tint` behind
  * text. On anything that carries a mark's status (`data-status`) or the group
  * a status counts in (`data-group`): open; fixed and to be verified; verified;
- * closed without a fix.
+ * dismissed (won't fix, can't reproduce).
  */
 [data-status="open"],
 [data-group="open"] {
@@ -545,9 +545,9 @@ textarea + .row {
 
 [data-status="wontfix"],
 [data-status="cantreproduce"],
-[data-group="closed"] {
-	--tone: var(--st-closed);
-	--tint: var(--st-closed-bg);
+[data-group="dismissed"] {
+	--tone: var(--st-dismissed);
+	--tint: var(--st-dismissed-bg);
 }
 
 /* A status with its count, to filter by; a pill is the same on a card, smaller. */
@@ -1488,7 +1488,7 @@ ul.cases .title {
 
 .progress > span {
 	min-width: 4px;
-	background: var(--st-closed);
+	background: var(--st-dismissed);
 }
 
 /* In a case's row: the same picture, quieter. */
@@ -1699,7 +1699,7 @@ ol.marks {
 	color: var(--ink-2);
 }
 
-/* A verified or closed mark steps back; its crop stays as it is, to compare. */
+/* A verified or dismissed mark steps back; its crop stays as it is, to compare. */
 .mark[data-resolved] .comment {
 	color: var(--ink-2);
 }
@@ -1882,7 +1882,7 @@ button.crop:hover img {
 }
 
 .history .kind {
-	color: var(--st-closed);
+	color: var(--st-dismissed);
 	font-weight: 600;
 }
 

@@ -509,7 +509,7 @@ inBothSets("marking and saving", () => {
 			await v1.page.waitFor(
 				`${review(2)}?.hasAttribute("data-resolved") && ${review(2)}.querySelector("[data-faded]") === null`,
 			);
-			// Closed marks are drawn, faded, but not counted.
+			// Dismissed marks are drawn, faded, but not counted.
 			expect(await v1.page.eval<string>(bar)).toBe("2 of 2 found");
 			// The panel's results stay: the page kept its matches.
 			expect(
