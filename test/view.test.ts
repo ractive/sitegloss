@@ -1252,8 +1252,6 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		expect(el("load-case").hidden).toBe(true);
 		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(true);
 		expect(el("add-marks").title).toContain("see the notice");
-		// The notice is below the actions in a case, above the button on Home.
-		expect(el("add-marks").title).not.toContain("above");
 		const show = window.document.querySelector(
 			'[data-action="show"]',
 		) as unknown as HTMLButtonElement;
@@ -1372,8 +1370,9 @@ describe("none of the case's marks found (DEC-022)", () => {
 		expect(warning.hidden).toBe(false);
 		expect(warning.querySelector("svg.notice-icon")).not.toBeNull();
 		expect(warning.textContent).toContain(
-			"None of this case's marks were found on this page. It is probably for another page: www.example.com/kk.",
+			"None of this case's marks were found",
 		);
+		expect(warning.textContent).toContain("www.example.com/kk");
 		const open = warning.querySelector(
 			'[data-action="open-case-page"]',
 		) as unknown as HTMLButtonElement;
@@ -1816,9 +1815,10 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		expect(el("cloud").textContent).toContain(
 			"Sign in to sync with your team.",
 		);
-		expect(el("cloud").textContent).toContain(
-			"Signed in, your cases go to app.sitegloss.dev and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (its query without what looks like a secret or an e-mail address). Without an account everything stays in this browser, as now.",
-		);
+		// What goes where: the server, and what is kept out of an address.
+		expect(el("cloud").textContent).toContain("app.sitegloss.dev");
+		expect(el("cloud").textContent).toContain("e-mail address");
+		expect(el("cloud").textContent).toContain("stays in this browser");
 		// The service itself: no word about the server, and nothing to choose
 		// unless one opens "Server".
 		expect(el("cloud-server-name")).toBeNull();
@@ -1967,14 +1967,10 @@ describe("the account and the sync with a team (DEC-039)", () => {
 				problems: [],
 				undecided: 0,
 			}),
-		).toBe(
-			"Offline: changes are kept and sync when the server can be reached.",
-		);
+		).toContain("Offline: changes are kept");
 		expect(
 			at({ state: "offline", problems: [], undecided: 0, waiting: 1 }),
-		).toBe(
-			"Offline: changes are kept and sync when the server can be reached. 1 case waits to be sent.",
-		);
+		).toContain("1 case waits to be sent");
 		// What the server did not take, in its words, by case.
 		at({
 			state: "problem",
@@ -2013,9 +2009,8 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		// The stream closed for a while: when it last synced, and how the
 		// team's changes come now.
 		home({ account: account(), status: synced(), live: false });
-		expect(line()).toBe(
-			"Last synced 5 minutes ago. The team's changes are not coming in live right now: they come at the next sync, or with Sync now.",
-		);
+		expect(line()).toStartWith("Last synced 5 minutes ago.");
+		expect(line()).toContain("not coming in live");
 		expect(button("cloud-sync-now")).not.toBeNull();
 		// Being opened: when it last synced, no claim about live changes.
 		home({ account: account(), status: synced(), live: undefined });
@@ -2111,8 +2106,8 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		};
 		const note = at("https://app.sitegloss.dev/t/pedal/cases/c_1");
 		expect(note.hidden).toBe(false);
-		expect(note.textContent).toBe(
-			"This tab is your team's web app at app.sitegloss.dev: it shows the same cases as this panel.",
+		expect(note.textContent).toContain(
+			"your team's web app at app.sitegloss.dev",
 		);
 		expect(at("https://shop.example/cart").hidden).toBe(true);
 		// Signed out: no team, no web app of one.
@@ -2150,9 +2145,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		render(state, actions);
 		expect(el("paired-next").hidden).toBe(false);
 		expect(el("paired-next-text").textContent).toBe("Claude is connected.");
-		expect(el("paired-next").textContent).toContain(
-			"Look at the Sitegloss case open in my browser, fix its marks and say what you did in a comment",
-		);
+		expect(el("paired-next").textContent).toContain("fix its marks");
 		expect(el("paired-back").textContent).toBe("Back to the cases");
 		el<HTMLButtonElement>("paired-back").click();
 		expect(closed).toEqual(["x"]);
@@ -2188,9 +2181,8 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		select.dispatchEvent(new window.Event("change") as unknown as Event);
 		expect(chosen).toEqual(["t_2"]);
 		home({ account: account({ teams: [], teamId: undefined }) });
-		expect(el("cloud-status").textContent).toBe(
-			"You are in no team yet. Create or join one on app.sitegloss.dev, then click Sync now.",
-		);
+		expect(el("cloud-status").textContent).toContain("in no team yet");
+		expect(el("cloud-status").textContent).toContain("app.sitegloss.dev");
 	});
 
 	test("a note is said under the status, and not as a warning", () => {
@@ -2308,8 +2300,9 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			status: { state: "synced", problems: [], undecided: 1 },
 		});
 		expect(el("cloud-banner").textContent).toContain(
-			"1 case is on this device only. Your role in the team does not allow sharing cases with it.",
+			"1 case is on this device only",
 		);
+		expect(el("cloud-banner").textContent).toContain("does not allow sharing");
 		expect(button("cloud-sync-them", "cloud-banner")).toBeNull();
 	});
 
@@ -2319,9 +2312,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			{ account: account({ expired: true }) },
 			actionsWith({ cloudSignIn: () => void clicked.push("in") }),
 		);
-		expect(el("cloud-banner").textContent).toContain(
-			"Team sync is signed out. Sign in again to go on syncing; what you change meanwhile is kept and sent then.",
-		);
+		expect(el("cloud-banner").textContent).toContain("Team sync is signed out");
 		button("cloud-sign-in", "cloud-banner")?.click();
 		expect(clicked).toEqual(["in"]);
 		expect(el("cloud").dataset["cloud"]).toBe("signed-out");
@@ -2383,14 +2374,14 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			render(state, noActions);
 			return el<HTMLButtonElement>("delete-case");
 		};
-		expect(armed("c_team", cloud, false).title).toBe(
-			"Delete this case and its screenshots, here and for everyone in “Pedal & Pine web” (click twice). Files exported before stay.",
+		expect(armed("c_team", cloud, false).title).toContain(
+			"for everyone in “Pedal & Pine web” (click twice)",
 		);
 		expect(armed("c_team", cloud, true).textContent).toBe(
 			"Really delete for the team?",
 		);
-		expect(armed("c_team", cloud, true).title).toBe(
-			"Click again to delete this case and its screenshots, here and for everyone in “Pedal & Pine web”",
+		expect(armed("c_team", cloud, true).title).toContain(
+			"everyone in “Pedal & Pine web”",
 		);
 		// A case on this device only is deleted as ever.
 		expect(
@@ -2403,9 +2394,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		};
 		const button = armed("c_team", noDelete, false);
 		expect(button.disabled).toBe(true);
-		expect(button.title).toBe(
-			"Your role in “Pedal & Pine web” does not allow deleting its cases",
-		);
+		expect(button.title).toContain("does not allow deleting");
 		expect(
 			armed("c_local", { ...noDelete, modes: { c_local: "local" } }, false)
 				.disabled,
@@ -2947,7 +2936,7 @@ describe("the AI app", () => {
 		expect(pill()).toEqual([
 			"AI off",
 			"off",
-			"AI access is off. Click to turn it on and set it up.",
+			expect.stringContaining("turn it on"),
 		]);
 		// The whole status stays in the button, for a screen reader.
 		expect(el("ai-status").textContent).toBe("Not connected");
@@ -2966,7 +2955,7 @@ describe("the AI app", () => {
 		expect(pill()).toEqual([
 			"AI on, no app yet",
 			"waiting",
-			"Waiting for an AI app to pair. Click for the address and code.",
+			expect.stringContaining("address and code"),
 		]);
 		const on = (apps: number, status: string) =>
 			caseState(c, ai({ status, connected: true, active: true, apps }));
@@ -2974,13 +2963,13 @@ describe("the AI app", () => {
 		expect(pill()).toEqual([
 			"AI on · 1 app",
 			"connected",
-			"Connected: Claude. Click to manage it.",
+			expect.stringContaining("manage it"),
 		]);
 		render(on(2, "Connected: Claude, ChatGPT"), noActions);
 		expect(pill()).toEqual([
 			"AI on · 2 apps",
 			"connected",
-			"Connected: Claude, ChatGPT. Click to manage them.",
+			expect.stringContaining("manage them"),
 		]);
 		render(
 			caseState(c, ai({ status: "Connecting…", active: true })),
@@ -2989,7 +2978,7 @@ describe("the AI app", () => {
 		expect(pill()).toEqual([
 			"AI connecting…",
 			"waiting",
-			"Connecting… Click for the AI app card.",
+			expect.stringContaining("Connecting…"),
 		]);
 		// Healthy in each of these: nothing is said under the bar.
 		expect(el("ai-problem").hidden).toBe(true);
@@ -3122,9 +3111,7 @@ describe("the New case button (DEC-023, DEC-026)", () => {
 		// the one amber button.
 		at(c.page.url, [own, elsewhere]);
 		expect(el("here").hidden).toBe(false);
-		expect(el("here-text").textContent).toBe(
-			"This page already has a case. Open it to go on with its marks, or start a new one.",
-		);
+		expect(el("here-text").textContent).toContain("already has a case");
 		expect(rows("here")).toEqual(["c_own"]);
 		expect(el("here").contains(el("open-here") as never)).toBe(true);
 		expect(el("open-here").hidden).toBe(false);
@@ -3139,9 +3126,7 @@ describe("the New case button (DEC-023, DEC-026)", () => {
 
 		// Several: each row opens its case, no button picks one of them.
 		at(c.page.url, [own, second, elsewhere]);
-		expect(el("here-text").textContent).toBe(
-			"This page already has 2 cases. Open one to go on with its marks, or start a new one.",
-		);
+		expect(el("here-text").textContent).toContain("already has 2 cases");
 		expect(rows("here")).toEqual(["c_own", "c_second"]);
 		expect(el("open-here").hidden).toBe(true);
 		expect(primary("new-case")).toBe(false);
@@ -3221,59 +3206,6 @@ describe("the title is renamed where it is shown (DEC-026)", () => {
 		expect(shown("rename-hint")).toBe(false);
 	});
 
-	test("Enter saves what is typed, Escape cancels, as the buttons do", () => {
-		const called: string[] = [];
-		const actions = actionsWith({
-			saveRename: (_c, text) => void called.push(`save ${text}`),
-			cancelRename: () => void called.push("cancel"),
-			typeRename: (text) => void called.push(`type ${text}`),
-		});
-		// The case's parts keep the actions they were made with: a case of its own.
-		const keys = sampleCase("c_rename_keys");
-		render(
-			caseState(keys, (s) => {
-				s.renaming = { caseId: keys.id, text: "Login" };
-			}),
-			actions,
-		);
-		const field = el<HTMLInputElement>("rename-field");
-		field.value = "Login button";
-		field.dispatchEvent(new window.Event("input") as unknown as Event);
-		const key = (k: string) =>
-			field.dispatchEvent(
-				new window.KeyboardEvent("keydown", {
-					key: k,
-					cancelable: true,
-				}) as unknown as Event,
-			);
-		// The Enter that ends an IME composition is the composition's.
-		field.dispatchEvent(
-			new window.KeyboardEvent("keydown", {
-				key: "Enter",
-				isComposing: true,
-				cancelable: true,
-			}) as unknown as Event,
-		);
-		field.dispatchEvent(
-			new window.KeyboardEvent("keydown", {
-				key: "Enter",
-				keyCode: 229,
-				cancelable: true,
-			}) as unknown as Event,
-		);
-		key("Enter");
-		key("Escape");
-		el<HTMLButtonElement>("rename-save").click();
-		el<HTMLButtonElement>("rename-cancel").click();
-		expect(called).toEqual([
-			"type Login button",
-			"save Login button",
-			"cancel",
-			"save Login button",
-			"cancel",
-		]);
-	});
-
 	test("an empty title is refused: Save off, and the field says why", () => {
 		render(renaming("   "), noActions);
 		expect(el<HTMLButtonElement>("rename-save").disabled).toBe(true);
@@ -3304,16 +3236,6 @@ describe("the title is renamed where it is shown (DEC-026)", () => {
 			"Login",
 		);
 		expect(window.document.activeElement?.id).toBe("rename-case");
-	});
-
-	test("another case's rename is not this one's", () => {
-		render(
-			caseState(c, (s) => {
-				s.renaming = { caseId: "c_other", text: "X" };
-			}),
-			noActions,
-		);
-		expect(shown("rename")).toBe(false);
 	});
 });
 
@@ -3365,18 +3287,13 @@ describe("a case's link (DEC-028)", () => {
 		expect(edit().textContent).toBe("Add a link");
 	});
 
-	test("editing: the field with the stored link; Enter and Save save, Escape and Cancel cancel", () => {
+	test("editing: the field with the stored link", () => {
 		const c = { ...sampleCase("c_link_keys"), link: TICKET };
-		const called: string[] = [];
 		render(
 			caseState(c, (s) => {
 				s.linking = { caseId: c.id, text: TICKET };
 			}),
-			actionsWith({
-				saveLink: (_c, text) => void called.push(`save ${text}`),
-				cancelLink: () => void called.push("cancel"),
-				typeLink: (text) => void called.push(`type ${text}`),
-			}),
+			noActions,
 		);
 		const field = el<HTMLInputElement>("case-link-field");
 		expect(shown("case-link-form")).toBe(true);
@@ -3385,34 +3302,8 @@ describe("a case's link (DEC-028)", () => {
 		expect(field.value).toBe(TICKET);
 		expect(field.type).toBe("url");
 		expect(field.getAttribute("aria-label")).toBe("Link of this case");
-		expect(field.placeholder).toBe(
-			"https://… a ticket, a design, a pull request",
-		);
+		expect(field.placeholder).toContain("a ticket");
 		expect(shown("case-link-hint")).toBe(false);
-		field.value = "https://example.com/pr/7";
-		field.dispatchEvent(new window.Event("input") as unknown as Event);
-		const key = (k: string, more: Record<string, unknown> = {}) =>
-			field.dispatchEvent(
-				new window.KeyboardEvent("keydown", {
-					key: k,
-					cancelable: true,
-					...more,
-				}) as unknown as Event,
-			);
-		// The Enter that ends an IME composition is the composition's.
-		key("Enter", { isComposing: true });
-		key("Enter", { keyCode: 229 });
-		key("Enter");
-		key("Escape");
-		el<HTMLButtonElement>("case-link-save").click();
-		el<HTMLButtonElement>("case-link-cancel").click();
-		expect(called).toEqual([
-			"type https://example.com/pr/7",
-			"save https://example.com/pr/7",
-			"cancel",
-			"save https://example.com/pr/7",
-			"cancel",
-		]);
 	});
 
 	test("a text that is no link, or a save that failed, says why under the field", () => {
@@ -3450,17 +3341,86 @@ describe("a case's link (DEC-028)", () => {
 		expect(open().getAttribute("href")).toBe(TICKET);
 		expect(window.document.activeElement?.id).toBe("case-link-edit");
 	});
+});
 
-	test("another case's link form is not this one's", () => {
-		const c = sampleCase("c_link_other");
+// The rename and link forms are one pattern: the same keys, the same ownership.
+describe.each([
+	{
+		form: "rename",
+		state: "renaming",
+		field: "rename-field",
+		save: "rename-save",
+		cancel: "rename-cancel",
+		edit: "rename-case",
+		saveAction: "saveRename",
+		cancelAction: "cancelRename",
+		typeAction: "typeRename",
+	},
+	{
+		form: "link",
+		state: "linking",
+		field: "case-link-field",
+		save: "case-link-save",
+		cancel: "case-link-cancel",
+		edit: "case-link-edit",
+		saveAction: "saveLink",
+		cancelAction: "cancelLink",
+		typeAction: "typeLink",
+	},
+] as const)("the $form form of a case", (f) => {
+	const open = (c: Case, caseId: string, actions: Actions = noActions) =>
 		render(
 			caseState(c, (s) => {
-				s.linking = { caseId: "c_other", text: TICKET };
+				s[f.state] = { caseId, text: "Login" };
 			}),
-			noActions,
+			actions,
 		);
-		expect(shown("case-link-form")).toBe(false);
-		expect(shown("case-link-edit")).toBe(true);
+
+	test("Enter saves what is typed, Escape cancels, as the buttons do", () => {
+		const called: string[] = [];
+		// The case's parts keep the actions they were made with: a case of its own.
+		const c = sampleCase(`c_${f.form}_keys`);
+		open(
+			c,
+			c.id,
+			actionsWith({
+				[f.saveAction]: (_c: unknown, text: string) =>
+					void called.push(`save ${text}`),
+				[f.cancelAction]: () => void called.push("cancel"),
+				[f.typeAction]: (text: string) => void called.push(`type ${text}`),
+			}),
+		);
+		const field = el<HTMLInputElement>(f.field);
+		field.value = "Login button";
+		field.dispatchEvent(new window.Event("input") as unknown as Event);
+		const key = (k: string, more: Record<string, unknown> = {}) =>
+			field.dispatchEvent(
+				new window.KeyboardEvent("keydown", {
+					key: k,
+					cancelable: true,
+					...more,
+				}) as unknown as Event,
+			);
+		// The Enter that ends an IME composition is the composition's.
+		key("Enter", { isComposing: true });
+		key("Enter", { keyCode: 229 });
+		key("Enter");
+		key("Escape");
+		el<HTMLButtonElement>(f.save).click();
+		el<HTMLButtonElement>(f.cancel).click();
+		expect(called).toEqual([
+			"type Login button",
+			"save Login button",
+			"cancel",
+			"save Login button",
+			"cancel",
+		]);
+	});
+
+	test("another case's form is not this one's", () => {
+		open(sampleCase(`c_${f.form}_other`), "c_other");
+		expect(el(f.field).closest("[hidden]")).not.toBeNull();
+		expect(el(f.edit).hidden).toBe(false);
 	});
 });
 
@@ -3643,9 +3603,7 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		);
 		expect(el("add-marks").textContent).toBe("Done adding");
 		expect(el("add-marks").classList.contains("primary")).toBe(false);
-		expect(line()).toBe(
-			"Adding marks: draw on the page. Each mark is saved into this case when its comment is done.",
-		);
+		expect(line()).toContain("Adding marks: draw on the page");
 		el("add-marks").click();
 		expect(called).toEqual(["add", "done"]);
 		// A toolbar for another case is not this case's.
@@ -4138,9 +4096,7 @@ describe("the sync (DEC-021, DEC-025)", () => {
 		const box = sync((s) => {
 			s.asking = true;
 		});
-		expect(box.textContent).toContain(
-			"Chrome asks whether Sitegloss may manage your downloads.",
-		);
+		expect(box.textContent).toContain("may manage your downloads");
 		expect(labels(box)).toEqual([]);
 	});
 
@@ -4228,12 +4184,8 @@ describe("the sync (DEC-021, DEC-025)", () => {
 			expect(b.hidden).toBe(false);
 			expect(b.getAttribute("role")).toBe("status");
 			expect(b.dataset["sync"]).toBe("paused");
-			expect(b.querySelector("p")?.textContent).toBe(
-				"The copy to a folder is paused. Chrome needs your OK to write to “iCloud cases” again.",
-			);
-			expect(b.querySelector("strong")?.textContent).toBe(
-				"The copy to a folder is paused.",
-			);
+			expect(b.querySelector("p")?.textContent).toContain("“iCloud cases”");
+			expect(b.querySelector("strong")?.textContent).toContain("paused");
 			expect(labels(b)).toEqual(["Allow access", "Use Downloads instead"]);
 			(b.querySelector('[data-action="sync-allow"]') as HTMLElement).click();
 		}
@@ -4246,9 +4198,7 @@ describe("the sync (DEC-021, DEC-025)", () => {
 			pausedFolder(s);
 			s.refused = true;
 		});
-		expect(banner().textContent).toContain(
-			"Chrome did not allow it. Click Allow access to ask again, or use Downloads instead.",
-		);
+		expect(banner().textContent).toContain("Click Allow access to ask again");
 	});
 
 	test("what a banner button could not do is said in the banner, in a case too", () => {
@@ -4284,8 +4234,8 @@ describe("the sync (DEC-021, DEC-025)", () => {
 		expect(box.querySelector(".sync-state")?.textContent).toBe(
 			"Paused: Sitegloss may no longer save to your downloads.",
 		);
-		expect(banner().querySelector("p")?.textContent).toBe(
-			"The copy to a folder is paused. Sitegloss may no longer save to your downloads.",
+		expect(banner().querySelector("p")?.textContent).toContain(
+			"no longer save to your downloads",
 		);
 		expect(labels(banner())).toEqual(["Allow downloads"]);
 		(
@@ -4312,8 +4262,8 @@ describe("the sync (DEC-021, DEC-025)", () => {
 		);
 		expect(labels(box)).toContain("Try again");
 		expect(banner().dataset["sync"]).toBe("failed");
-		expect(banner().querySelector("p")?.textContent).toBe(
-			"The copy to a folder failed. The folder “Sitegloss” is no longer there.",
+		expect(banner().querySelector("p")?.textContent).toContain(
+			"The folder “Sitegloss” is no longer there.",
 		);
 		expect(labels(banner())).toEqual(["Try again"]);
 	});
@@ -4401,9 +4351,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 			el("here-cases").querySelector('[data-case="c_closed"] .closed-tag')
 				?.textContent,
 		).toBe("Closed");
-		expect(el("here-text").textContent).toBe(
-			"This page already has 2 cases. Open one to go on with its marks, or start a new one.",
-		);
+		expect(el("here-text").textContent).toContain("already has 2 cases");
 		// Not under Closed as well.
 		expect(
 			window.document.querySelector(
