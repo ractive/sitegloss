@@ -3483,6 +3483,27 @@ describe("the summary for the developer", () => {
 		expect(el("save-verdict").textContent).toBe("Save summary");
 	});
 
+	test("a case's card shows its start on one line; its name only says there is one", () => {
+		const long = `Darker button\n\nand ${"more ".repeat(100)}`;
+		const home = initialState();
+		home.cases = [
+			{ ...sampleCase("c_s"), verdict: long },
+			{ ...sampleCase("c_none"), verdict: null },
+		];
+		render(home, noActions);
+		const card = window.document.querySelector('[data-case="c_s"]');
+		const line = card?.querySelector(".card-summary")?.textContent ?? "";
+		expect(line.startsWith("Darker button and more")).toBe(true);
+		expect(line.length).toBe(200);
+		expect(card?.getAttribute("aria-label")).not.toContain("Darker");
+		expect(card?.getAttribute("aria-label")).toEndWith(
+			", with a summary for the developer",
+		);
+		const none = window.document.querySelector('[data-case="c_none"]');
+		expect(none?.querySelector(".card-summary")).toBeNull();
+		expect(none?.getAttribute("aria-label")).not.toContain("summary");
+	});
+
 	test("a draft stays while the case changes, and comes back after leaving", () => {
 		const c = sampleCase("c_v");
 		const drafts = (s: PanelState) => s.verdictDrafts.set(c.id, "Typed");

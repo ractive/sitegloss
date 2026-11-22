@@ -1148,7 +1148,8 @@ ul.cases [data-case]:hover:not(:disabled) {
 
 /* One line each: what does not fit is cut. */
 .case-card .title,
-.case-card .where-url {
+.case-card .where-url,
+.case-card .card-summary {
 	min-width: 0;
 	overflow: hidden;
 	white-space: nowrap;
@@ -1164,6 +1165,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 
 .case-card .card-where,
 .case-card .card-date,
+.case-card .card-summary,
 .case-card .card-chips {
 	color: var(--ink-2);
 	font-size: 12px;
@@ -1178,6 +1180,12 @@ ul.cases [data-case]:hover:not(:disabled) {
 
 .case-card .where-more {
 	flex: none;
+}
+
+/* The summary for the developer's start: one line, cut; read whole in the case. */
+.case-card .card-summary {
+	display: block;
+	margin-top: var(--s1);
 }
 
 .case-card .progress.band {

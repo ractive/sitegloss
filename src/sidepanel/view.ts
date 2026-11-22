@@ -495,7 +495,19 @@ function caseChips(c: Case): HTMLElement {
 	);
 }
 
-/** The card's name, in one sentence: title, state, counts, where, when. */
+/**
+ * The start of the summary for the developer, for one line: the style sheet
+ * cuts it; more than a wide panel shows is not drawn.
+ */
+function summaryStart(c: Case): string | undefined {
+	const text = c.verdict?.replace(/\s+/g, " ").trim();
+	return text ? text.slice(0, 200) : undefined;
+}
+
+/**
+ * The card's name, in one sentence: title, state, counts, where, when. Of the
+ * summary only that there is one: the whole would be read on every card.
+ */
 function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
 	const count = c.marks.length;
 	const counts = marksText(c);
@@ -504,7 +516,7 @@ function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
 		team ? "shared with the team" : undefined,
 		deviceOnly ? "on this device only" : undefined,
 	].filter(Boolean);
-	return `${c.title}${state.length > 0 ? `, ${state.join(", ")}` : ""}: ${count === 0 ? "no marks" : `${count} mark${count === 1 ? "" : "s"}, ${counts}`}, on ${pagesLine(c)}, changed ${formatDate(c.updatedAt)}`;
+	return `${c.title}${state.length > 0 ? `, ${state.join(", ")}` : ""}: ${count === 0 ? "no marks" : `${count} mark${count === 1 ? "" : "s"}, ${counts}`}, on ${pagesLine(c)}, changed ${formatDate(c.updatedAt)}${summaryStart(c) ? ", with a summary for the developer" : ""}`;
 }
 
 /**
@@ -518,6 +530,7 @@ function caseItem(
 	deviceOnly = false,
 	team = false,
 ): HTMLLIElement {
+	const summary = summaryStart(c);
 	return h(
 		"li",
 		{},
@@ -548,6 +561,7 @@ function caseItem(
 			),
 			whereLine(c),
 			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
+			summary ? h("span", { class: "card-summary" }, summary) : null,
 			caseChips(c),
 		),
 	);
@@ -567,6 +581,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 			c.id,
 			c.updatedAt,
 			c.importedAt,
+			c.verdict,
 			caseSync(state.cloud, c.id).kind,
 			c.closed !== undefined,
 		]),
