@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	describe,
+	expect,
+	jest,
+	spyOn,
+	test,
+} from "bun:test";
 import { SETUP_GUIDE } from "@ractive-ch/tab-mcp-client/setup";
 import { Window } from "happy-dom";
 import type { Setup } from "../src/sidepanel/setup.ts";
@@ -19,8 +27,12 @@ const steps = () => [
 const step = (app: string) =>
 	el("setup-steps").querySelector<HTMLLIElement>(`li[data-app="${app}"]`);
 const clipboard = window.navigator.clipboard;
-/** Let the clipboard's promise settle. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Let the clipboard's promise settle (its microtasks: no timer, so also with fake timers). */
+const settle = async () => {
+	for (let i = 0; i < 5; i++) await Promise.resolve();
+};
+/** `ms` pass on the fake clock. */
+const later = (ms: number) => jest.advanceTimersByTime(ms);
 
 /** The side panel's page, and the setup steps in it. */
 beforeAll(async () => {
@@ -119,6 +131,7 @@ describe("How do I add it?", () => {
 			},
 		);
 		try {
+			jest.useFakeTimers();
 			const pre = step("codex")?.querySelector("pre");
 			const copy = step("codex")?.querySelector("button") as HTMLButtonElement;
 			copy.click();
@@ -131,10 +144,11 @@ describe("How do I add it?", () => {
 			setup.show(ADDRESS);
 			expect(step("codex")?.querySelector("button")).toBe(copy);
 			expect(copy.textContent).toBe("Copied");
-			await new Promise((resolve) => setTimeout(resolve, COPIED_MS + 50));
+			later(COPIED_MS + 50);
 			expect(copy.textContent).toBe("Copy");
 			expect(copy.getAttribute("aria-label")).toBe("Copy Codex command");
 		} finally {
+			jest.useRealTimers();
 			spy.mockRestore();
 		}
 	});
@@ -145,19 +159,21 @@ describe("How do I add it?", () => {
 			async () => {},
 		);
 		try {
+			jest.useFakeTimers();
 			const copy = step("codex")?.querySelector("button") as HTMLButtonElement;
 			copy.click();
 			await settle();
-			await new Promise((resolve) => setTimeout(resolve, COPIED_MS / 2));
+			later(COPIED_MS / 2);
 			copy.click();
 			await settle();
 			// Past the first Copy's time, within the second's.
-			await new Promise((resolve) => setTimeout(resolve, COPIED_MS / 2 + 100));
+			later(COPIED_MS / 2 + 100);
 			expect(copy.textContent).toBe("Copied");
 			expect(copy.getAttribute("aria-label")).toBe("Copied Codex command");
-			await new Promise((resolve) => setTimeout(resolve, COPIED_MS / 2 + 50));
+			later(COPIED_MS / 2 + 50);
 			expect(copy.textContent).toBe("Copy");
 		} finally {
+			jest.useRealTimers();
 			spy.mockRestore();
 		}
 	});
