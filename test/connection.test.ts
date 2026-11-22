@@ -868,16 +868,6 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		await until(() => w.last().fill === undefined);
 	});
 
-	test("a yes fills in the code the card shows", async () => {
-		const { w } = await connected({ fillCode: true });
-		await w.connection.pageLoaded(7, PAGE);
-		await until(() => w.last().fill !== undefined);
-		w.send({ type: "fill", id: w.last().fill?.id, yes: true });
-		await until(() => fake.filled.length > 0, 15_000);
-		expect(fake.filled).toEqual([w.last().code as string]);
-		expect(w.last().fill).toBeUndefined();
-	});
-
 	test("the same request's page again in the same tab after a fill is asked about again: no code is filled in without a yes", async () => {
 		const { w } = await connected({ fillCode: true });
 		await w.connection.pageLoaded(7, PAGE);
@@ -945,7 +935,7 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		}
 	});
 
-	test("without a panel's pairing view, a yes turns pairing on for the fill", async () => {
+	test("without a panel's pairing view, a yes turns pairing on for the fill and fills in the code the card shows", async () => {
 		const start = spyOn(TabMcp.prototype, "startPairing");
 		try {
 			const { w } = await connected({ fillCode: true });
@@ -955,6 +945,8 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 			w.send({ type: "fill", id: w.last().fill?.id, yes: true });
 			await until(() => fake.filled.length > 0, 15_000);
 			expect(start).toHaveBeenCalledTimes(1);
+			expect(fake.filled).toEqual([w.last().code as string]);
+			expect(w.last().fill).toBeUndefined();
 			expect(w.last().pairing).toBe(false);
 		} finally {
 			start.mockRestore();
