@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import type { Overlay } from "../src/content/overlay.ts";
-import { LoadReplaced, NO_PANEL, Reviewer } from "../src/content/review.ts";
+import {
+	LoadReplaced,
+	NO_PANEL,
+	panelAsker,
+	Reviewer,
+} from "../src/content/review.ts";
 import {
 	type Case,
 	MARK_CHANGED,
@@ -212,6 +217,13 @@ describe("elements replaced after loading", () => {
 		expect(reviewer.loadingCaseId).toBe(c.id);
 		reviewer.clearFor(c.id);
 		await expect(loading).rejects.toBeInstanceOf(LoadReplaced);
+		expect(overlay.items).toEqual([]);
+		// None named ("← All cases") while another case loads: that load stops too.
+		await reviewer.load(c);
+		const other = reviewer.load({ ...c, id: "c_other" });
+		reviewer.clearFor(undefined);
+		await expect(other).rejects.toBeInstanceOf(LoadReplaced);
+		expect(reviewer.caseId).toBeUndefined();
 		expect(overlay.items).toEqual([]);
 	});
 
@@ -456,6 +468,17 @@ describe("a loaded case that changes", () => {
 		expect(result?.matches[1]?.candidates[0]?.selector).toBe(
 			describeElement($("h1")).selector,
 		);
+	});
+
+	test("a change while the case still loads is drawn once the load ends", async () => {
+		doc.body.innerHTML = PAGE;
+		const c = twoMarks();
+		const loading = reviewer.load(c);
+		expect(
+			await reviewer.update({ ...c, marks: [c.marks[0] as Mark] }),
+		).toBeNull();
+		expect((await loading).matches.length).toBe(1);
+		expect(overlay.items.length).toBe(1);
 	});
 });
 
@@ -1182,5 +1205,24 @@ describe("the popover and a mark that takes another number", () => {
 		});
 		expect(overlay.popover.hidden).toBe(true);
 		expect(asked.some((r) => r.type === "mark:comment")).toBe(false);
+	});
+});
+
+test("a mark request no panel answers, or that cannot be sent, is said as no panel showing the case", async () => {
+	const request: MarkRequest = {
+		type: "mark:comment",
+		caseId: "c_1",
+		markId: "m1",
+		text: "Typed",
+	};
+	const none = { ok: false, error: NO_PANEL };
+	expect(await panelAsker(async () => undefined)(request)).toEqual(none);
+	expect(
+		await panelAsker(async () => {
+			throw new Error("Could not establish connection.");
+		})(request),
+	).toEqual(none);
+	expect(await panelAsker(async () => ({ ok: true }))(request)).toEqual({
+		ok: true,
 	});
 });
