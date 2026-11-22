@@ -2935,3 +2935,22 @@ side of it is its DEC-024.
   `test/cloud-server.test.ts` and `test/e2e/upgrade.test.ts` (a profile of 0.3.0 and a
   later build opened by this one: nothing sent, the team's cases back in `sitegloss/2`
   with `m` ids).
+
+## DEC-052: tab-mcp client 0.20.0 changes nothing for Sitegloss: the tools stay for the relay only (owner)
+
+2026-11-22. The owner approved the bump of `@ractive-ch/tab-mcp-client` from 0.19.0 to
+0.20.0 (relay for the tests stays 0.13.0: the changelog asks for no other). Its one
+breaking change is the library's DEC-209: with `webmcp: true`, tools that ask the user
+(`consequentialHint`, or `destructiveHint`) are mirrored into WebMCP too, unless their
+`callers` leave `"webmcp"` out; a WebMCP call asks by `consequentialHint ??
+destructiveHint`, a relay call still only by `consequentialHint`.
+
+- **Nothing changes here.** Sitegloss offers its tools to AI apps through the relay only,
+  by decision (privacy and identity: a web page must never be able to call them).
+  `src/worker/connection.ts` registers every tool with `callers: ["relay"]`, which stays
+  explicit, and leaves `webmcp` off (a worker has no document); `src/worker/tools.ts`
+  refuses other callers too. In 0.20.0 `callers` without `"webmcp"` still keeps a tool out
+  of the mirror, and without `"local"` out of a served port; who is asked before a
+  consequential tool runs for a relay caller is as before.
+- Tests: `test/client.test.ts` (relay only: listed through the relay, not over a served
+  port), `test/tools.test.ts` (other callers refused). No new test.
