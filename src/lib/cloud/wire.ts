@@ -6,6 +6,7 @@
  */
 
 import {
+	addedImage,
 	CASE_FORMAT,
 	type Case,
 	type CaseComment,
@@ -17,6 +18,8 @@ import {
 	type ElementDetails,
 	type Finding,
 	type FindingApp,
+	type ImageAdded,
+	isSafeId,
 	LANGUAGE,
 	lookOf,
 	MAX_CASE_COMMENT,
@@ -25,6 +28,7 @@ import {
 	MAX_FINDING,
 	MAX_FINDINGS,
 	MAX_LINK,
+	MAX_MARK_IMAGES,
 	MAX_PAGE_TITLE,
 	MAX_PAGES,
 	MAX_PEN_POINTS,
@@ -35,6 +39,7 @@ import {
 	MAX_VERDICT,
 	type Mark,
 	type MarkEnds,
+	type MarkImage,
 	markIdOf,
 	markSignature,
 	pageAt,
@@ -73,6 +78,7 @@ import type {
 import type {
 	CaseBook,
 	CaseContent,
+	ContentImage,
 	MarkContent,
 	Shadow,
 	ShadowComment,
@@ -126,14 +132,33 @@ export function hashText(text: string): string {
  */
 export function opKey(op: Op): string {
 	const { opId: _id, ...rest } = op;
+	const unread = (images: readonly NewMarkImage[] | undefined) =>
+		images?.map((x) => ({ ...x, image: null }));
 	const plain =
 		rest.type === "shot.create"
 			? { ...rest, shot: { ...rest.shot, image: null } }
 			: rest.type === "mark.create"
-				? { ...rest, mark: { ...rest.mark, crop: null } }
-				: rest;
+				? {
+						...rest,
+						mark: {
+							...rest.mark,
+							crop: null,
+							images: unread(rest.mark.images),
+						},
+					}
+				: rest.type === "mark.patch" && rest.images?.add !== undefined
+					? {
+							...rest,
+							images: { ...rest.images, add: unread(rest.images.add) },
+						}
+					: rest;
 	return `${op.type}:${hashText(canonical(plain))}`;
 }
+
+/** An image to add to a mark, as an operation names it (DEC-058). */
+export type NewMarkImage = NonNullable<
+	NonNullable<OpOf<"mark.patch">["images"]>["add"]
+>[number];
 
 // --- what of a case syncs --------------------------------------------------------
 
@@ -157,6 +182,7 @@ export function markContent(a: Mark): MarkContent {
 		resolution: a.resolution ?? null,
 		reopens: a.reopens ?? [],
 		findings: a.findings ?? [],
+		images: (a.images ?? []).map((x) => ({ id: x.id, added: x.added })),
 	};
 }
 
@@ -311,6 +337,8 @@ export function newMarkOf(
 	shotId: string,
 	crop: ImageRef,
 	createdAt: string | undefined,
+	/** Its added images, each with its picture at the server (DEC-058). */
+	images: NewMarkImage[] = [],
 ): OpOf<"mark.create">["mark"] {
 	const content = markContent(a);
 	const created = stamp(createdAt);
@@ -326,6 +354,7 @@ export function newMarkOf(
 		resolution: content.resolution,
 		reopens: content.reopens,
 		findings: content.findings,
+		...(images.length > 0 ? { images } : {}),
 		...(created ? { createdAt: created } : {}),
 		// An arrow's or an open stroke's ends (DEC-047; the server's DEC-020):
 		// with the new mark only, cut as `element` is.
@@ -347,10 +376,55 @@ export function reverse(map: Record<string, string>): Map<string, string> {
 	return new Map(Object.entries(map).map(([here, there]) => [there, here]));
 }
 
-/** What a mark's patch has to say for `local` to become what the server has. */
+/** What stands for an image's picture where only whether one goes counts. */
+const ANY_IMAGE: ImageRef = { sha256: "", width: 1, height: 1, bytes: 1 };
+
+/**
+ * The images to add, each with its picture (`image` of its path; one that
+ * is not here is left out and named in `missing`), and to remove: what is
+ * here and the server did not have, and the reverse (DEC-058). A shadow
+ * that was not told of images is taken as none.
+ */
+function imagesPatch(
+	local: MarkContent,
+	before: MarkContent,
+	image: (path: string) => ImageRef | undefined,
+	missing: string[],
+): OpOf<"mark.patch">["images"] {
+	const had = new Set((before.images ?? []).map((x) => x.id));
+	const kept = new Set((local.images ?? []).map((x) => x.id));
+	const add: NewMarkImage[] = [];
+	for (const x of local.images ?? []) {
+		if (had.has(x.id)) continue;
+		const ref = image(addedImage(x.id));
+		if (ref === undefined) missing.push(addedImage(x.id));
+		else add.push(newImageOf(x, ref));
+	}
+	const remove = [...had].filter((id) => !kept.has(id));
+	return add.length > 0 || remove.length > 0
+		? {
+				...(add.length > 0 ? { add } : {}),
+				...(remove.length > 0 ? { remove } : {}),
+			}
+		: undefined;
+}
+
+/** An image as an operation adds it: its time is believed only for an imported case. */
+export function newImageOf(x: ContentImage, ref: ImageRef): NewMarkImage {
+	const at = stamp(x.added.at);
+	return { id: x.id, image: ref, ...(at ? { at } : {}) };
+}
+
+/**
+ * What a mark's patch has to say for `local` to become what the server has.
+ * `image` gives an added image's picture (by its path); without one, only
+ * whether something is to be said counts.
+ */
 export function markPatch(
 	local: MarkContent,
 	before: MarkContent,
+	image: (path: string) => ImageRef | undefined = () => ANY_IMAGE,
+	missing: string[] = [],
 ): Omit<OpOf<"mark.patch">, "opId" | "type" | "markId"> | undefined {
 	const patch: Omit<OpOf<"mark.patch">, "opId" | "type" | "markId"> = {};
 	if (local.comment !== before.comment || local.author !== before.author) {
@@ -375,6 +449,8 @@ export function markPatch(
 			...(upsert.length > 0 ? { upsert } : {}),
 			...(remove.length > 0 ? { remove } : {}),
 		};
+	const images = imagesPatch(local, before, image, missing);
+	if (images !== undefined) patch.images = images;
 	return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
@@ -630,11 +706,18 @@ export function deriveOps(
 		const id = wire ?? newId("m");
 		book.marks[a.id] = id;
 		const shot = c.shots.find((s) => s.id === a.shot);
+		// Its added images go with it; one not here is left out, and named.
+		const images: NewMarkImage[] = [];
+		for (const x of markContent(a).images ?? []) {
+			const picture = image(addedImage(x.id));
+			if (picture === undefined) missing.push(addedImage(x.id));
+			else images.push(newImageOf(x, picture));
+		}
 		ops.push({
 			opId: newId("o"),
 			type: "mark.create",
 			caseId: c.id,
-			mark: newMarkOf(a, id, shotId, ref, shot?.capturedAt),
+			mark: newMarkOf(a, id, shotId, ref, shot?.capturedAt, images),
 			// Made through an AI app of this browser's: that app.
 			...(a.createdVia === undefined ? {} : { via: appOut(a.createdVia) }),
 		});
@@ -643,7 +726,7 @@ export function deriveOps(
 		const wire = book.marks[a.id];
 		const before = wire === undefined ? undefined : marks[wire];
 		if (wire === undefined || before === undefined) continue;
-		const patch = markPatch(markContent(a), before.content);
+		const patch = markPatch(markContent(a), before.content, image, missing);
 		if (patch !== undefined)
 			ops.push({
 				opId: newId("o"),
@@ -777,6 +860,7 @@ export function applyOp(book: CaseBook, op: Op, number?: number): void {
 					resolution: op.mark.resolution ?? null,
 					reopens: op.mark.reopens ?? [],
 					findings: op.mark.findings ?? [],
+					images: (op.mark.images ?? []).map(sentImage),
 				},
 				fixed: fixedOf({
 					shape: op.mark.shape as Shape,
@@ -805,6 +889,14 @@ export function applyOp(book: CaseBook, op: Op, number?: number): void {
 					else kept.push(f);
 				}
 				c.findings = kept;
+			}
+			// Removed first, then added; an id the mark has stays (the server's rule).
+			if (op.images !== undefined) {
+				const gone = new Set(op.images.remove ?? []);
+				const kept = (c.images ?? []).filter((x) => !gone.has(x.id));
+				for (const x of op.images.add ?? [])
+					if (!kept.some((k) => k.id === x.id)) kept.push(sentImage(x));
+				c.images = kept;
 			}
 			return;
 		}
@@ -835,6 +927,24 @@ export function applyOp(book: CaseBook, op: Op, number?: number): void {
 			return;
 	}
 }
+
+/** The paths here of the images added to marks that an operation sends (DEC-058). */
+export function addedImagesOf(op: Op): string[] {
+	const images =
+		op.type === "mark.create"
+			? (op.mark.images ?? [])
+			: op.type === "mark.patch"
+				? (op.images?.add ?? [])
+				: [];
+	return images.map((x) => addedImage(x.id));
+}
+
+/** An image as the server has it once an operation added it. */
+const sentImage = (x: NewMarkImage): ContentImage => ({
+	id: x.id,
+	added: { at: x.at ?? "" },
+	ref: x.image,
+});
 
 /** Forget a mark of the shadow, and its screenshot when no mark is on it any more. */
 export function dropMark(book: CaseBook, wire: string): void {
@@ -970,7 +1080,31 @@ export function contentIn(m: WireMark): MarkContent {
 		resolution: m.resolution ? resolutionIn(m.resolution) : null,
 		reopens: (m.reopens ?? []).slice(-MAX_REOPENS).map(reopenIn),
 		findings: (m.findings ?? []).slice(0, MAX_FINDINGS).map(findingIn),
+		// Absent: a server that does not keep images says nothing of them.
+		...(m.images === undefined ? {} : { images: imagesIn(m.images) }),
 	};
+}
+
+/**
+ * A mark's images as the server has them (DEC-058), within what a case here
+ * holds: an id that cannot be a path here is left out.
+ */
+function imagesIn(images: NonNullable<WireMark["images"]>): ContentImage[] {
+	const seen = new Set<string>();
+	const out: ContentImage[] = [];
+	for (const x of images) {
+		if (!isSafeId(x.id) || seen.has(x.id)) continue;
+		seen.add(x.id);
+		out.push({
+			id: x.id,
+			added: {
+				...stampIn(x.added),
+				...(x.added.imported ? { imported: true as const } : {}),
+			},
+			ref: x.image,
+		});
+	}
+	return out.slice(0, MAX_MARK_IMAGES);
 }
 
 /** A mark's ends as the server sends them (DEC-047; the server's DEC-020). */
@@ -1192,9 +1326,19 @@ function caseOf(w: WireCase, shots: readonly WireShot[]): Case {
 }
 
 const withContent = (a: Mark, content: MarkContent): Mark => {
-	const { resolution: _r, reopens: _o, findings: _f, ...rest } = a;
+	const { resolution: _r, reopens: _o, findings: _f, images: _i, ...rest } = a;
+	// Not told of images: the mark keeps its own.
+	const images: MarkImage[] =
+		content.images === undefined
+			? (a.images ?? [])
+			: content.images.map((x) => ({
+					id: x.id,
+					image: addedImage(x.id),
+					added: x.added as ImageAdded,
+				}));
 	return {
 		...rest,
+		...(images.length > 0 ? { images } : {}),
 		comment: content.comment,
 		author: content.author,
 		...(content.resolution
@@ -1219,8 +1363,10 @@ export function mergeContent(
 	before: MarkContent | undefined,
 	incoming: MarkContent,
 ): MarkContent {
-	// Nothing to tell a change here by: the server's copy counts.
-	if (before === undefined) return incoming;
+	// Nothing to tell a change here by: the server's copy counts, and an
+	// image only here stays (it is sent).
+	if (before === undefined)
+		return withImagesOf(incoming, mergeImages(local, undefined, incoming));
 	const text =
 		local.comment === before.comment && local.author === before.author;
 	const state = same(
@@ -1241,13 +1387,46 @@ export function mergeContent(
 	}
 	for (const f of local.findings)
 		if (!now.has(f.id) && !was.has(f.id)) findings.push(f);
-	return {
-		comment: text ? incoming.comment : local.comment,
-		author: text ? incoming.author : local.author,
-		resolution: state ? incoming.resolution : local.resolution,
-		reopens: state ? incoming.reopens : local.reopens,
-		findings: findings.slice(0, MAX_FINDINGS),
-	};
+	return withImagesOf(
+		{
+			comment: text ? incoming.comment : local.comment,
+			author: text ? incoming.author : local.author,
+			resolution: state ? incoming.resolution : local.resolution,
+			reopens: state ? incoming.reopens : local.reopens,
+			findings: findings.slice(0, MAX_FINDINGS),
+		},
+		mergeImages(local, before, incoming),
+	);
+}
+
+/** `content` with `images`; none: not told. */
+const withImagesOf = (
+	content: MarkContent,
+	images: ContentImage[] | undefined,
+): MarkContent => {
+	const { images: _i, ...rest } = content;
+	return images === undefined ? rest : { ...rest, images };
+};
+
+/**
+ * A mark's images merged as findings are (DEC-058), by id: the server's in
+ * its order, but one removed here since stays away (the remove is sent); one
+ * added here and unknown there stays (it is sent); one the server had and
+ * no longer has goes. Not told by the server: what is here stays.
+ */
+function mergeImages(
+	local: MarkContent,
+	before: MarkContent | undefined,
+	incoming: MarkContent,
+): ContentImage[] | undefined {
+	if (incoming.images === undefined) return local.images;
+	const was = new Set((before?.images ?? []).map((x) => x.id));
+	const here = new Set((local.images ?? []).map((x) => x.id));
+	const now = new Set(incoming.images.map((x) => x.id));
+	return [
+		...incoming.images.filter((x) => here.has(x.id) || !was.has(x.id)),
+		...(local.images ?? []).filter((x) => !now.has(x.id) && !was.has(x.id)),
+	].slice(0, MAX_MARK_IMAGES);
 }
 
 /** The next free number above every number of `c` and those in `taken`. */
@@ -1424,6 +1603,7 @@ export function mergeCase(
 		const a = c.marks.find((x) => x.id === id);
 		if (a !== undefined) {
 			out.deleteImages.add(a.crop);
+			for (const x of a.images ?? []) out.deleteImages.add(x.image);
 			emptied.add(a.shot);
 			c = {
 				...c,
@@ -1511,8 +1691,26 @@ export function mergeCase(
 		shadow.marks[w.id] = {
 			number: w.number,
 			shotId: w.shotId,
-			content,
+			// A server that says nothing of images: what the shadow knew stays
+			// (DEC-058), so what was sent is not sent at every run.
+			content:
+				content.images === undefined
+					? withImagesOf(content, before?.content.images)
+					: content,
 			fixed: fixedOf(drawn),
+		};
+		/** The files of the images `next` has that `was` had not, from the server. */
+		const imageFiles = (was: Mark | undefined, next: Mark) => {
+			const had = new Set((was?.images ?? []).map((x) => x.id));
+			const refs = new Map((content.images ?? []).map((x) => [x.id, x.ref]));
+			for (const x of next.images ?? []) {
+				if (had.has(x.id)) continue;
+				const ref = refs.get(x.id);
+				if (ref !== undefined) out.images.set(x.image, need(ref));
+			}
+			const kept = new Set((next.images ?? []).map((x) => x.id));
+			for (const x of was?.images ?? [])
+				if (!kept.has(x.id)) out.deleteImages.add(x.image);
 		};
 		const id = markHere.get(w.id);
 		const a = c.marks.find((x) => x.id === id);
@@ -1530,6 +1728,7 @@ export function mergeCase(
 			const next: Mark = records(
 				creator === undefined ? merged : { ...merged, createdBy: creator },
 			);
+			imageFiles(a, next);
 			c = {
 				...c,
 				marks: c.marks.map((x) => (x === a ? next : x)),
@@ -1547,27 +1746,29 @@ export function mergeCase(
 			continue;
 		}
 		const markId = markIdOf(w.number);
+		const fresh = records(
+			withContent(
+				{
+					id: markId,
+					number: w.number,
+					shot,
+					comment: "",
+					author: "user",
+					shape: drawn.shape,
+					crop: cropImage(markId),
+					element: drawn.element,
+					...(creator === undefined ? {} : { createdBy: creator }),
+					...(w.ends === undefined ? {} : { ends: endsIn(w.ends) }),
+				},
+				content,
+			),
+		);
+		imageFiles(undefined, fresh);
 		added.push({
 			wire: w.id,
 			// A crop cut here from a whole-screenshot one (DEC-047), if one was.
 			crop: fetched.get(cutKey(w.id)) ?? need(w.crop),
-			mark: records(
-				withContent(
-					{
-						id: markId,
-						number: w.number,
-						shot,
-						comment: "",
-						author: "user",
-						shape: drawn.shape,
-						crop: cropImage(markId),
-						element: drawn.element,
-						...(creator === undefined ? {} : { createdBy: creator }),
-						...(w.ends === undefined ? {} : { ends: endsIn(w.ends) }),
-					},
-					content,
-				),
-			),
+			mark: fresh,
 		});
 	}
 	// The server's numbers count: a mark here that holds one of them, and is
@@ -1885,7 +2086,9 @@ function adopt(
 		shadow.marks[w.id] = {
 			number: a.number,
 			shotId: w.shotId,
-			content: markContent(a) as MarkContent,
+			// Images by none: the team's come in, and those only here stay
+			// and are sent (DEC-058).
+			content: { ...markContent(a), images: [] },
 			fixed: fixedOf(a),
 		};
 		shotOf.set(w.shotId, a.shot);

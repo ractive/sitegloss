@@ -8,6 +8,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+	addedImage,
 	type Case,
 	isOwnFinding,
 	type Mark,
@@ -17,7 +18,9 @@ import {
 	withChoice,
 	withComment,
 	withFinding,
+	withImages,
 	withLink,
+	withoutImage,
 	withoutMark,
 	withTitle,
 	withVerified,
@@ -62,6 +65,8 @@ import {
 	startCase,
 	status,
 	sync,
+	tagOf,
+	webp,
 } from "./cloud-helpers.ts";
 
 const TESS = { id: "u_tess", name: "Tess Tester" };
@@ -3014,5 +3019,90 @@ describe("who is asked what", () => {
 		await tess.engine.retry();
 		expect(((await tess.engine.account()) as Account).teamId).toBe(TEAM);
 		expect(status(tess)?.state).toBe("synced");
+	});
+});
+
+describe("images added to a mark (DEC-058)", () => {
+	/** The panel's Add: the case and the pictures in one change. */
+	const addImages = (d: Device, markId: string, tags: string[]) => {
+		const ids = tags.map((t) => `i_${d.name}_${t}`);
+		return d.store.updateCase("c_flow", (current) => ({
+			value: withImages(
+				current as Case,
+				markId,
+				ids,
+				d.clock.now.toISOString(),
+			),
+			images: new Map(
+				ids.map((id, i) => [
+					addedImage(id),
+					{ blob: webp(`image ${tags[i]}`, 640, 400), width: 640, height: 400 },
+				]),
+			),
+		}));
+	};
+	const shown = async (d: Device) => {
+		const c = (await d.store.getCase("c_flow")) as Case;
+		const a = c.marks.find((x) => x.number === 2) as Mark;
+		return Promise.all(
+			(a.images ?? []).map(async (x) => {
+				const file = await d.store.getImage("c_flow", x.image);
+				return `${x.id} by ${x.added.user?.name ?? "nobody"}: ${file ? await tagOf(file.blob) : "MISSING"}`;
+			}),
+		);
+	};
+
+	test("one device's image reaches the other with its picture and who added it; a remove there takes it here", async () => {
+		await shared();
+		await addImages(tess, "m2", ["menu"]);
+		await sync(tess, dana);
+		expect(
+			server
+				.marksOf("c_flow")
+				.find((m) => m.number === 2)
+				?.images?.map((x) => x.id),
+		).toEqual(["i_tess_menu"]);
+		expect(await shown(dana)).toEqual([
+			"i_tess_menu by Tess Tester: image menu",
+		]);
+		const gone = await dana.store.updateCase("c_flow", (current) => {
+			const { value, images } = withoutImage(
+				current as Case,
+				"m2",
+				"i_tess_menu",
+				dana.clock.now.toISOString(),
+			);
+			return { value, deleteImages: images };
+		});
+		expect(gone.marks[1]?.images).toBeUndefined();
+		await sync(dana, tess);
+		expect(await shown(tess)).toEqual([]);
+		expect(keys(tess, "c_flow").some((k) => k.includes("images/"))).toBe(false);
+		expect(status(tess)?.problems).toEqual([]);
+	});
+
+	test("two devices adding at once keep both; past six both show the server's six", async () => {
+		await shared();
+		await addImages(tess, "m2", ["a", "b", "c", "d"]);
+		await addImages(dana, "m2", ["e"]);
+		await sync(tess, dana);
+		expect((await shown(dana)).length).toBe(5);
+		expect((await shown(tess)).length).toBe(5);
+		// Each adds one more before hearing of the other's: the later is
+		// refused (the server's limit), and both end with the same six.
+		await addImages(tess, "m2", ["f"]);
+		await addImages(dana, "m2", ["g"]);
+		await sync(tess, dana);
+		const there = server
+			.marksOf("c_flow")
+			.find((m) => m.number === 2)
+			?.images?.map((x) => x.id);
+		expect(there).toHaveLength(6);
+		expect((await shown(dana)).map((x) => x.split(" ")[0])).toEqual(
+			there as string[],
+		);
+		expect((await shown(tess)).map((x) => x.split(" ")[0])).toEqual(
+			there as string[],
+		);
 	});
 });

@@ -15,12 +15,15 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+	addedImage,
 	type Case,
 	withCaseComment,
 	withChoice,
 	withClosed,
 	withComment,
+	withImages,
 	withoutCaseComment,
+	withoutImage,
 	withoutMark,
 } from "../src/lib/case.ts";
 import { eventsUrl } from "../src/lib/cloud/api.ts";
@@ -45,6 +48,8 @@ import {
 	startCase,
 	status,
 	sync,
+	tagOf,
+	webp,
 } from "./cloud-helpers.ts";
 import { SERVER as BASE, real } from "./cloud-real.ts";
 
@@ -533,3 +538,68 @@ serverTest(
 		}, 120_000);
 	},
 );
+
+serverTest("images added to a mark at a real server (DEC-058)", () => {
+	const base = BASE as string;
+
+	test("one device adds an image, the other sees it with who added it; removed there, it goes here", async () => {
+		const caseId = `c_im${Date.now().toString(36)}`;
+		const tess = await real(base, "tess", "tess@example.com");
+		const dana = await real(base, "dana", "dana@example.com");
+		await signIn(tess.device);
+		await signIn(dana.device);
+		await startCase(tess.device, caseId);
+		await addMark(tess.device, caseId, "The menu closes", { element: true });
+		await tess.device.engine.request();
+		const a = ((await tess.device.store.getCase(caseId)) as Case)
+			.marks[0] as Case["marks"][number];
+		const imageId = `i_${caseId}`;
+		await tess.device.store.updateCase(caseId, (current) => ({
+			value: withImages(
+				current as Case,
+				a.id,
+				[imageId],
+				new Date().toISOString(),
+			),
+			images: new Map([
+				[
+					addedImage(imageId),
+					{ blob: webp("the open menu", 640, 400), width: 640, height: 400 },
+				],
+			]),
+		}));
+		await tess.device.engine.request();
+		expect(status(tess.device)?.problems).toEqual([]);
+		await dana.device.engine.request();
+		const there = (await dana.device.store.getCase(caseId)) as Case;
+		const added = there.marks[0]?.images?.[0];
+		expect(added?.id).toBe(imageId);
+		expect(added?.added.user?.name).toBe("Tess Tester");
+		const file = await dana.device.store.getImage(caseId, addedImage(imageId));
+		expect(file ? await tagOf(file.blob) : "MISSING").toBe("the open menu");
+
+		// Removed on Dana's device: gone on Tess's, its file too.
+		await dana.device.store.updateCase(caseId, (current) => {
+			const { value, images } = withoutImage(
+				current as Case,
+				there.marks[0]?.id as string,
+				imageId,
+				new Date().toISOString(),
+			);
+			return { value, deleteImages: images };
+		});
+		await dana.device.engine.request();
+		expect(status(dana.device)?.problems).toEqual([]);
+		await tess.device.engine.request();
+		const back = (await tess.device.store.getCase(caseId)) as Case;
+		expect(back.marks[0]?.images).toBeUndefined();
+		expect(
+			await tess.device.store.getImage(caseId, addedImage(imageId)),
+		).toBeUndefined();
+
+		await removeCase(tess.device, caseId);
+		await tess.device.engine.request();
+		await tess.session.end(base);
+		await dana.session.end(base);
+	}, 120_000);
+});

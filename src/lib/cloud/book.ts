@@ -12,7 +12,7 @@
  * is which here.
  */
 
-import type { CaseComment } from "../case.ts";
+import type { CaseComment, ImageAdded } from "../case.ts";
 import type { Kv } from "../kv.ts";
 import type {
 	ImageRef,
@@ -156,6 +156,23 @@ export interface MarkContent {
 	resolution: WireResolution | null;
 	reopens: WireReopen[];
 	findings: WireFinding[];
+	/**
+	 * The images added to the mark, in order (DEC-058). Absent: not told (a
+	 * server from before images, or a shadow written before them), which
+	 * reads as none for what is sent and removes nothing here.
+	 */
+	images?: ContentImage[];
+}
+
+/**
+ * An image added to a mark, as content: only added or removed, so its id
+ * says which; who added it when, for showing; the server's picture (`ref`),
+ * where the server named it, to fetch it.
+ */
+export interface ContentImage {
+	id: string;
+	added: ImageAdded;
+	ref?: ImageRef;
 }
 
 /** A mark as the server last had it. */
