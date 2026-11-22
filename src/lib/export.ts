@@ -518,6 +518,16 @@ export async function storeImport(
 			...(a.findings === undefined
 				? {}
 				: { findings: a.findings.map((f) => ({ ...f, imported: true })) }),
+			// An image keeps the file's time and names nobody (DEC-058): who
+			// added it is only what the file claims.
+			...(a.images === undefined
+				? {}
+				: {
+						images: a.images.map((x) => ({
+							...x,
+							added: { at: x.added.at, imported: true as const },
+						})),
+					}),
 			// Who set a status and when is what the file says (DEC-023).
 			...(a.resolution === undefined
 				? {}

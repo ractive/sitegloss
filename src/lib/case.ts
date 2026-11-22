@@ -427,8 +427,14 @@ export interface MarkImage {
 	/** `images/<id>.webp` */
 	image: string;
 	/** When, and in a case synced with a team by whom (the server's record). */
-	added: Stamp;
+	added: ImageAdded;
 }
+
+/**
+ * When an image was added, and by whom: a stamp; `imported`: it came in from
+ * a file, which keeps its time and names nobody (the server's rule too).
+ */
+export type ImageAdded = Stamp & { imported?: true };
 
 /** The elements at a mark's two ends, each `null` where there was none. */
 export interface MarkEnds {
@@ -1913,7 +1919,15 @@ function imagesOf(
 		const image = str(x["image"], `${p}.image`);
 		if (image !== addedImage(imageId))
 			fail(`${p}.image`, `must be ${addedImage(imageId)}`);
-		return { id: imageId, image, added: stampOf(x["added"], `${p}.added`) };
+		const added = obj(x["added"], `${p}.added`);
+		return {
+			id: imageId,
+			image,
+			added: {
+				...stampOf(added, `${p}.added`),
+				...importedOf(added["imported"], `${p}.added.imported`),
+			},
+		};
 	});
 	return images.length > 0 ? { images } : {};
 }

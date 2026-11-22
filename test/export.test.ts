@@ -442,7 +442,10 @@ describe("images added to a mark in an export (DEC-058)", () => {
 		const zip = await exportCase(store, withImage);
 		const target = new MemoryStore();
 		const imported = await importCase(target, zip);
-		expect(imported.marks[0]?.images).toEqual([added]);
+		// From a file: its time, marked imported, naming nobody (DEC-058).
+		expect(imported.marks[0]?.images).toEqual([
+			{ ...added, added: { at: "t", imported: true } },
+		]);
 		const back = await target.getImage(c.id, added.image);
 		expect(new TextDecoder().decode(await back?.blob.arrayBuffer())).toEndWith(
 			"added",

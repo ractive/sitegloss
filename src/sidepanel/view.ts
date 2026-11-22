@@ -882,7 +882,15 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 		),
 		...added.map((image, i) => {
 			const n = i + 1;
-			const who = byline(image.added.user, image.added.app);
+			// From a file, nobody is named: who added it is only what the file says.
+			const who = image.added.imported
+				? undefined
+				: byline(image.added.user, image.added.app);
+			const whence = image.added.imported
+				? ", from an imported file"
+				: who
+					? `, added by ${who}`
+					: "";
 			const url = x.urls?.get(image.image);
 			const armed = x.imageArmed === image.id;
 			return h(
@@ -892,8 +900,10 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					? pictureTile(
 							`${c.id}:${a.id}:${image.id}`,
 							url,
-							`Image ${n} of ${added.length} on mark ${a.number}${who ? `, added by ${who}` : ""}`,
-							`Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
+							`Image ${n} of ${added.length} on mark ${a.number}${whence}`,
+							image.added.imported
+								? `Added ${shortDate(image.added.at)}, from an imported file. Click to show it larger, or small again`
+								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
 						)
 					: missing("The image is missing."),
 				h(

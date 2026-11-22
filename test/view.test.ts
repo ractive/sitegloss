@@ -650,6 +650,11 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 						image: "images/i_b.webp",
 						added: { at: "2026-11-22T11:00:00Z" },
 					},
+					{
+						id: "i_c",
+						image: "images/i_c.webp",
+						added: { at: "2026-11-20T09:00:00Z", imported: true },
+					},
 				],
 			},
 		];
@@ -669,6 +674,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 				[a.crop, "blob:crop"],
 				["images/i_a.webp", "blob:a"],
 				["images/i_b.webp", "blob:b"],
+				["images/i_c.webp", "blob:c"],
 			]),
 			actionsWith({
 				addImages: () => asked.push("add"),
@@ -683,13 +689,14 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		].map((b) => b.getAttribute("aria-label"));
 		expect(names).toEqual([
 			`Screenshot of mark ${a.number}, taken by Sitegloss`,
-			`Image 1 of 2 on mark ${a.number}, added by Dana`,
-			`Image 2 of 2 on mark ${a.number}`,
+			`Image 1 of 3 on mark ${a.number}, added by Dana`,
+			`Image 2 of 3 on mark ${a.number}`,
+			`Image 3 of 3 on mark ${a.number}, from an imported file`,
 		]);
 		const captions = [...(row?.querySelectorAll("figcaption") ?? [])].map(
 			(f) => f.firstChild?.textContent,
 		);
-		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2"]);
+		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2", "Image 3"]);
 		// The screenshot's place has nothing to remove it with, not even a
 		// disabled control: its one control (and focus stop) shows it large.
 		const shot = row?.querySelector('[data-picture="screenshot"]');
@@ -720,7 +727,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		expect(
 			window.document.querySelector(`[data-mark="${a.id}"] .images-count`)
 				?.textContent,
-		).toBe("+2 images");
+		).toBe("+3 images");
 	});
 
 	test("a screenshot not here is said in its place; a mark with six offers no more", () => {
