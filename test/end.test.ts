@@ -120,7 +120,11 @@ function adder(): {
 	const doc = window.document as unknown as Document;
 	const overlay = new Overlay(doc);
 	made.push(overlay);
-	const a = new MarkAdder(overlay, new PageBlur(doc), new PageActivity());
+	// The page stands still after 80 ms, not 800; screenshots 30 ms apart, not 620.
+	const a = new MarkAdder(overlay, new PageBlur(doc), new PageActivity(), {
+		stillMs: 80,
+		shotGapMs: 30,
+	});
 	return { a, overlay };
 }
 
@@ -143,7 +147,7 @@ function note(overlay: InstanceType<typeof Overlay>, a: MarkAdderClass): void {
 
 /** Until the queue has added or failed what was drawn. */
 const settle = async (a: MarkAdderClass, done: () => boolean) => {
-	for (let i = 0; i < 100 && !done(); i++) await Bun.sleep(50);
+	for (let i = 0; i < 1000 && !done(); i++) await Bun.sleep(5);
 	expect(done()).toBe(true);
 	return a;
 };
@@ -397,8 +401,8 @@ test("a mark the page moved away from gets its screenshot again by itself once t
 		overlay.toolbar.querySelector('[data-role="status"]')?.textContent ?? "";
 	const alert = () =>
 		overlay.toolbar.querySelector('[data-role="alert"]')?.textContent ?? "";
-	for (let i = 0; i < 80 && !status().startsWith("Mark 3 added"); i++)
-		await Bun.sleep(50);
+	for (let i = 0; i < 800 && !status().startsWith("Mark 3 added"); i++)
+		await Bun.sleep(5);
 	expect(status()).toBe("Mark 3 added to “Open case”");
 	expect(alert()).toBe("");
 	expect(asked.filter((r) => r.type === "capture")).toHaveLength(1);

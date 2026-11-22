@@ -244,9 +244,19 @@ export class MarkAdder {
 
 	readonly #pageBlur: PageBlur;
 	readonly #activity: PageActivity;
+	/** `STILL_MS` and `SHOT_GAP_MS`, unless a unit test gives its own. */
+	readonly #stillMs: number;
+	readonly #shotGapMs: number;
 
-	constructor(overlay: Overlay, blur: PageBlur, activity: PageActivity) {
+	constructor(
+		overlay: Overlay,
+		blur: PageBlur,
+		activity: PageActivity,
+		timing: { stillMs?: number; shotGapMs?: number } = {},
+	) {
 		this.overlay = overlay;
+		this.#stillMs = timing.stillMs ?? STILL_MS;
+		this.#shotGapMs = timing.shotGapMs ?? SHOT_GAP_MS;
 		this.#pageBlur = blur;
 		this.#activity = activity;
 		this.#statusEl = overlay.doc.createElement("span");
@@ -1210,7 +1220,7 @@ export class MarkAdder {
 	async #take(draft: Draft, drawn?: Shape): Promise<void> {
 		await this.#hold("shot");
 		try {
-			const gap = this.#lastShot + SHOT_GAP_MS - Date.now();
+			const gap = this.#lastShot + this.#shotGapMs - Date.now();
 			if (gap > 0) await sleep(gap);
 			if (drawn !== undefined) {
 				const now = shapeBounds(this.#onWindow(draft));
@@ -1316,7 +1326,7 @@ export class MarkAdder {
 		const end = Date.now() + STILL_WAIT_MS;
 		for (;;) {
 			if (
-				Date.now() - this.#movedAt >= STILL_MS &&
+				Date.now() - this.#movedAt >= this.#stillMs &&
 				this.#drag === null &&
 				this.#editing === null
 			)
