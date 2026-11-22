@@ -1597,8 +1597,9 @@ describe("a case of several pages (DEC-038)", () => {
 	const pages = () =>
 		[...el("case-pages").querySelectorAll("li")].map((li) => li.textContent);
 
-	test("Home: a case is this page's for any of its pages, and its row says how many it has", () => {
+	test("Home: a case is this page's for any of its pages, on their own site only, and its row says how many it has", () => {
 		const state = initialState();
+		// The same path on localhost: the case is opened by hand there (DEC-050).
 		state.tab = {
 			id: 1,
 			url: "http://localhost:3000/checkout/pay?step=2",
@@ -1606,6 +1607,17 @@ describe("a case of several pages (DEC-038)", () => {
 			size: undefined,
 		};
 		state.cases = [flow("c_flow"), sampleCase("c_other")];
+		render(state, noActions);
+		expect(el("here").hidden).toBe(true);
+		expect(
+			window.document.querySelector(
+				'ul.cases[data-group="other"] [data-case="c_flow"]',
+			),
+		).not.toBeNull();
+		state.tab = {
+			...state.tab,
+			url: "https://shop.example/checkout/pay?step=2",
+		};
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
@@ -1707,7 +1719,7 @@ describe("a case of several pages (DEC-038)", () => {
 		// Not red, and no "Not found" in its row.
 		const row = el("case-view").querySelector('[data-annotation="a3"]');
 		expect(row?.getAttribute("data-colour")).toBeNull();
-		expect(row?.textContent).toContain("On shop.example/checkout/pay");
+		expect(row?.textContent).toContain("Marked on shop.example/checkout/pay");
 		expect(row?.textContent).not.toContain("Not found");
 
 		// The page's own marks are gone: that is said, of this page.
@@ -1823,7 +1835,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			"Sign in to sync with your team.",
 		);
 		expect(el("cloud").textContent).toContain(
-			"Signed in, your cases go to app.sitegloss.dev and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (without its query). Without an account everything stays in this browser, as now.",
+			"Signed in, your cases go to app.sitegloss.dev and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (its query without what looks like a secret or an e-mail address). Without an account everything stays in this browser, as now.",
 		);
 		// The service itself: no word about the server, and nothing to choose
 		// unless one opens "Server".
@@ -4367,4 +4379,157 @@ test("every mask in the panel's style sheet has its -webkit- form beside it: Chr
 				.trimEnd()
 				.endsWith(`-webkit-mask${m[2] ?? ""}: ${m[3]};`),
 		).toBe(true);
+});
+
+describe("where a mark was made, and the offer on Home (DEC-050)", () => {
+	const SEARCH = "https://shop.example/search";
+	const shopCase = (id: string, closed = false): Case => {
+		const c = withOneMark(sampleCase(id));
+		return {
+			...c,
+			title: `Case ${id}`,
+			page: { ...c.page, url: SEARCH },
+			shots: c.shots.map((s) => ({ ...s, url: SEARCH, query: "q=shoes" })),
+			...(closed ? { closed: { at: "2026-11-21T10:00:00.000Z" } } : {}),
+		};
+	};
+	const tab = (url: string): PanelState["tab"] => ({
+		id: 1,
+		url,
+		title: "",
+		size: undefined,
+	});
+	const link = (which: "made" | "here") =>
+		window.document.querySelector(
+			`[data-mark-link="${which}"]`,
+		) as unknown as HTMLButtonElement | null;
+
+	test("Home: on the same page of the same site, open cases first and closed ones after; another host offers none", () => {
+		const state = initialState();
+		state.tab = tab("https://shop.example/search?q=boots");
+		state.cases = [
+			shopCase("c_closed", true),
+			shopCase("c_open"),
+			sampleCase("c_other"),
+		];
+		render(state, noActions);
+		expect(el("here").hidden).toBe(false);
+		const rows = [...el("here-cases").querySelectorAll("[data-case]")].map(
+			(b) => b.getAttribute("data-case"),
+		);
+		expect(rows).toEqual(["c_open", "c_closed"]);
+		expect(
+			el("here-cases").querySelector('[data-case="c_closed"] .closed-tag')
+				?.textContent,
+		).toBe("Closed");
+		expect(el("here-text").textContent).toBe(
+			"This page already has 2 cases. Open one to go on with its marks, or start a new one.",
+		);
+		// Not under Closed as well.
+		expect(
+			window.document.querySelector(
+				'ul.cases[data-group="closed"] [data-case="c_closed"]',
+			),
+		).toBeNull();
+		// The same path on localhost: nothing offered, nothing about other sites.
+		state.tab = tab("http://localhost:3000/search?q=shoes");
+		render(state, noActions);
+		expect(el("here").hidden).toBe(true);
+		expect(el("home").textContent).not.toMatch(/other site/i);
+		expect(
+			window.document.querySelector(
+				'ul.cases[data-group="other"] [data-case="c_open"]',
+			),
+		).not.toBeNull();
+	});
+
+	test("a mark says where it was made, with its query, and links there", () => {
+		const c = shopCase("c_link");
+		const asked: [string, string][] = [];
+		render(
+			caseState(c, (s) => {
+				s.tab = tab("https://shop.example/search?q=boots");
+			}),
+			actionsWith({
+				openMarkPage: (_c, a, where) => void asked.push([a.id, where]),
+			}),
+		);
+		const made = link("made");
+		expect(made?.textContent).toBe("shop.example/search?q=shoes");
+		expect(made?.getAttribute("aria-label")).toBe(
+			"Open shop.example/search?q=shoes, where mark 1 was made, in this tab",
+		);
+		expect(made?.tagName).toBe("BUTTON");
+		// The same host in front: one link only.
+		expect(link("here")).toBeNull();
+		made?.click();
+		expect(asked).toEqual([["a1", "made"]]);
+	});
+
+	test("with the case open on another host, the same path and query there too", () => {
+		const c = shopCase("c_link2");
+		const asked: string[] = [];
+		render(
+			caseState(c, (s) => {
+				s.tab = tab("http://localhost:3000/");
+			}),
+			actionsWith({ openMarkPage: (_c, _a, where) => void asked.push(where) }),
+		);
+		const mark = window.document.querySelector(
+			'[data-annotation="a1"] .mark-page',
+		);
+		expect(mark?.textContent).toBe(
+			"Marked on shop.example/search?q=shoes · Open on localhost:3000",
+		);
+		const here = link("here");
+		expect(here?.getAttribute("title")).toBe(
+			"Open http://localhost:3000/search?q=shoes in this tab, and show the mark there",
+		);
+		expect(here?.getAttribute("aria-label")).toBe(
+			"Open the same page on localhost:3000, and show mark 1 there",
+		);
+		here?.click();
+		expect(asked).toEqual(["here"]);
+	});
+});
+
+describe("the second link names the origin in front (review of DEC-050)", () => {
+	test("the same host on another scheme says the scheme; another port says the port; a page none of the case's still offers it", () => {
+		const base = withOneMark(sampleCase("c_scheme"));
+		const c: Case = {
+			...base,
+			page: { ...base.page, url: "https://shop.example/cart" },
+			shots: base.shots.map((s) => ({
+				...s,
+				url: "https://shop.example/cart",
+			})),
+		};
+		const line = (url: string) => {
+			render(
+				caseState(c, (s) => {
+					s.tab = { id: 1, url, title: "", size: undefined };
+				}),
+				noActions,
+			);
+			return window.document.querySelector('[data-annotation="a1"] .mark-page')
+				?.textContent;
+		};
+		expect(line("http://shop.example/cart")).toBe(
+			"Marked on shop.example/cart · Open on http://shop.example",
+		);
+		expect(line("https://shop.example:8443/")).toBe(
+			"Marked on shop.example/cart · Open on shop.example:8443",
+		);
+		// localhost's home page is none of this case's pages: offered all the same.
+		expect(line("http://localhost:3000/")).toBe(
+			"Marked on shop.example/cart · Open on localhost:3000",
+		);
+		expect(
+			window.document
+				.querySelector('[data-mark-link="here"]')
+				?.getAttribute("title"),
+		).toBe(
+			"Open http://localhost:3000/cart in this tab, and show the mark there",
+		);
+	});
 });

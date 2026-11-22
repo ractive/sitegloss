@@ -58,7 +58,7 @@ export function teamOf(cloud: Cloud) {
 
 /** What signing in sends where: said before the click, in one sentence. */
 export const SIGN_IN_NOTE = (server: string) =>
-	`Signed in, your cases go to ${hostOf(server)} and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (without its query). Without an account everything stays in this browser, as now.`;
+	`Signed in, your cases go to ${hostOf(server)} and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (its query without what looks like a secret or an e-mail address). Without an account everything stays in this browser, as now.`;
 
 export const SIGN_IN_TITLE =
 	"Sign in at the server in a window of the browser; Sitegloss then syncs your cases with your team, both ways";

@@ -37,6 +37,7 @@ import { CloudSync } from "../src/lib/cloud/engine.ts";
 import { listen } from "../src/lib/cloud/sse.ts";
 import {
 	addMark,
+	CART,
 	change,
 	images,
 	look,
@@ -552,6 +553,76 @@ serverTest("a mark's look at a real server (DEC-048; its DEC-021)", () => {
 		await dana.session.end(base);
 	}, 120_000);
 });
+
+serverTest(
+	"a screenshot's query at a real server (DEC-050; its DEC-023)",
+	() => {
+		const base = BASE as string;
+
+		test("goes filtered with shot.create, the server keeps it, and another profile gets it", async () => {
+			const caseId = `c_qy${Date.now().toString(36)}`;
+			const tess = await real(base, "tess", "tess@example.com");
+			const dana = await real(base, "dana", "dana@example.com");
+			await signIn(tess.device);
+			await signIn(dana.device);
+			const sent: (string | undefined)[] = [];
+			const ops = tess.device.api.ops.bind(tess.device.api);
+			tess.device.api.ops = async (team, list) => {
+				for (const o of list)
+					if (o.type === "shot.create") sent.push(o.shot.query);
+				return ops(team, list);
+			};
+			await startCase(tess.device, caseId);
+			await addMark(tess.device, caseId, "Sorted by name, not price", {
+				url: "https://shop.example/search?q=shoes&sort=price&access_token=abc&user=jane%40example.com#results",
+				title: "Search",
+			});
+			await addMark(tess.device, caseId, "No query here", { url: CART });
+			await tess.device.engine.request();
+			expect(status(tess.device)?.problems).toEqual([]);
+			// Filtered here before it went: only what may be kept.
+			expect(sent).toEqual(["q=shoes&sort=price", undefined]);
+			// The server has it, beside the plain address.
+			const teamId = (await tess.device.engine.account())?.teamId as string;
+			const atServer = await tess.device.api.getCase(teamId, caseId);
+			expect(atServer?.shots.map((s) => [s.url, s.query]).sort()).toEqual(
+				[
+					["https://shop.example/search", "q=shoes&sort=price"],
+					[CART, undefined],
+				].sort(),
+			);
+			// Another profile, another person: the query comes back with the screenshot.
+			await dana.device.engine.request();
+			const there = (await dana.device.store.getCase(caseId)) as Case;
+			const search = there.shots.find(
+				(s) => s.url === "https://shop.example/search",
+			);
+			expect(search?.query).toBe("q=shoes&sort=price");
+			expect(there.shots.find((s) => s.url === CART)).not.toHaveProperty(
+				"query",
+			);
+			expect(there.pages?.map((p) => p.url)).toEqual([
+				"https://shop.example/search",
+				CART,
+			]);
+			// Nothing more to send on either side.
+			const after: string[] = [];
+			for (const d of [tess.device, dana.device]) {
+				const send = d.api.ops.bind(d.api);
+				d.api.ops = async (team, list) => {
+					after.push(...list.map((o) => o.type));
+					return send(team, list);
+				};
+				await d.engine.request();
+			}
+			expect(after).toEqual([]);
+			await removeCase(tess.device, caseId);
+			await tess.device.engine.request();
+			await tess.session.end(base);
+			await dana.session.end(base);
+		}, 120_000);
+	},
+);
 
 serverTest("a browser's 0.3.0 data, opened by this build", () => {
 	const base = BASE as string;

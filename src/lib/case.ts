@@ -4,6 +4,8 @@
  * case (`shots/s1.webp`, `crops/a1.webp`).
  */
 
+import { storedQuery, withQuery } from "./query.ts";
+
 export const CASE_FORMAT = "sitegloss/1";
 
 /** The attributes element details keep (element.ts). */
@@ -339,6 +341,13 @@ export interface Shot {
 	 * and is then the case's first page's (`shotUrl`).
 	 */
 	url?: string;
+	/**
+	 * The address's query when it was taken, without its `?`, as `keptQuery`
+	 * leaves it (DEC-050): to open the page again as it was. None when it
+	 * had none, or nothing of it is kept. It takes no part in which page the
+	 * screenshot is of.
+	 */
+	query?: string;
 }
 
 export interface Annotation {
@@ -938,6 +947,44 @@ export function pageKey(address: string): string {
 export const samePage = (a: string, b: string): boolean =>
 	pageKey(a) === pageKey(b);
 
+/** A web address's origin; none for anything else. */
+function webOrigin(address: string): string | undefined {
+	try {
+		const url = new URL(address);
+		return url.protocol === "http:" || url.protocol === "https:"
+			? url.origin
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The same page on the same site (DEC-050): the origin and `pageKey`. What
+ * Home offers under "This page" is held to this, and nothing more.
+ */
+export function exactPage(a: string, b: string): boolean {
+	const origin = webOrigin(a);
+	return origin !== undefined && origin === webOrigin(b) && samePage(a, b);
+}
+
+/**
+ * Which page an address is for drawing a case opened by hand (DEC-050): its
+ * path and hash route, whatever the host. `pageKey`, except that a home page
+ * is `/` on any host: production's home page is the home page on
+ * `localhost:3000/`. The extension's own; the shared `pageKey` and its
+ * vectors do not change.
+ */
+export function pathKey(address: string): string {
+	const key = pageKey(address);
+	const origin = webOrigin(address);
+	return origin !== undefined && key === `${origin}/` ? "/" : key;
+}
+
+/** Whether a mark of the page at `a` is drawn on the page at `b` (`pathKey`). */
+export const samePath = (a: string, b: string): boolean =>
+	pathKey(a) === pathKey(b);
+
 /**
  * What tells a mark from every other mark of its case, whatever its number:
  * when its screenshot was taken, and its drawing. A mark's id (`a<number>`)
@@ -1080,8 +1127,10 @@ export function marksOnPage(c: Case, url: string): number {
 }
 
 /**
- * The page of the case that the address `url` shows, whatever the origin: the
- * case's page in another environment is the same page.
+ * The page of the case's list that the address `url` is (`pageKey`): the
+ * case's page in another environment is the same page, a home page is its
+ * site's. For the list and what is sent of it; which marks are drawn on the
+ * page in front is `pageInFront` (DEC-050).
  */
 export function pageAt(c: Case, url: string): CasePage | undefined {
 	const key = pageKey(url);
@@ -1144,24 +1193,68 @@ export function withPagesAgreed(c: Case): Case {
 }
 
 /**
- * The window a mark of the page at `url` was made in: that of the page's
- * first screenshot, else of the case's first page (DEC-038).
+ * The window a mark of the page at `url` was made in: that of the first
+ * screenshot of the page there (`pageInFront`), else of the case's first
+ * page (DEC-038).
  */
 export function viewportAt(c: Case, url: string | undefined): Viewport {
-	const key = url ? pageKey(url) : undefined;
+	const page = url ? pageInFront(c, url) : undefined;
 	const shot =
-		key === undefined
+		page === undefined
 			? undefined
-			: c.shots.find((s) => pageKey(shotUrl(c, s)) === key);
+			: c.shots.find((s) => samePage(shotUrl(c, s), page.url));
 	return shot?.viewport ?? c.page.viewport;
 }
 
 /**
- * The case is for `url`, sure enough to load it without a click: one of its
- * pages. A home page is one site's only (`pageKey`).
+ * The page of the case whose marks are drawn on the page at `url`
+ * (DEC-050): by path and hash route, whatever the host (`pathKey`); of two
+ * that both are (two sites' home pages), the one on the same site.
  */
-export function isPageOf(c: Case, url: string): boolean {
-	return pageAt(c, url) !== undefined;
+export function pageInFront(c: Case, url: string): CasePage | undefined {
+	const pages = casePages(c);
+	return (
+		pages.find((p) => exactPage(p.url, url)) ??
+		pages.find((p) => samePath(p.url, url))
+	);
+}
+
+/**
+ * Whether the mark `a` is a mark of the page at `url`, for drawing and for
+ * what a draw found (DEC-050): its page is the one `pageInFront` picks. So
+ * of two sites' home pages in one case, on either site only that site's
+ * marks are the page's own; on a third host, the first listed page's.
+ * Everything that asks "is this mark on the page in front?" asks this.
+ */
+export function onPageInFront(c: Case, a: Annotation, url: string): boolean {
+	const page = pageInFront(c, url);
+	return page !== undefined && samePage(page.url, markUrl(c, a));
+}
+
+/**
+ * Home offers the case under "This page" (DEC-050): one of its screenshots
+ * was taken on the same page of the same site (`exactPage`); a case with no
+ * screenshot yet, on its page. Nothing else: no other host, no title.
+ */
+export function isOfferedOn(c: Case, url: string): boolean {
+	if (c.shots.length === 0) return exactPage(c.page.url, url);
+	return c.shots.some((s) => exactPage(shotUrl(c, s), url));
+}
+
+/** The address a mark was made on, with its query: what opens it again (DEC-050). */
+export function markAddress(c: Case, a: Annotation): string {
+	const shot = c.shots.find((s) => s.id === a.shot);
+	return withQuery(shotUrl(c, shot), shot?.query);
+}
+
+/** A screenshot's address with its query (DEC-050). */
+export const shotAddress = (c: Case, shot: Shot): string =>
+	withQuery(shotUrl(c, shot), shot.query);
+
+/** A shot's `query` as a file or the team gives it: kept, or none (`storedQuery`). */
+export function queryField(value: unknown): { query?: string } {
+	const query = storedQuery(value);
+	return query === undefined ? {} : { query };
 }
 
 /** A web page's address, one a click may open (an imported case's is anyone's). */
@@ -1370,6 +1463,8 @@ export function validateCase(value: unknown): Case {
 			...(s["url"] === undefined
 				? {}
 				: { url: str(s["url"], `case.shots[${i}].url`, MAX_URL) }),
+			// Filtered again, never a failed file: an extra (DEC-050).
+			...queryField(s["query"]),
 		};
 	});
 	const numbers = new Set<number>();

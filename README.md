@@ -121,19 +121,29 @@ user agent. What differs from Chrome and Edge:
    opens the case the page shows. A case can span several pages: go on to the next page
    of what you are testing, click "Add marks" again, and the marks you draw there go into
    the same case, which lists its pages with their marks and opens each with a click.
-   A page is its path (and its hash route, `#/cart`), in whatever environment; a site's
-   home page is that site's only. Pages that differ only in their query
-   (`?route=cart`, `?id=2`) are one page to Sitegloss, which keeps no query: such a
-   case has one page.
-4. On the same page in another environment (say `localhost:3000`), click the case in the side panel:
-   its marks are drawn on the tab in front, whatever page that is. While the case is open
+   A page is its path (and its hash route, `#/cart`), in whatever environment; in a
+   case's list of pages a site's home page is that site's only. Pages that differ only
+   in their query (`?route=cart`, `?id=2`) are one page to Sitegloss: such a case has
+   one page. Each screenshot keeps its query beside the page's address, without the
+   parameters that look like secrets or e-mail addresses, so that a mark's link opens
+   the page as it was marked (a search, a filtered list).
+4. Home lists a case under "This page" on the very page, of the same site, that one of
+   its screenshots was taken on; nothing opens by itself. On the same page in another
+   environment (say `localhost:3000`), click the case in the side panel's list:
+   its marks are drawn on the tab in front, whatever page that is; those of the page
+   with the same path and hash route count as that page's, whatever the host, and the
+   home page of any host is the home page in front. Each mark says where it was made
+   with a link that opens that address, query and all, in the tab in front and shows
+   the mark once the page has loaded; with the case open on another host, a second link
+   opens the same path and query there. While the case is open
    they follow the tab in front: another tab, a reload or a navigation draws them there
    and takes them off the tab before; "← All cases" takes them off the page.
    "Hide marks" takes them off, and they stay off on that tab, also through a reload,
    until "Show marks" or the case is opened again. When none of the case's marks is
    found, the case says it is probably for another page and offers to open the case's
    page. In a case of several pages the marks of the other pages count as "on another
-   page", not as lost, and Home lists the case under "This page" on each of its pages. On a tab Sitegloss may not run on yet (after reloading the extension, say),
+   page", not as lost, and Home lists the case under "This page" on each of its pages
+   on the site they were marked on. On a tab Sitegloss may not run on yet (after reloading the extension, say),
    Chrome hides the address, and the side panel says so with a warning: click the
    Sitegloss icon there (or press Alt+Shift+O) and the marks are drawn, or press "Allow
    on all sites" in that notice; until then what needs the page is off. The case's
@@ -229,9 +239,10 @@ The tools:
 | Tool | What it does |
 |---|---|
 | `list_cases` | The saved cases, with their pages and their marks by status |
-| `get_case` | A case's pages, its summary for the developer, its marks with their page, comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, and whether it is closed |
+| `get_case` | A case's pages, its summary for the developer, its marks with their page (and the address with its query where it had one), comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, and whether it is closed |
 | `get_image` | One screenshot or crop |
 | `load_case` | Finds the marks' elements on the tab in front and draws the marks there |
+| `open_case` | Opens a case in the side panel, as a click on it there would, and draws its marks on the tab in front (the case made on production, the tab on `localhost:3000`), leaving the case shown as a click would and never while something is being typed there; navigates nowhere; asks first |
 | `highlight` | Scrolls to one mark's element (or another candidate) |
 | `get_mark_element` | A mark's element on the tab in front, read from the live page: trimmed HTML, box and window size, computed styles, matching CSS rules, ancestors and children, beside the styles recorded when the mark was made; a CSS selector reads one of its ancestors or an element inside it instead (for a mark without an element, an element of the mark's page) |
 | `capture` | A screenshot of the tab in front |

@@ -18,6 +18,7 @@ import {
 	withoutLook,
 } from "../src/lib/case.ts";
 import contract from "../src/lib/cloud/openapi-v1.json" with { type: "json" };
+import { keptQuery } from "../src/lib/query.ts";
 
 /**
  * The contract itself: every request of operations is held to the JSON
@@ -617,10 +618,19 @@ export class FakeServer {
 					this.#touch(owner, rev, at);
 					return { status: "applied" };
 				}
+				// The query as the server keeps it: filtered again, never refused
+				// (its `keptQuery`, DEC-050 here).
+				const { query, ...shot } = op.shot;
+				const keptOf = query === undefined ? "" : keptQuery(query);
 				this.shots.set(op.shot.id, {
 					deleted: false,
 					rev,
-					value: { ...op.shot, caseId: op.caseId, rev },
+					value: {
+						...shot,
+						...(keptOf === "" ? {} : { query: keptOf }),
+						caseId: op.caseId,
+						rev,
+					},
 				});
 				this.#withPageOf(owner, op);
 				this.#touch(owner, rev, at);

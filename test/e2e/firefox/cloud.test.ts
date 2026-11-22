@@ -134,7 +134,8 @@ describe.skipIf(SERVER === undefined || !firefoxReady)(
 			);
 			await h.rdp.waitFor(
 				panel,
-				`${text("cloud-status")}.startsWith("Synced")`,
+				// The state in words since DEC-045: up to date while it listens.
+				`${text("cloud-status")}.startsWith("Up to date")`,
 				"the first sync",
 				60_000,
 			);

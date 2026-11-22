@@ -595,3 +595,49 @@ describe("a file this build writes", () => {
 		expect(back.annotations[0]?.element).toMatchObject(look);
 	});
 });
+
+describe("a screenshot's query (DEC-050) beside 0.3.0", () => {
+	test("goes out once with shot.create, filtered; this build's other browsers keep it, 0.3.0 takes the screenshot without it and sends nothing", async () => {
+		const sent: { type: string; query?: string }[] = [];
+		const ops = tess.api.ops.bind(tess.api);
+		tess.api.ops = async (team, list) => {
+			sent.push(
+				...list.map((o) => ({
+					type: o.type,
+					...(o.type === "shot.create" && o.shot.query !== undefined
+						? { query: o.shot.query }
+						: {}),
+				})),
+			);
+			return ops(team, list);
+		};
+		const danaSent: string[] = [];
+		const danaOps = dana.api.ops.bind(dana.api);
+		dana.api.ops = async (team, list) => {
+			danaSent.push(...list.map((o) => o.type));
+			return danaOps(team, list);
+		};
+		await startCase(tess, "c_query");
+		await addMark(tess, "c_query", "Sorted wrong", {
+			url: "https://shop.example/search?q=shoes&sort=price&token=abc",
+		});
+		await sync();
+		await sync();
+		expect(sent.filter((o) => o.type === "shot.create")).toEqual([
+			{ type: "shot.create", query: "q=shoes&sort=price" },
+		]);
+		// 0.3.0 has the screenshot and its plain address, without the query.
+		const old = (await dana.store.getCase("c_query")) as Case030;
+		expect(old.shots[0]?.url).toBe("https://shop.example/search");
+		expect("query" in (old.shots[0] as object)).toBe(false);
+		expect(danaSent).toEqual([]);
+		expect(lastStatus()?.state).toBe("synced");
+		// Another browser of this build gets it from the team.
+		const kim = device("kim", server.api({ id: "u_kim", name: "Kim" }));
+		await signIn(kim);
+		await kim.engine.request();
+		const there = (await kim.store.getCase("c_query")) as Case;
+		expect(there.shots[0]?.url).toBe("https://shop.example/search");
+		expect(there.shots[0]?.query).toBe("q=shoes&sort=price");
+	});
+});

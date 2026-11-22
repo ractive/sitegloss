@@ -39,6 +39,7 @@ import { cropImages, scaleImage, toWebp } from "../lib/images.ts";
 import {
 	type Broadcast,
 	type ContentRequest,
+	type OpenCaseAnswer,
 	PAIRING_SCRIPT,
 } from "../lib/messages.ts";
 import type { CaseStore } from "../lib/store.ts";
@@ -454,6 +455,16 @@ export class Connection {
 			blurForms: () => this.#settings.blurForms,
 			maxMessageBytes: () => mcp.session?.limits.maxMessageBytes,
 			...(this.#deps.me ? { me: this.#deps.me } : {}),
+			// open_case (DEC-050): the panel of the tab's window answers; none
+			// open, nobody does.
+			openInPanel: (request) =>
+				chrome.runtime
+					.sendMessage({ type: "panel:open-case", ...request })
+					.then(
+						(answer: OpenCaseAnswer | undefined) =>
+							answer ?? { opened: false, reason: "no-panel" },
+						(): OpenCaseAnswer => ({ opened: false, reason: "no-panel" }),
+					),
 		});
 		// AI apps through the relay only: no WebMCP (off anyway, and a worker
 		// has no document) and no served port. `tools.ts` refuses other

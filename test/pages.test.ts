@@ -9,12 +9,12 @@ import {
 	type Annotation,
 	type Case,
 	casePages,
-	isPageOf,
 	MAX_PAGES,
 	marksByPage,
 	marksOnPage,
 	markUrl,
 	pageAt,
+	pageInFront,
 	pageKey,
 	pendingImage,
 	type Shot,
@@ -188,7 +188,7 @@ describe("the pages of a case", () => {
 		expect(samePage("somewhere", "elsewhere")).toBe(false);
 	});
 
-	test("every question about a page gives the same answer: the list, the page in front, the counts, the window", () => {
+	test("the list's questions keep the shared rule; the page in front is by path, a home page on any host (DEC-050)", () => {
 		// A home page and a hash route at the root, made on production.
 		const home = "https://app.example.com/";
 		const route = "https://app.example.com/#/cart";
@@ -201,21 +201,22 @@ describe("the pages of a case", () => {
 			],
 			shots: [shot("s1", home), shot("s2", route, 390)],
 		};
-		// The route on localhost is that page; localhost's home page is not
-		// production's (the origin is all a home page has).
-		for (const [url, page] of [
-			["http://localhost:5173/#/cart", route],
-			["http://localhost:5173/#/cart/?step=2", route],
-			[home, home],
-			["http://localhost:5173/", undefined],
-			["http://localhost:5173/#/pay", undefined],
+		// The list: the route on localhost is that page; localhost's home
+		// page is not production's (the origin is all a home page has).
+		// Drawn: production's home page is the home page on localhost too.
+		for (const [url, page, front] of [
+			["http://localhost:5173/#/cart", route, route],
+			["http://localhost:5173/#/cart/?step=2", route, route],
+			[home, home, home],
+			["http://localhost:5173/", undefined, home],
+			["http://localhost:5173/#/pay", undefined, undefined],
 		] as const) {
 			expect(pageAt(c, url)?.url).toBe(page as string);
-			expect(isPageOf(c, url)).toBe(page !== undefined);
+			expect(pageInFront(c, url)?.url).toBe(front as string);
 			expect(marksOnPage(c, url)).toBe(
 				page === route ? 1 : page === home ? 2 : 0,
 			);
-			expect(viewportAt(c, url).width).toBe(page === route ? 390 : 1280);
+			expect(viewportAt(c, url).width).toBe(front === route ? 390 : 1280);
 		}
 		expect([...marksByPage(c)]).toEqual([
 			[pageKey(home), 2],
@@ -246,8 +247,8 @@ describe("the pages of a case", () => {
 		);
 		expect(pageAt(c, "http://localhost:3000/cart")?.url).toBe(CART);
 		expect(pageAt(c, "http://localhost:3000/account")).toBeUndefined();
-		expect(isPageOf(c, "http://localhost:3000/checkout/pay")).toBe(true);
-		expect(isPageOf(c, "http://localhost:3000/account")).toBe(false);
+		expect(pageInFront(c, "http://localhost:3000/checkout/pay")?.url).toBe(PAY);
+		expect(pageInFront(c, "http://localhost:3000/account")).toBeUndefined();
 	});
 
 	test("the window a mark was made in is that of its page's screenshot", () => {

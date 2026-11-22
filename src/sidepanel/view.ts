@@ -23,7 +23,7 @@ import {
 	type FindingApp,
 	GROUP_LABEL,
 	GROUP_OF,
-	isPageOf,
+	isOfferedOn,
 	MAX_COMMENT,
 	MAX_REOPEN_NOTE,
 	MAX_TITLE,
@@ -32,7 +32,8 @@ import {
 	markStatus,
 	marksByPage,
 	markUrl,
-	pageAt,
+	onPageInFront,
+	pageInFront,
 	pageKey,
 	RESOLUTION_LABEL,
 	RESOLVE_CHOICES,
@@ -40,7 +41,6 @@ import {
 	type ResolveChoice,
 	STATUS_GROUPS,
 	type StatusGroup,
-	samePage,
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
@@ -56,6 +56,7 @@ import {
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortUrl } from "./dom.ts";
 import { foundLine, isFound, noneHere } from "./follow.ts";
+import { markTargets, shortAddress } from "./mark-link.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
 import {
@@ -103,6 +104,12 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	deleteFinding(c: Case, a: Annotation, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
+	/**
+	 * A mark's link (DEC-050): open where it was made (`made`), or the same
+	 * path and query on the host in front (`here`), in the tab in front, and
+	 * show the mark there once the page has its marks.
+	 */
+	openMarkPage(c: Case, a: Annotation, where: "made" | "here"): void;
 	/** Chrome's prompt for "Allow on all sites"; call it in the click. */
 	allowAllSites(): void;
 	/** Sitegloss's page in chrome://extensions ("Allow access to file URLs"). */
@@ -217,7 +224,8 @@ export function access(state: PanelState): "yes" | "ask" | "never" {
 /** "None of this case's marks were found on this page…" (DEC-022). */
 export function noneFoundText(c: Case, url: string | undefined): string {
 	const here = "None of this case's marks were found on this page.";
-	if (url !== undefined && url !== "" && isPageOf(c, url)) return here;
+	if (url !== undefined && url !== "" && pageInFront(c, url) !== undefined)
+		return here;
 	// Its pages, the first few by name (DEC-038).
 	const pages = casePages(c).map((p) => shortUrl(p.url));
 	const named = pages.slice(0, 3).join(", ");
@@ -423,6 +431,8 @@ function caseItem(
 	c: Case,
 	actions: Actions,
 	deviceOnly = false,
+	/** Under "This page", a closed case says so: elsewhere it stands under Closed. */
+	sayClosed = false,
 ): HTMLLIElement {
 	const count = c.annotations.length;
 	// The bar beside it is a picture; the words say the same.
@@ -439,6 +449,9 @@ function caseItem(
 				onclick: () => actions.openCase(c.id),
 			},
 			h("span", { class: "title" }, c.title),
+			sayClosed && c.closed !== undefined
+				? h("span", { class: "tag closed-tag" }, "Closed")
+				: null,
 			// Signed in, a case the team does not have says so (DEC-039).
 			deviceOnly
 				? h("span", { class: "tag device-only" }, "This device only")
@@ -480,14 +493,22 @@ function renderCases(state: PanelState, actions: Actions): void {
 	]);
 	if (key === casesKey) return;
 	casesKey = key;
-	// Closed cases are filed away under Closed, folded (DEC-046): they leave
-	// the page's cases and the list.
-	const open = state.cases.filter((c) => c.closed === undefined);
-	const closed = state.cases.filter((c) => c.closed !== undefined);
 	// The page's own cases stand under "This page" (the owner): going on with
 	// the case a page has is what is done most, a second case for it rarely.
-	// Any of a case's pages (DEC-038), in whatever environment.
-	const own = open.filter((c) => url && pageAt(c, url) !== undefined);
+	// Only on the same page of the same site as one of its screenshots
+	// (DEC-050): elsewhere (localhost, staging) a case is opened by hand.
+	// Not closed ones first, closed ones after; nothing opens by itself.
+	const offered = state.cases.filter((c) => url && isOfferedOn(c, url));
+	const own = [
+		...offered.filter((c) => c.closed === undefined),
+		...offered.filter((c) => c.closed !== undefined),
+	];
+	// Closed cases are filed away under Closed, folded (DEC-046): they leave
+	// the list, and the page's own stand under "This page".
+	const open = state.cases.filter((c) => c.closed === undefined);
+	const closed = state.cases.filter(
+		(c) => c.closed !== undefined && !own.includes(c),
+	);
 	const other = open.filter((c) => !own.includes(c));
 	const one = own.length === 1 ? own[0] : undefined;
 	here.hidden = own.length === 0;
@@ -503,7 +524,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 					h(
 						"ul",
 						{ class: "cases", "data-group": "here" },
-						...own.map((c) => caseItem(c, actions, local(c))),
+						...own.map((c) => caseItem(c, actions, local(c), true)),
 					),
 				]
 			: []),
@@ -1990,7 +2011,8 @@ function renderPages(
 	tabUrl: string | undefined,
 	actions: Actions,
 ): void {
-	const here = tabUrl ? pageAt(c, tabUrl) : undefined;
+	// The page whose marks are drawn on the tab in front, whatever its host (DEC-050).
+	const here = tabUrl ? pageInFront(c, tabUrl) : undefined;
 	// Counted once for all the pages, not once per page.
 	const counts = marksByPage(c);
 	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
@@ -2004,7 +2026,7 @@ function renderPages(
 	p.pages.replaceChildren(
 		...pages.map((page) => {
 			const marks = marksOn(page.url);
-			const front = here !== undefined && samePage(here.url, page.url);
+			const front = here !== undefined && here.url === page.url;
 			return h(
 				"li",
 				{ "data-page": page.url, ...(front ? { "data-here": true } : {}) },
@@ -2129,7 +2151,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.noneFound.el.hidden = !none;
 	p.noneFound.text.textContent = none ? noneFoundText(c, state.tab?.url) : "";
 	p.noneFound.button.hidden =
-		!none || !isWebPage(c.page.url) || isPageOf(c, state.tab?.url ?? "");
+		!none ||
+		!isWebPage(c.page.url) ||
+		pageInFront(c, state.tab?.url ?? "") !== undefined;
 	// With a team (DEC-039): whether the case is the team's, and what a
 	// delete then means.
 	const sync = caseSync(state.cloud, c.id);
@@ -2255,6 +2279,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 		loaded ? [loaded.url, ...loaded.matches.values()] : null,
 		// What is typed stays out: a key press redraws nothing.
 		edit ? [edit.annotationId, edit.mode] : null,
+		// A mark's link offers the host in front too (DEC-050).
+		tabOrigin(state.tab?.url),
 		markArmed ?? null,
 		findingArmed ? [findingArmed.annotationId, findingArmed.findingId] : null,
 		ok,
@@ -2268,18 +2294,20 @@ function renderCase(state: PanelState, actions: Actions): void {
 		// The page drawn on is one of the case's: a mark of another of its
 		// pages that is not here is "on another page", not lost (DEC-038).
 		const onCasePage =
-			several && loaded !== undefined && pageAt(c, loaded.url) !== undefined;
+			several &&
+			loaded !== undefined &&
+			pageInFront(c, loaded.url) !== undefined;
 		const items = sorted.map((a) => {
 			const match = loaded?.matches.get(a.id);
 			const elsewhere =
 				onCasePage &&
 				match !== undefined &&
 				!isFound(match) &&
-				!samePage(markUrl(c, a), loaded?.url ?? "");
+				!onPageInFront(c, a, loaded?.url ?? "");
 			return markItem(c, a, {
 				crop: images?.urls.get(a.crop),
 				match: elsewhere ? undefined : match,
-				page: several ? markUrl(c, a) : undefined,
+				tabUrl: state.tab?.url,
 				elsewhere,
 				edit: edit?.annotationId === a.id ? edit : undefined,
 				armed: markArmed === a.id,
@@ -2422,8 +2450,8 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 interface MarkContext {
 	crop: string | undefined;
 	match: AnnotationMatch | undefined;
-	/** The mark's page, said in a case of several pages (DEC-038). */
-	page: string | undefined;
+	/** The tab in front's address: a mark's link offers its host (DEC-050). */
+	tabUrl: string | undefined;
 	/** It is of another page of the case than the tab in front shows. */
 	elsewhere: boolean;
 	edit: PanelState["markEdit"];
@@ -2500,9 +2528,7 @@ function markItem(c: Case, a: Annotation, x: MarkContext): HTMLElement {
 		x.crop ? cropView(c.id, a, x.crop) : null,
 		historyList(a),
 		findingsList(c, a, x.findingArmed, actions),
-		x.page !== undefined
-			? h("p", { class: "meta mark-page" }, `On ${shortUrl(x.page)}`)
-			: null,
+		markPlace(c, a, x.tabUrl, actions),
 		byline(a.createdBy, a.createdVia)
 			? h(
 					"p",
@@ -2535,6 +2561,61 @@ function markItem(c: Case, a: Annotation, x: MarkContext): HTMLElement {
 	);
 	setOpen(c.id, li, edit !== undefined || openMarks.has(`${c.id}:${a.id}`));
 	return li;
+}
+
+/** A web address's origin, else null: what a mark's link depends on of the tab. */
+function tabOrigin(url: string | undefined): string | null {
+	return url !== undefined && isWebPage(url) ? new URL(url).origin : null;
+}
+
+/**
+ * Where a mark was made (DEC-050): its address with the query, a link that
+ * opens it in the tab in front and shows the mark there; with the tab on
+ * another host, the same path and query on that host too.
+ */
+function markPlace(
+	c: Case,
+	a: Annotation,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement {
+	const targets = markTargets(c, a, tabUrl);
+	if (targets === undefined)
+		return h("p", { class: "meta mark-page" }, `Marked on ${markUrl(c, a)}`);
+	const shown = shortAddress(targets.made);
+	return h(
+		"p",
+		{ class: "meta mark-page" },
+		"Marked on ",
+		h(
+			"button",
+			{
+				type: "button",
+				class: "link page-link",
+				"data-mark-link": "made",
+				"aria-label": `Open ${shown}, where mark ${a.number} was made, in this tab`,
+				title:
+					"Open the page where this mark was made in this tab, and show the mark there",
+				onclick: () => actions.openMarkPage(c, a, "made"),
+			},
+			shown,
+		),
+		targets.here === undefined ? null : " · ",
+		targets.here === undefined
+			? null
+			: h(
+					"button",
+					{
+						type: "button",
+						class: "link page-link",
+						"data-mark-link": "here",
+						"aria-label": `Open the same page on ${targets.host}, and show mark ${a.number} there`,
+						title: `Open ${targets.here} in this tab, and show the mark there`,
+						onclick: () => actions.openMarkPage(c, a, "here"),
+					},
+					`Open on ${targets.host}`,
+				),
+	);
 }
 
 /**

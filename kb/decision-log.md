@@ -2672,3 +2672,160 @@ the user sees does not change.
   (`test/e2e/pair-fill.test.ts`, `test/e2e/connection.test.ts`). Not tested: a whole
   pairing end to end (the testing package's relay cannot show its form for a test
   client), and the fill-in in Firefox (its suite has no test of it, as before).
+
+## DEC-050: Where a mark was made: the exact offer, drawing by path, the query kept (owner)
+
+2026-11-21. The owner decided it with sitegloss.dev (its DEC-023), against one contract
+both sides build on: a mark shows exactly where it was made, the address keeps its query
+so a result list opens again as it was, Home offers a case only on an exact match, a
+case opened by hand anywhere else draws the marks of the path in front, and nothing opens
+by itself. This amends DEC-009's "links keep their path only" for the screenshot's own
+address (an element's link still keeps its path only), DEC-038's "a home page is one
+site's only" for drawing, and DEC-038's review ("the query is cut from every address
+that is kept").
+
+- **The offer is exact.** Home's "This page" lists a case when one of its screenshots
+  was taken on the tab's origin and the same page (`exactPage`: the origin and
+  `pageKey`; `isOfferedOn`); a case with no screenshot yet, on its page. Not closed
+  cases first, closed ones after with a "Closed" tag (they leave the Closed group then);
+  the texts are as before and say nothing about other sites. The query takes no part:
+  `?q=boots` offers a case marked on `?q=shoes`. On `localhost:3000` or staging the case
+  is in the list below and opened with a click.
+- **A case opened by hand draws by path.** `pathKey` is `pageKey` except that a home page
+  is `/` on any host, so production's home page is the home page on `localhost:3000/`;
+  `samePath` and `pageInFront` (the case's page whose marks are drawn on the page in
+  front: by path, the one of the same site first when two sites' home pages both are)
+  are the extension's own. `pageKey`, its vectors and everything about the case's list
+  of pages (the list, the counts, what is sent to the team, a mark adding a page) do not
+  change. Every user of "the same page" was looked at:
+  - stays `pageKey` (the case's list): `casePages`, `marksByPage`, `marksOnPage`,
+    `pageAt`, `withPagesOfShots`, `withPagesAgreed` (`case.ts`), the save's list and its
+    limit (`save.ts`), `pageOfShot`, the pages merged from the server and a case from the
+    server's first page (`wire.ts`), the counts in case.md, `list_cases` and `get_case`'s
+    pages, the case header's counts, the content script's "the address moved on to
+    another page" (`#checkPage`) and the panel's `movedOn` (one document, one origin);
+  - now `onPageInFront(c, a, url)` (should this mark be drawn or offered here: its page
+    is the one `pageInFront` picks, so of two sites' home pages in one case only the
+    site's own counts on either site, and the first listed on a third host): which marks
+    are the page's own in what a draw found and the line under the case (`findsOn`,
+    `dashDrawn`, `noneHere`), "on another page" in the marks list, "None of this case's
+    marks were found on this page" and its "Open the case's page" button, the page list's
+    "this tab", the window the marks were made in and Match size (`viewportAt`), the
+    content script's own page of a mark (`#own`: dashed "Also on this page?"), where a
+    mark on no element is drawn (`#whereItWas`), `get_mark_element`'s selector for a mark
+    on no element, and the AI tools' `onThisPage` and `otherPageNote`;
+  - now `exactPage`: Home's offer.
+  On a page that is none of the case's, every mark is looked for as before (DEC-038).
+- **The query is kept** (`src/lib/query.ts`). `keptQuery` is the server's function
+  (`packages/api/src/v1/query.ts`); `test/kept-query.json` is a copy of the server's
+  vectors and word lists, which this one passes, as `page-key.json` is held. A piece is
+  dropped when a word of its name says secret (token, key, code, session, email and the
+  rest of the lists) or the words joined are a known name (`apiKey`, `PHPSESSID`), when
+  its name or value has an `@`, holds a JWT or is 40 or more characters of
+  `A-Za-z0-9_-.~+/=` (tested on the decoded text and on up to two more decodings, so
+  `%2540` is an `@` too), when a query inside its value says or looks secret on any of
+  those decodings (cut at `?`, `&`, `;` and `#`, one level a round: `next=/reset?token=…`,
+  amendment 5), when it holds a raw `#` or a malformed escape; the rest is kept
+  as it was, in order; a result over 1024 code points is dropped whole, never cut (a cut
+  query opens another page), and an input over 8000 units gives nothing before it is
+  parsed. Linear on any input (no expression that backtracks). `countryCode` is dropped
+  (the word `code`), and so is a slug of 40 or more such characters: a wrong keep is
+  worse than a wrong drop. The server took the decodings, the input limit and the
+  linear JWT test after its review (its d63a0af); the vectors changed with them, and
+  this follows them.
+  - **Where a screenshot is made it records `query` beside the plain `url`**: the
+    toolbar's marks and `add_annotation` both through `saveCase`, which takes it from the
+    address the screenshot was taken on and never from a `query` the sender put on it;
+    an import keeps a file's `query` and, for a file whose addresses still have a query
+    (from elsewhere), what `keptQuery` keeps of it. `plainUrl` and what it returns do not
+    change, nor does any page's address in the list.
+  - **The file `sitegloss/1`** grows by the optional `shots[].query`. `validateCase`
+    reads it filtered again; one that is no text, keeps nothing, or is over the limit is
+    left out, never a failed file. The export writes it. A build before this one reads
+    such a file: its `validateCase` builds each screenshot from the fields it knows
+    (tested with 0.3.0's own module, `test/case-0-3-0.ts`).
+  - **Sync.** `shot.create` sends it; a screenshot from the team keeps it, filtered here
+    too. Screenshots never change after `shot.create`, so nothing else carries it. The
+    released server (sitegloss.dev main at d8a6ebe) validates operations with zod
+    objects that strip unknown keys: a `shot.create` with `query` was parsed by its own
+    `OpsRequest` and taken without the field (checked against that code, not only its
+    OpenAPI document). So this build may go out before the server; until the server has
+    the field the team's other browsers get no query. 0.3.0 on the same team takes
+    such a screenshot without the query and sends nothing (`test/compat-0-3-0.test.ts`).
+  - **Who sees it.** This browser and its export (the user's file), the team and an AI
+    app connected to the service (the server's), and the extension's own AI tools. Never
+    a share link: the server strips it there.
+  - **Out of scope, on purpose:** a plain fragment (`#section`) and the parameters inside
+    a hash route (`#/search?q=shoes`), which `hashRoute` cuts as before; the query of a
+    link inside an element (DEC-009) and the tab in front's address in `capture` and
+    `load_case`'s `url` (no screenshot of a case).
+  - **case.md** writes a screenshot's page, with its query, for it and its marks in a
+    case of several pages as before, and now also where the screenshot has a query, in
+    a case of one page too; the case's own `- Page:` line and the list stay plain. The
+    server's member download writes the same: `test/case-file.json` is a copy of its
+    `packages/api/vectors/case-file.json`, and `validateCase` keeps its `case.json` as it
+    is.
+- **A link on each mark.** In the panel each mark says "Marked on <its address with the
+  query>", a link (a button, named for screen readers "Open …, where mark N was made, in
+  this tab") that opens that address in the tab in front, keeps the case open, and,
+  once the page has loaded and its marks are drawn, brings the mark into view and
+  outlines it (`case:show`, as Show does); it waits while the draw still looks for a mark
+  not found yet, and while the page is busy (making a mark) or does not answer, and is
+  used up only once the page showed the mark or after two minutes (a sign-in in
+  between: `tryShow`). With the tab at that very address the page is never loaded
+  again (its fields and scroll would go): where it holds the case, an AI app's
+  `load_case` too, the mark is shown at once, else the case is drawn there
+  (`linkStep`). With the case
+  open on another origin than the mark's, "Open on <origin>" sends the mark's path, kept
+  query and hash route to the origin it names: the host with its port, and the scheme
+  too where host and port are the mark's (`Open on http://shop.example`), so it is never
+  taken for the first link. It is offered on any web page in front, also one that is
+  none of the case's, because opening a case elsewhere is a deliberate act and a
+  developer on `localhost:3000/` has to get to the case's `/cart` there. Chrome's
+  question for the site is asked in the click, as for a page of the case; a Hide on that
+  tab ends. The line is shown for every mark, not only in a
+  case of several pages (it replaces "On <page>").
+- **AI apps.** `get_case` (each screenshot and mark), `load_case`, `highlight` and
+  `get_mark_element` give `address` (the page with its query) beside `page` where the
+  screenshot had a query; `add_annotation` says the address with its kept query. New
+  tool **`open_case`**: asks the side panel of the tab's window to open the case, and the
+  panel does exactly what a person's clicks do: "← All cases" on the case it shows
+  (`leaveCase`: its toolbars end, an untouched new case goes, DEC-026), a click on the
+  case, whose marks are then drawn on the tab in front by path and follow the tab
+  (DEC-022). The tool reports that draw; what the panel knew of a draw of another case,
+  or of the same case on another tab, is dropped first (`keepsLoaded`). It asks the user first (`consequentialHint`:
+  "Always allow" and "Allow all changes" cover it as any other, DEC-043); its question
+  names the case and the page in front (its address as kept). **Nothing a person typed
+  is ever lost to it:** while the case shown has a mark's form open, its title or link
+  being typed, a "← All cases" under way, or its toolbar up on any tab, or while the
+  toolbar on that tab adds marks to another case, the panel stays, nothing is drawn, and
+  the call fails saying which case and why (`aiOpenRefusal`). It navigates nowhere and
+  opens no tab. Without a side panel open in that window the tool draws the marks
+  itself, and the case opens when the user opens the panel there (the panel opens the
+  case a page shows, DEC-023). The panel takes the request only from the extension's
+  background (`fromBackground`: this extension, no tab, and the background's own
+  address, `background.js` in Chromium and the event page Firefox makes,
+  `_generated_background_page.html`), so neither a content script nor another extension
+  page can switch it, and only for its own window.
+- **Not done, on purpose:** no learned or synced hosts and no host settings, no matching
+  by title or metadata, nothing opens by itself (not even an exact match), the query
+  takes no part in matching (`/search?q=shoes` and `?q=boots` are one page), no change
+  to `pageKey`. Two sites' home pages in one case: on either site its own counts, on a
+  third host the first listed.
+- **Tested** in `test/query.test.ts` (the contract's table, the server's vectors and
+  lists, hostile input in linear time, what a screenshot keeps), `test/address.test.ts`
+  (`exactPage`, `pathKey`, the offer, the page in front, a draw on localhost's home page,
+  the toolbar's save, a file read and written, an import, 0.3.0 reading the file,
+  case.md and the server's case file, the mark's link),
+  `test/view.test.ts` (the offer and its order, the link's texts and names),
+  `test/tools.test.ts` (`address`, `onThisPage` on localhost's home page, `open_case`,
+  its refusals and its question), `test/ai-open.test.ts` (every refusal),
+  `test/address.test.ts` (the link's wait, a busy page, the very address; the draw
+  `open_case` keeps),
+  `test/browser.test.ts` (`fromBackground`), two sites' home pages in
+  `test/address.test.ts` (`findsOn`, `pageView` on each site and a third host),
+  `test/compat-0-3-0.test.ts` (the sync, 0.3.0 beside it), in Chromium
+  (`test/e2e/address.test.ts`: the offer on the same site only, a case opened on
+  another host's home page, both links; `test/e2e/open-case.test.ts`: refused with a
+  comment half typed, which stays, then the clean switch) and in Firefox (the event
+  page's address). The fake server keeps the query as the server does.

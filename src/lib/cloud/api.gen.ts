@@ -55,6 +55,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/v1/teams/{teamId}/cases/{caseId}/export": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * One case as a file: the zip the Sitegloss extension exports
+		 * @description The case in the extension's file format (`sitegloss/1`): `case.json`, `case.md`, the screenshots in `shots/` and the marks' crops in `crops/`, as the extension's own export lays them out. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.
+		 */
+		get: operations["exportCase"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/v1/teams/{teamId}/ops": {
 		parameters: {
 			query?: never;
@@ -158,7 +178,7 @@ export interface components {
 			/** @constant */
 			verified?: true;
 		};
-		/** @description The colour that shows behind the element: its own background colour or, while that is transparent or translucent, composited over its ancestors' until an opaque one. color: as computed. depth: how many steps up the opaque background is (0: the element itself), an integer of at most 1,000; absent when none was and the page's canvas is under it. image: true when a background image or gradient on the way may show instead of the colour. The server drops the whole backdrop when color is empty, longer than 300 characters or names a URL (as a style value), and depth when it is not such an integer; not refused. Hard bound: color of at most 2,000 characters. */
+		/** @description The colour that shows behind the element: its own background colour or, while that is transparent or translucent, composited over its ancestors' until an opaque one. color: as computed. depth: how many steps up the opaque background is (0: the element itself), an integer of at most 1,000; with depth, an opaque background was found that many steps up. Without depth no contrast ratio holds: either no opaque background was found up to the page and color is the browser's default canvas for the page's colour scheme (not measured), or color is in a form that was not worked out (for instance oklch(...)) and is given as written, or a malformed depth was dropped. image: true when a background image or gradient on the way may show instead of the colour. The server drops the whole backdrop when color is empty, longer than 300 characters or names a URL (as a style value), and depth when it is not such an integer; not refused. Hard bound: color of at most 2,000 characters. */
 		Backdrop: {
 			color: string;
 			depth?: number;
@@ -405,6 +425,8 @@ export interface components {
 					shot: {
 						id: components["schemas"]["Id"];
 						url: string;
+						/** @description The query of the address the screenshot was taken at, without the leading `?`. The server keeps what `keptQuery` (DEC-023) keeps of it: pieces whose name says secret (token, key, code, session, email and the like) or whose value looks like one (an e-mail address, a JWT, a long opaque value) are dropped, and a query longer than 1024 characters after that is dropped whole. Never refused for what it holds; only one longer than 8000 UTF-16 units, the most a whole address holds, makes the request invalid, which a client that filters first never sends. A client should filter it the same way before sending. */
+						query?: string;
 						image: components["schemas"]["ImageRef"];
 						scrollX: number;
 						scrollY: number;
@@ -619,6 +641,8 @@ export interface components {
 			id: components["schemas"]["Id"];
 			caseId: components["schemas"]["Id"];
 			url: string;
+			/** @description The query of the address the screenshot was taken at, without the leading `?`: what `keptQuery` (DEC-023) keeps of it, in the order and encoding it came in, at most 1024 characters. Absent when there is none. `url` stays the plain address (origin, path and hash route) that pages are matched by; this is for opening the page again, before the hash. Only a team's members get it: never a share link. */
+			query?: string;
 			image: components["schemas"]["ImageRef"];
 			scrollX: number;
 			scrollY: number;
@@ -796,6 +820,65 @@ export interface operations {
 			};
 			/** @description No such team, case or image, or not one of the caller's. */
 			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+		};
+	};
+	exportCase: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				teamId: string;
+				caseId: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The zip file. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/zip": string;
+				};
+			};
+			/** @description No valid access token. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+			/** @description The token's scope or the caller's role does not allow it. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+			/** @description No such team, case or image, or not one of the caller's. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+			/** @description Too large for one zip file. */
+			413: {
 				headers: {
 					[name: string]: unknown;
 				};

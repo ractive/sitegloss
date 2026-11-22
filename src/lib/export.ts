@@ -15,6 +15,7 @@ import {
 	withPagesAgreed,
 } from "./case.ts";
 import { caseMarkdown } from "./markdown.ts";
+import { queryOf } from "./query.ts";
 import type { CaseStore, StoredImage } from "./store.ts";
 import { readZip, writeZip, type ZipEntry } from "./zip.ts";
 
@@ -496,9 +497,18 @@ export async function storeImport(
 						url: plainUrl(p.url),
 					})),
 				}),
-		shots: parsed.case.shots.map((s) =>
-			s.url === undefined ? s : { ...s, url: plainUrl(s.url) },
-		),
+		// A screenshot's query is kept as `keptQuery` leaves it (DEC-050): the
+		// file's `query`, filtered again by `validateCase`, else what may be
+		// kept of the query on its address (a file from elsewhere).
+		shots: parsed.case.shots.map((s) => {
+			if (s.url === undefined) return s;
+			const query = s.query ?? queryOf(s.url);
+			return {
+				...s,
+				url: plainUrl(s.url),
+				...(query === undefined ? {} : { query }),
+			};
+		}),
 		// The app that made a mark is the server's record, which a file only
 		// claims (DEC-046): it would be sent as the app's doing.
 		annotations: parsed.case.annotations.map(({ createdVia: _cv, ...a }) => ({

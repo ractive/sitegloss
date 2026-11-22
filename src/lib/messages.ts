@@ -309,6 +309,36 @@ export interface SaveResult {
  * or a content script's overlay was shown or hidden (also from its own
  * toolbar).
  */
+/**
+ * From the worker, for an AI app's `open_case` (DEC-050): the side panel in
+ * `windowId` opens the case whose marks the tab `tabId` shows now.
+ */
+export interface OpenCaseRequest {
+	type: "panel:open-case";
+	caseId: string;
+	tabId: number;
+	windowId: number;
+}
+
+/** A panel's answer to `OpenCaseRequest`. */
+export type OpenCaseAnswer =
+	| {
+			opened: true;
+			/** What the panel's draw on that tab found; none: it has not drawn yet. */
+			result?: LoadResult;
+	  }
+	| {
+			opened: false;
+			/**
+			 * `no-panel`: none answered; `adding`: the toolbar there adds to
+			 * another case (`title`); `busy`: the case open in the panel
+			 * (`title`) is in the middle of something a person does (`why`).
+			 */
+			reason: "no-panel" | "adding" | "busy";
+			title?: string;
+			why?: string;
+	  };
+
 export type Broadcast =
 	| { type: "cases:changed"; caseId: string }
 	| { type: "overlay:changed"; state: OverlayState }
@@ -427,6 +457,20 @@ const MARK_REQUESTS: ReadonlySet<string> = new Set<MarkRequest["type"]>([
 	"mark:verify",
 	"mark:reopen",
 ]);
+
+/** An `OpenCaseRequest`, checked before the panel takes it. */
+export function isOpenCaseRequest(
+	message: unknown,
+): message is OpenCaseRequest {
+	if (typeof message !== "object" || message === null) return false;
+	const m = message as Record<string, unknown>;
+	return (
+		m["type"] === "panel:open-case" &&
+		typeof m["caseId"] === "string" &&
+		Number.isInteger(m["tabId"]) &&
+		Number.isInteger(m["windowId"])
+	);
+}
 
 export function isMarkRequest(message: unknown): message is MarkRequest {
 	if (typeof message !== "object" || message === null) return false;

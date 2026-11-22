@@ -24,8 +24,8 @@ import {
 	markFor,
 	markKey,
 	markStatus,
-	markUrl,
-	pageAt,
+	onPageInFront,
+	pageInFront,
 	pageKey,
 	RESOLUTION_LABEL,
 	RESOLVE_CHOICES,
@@ -33,7 +33,6 @@ import {
 	type ResolveChoice,
 	type Shape,
 	STATUS_LABEL,
-	samePage,
 	shapeBounds,
 	shapeOnBox,
 	translateShape,
@@ -432,9 +431,12 @@ export class Reviewer {
 		};
 	}
 
-	/** Whether the mark's own page is the page in front. */
+	/**
+	 * Whether the mark's own page is the page in front: by path and hash
+	 * route, whatever the host (DEC-050).
+	 */
 	#own(annotation: Annotation, c: Case | undefined = this.#case): boolean {
-		return c !== undefined && samePage(markUrl(c, annotation), location.href);
+		return c !== undefined && onPageInFront(c, annotation, location.href);
 	}
 
 	/**
@@ -450,7 +452,7 @@ export class Reviewer {
 		entry.match =
 			found &&
 			c !== undefined &&
-			pageAt(c, location.href) !== undefined &&
+			pageInFront(c, location.href) !== undefined &&
 			!this.#own(entry.annotation, c)
 				? { ...match, otherPage: true }
 				: match;
@@ -546,6 +548,12 @@ export class Reviewer {
 			entry !== undefined &&
 			markKey(c, entry.annotation) === key
 		);
+	}
+
+	/** Whether the loaded mark `annotationId` is a mark of the page in front (`onPageInFront`). */
+	isOwn(annotationId: string): boolean {
+		const entry = this.#entries.find((e) => e.annotation.id === annotationId);
+		return entry !== undefined && this.#own(entry.annotation);
 	}
 
 	/** Scroll to an annotation's element (or another candidate) and focus it. */
@@ -1107,8 +1115,7 @@ export class Reviewer {
 	/** A mark without an element, where it was; its page may be another route. */
 	#whereItWas(annotation: Annotation): ReviewItem | undefined {
 		// Only on its own page: a case spans pages (DEC-038).
-		const url = this.#case ? markUrl(this.#case, annotation) : "";
-		if (!samePage(url, location.href)) return undefined;
+		if (!this.#own(annotation)) return undefined;
 		const win = this.overlay.doc.defaultView;
 		return {
 			number: annotation.number,
