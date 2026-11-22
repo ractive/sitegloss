@@ -3256,5 +3256,28 @@ web app comes later.
 - **case.md**: after the mark's crop, `- Images added: 2`, then each image as
   `![Mark 3, added image 1](images/<id>.webp)`, a link only where the path is the one its
   id gives.
+- **From a file**: an imported image keeps the file's time, is marked `imported` and names
+  nobody (as the server stores it); the panel says "from an imported file".
+- **The panel**: the open mark's pictures are a grid of equal tiles with the mark's own
+  screenshot first ("Screenshot", no Remove, refused by `withoutImage` by any name), then
+  the added images ("Image 1"…, numbered without the screenshot), then "+ Add another
+  image…". A closed mark says "+2 images". The page's popover only asks the panel to open
+  the dialog (`mark:add-image`).
+- **Sync** (the server's DEC-032): an image goes with a new mark (`mark.create`'s `images`)
+  or as `mark.patch`'s `images.add`, removed by id in `images.remove`; its picture is
+  uploaded first, as a crop's, and the blob route takes `mark:update` too. Merged by id as
+  findings: the server's order, removed here stays away, added here stays, gone there goes.
+  A server mark without `images` is "not told": nothing here is removed, and the shadow
+  keeps what it knew. An added image whose picture does not come is left out of that read
+  and said; nothing here is removed for it. **The price**: two devices adding to one mark
+  at once past six: the later add is refused (`limit`), and once the server's six come
+  back, the image only that device had is dropped there. Rare, and said only by the
+  refusal at that run.
+- **AI tools**: `get_case` lists a mark's images (path, when, who) and sends them after
+  every crop within the size budget; `get_image` reads `images/<id>.webp`.
 - Tests: `test/case.test.ts` ("images added to a mark"), `test/export.test.ts` (round trip,
-  a missing file refused), `test/markdown.test.ts`.
+  a missing file refused), `test/markdown.test.ts`, `test/add-images.test.ts` (the
+  dialog's rules), `test/view.test.ts` (the grid), `test/cloud-wire.test.ts`,
+  `test/cloud.test.ts` (two devices), `test/tools.test.ts`, `test/review.test.ts`,
+  `test/cloud-server.test.ts` (a real server), `test/e2e/images.test.ts` (full set: a
+  pasted PNG kept as WebP of at most 2048 px).
