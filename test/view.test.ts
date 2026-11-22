@@ -352,6 +352,52 @@ describe("a mark's status and actions", () => {
 		expect(deleted).toEqual(["m1:f_1"]);
 	});
 
+	test("a finding gone from a mark whose comment form is open: the form stays, with its draft", () => {
+		const c: Case = {
+			...twoMarks(),
+			marks: [
+				{
+					...mark(1),
+					findings: [
+						{
+							id: "f_1",
+							text: "Padding in Card.tsx",
+							app: { id: "x", host: "other.example" },
+							at: "2026-11-10T10:00:00Z",
+						},
+					],
+				},
+				mark(2),
+			],
+		};
+		const editing = (value: Case) =>
+			caseState(value, (s) => {
+				s.markEdit = {
+					markId: "m1",
+					mark: "",
+					mode: "comment",
+					kind: "fixed",
+					text: "A draft not saved yet",
+				};
+			});
+		render(editing(c), noActions);
+		const { findings: _gone, ...bare } = c.marks[0] as Mark;
+		render(
+			editing({
+				...c,
+				updatedAt: "2026-11-10T11:00:00Z",
+				marks: [bare, mark(2)],
+			}),
+			noActions,
+		);
+		expect(row("m1").querySelector("[data-finding]")).toBeNull();
+		expect(row("m1").querySelector('[data-form="comment"]')).not.toBeNull();
+		expect(
+			(row("m1").querySelector("textarea") as unknown as HTMLTextAreaElement)
+				.value,
+		).toBe("A draft not saved yet");
+	});
+
 	test("a finding's Delete, clicked once, asks on its own mark only: ids repeat on other marks", () => {
 		const finding = (id: string) => ({
 			id,
@@ -930,7 +976,7 @@ describe("Verify (DEC-023)", () => {
 						note: "Hover state too",
 						at: "2026-11-14T09:00:00Z",
 						app: CLAUDE,
-						verified: { at: "2026-11-14T15:00:00Z" },
+						verified: { at: "2026-11-14T15:00:00Z", app: CLAUDE },
 					},
 				},
 			],
@@ -955,7 +1001,7 @@ describe("Verify (DEC-023)", () => {
 		expect(lines[2]?.[1]).toMatch(
 			/^Fixed .+ by Claude \(claude\.ai\) · Hover state too$/,
 		);
-		expect(lines[3]?.[1]).toMatch(/^Verified /);
+		expect(lines[3]?.[1]).toMatch(/^Verified .+ by Claude \(claude\.ai\)$/);
 		// Not reopened any more: no reopen line in the head.
 		expect(row("m1").querySelector(".mark-sub .reopened")).toBeNull();
 	});
