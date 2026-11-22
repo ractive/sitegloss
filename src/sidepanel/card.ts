@@ -155,3 +155,25 @@ export function switchShown(
 		return { checked: stateOn, intent: undefined };
 	return { checked: intent.on, intent };
 }
+
+/**
+ * How AI access came on: by the person, with the card's switch, its "Turn
+ * on AI access" button or the top bar's pill; or by itself (Keep AI access
+ * on, after a reload, an update, an idle or expired session, a start).
+ */
+export type TurnedOn = "switch" | "button" | "pill" | "by-itself";
+
+/**
+ * Whether to ask once whether to keep AI access on (DEC-059): when the
+ * person turned it on, it is not kept on, this browser never answered, and
+ * the connection is not taken over by another browser or program.
+ */
+export function asksKeepOn(
+	way: TurnedOn,
+	a: Pick<AiState, "keepOn" | "replaced">,
+	answered: boolean,
+): boolean {
+	return (
+		way !== "by-itself" && !a.keepOn && !answered && a.replaced === undefined
+	);
+}

@@ -2551,6 +2551,24 @@ button.tile-add:hover:not(:disabled) {
 	margin: 0 0 var(--s3);
 }
 
+/*
+ * Asked once under Keep AI access on (DEC-059): a note on the card, not a
+ * dialog. Empty, it takes no room; it stays in the page, a status region.
+ */
+.keep-on-ask:not(:empty) {
+	display: grid;
+	gap: var(--s2);
+	margin: 0 0 var(--s3);
+	padding: var(--s3);
+	border: 1px solid var(--rule);
+	border-radius: var(--r-control);
+	background: var(--sheet);
+}
+
+.keep-on-ask p {
+	margin: 0;
+}
+
 #pair-replaced > :last-child {
 	margin-bottom: 0;
 }

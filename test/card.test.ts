@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	ALLOW_DELAY_MS,
 	armed,
+	asksKeepOn,
 	type CardStatus,
 	CONFIRM_DELAY_MS,
 	cardStatus,
@@ -220,4 +221,28 @@ describe("when a yes to a question counts (Allow, Fill in the code)", () => {
 		// Not focused: never.
 		expect(armed(0, undefined, 1_000_000)).toBe(false);
 	});
+});
+
+test("the question whether to keep AI access on: once, when the person turned it on, not kept on, not taken over (DEC-059)", () => {
+	const ways = ["switch", "button", "pill", "by-itself"] as const;
+	const rows: [string, boolean, boolean, boolean][] = [];
+	for (const way of ways)
+		for (const keepOn of [false, true])
+			for (const answered of [false, true])
+				rows.push([
+					way,
+					keepOn,
+					answered,
+					asksKeepOn(way, { keepOn }, answered),
+				]);
+	// Only the person's own turning on, with keep-on off and no answer yet.
+	expect(rows.filter(([, , , asks]) => asks)).toEqual([
+		["switch", false, false, true],
+		["button", false, false, true],
+		["pill", false, false, true],
+	]);
+	// Taken over by another browser or program: not asked.
+	expect(
+		asksKeepOn("switch", { keepOn: false, replaced: { sibling: true } }, false),
+	).toBe(false);
 });

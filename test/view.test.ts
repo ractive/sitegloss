@@ -3425,6 +3425,48 @@ describe("an imported case", () => {
 });
 
 describe("the AI app", () => {
+	test("the question whether to keep AI access on: a status region, two plain answers, drawn once (DEC-059)", async () => {
+		const { KEEP_ON_QUESTION, showKeepOnQuestion } = await import(
+			"../src/sidepanel/ai.ts"
+		);
+		const box = el("keep-on-ask");
+		// Always in the page, so what is put in it is said.
+		expect(box.getAttribute("role")).toBe("status");
+		// Right under Keep AI access on and its sentence.
+		expect(
+			box.previousElementSibling?.previousElementSibling?.querySelector(
+				"#keep-on",
+			),
+		).not.toBeNull();
+		const answers: boolean[] = [];
+		const answer = (keep: boolean) => void answers.push(keep);
+		showKeepOnQuestion(box, true, answer);
+		expect(box.querySelector("p")?.textContent).toBe(KEEP_ON_QUESTION);
+		const buttons = [...box.querySelectorAll("button")];
+		expect(buttons.map((b) => b.textContent)).toEqual([
+			"Keep it on",
+			"Not now",
+		]);
+		// Neither is the view's amber button.
+		expect(box.querySelector(".primary")).toBeNull();
+		// A redraw while it is asked draws nothing anew (it would be said again).
+		const first = box.firstElementChild;
+		showKeepOnQuestion(box, true, answer);
+		expect(box.firstElementChild).toBe(first);
+		(
+			box.querySelector('[data-answer="keep"]') as unknown as HTMLButtonElement
+		).click();
+		(
+			box.querySelector(
+				'[data-answer="not-now"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		expect(answers).toEqual([true, false]);
+		// Answered: gone, and the box takes no room.
+		showKeepOnQuestion(box, false, answer);
+		expect(box.childElementCount).toBe(0);
+	});
+
 	const ai = (change: Partial<PanelState["ai"]>) => (s: PanelState) => {
 		s.ai = { ...s.ai, ...change };
 	};
