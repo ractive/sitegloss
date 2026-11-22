@@ -71,8 +71,8 @@ is what a case is about, and finding the element again is a best-effort extra:
   front: a mark is that page's when it was made on the same path and hash route,
   whatever the host (DEC-057). Each one's element is highlighted where it can be found
   ("found", "probable", "ambiguous" with candidates, or "not found"); a mark of another
-  page is not looked for, drawn or counted, and the panel says "On another page" for
-  it. While the case is open the marks follow the tab in front (another tab, a reload,
+  page is not looked for, drawn or counted, and the panel names its page as a link that
+  opens it and shows the mark there. While the case is open the marks follow the tab in front (another tab, a reload,
   a navigation, a single-page app's next route); "← All cases" takes them off,
   whoever drew them (DEC-023), and a Hide holds on its tab, also through a reload
   (DEC-022). When the case has no mark of the page in front, it says where its marks

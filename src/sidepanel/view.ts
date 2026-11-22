@@ -91,7 +91,7 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	typeMark(change: { kind?: ResolveChoice; text?: string }): void;
 	cancelMarkEdit(): void;
 	resolveMark(c: Case, a: Mark, kind: ResolveChoice, note: string): void;
-	/** "Verified" on a fixed mark: the fix holds (DEC-023). */
+	/** "Verify" on a fixed mark: the fix holds (DEC-023). */
 	verifyMark(c: Case, a: Mark): void;
 	/** "Reopen" in its form: the note says what is still wrong. */
 	reopenMark(c: Case, a: Mark, note: string): void;
@@ -1905,7 +1905,7 @@ const REOPEN_TITLE =
 
 const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton(
-		"Verified",
+		"Verify",
 		"verify",
 		VERIFIED_TITLE,
 		() => actions.verifyMark(c, a),
@@ -3066,7 +3066,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				},
 				"Show",
 			)
-		: null;
+		: showElsewhere(c, a, x, actions);
 	const body = h(
 		"div",
 		{ class: "body", id: bodyId },
@@ -3098,7 +3098,15 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					: commentForm(c, a, edit.text, actions)
 			: markActions(c, a, x.armed, actions),
 	);
-	const sub = markSubline(c, a, m, edit === undefined, actions, x.elsewhere);
+	const sub = markSubline(
+		c,
+		a,
+		m,
+		edit === undefined,
+		actions,
+		x.elsewhere,
+		x.tabUrl,
+	);
 	li.append(
 		h("div", { class: "mark-head" }, toggle, show),
 		...(sub ? [sub] : []),
@@ -3163,10 +3171,107 @@ function markPlace(
 	);
 }
 
+/** The most of a page's title that names it in a mark's row. */
+const PAGE_NAME = 60;
+
+/**
+ * Where a mark of another page than the tab shows opens: its page by its
+ * title (else its path), the address, and which of the mark's two targets it
+ * is. With the tab on another host than the mark's, the same page on that
+ * host (DEC-050): a developer on localhost stays on localhost. None for a
+ * mark of no web page (an imported file's).
+ */
+function elsewhereTarget(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+): { name: string; address: string; where: "made" | "here" } | undefined {
+	const targets = markTargets(c, a, tabUrl);
+	if (targets === undefined) return undefined;
+	const url = markUrl(c, a);
+	const key = pageKey(url);
+	const page = casePages(c).find((p) => pageKey(p.url) === key);
+	// A page's title is the page's own text: one line, and not longer than a
+	// name should be, before it goes into a label and a tooltip.
+	const title = (page?.title ?? "").replace(/\s+/g, " ").trim();
+	return {
+		name:
+			title === ""
+				? shortPath(url, false)
+				: title.length > PAGE_NAME
+					? `${title.slice(0, PAGE_NAME - 1).trimEnd()}…`
+					: title,
+		address: targets.here ?? targets.made,
+		where: targets.here === undefined ? "made" : "here",
+	};
+}
+
+/**
+ * A mark of another page than the tab shows, in its row's second line: the
+ * page by its title, as a link that opens it in this tab and shows the mark
+ * there (owner, 22 November 2026: a link, not the words "On another page").
+ * A mark with nowhere to go keeps the words.
+ */
+function otherPage(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement {
+	const to = elsewhereTarget(c, a, tabUrl);
+	if (to === undefined) return h("span", { class: "state" }, "On another page");
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "link state elsewhere",
+			"data-mark-link": to.where,
+			// Starts with the words shown, so the control can be named by them.
+			"aria-label": `On ${to.name}: opens in this tab and shows mark ${a.number} there`,
+			title: `On another page: ${to.name}\n${to.address}\nOpens in this tab and shows the mark there`,
+			onclick: () => actions.openMarkPage(c, a, to.where),
+		},
+		`On ${to.name}`,
+	);
+}
+
+/**
+ * "Show" on a mark of another page (owner, 22 November 2026: every mark has
+ * it): it opens the mark's page in this tab and shows the mark there, as the
+ * page's link in the second row does. "Every mark" holds while the case is
+ * drawn on the tab: with its marks hidden no mark has Show, here or there.
+ * Never disabled, unlike the page's own Show (`canReach`): opening a page
+ * needs no access to the page in front, and `openMarkPage` asks for the
+ * site's access itself where it needs it.
+ */
+function showElsewhere(
+	c: Case,
+	a: Mark,
+	x: { elsewhere: boolean; tabUrl?: string | undefined },
+	actions: Actions,
+): HTMLElement | null {
+	if (!x.elsewhere) return null;
+	const to = elsewhereTarget(c, a, x.tabUrl);
+	if (to === undefined) return null;
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "small show",
+			"data-action": "show-elsewhere",
+			"aria-label": `Show mark ${a.number}: open ${to.name} in this tab`,
+			title: `Open ${to.name} in this tab and show the mark there\n${to.address}`,
+			onclick: () => actions.openMarkPage(c, a, to.where),
+		},
+		"Show",
+	);
+}
+
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
- * its AI findings; why it came back, for a reopened one. A mark to verify
- * offers Verified and Reopen… here, so verifying needs no expanding.
+ * its AI findings; why it came back, for a reopened one. A mark of another
+ * page names that page as a link. A mark to verify offers Verify and
+ * Reopen… here, so verifying needs no expanding.
  */
 function markSubline(
 	c: Case,
@@ -3175,11 +3280,12 @@ function markSubline(
 	buttons: boolean,
 	actions: Actions,
 	elsewhere = false,
+	tabUrl?: string,
 ): HTMLElement | null {
 	const status = markStatus(a);
 	const pill = PILL[status];
 	const last = a.reopens?.at(-1);
-	const where = elsewhere ? "On another page" : matchWord(m);
+	const where = elsewhere ? null : matchWord(m);
 	const findings = a.findings?.length ?? 0;
 	// The thread's comments about this mark (DEC-046).
 	const talk = commentCount(c, a.id);
@@ -3194,6 +3300,7 @@ function markSubline(
 						: "Reopened",
 				)
 			: null,
+		elsewhere ? otherPage(c, a, tabUrl, actions) : null,
 		where ? h("span", { class: "state" }, where) : null,
 		findings > 0
 			? h(

@@ -638,7 +638,7 @@ export class Reviewer {
 	/**
 	 * A loaded mark's pin was clicked (DEC-027): its comment opens in the
 	 * popover a new mark's comment is typed in, with the commands the panel
-	 * has for it (Resolve…, Verified, Reopen…, Change…, Delete mark) and Done,
+	 * has for it (Resolve…, Verify, Reopen…, Change…, Delete mark) and Done,
 	 * and the side panel shows the mark.
 	 */
 	pick(number: number): void {
@@ -872,7 +872,7 @@ export class Reviewer {
 				if (open.status === "fixed")
 					commands.push(
 						button(
-							"Verified",
+							"Verify",
 							"mark-verify",
 							() =>
 								void this.#settle(open, {
