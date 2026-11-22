@@ -59,6 +59,15 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   facts block (pages, synced with, link) with the pages folded when there are many; the
   found-marks sentence replaced by the page filter's counts; the web-app line dropped;
   "Match size" as a quiet action that appears only when the sizes differ enough to matter.
+- **An AI app cannot tell that AI access is off.** When AI access is off (after a reload or
+  update of Sitegloss without "Keep AI access on", an idle session, a browser start), an AI
+  app that calls a tool gets the relay's "The page is not open, or not in front. Ask the
+  user to open Sitegloss and keep it in front…". That sends the person looking for a page,
+  not for the AI access switch (owner, 22 November 2026: "Why did it turn off?"). Wanted: an
+  answer that says AI access is off in Sitegloss's side panel and that "Keep AI access on"
+  keeps it across reloads; the text is the relay's and the client library's (tab-mcp), so
+  it starts as a request there. Also unknown: whether switching to another macOS user cuts
+  the connection of the first user's browser.
 - **A deleted mark that stayed drawn** (owner, 22 November 2026: deleted in the panel, the
   mark was completely covered by another). Not reproduced in the content script. Two
   causes found by reading, both in the panel's wiring and both unconfirmed: a case change
@@ -72,11 +81,12 @@ An entry here is not a decision to build it. When one is taken up, its design mo
 
 Asked for on 22 November 2026: a menu that closes as soon as a Sitegloss tool is picked
 cannot be marked, so the person wants to paste, choose or drop their own picture onto a
-mark. Being built since 22 November 2026, after the design
-[Images a person adds to a mark](design/mark-images.md) and DEC-058. The owner decided the
-open questions the same day: the word is "image" and the button "Add image…", at most 6 per
-mark with the longest side 2048 px, the side panel first, share links show them, adding
-from the web app comes later.
+mark. Built on 22 November 2026 in the extension and the service (the design
+[Images a person adds to a mark](design/mark-images.md), DEC-058, and the service's DEC-032).
+Still to come: the web app's case page and the shared page do not show added images yet
+(the mark's screenshot first, then the images, in one row and in the large view, as the
+design's section 4 says for both); adding from the web app; GIF and AVIF, which are not
+accepted because their size cannot be read safely before decoding.
 
 ### A key that freezes the page into a picture, to mark what closes
 
