@@ -1572,6 +1572,8 @@ function statusBlock(
 	c: Case,
 	filter: StatusGroup | undefined,
 	actions: Actions,
+	/** The page the list is filtered by: the counts are its marks'. */
+	page?: CasePage,
 ): HTMLElement | null {
 	if (c.marks.length === 0) return null;
 	const n = caseCounts(c);
@@ -1608,7 +1610,9 @@ function statusBlock(
 					"p",
 					{ class: "meta all-done" },
 					h("span", { class: "sign", "aria-hidden": "true" }, "✓"),
-					" All marks are verified or dismissed.",
+					page === undefined
+						? " All marks are verified or dismissed."
+						: ` All marks on ${pageLabel(page)} are verified or dismissed.`,
 				)
 			: null,
 	);
@@ -2028,30 +2032,34 @@ const pageLabel = (page: CasePage) => page.title.trim() || shortUrl(page.url);
 
 /**
  * A page's mark count in the case's list of pages: it sets the list's page
- * filter to that page, and another click sets it back to all pages.
+ * filter to that page, and another click sets it back to all pages. Its name
+ * starts with what it shows and stays; `aria-pressed` says whether it is on.
+ * A page without marks has its count as plain text: nothing to show.
  */
-function pageCountButton(
+function pageCount(
 	c: Case,
 	page: CasePage,
 	marks: number,
 	byPage: PageFilter,
 	actions: Actions,
-): HTMLButtonElement {
+): HTMLElement {
+	const count = [
+		h("span", { class: "page-count" }, String(marks)),
+		h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+	];
+	if (marks === 0) return h("span", { class: "page-count-box" }, ...count);
 	const on = byPage.page?.url === page.url;
-	const choice = { page: pageKey(page.url) };
 	return h(
 		"button",
 		{
 			type: "button",
-			class: "page-count-button",
+			class: "page-count-box page-count-button",
 			"aria-pressed": String(on),
-			"aria-label": on
-				? `Show the marks of all pages again`
-				: `Show the ${marks === 1 ? "mark" : `${marks} marks`} of ${pageLabel(page)}`,
-			onclick: () => actions.filterPage(c.id, on ? undefined : choice),
+			"aria-label": `${marks} mark${marks === 1 ? "" : "s"} on ${pageLabel(page)}: show only these`,
+			onclick: () =>
+				actions.filterPage(c.id, on ? undefined : { page: pageKey(page.url) }),
 		},
-		h("span", { class: "page-count" }, String(marks)),
-		h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+		...count,
 	);
 }
 
@@ -2071,7 +2079,7 @@ function pageChooser(
 	if (pages.length < 2 || c.marks.length === 0) return null;
 	const counts = marksByPage(c);
 	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
-	const front = tabUrl === undefined ? undefined : pageInFront(c, tabUrl);
+	const front = tabUrl ? pageInFront(c, tabUrl) : undefined;
 	const here = byPage.choice === "here";
 	const picked = byPage.choice !== undefined && !here ? byPage.page : undefined;
 	const chip = (
@@ -2113,11 +2121,10 @@ function pageChooser(
 				? shortPath(pg.url, hosts.size > 1)
 				: pg.url;
 			const title = pg.title.trim();
+			// A page without marks would show nothing.
 			return h(
 				"option",
-				{
-					value: pageKey(pg.url),
-				},
+				{ value: pageKey(pg.url), ...(n === 0 ? { disabled: true } : {}) },
 				`${title ? `${title} (${path})` : path}: ${n} mark${n === 1 ? "" : "s"}`,
 			);
 		}),
@@ -2137,18 +2144,17 @@ function pageChooser(
 		front !== undefined || here
 			? chip(
 					"This page",
-					front === undefined
-						? 0
-						: c.marks.filter(
-								(a) => tabUrl !== undefined && onPageInFront(c, a, tabUrl),
-							).length,
+					// Counted as the list of pages counts it, once.
+					front === undefined ? 0 : marksOn(front.url),
 					here,
 					here ? undefined : "here",
 					{
 						"data-page-filter": "here",
 						title: front
 							? `Only the marks of ${pageLabel(front)}, the page in front; it follows the tab`
-							: "The tab in front shows none of this case's pages",
+							: byPage.unread
+								? "Sitegloss cannot read which page the tab in front shows"
+								: "The tab in front shows none of this case's pages",
 					},
 				)
 			: null,
@@ -2189,6 +2195,18 @@ function renderPages(
 	const hosts = new Set(
 		pages.filter((page) => isWebPage(page.url)).map((page) => hostOf(page.url)),
 	);
+	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
+	// the title it was on), in the same row.
+	const at = document.activeElement as HTMLElement | null;
+	const focused =
+		at !== null && p.pages.contains(at)
+			? {
+					page: at.closest<HTMLElement>("li")?.dataset["page"],
+					control: at.classList.contains("page-count-button")
+						? ".page-count-button"
+						: ".page-name",
+				}
+			: undefined;
 	p.pages.replaceChildren(
 		...pages.map((page) => {
 			const marks = marksOn(page.url);
@@ -2227,13 +2245,18 @@ function renderPages(
 						)
 					: h("span", { class: nameClass, title: tooltip }, name),
 				// The count sets the list's page filter; the title opens the page.
-				pageCountButton(p.current, page, marks, byPage, actions),
+				pageCount(p.current, page, marks, byPage, actions),
 				title
 					? h("span", { class: "page-address cut-start" }, address())
 					: null,
 			);
 		}),
 	);
+	if (focused?.page !== undefined)
+		[...p.pages.children]
+			.find((li) => (li as HTMLElement).dataset["page"] === focused.page)
+			?.querySelector<HTMLElement>(focused.control)
+			?.focus();
 }
 
 function renderCase(state: PanelState, actions: Actions): void {
@@ -2449,12 +2472,20 @@ function renderCase(state: PanelState, actions: Actions): void {
 	// The status block: under the marks' heading, where its chips filter the
 	// list (the owner; DEC-023 had it in the header).
 	const front = state.tab?.url ? pageInFront(c, state.tab.url) : undefined;
+	// Keyed on what it shows, not on every change of the case: an open menu
+	// survives a save or a sync.
+	const pageCounts = marksByPage(c);
 	const statusKey = JSON.stringify([
 		filter ?? null,
 		caseCounts(onPage),
 		pageKeyNow,
 		front?.url ?? null,
-		c.updatedAt,
+		byPage.unread ?? false,
+		casePages(c).map((pg) => [
+			pg.url,
+			pg.title,
+			pageCounts.get(pageKey(pg.url)) ?? 0,
+		]),
 	]);
 	if (statusKey !== p.statusKey) {
 		p.statusKey = statusKey;
@@ -2470,7 +2501,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 					: at.id === "marks-page"
 						? "#marks-page"
 						: undefined;
-		const block = statusBlock(onPage, filter, actions);
+		const block = statusBlock(onPage, filter, actions, byPage.page);
 		// Beside the status chips, the page filter: the two combine.
 		const chooser = pageChooser(c, byPage, state.tab?.url, actions);
 		p.status.replaceChildren(
@@ -2614,9 +2645,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 						? h(
 								"p",
 								{ class: "empty", id: "marks-none-on-page" },
-								byPage.page === undefined
-									? "The tab in front shows none of this case's pages. "
-									: "No marks on this page. ",
+								byPage.unread
+									? "Sitegloss cannot read which page the tab in front shows (see the notice about this tab). "
+									: byPage.page === undefined
+										? "The tab in front shows none of this case's pages. "
+										: "No marks on this page. ",
 								h(
 									"button",
 									{

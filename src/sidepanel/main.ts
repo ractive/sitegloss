@@ -92,7 +92,7 @@ import {
 	type PendingShow,
 	tryShow,
 } from "./mark-link.ts";
-import { pageGone } from "./page-filter.ts";
+import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { markAsked } from "./picked.ts";
 import { cssSize, onScreen, type Size, sameSize, windowFor } from "./size.ts";
 import {
@@ -704,6 +704,8 @@ async function refreshTab(): Promise<void> {
 			)
 				s.hint = undefined;
 			s.tab = next;
+			// Under "This page", the tab's move can leave a status filter empty.
+			endEmptyStatus(s);
 			s.overlay = overlay;
 			unblock(s);
 			// Results describe the tab they came from, with that case loaded.
@@ -820,6 +822,18 @@ async function refreshCases(): Promise<void> {
 	if (work.current()) update((s) => (s.cases = cases));
 }
 
+/**
+ * A status filter that the page filter leaves with none of its marks ends,
+ * in state: hidden for a render only, it would come back by itself when the
+ * page changes again.
+ */
+function endEmptyStatus(s: PanelState): void {
+	const f = s.markFilter;
+	const c = s.current;
+	if (f === undefined || c === undefined || f.caseId !== c.id) return;
+	if (!statusLeft(c, s.markPage, s.tab?.url, f.group)) s.markFilter = undefined;
+}
+
 function releaseImages(s: PanelState): void {
 	for (const url of s.images?.urls.values() ?? []) URL.revokeObjectURL(url);
 	s.images = undefined;
@@ -838,8 +852,9 @@ async function refreshCase(): Promise<void> {
 		!opened && state.current?.marks.length === 0 && c.marks.length > 0;
 	update((s) => {
 		s.current = c;
-		// A page filter whose page left the case ends.
-		if (pageGone(c, s.markPage)) s.markPage = undefined;
+		// A page filter ends with its page, with the case's second page, or
+		// once a mark was added (it would not show, as if it was not saved).
+		if (pageFilterEnds(c, s.markPage)) s.markPage = undefined;
 		// What can no longer be told from another mark is let go, and said.
 		const lost = [s.markEdit, s.markDeleteArmed, s.findingDeleteArmed].some(
 			(held) =>
@@ -2067,7 +2082,11 @@ const actions: Actions = {
 
 	filterPage(caseId, choice) {
 		update((s) => {
-			s.markPage = choice === undefined ? undefined : { caseId, choice };
+			s.markPage =
+				choice === undefined || s.current?.id !== caseId
+					? undefined
+					: { caseId, choice, upTo: highestMark(s.current) };
+			endEmptyStatus(s);
 		});
 	},
 

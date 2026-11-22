@@ -1253,14 +1253,21 @@ ul.cases .title {
 	font: 12px / 19px var(--font-mono);
 }
 
-/* The count and its word: one control, which sets the list's page filter. */
-.case-pages .page-count-button {
+/*
+ * The count and its word: one control, which sets the list's page filter
+ * (plain text for a page without marks). Room for three digits, the word
+ * after them: a button is no subgrid.
+ */
+.case-pages .page-count-box {
 	grid-row: 1;
 	grid-column: 3 / 5;
-	/* A button is no subgrid: room for three digits, the word after them. */
 	display: grid;
 	grid-template-columns: 3ch auto;
 	justify-content: start;
+	color: var(--ink-2);
+}
+
+.case-pages .page-count-button {
 	min-height: 0;
 	padding: 0;
 	border: 0;

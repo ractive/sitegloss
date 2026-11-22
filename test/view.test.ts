@@ -10,7 +10,7 @@ import { Window } from "happy-dom";
 import type { Case, Mark } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
-import { pageGone } from "../src/sidepanel/page-filter.ts";
+import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
 import { sampleCase, withOneMark } from "./fixtures.ts";
@@ -1787,7 +1787,7 @@ describe("a case of several pages (DEC-038)", () => {
 
 		// This page: the cart's marks; the status chips count those only.
 		const here = (s: PanelState) => {
-			s.markPage = { caseId: c.id, choice: "here" };
+			s.markPage = { caseId: c.id, choice: "here", upTo: 3 };
 		};
 		render(at(cart, here), actions);
 		expect(shown()).toEqual(["m1", "m2"]);
@@ -1802,6 +1802,11 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(el("marks-none-on-page").textContent).toContain(
 			"The tab in front shows none of this case's pages.",
 		);
+		// An address the panel may not read is not "none of the case's".
+		render(at("", here), actions);
+		expect(el("marks-none-on-page").textContent).toContain(
+			"Sitegloss cannot read which page the tab in front shows",
+		);
 
 		// Combined with a status chip.
 		render(
@@ -1812,20 +1817,43 @@ describe("a case of several pages (DEC-038)", () => {
 			actions,
 		);
 		expect(shown()).toEqual(["m2"]);
+		// A page set with none of the status's marks ends the status filter
+		// (in state, main.ts), so it cannot come back by itself.
+		const hereChosen = { caseId: c.id, choice: "here" as const, upTo: 3 };
+		expect(statusLeft(c, hereChosen, cart, "toVerify")).toBe(true);
+		expect(statusLeft(c, hereChosen, pay, "toVerify")).toBe(false);
 
 		// The list of pages: a count sets the filter to its page, said so.
 		render(at(cart), actions);
 		const count = el("case-pages").querySelector(
 			'[data-page="https://shop.example/cart"] .page-count-button',
 		) as unknown as HTMLButtonElement;
+		// Its name starts with what it shows, and stays; aria-pressed says on.
 		expect(count.getAttribute("aria-label")).toBe(
-			"Show the 2 marks of Your cart",
+			"2 marks on Your cart: show only these",
 		);
+		expect(count.getAttribute("aria-pressed")).toBe("false");
+		count.focus();
 		count.click();
 		expect(chosen.at(-1)).toEqual({ page: "/cart" });
+		// Drawn anew pressed, the focus still on it.
+		render(
+			at(cart, (s) => {
+				s.markPage = { caseId: c.id, choice: { page: "/cart" }, upTo: 3 };
+			}),
+			actions,
+		);
+		const pressed = el("case-pages").querySelector(
+			'[data-page="https://shop.example/cart"] .page-count-button',
+		);
+		expect(pressed?.getAttribute("aria-pressed")).toBe("true");
+		expect(pressed?.getAttribute("aria-label")).toBe(
+			"2 marks on Your cart: show only these",
+		);
+		expect(window.document.activeElement === (pressed as unknown)).toBe(true);
 		// One page, from the list or the menu: its row says it is the filter.
 		const payPage = (s: PanelState) => {
-			s.markPage = { caseId: c.id, choice: { page: "/checkout/pay" } };
+			s.markPage = { caseId: c.id, choice: { page: "/checkout/pay" }, upTo: 3 };
 		};
 		render(at(cart, payPage), actions);
 		expect(shown()).toEqual(["m3"]);
@@ -1844,16 +1872,88 @@ describe("a case of several pages (DEC-038)", () => {
 			"Your cart (/cart): 2 marks",
 			"Payment (/checkout/pay): 1 mark",
 		]);
-		// Another case's filter, or a page that left the case, is none.
+		// The menu sets it.
+		const menu = el<HTMLSelectElement>("marks-page");
+		menu.value = "/cart";
+		menu.dispatchEvent(new window.Event("change") as unknown as Event);
+		expect(chosen.at(-1)).toEqual({ page: "/cart" });
+		// A save or a sync that changes nothing it shows keeps the menu (an
+		// open one stays open).
 		render(
 			at(cart, (s) => {
-				s.markPage = { caseId: c.id, choice: { page: "/gone" } };
+				payPage(s);
+				if (s.current)
+					s.current = { ...s.current, updatedAt: "2026-11-23T10:00:00Z" };
 			}),
 			actions,
 		);
-		expect(shown()).toEqual(["m1", "m2", "m3"]);
-		expect(pageGone(c, { caseId: c.id, choice: { page: "/gone" } })).toBe(true);
-		expect(pageGone(c, { caseId: c.id, choice: "here" })).toBe(false);
+		expect(el<HTMLSelectElement>("marks-page")).toBe(menu);
+		// All of one page's marks settled: said of that page, not the case.
+		const settled: Case = {
+			...c,
+			marks: c.marks.map(
+				(a): Mark =>
+					a.number === 3
+						? {
+								...a,
+								resolution: {
+									kind: "fixed",
+									at: "2026-11-20T10:00:00Z",
+									verified: { at: "2026-11-21T10:00:00Z" },
+								},
+							}
+						: a,
+			),
+		};
+		render(
+			caseState(settled, (s) => {
+				s.tab = { id: 1, url: cart, title: "", size: undefined };
+				payPage(s);
+			}),
+			actions,
+		);
+		expect(el("case-status").textContent).toContain(
+			"All marks on Payment are verified or dismissed.",
+		);
+
+		// Another case's filter, a page that left the case, a case of one page
+		// left, a mark added since: none.
+		const none = (markPage: PanelState["markPage"], of: Case = c) => {
+			render(
+				caseState(of, (s) => {
+					s.tab = { id: 1, url: cart, title: "", size: undefined };
+					s.markPage = markPage;
+				}),
+				actions,
+			);
+			return shown();
+		};
+		expect(
+			none({ caseId: "c_other", choice: { page: "/checkout/pay" }, upTo: 3 }),
+		).toEqual(["m1", "m2", "m3"]);
+		expect(none({ caseId: c.id, choice: { page: "/gone" }, upTo: 3 })).toEqual([
+			"m1",
+			"m2",
+			"m3",
+		]);
+		expect(
+			none({ caseId: c.id, choice: { page: "/checkout/pay" }, upTo: 2 }),
+		).toEqual(["m1", "m2", "m3"]);
+		const onePage: Case = {
+			...c,
+			pages: [c.pages?.[0] ?? c.page],
+			shots: c.shots.slice(0, 1),
+			marks: c.marks.filter((a) => a.shot === "s1"),
+		};
+		expect(
+			pageFilterEnds(onePage, { caseId: c.id, choice: "here", upTo: 3 }),
+		).toBe(true);
+		expect(
+			pageFilterEnds(c, { caseId: c.id, choice: { page: "/gone" }, upTo: 3 }),
+		).toBe(true);
+		expect(pageFilterEnds(c, { caseId: c.id, choice: "here", upTo: 3 })).toBe(
+			false,
+		);
 	});
 
 	test("the size offered is the one the marks of the page in front were made at", () => {
