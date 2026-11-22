@@ -5,6 +5,7 @@
  * unlike the service worker).
  */
 
+import { describe } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,7 @@ import {
 	build,
 } from "../../scripts/build.ts";
 import { Browser, findBrowser, type Page } from "./browser.ts";
+import { E2E_FULL } from "./mode.ts";
 import { StepTimeout, step } from "./trace.ts";
 
 // A timed-out test also loses the browser, and with it the rest of its file:
@@ -23,10 +25,39 @@ import { StepTimeout, step } from "./trace.ts";
 
 export const browserBinary = findBrowser();
 
+/**
+ * The test build's guards against a click that comes too soon (a double
+ * click's second, a yes the moment a question shows, a notification's
+ * button) are 100 ms there (DEC-053): a test waits this long to be past one.
+ */
+export const PAST_GUARD_MS = 150;
+
+/**
+ * The step of the panel's searches again a test can set for itself, in the
+ * panel's page: `globalThis.siteglossTestWaits = { searchAgainMs }`
+ * (src/lib/test-waits.ts). The searches run at 0, 1 and 3 steps, so four
+ * steps are past the last one.
+ */
+export const SEARCH_AGAIN_MS = 150;
+
 if (browserBinary === undefined && process.env["CI"])
 	throw new Error(
 		"Chrome for Testing is needed for the end-to-end tests in CI",
 	);
+
+/**
+ * A describe of the full end-to-end set only (mode.ts); like every one,
+ * skipped without a browser.
+ */
+export const inFullSet = describe.skipIf(
+	browserBinary === undefined || !E2E_FULL,
+);
+
+/**
+ * A describe that holds smoke tests: it runs in both sets, and its other
+ * tests are `fullTest`s.
+ */
+export const inBothSets = describe.skipIf(browserBinary === undefined);
 
 /**
  * The harness and tab of each page `open` opened: steps that act for the

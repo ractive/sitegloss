@@ -6,14 +6,19 @@
  * of the page in front (made on another host, the same path) is drawn.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
 import { sampleCase } from "../fixtures.ts";
 import { answerInPanel, connectAi, mcpClient, openSidePanel } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	startHarness,
+} from "./harness.ts";
 import { parkControl, putCases, shadow } from "./steps.ts";
 import { step } from "./trace.ts";
 
@@ -55,7 +60,7 @@ const noteCase = (id: string, title: string, url: string): Case => ({
 const QUESTION = `document.querySelector("[data-question]")`;
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
 
-describe.skipIf(browserBinary === undefined)("open_case", () => {
+inFullSet("open_case", () => {
 	let h: Harness;
 	let panel: Page;
 	let page: Page;

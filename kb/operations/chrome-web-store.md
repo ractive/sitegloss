@@ -42,10 +42,14 @@ timestamp: 2026-11-05T08:00:00+01:00
 - **Every CI run** (each push to a PR or to main) attaches two artifacts to its run
   page: `sitegloss-unpacked` (the zip for "Load unpacked", with the fixed key) and
   `sitegloss-store` (the store package, without it).
-- **A release:** bump `version` in `package.json` in a PR, merge it, then
+- **A release:** bump `version` in `package.json` in a PR, merge it, run
+  `bun run test:server` against the server's `bun scripts/serve-local.ts 3200 --demo`
+  (the tests against a real server, which no workflow runs), then
   `git tag vX.Y.Z <merge commit> && git push origin vX.Y.Z`. The release workflow
-  checks the tag, runs `verify`, and creates the GitHub release with both zips. It stops
-  if the tag has moved off the commit it built.
+  first runs the full end-to-end sets, Chromium's and Firefox's (`e2e.yml`, DEC-053):
+  if one fails, nothing is built, released or published. Then it checks the tag, runs
+  `verify`, and creates the GitHub release with both zips. It stops if the tag has
+  moved off the commit it built.
 - **Attestations:** the release workflow attests both zips before it creates the
   release (build provenance, signed through Sigstore): that this workflow built a file
   with that digest from that commit. Check a downloaded zip with

@@ -8,7 +8,6 @@ import {
 	cutText,
 	type Finding,
 	findingsTextOf,
-	isOfferedOn,
 	isOwnFinding,
 	linkProblem,
 	MAX_COMMENT,
@@ -25,7 +24,6 @@ import {
 	newId,
 	nextNumbers,
 	plainUrl,
-	samePage,
 	shapeOnBox,
 	textLength,
 	validateCase,
@@ -79,17 +77,6 @@ function withMarks(): Case {
 }
 
 describe("validateCase", () => {
-	test("accepts a valid case unchanged", () => {
-		const c = withMarks();
-		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
-	});
-
-	test("refuses a shot id used twice", () => {
-		const c = withMarks();
-		c.shots = [c.shots[0], c.shots[0]] as Case["shots"];
-		expect(() => validateCase(c)).toThrow("case.shots[1].id: is used twice");
-	});
-
 	test("a file of another format says what it is and what is read", () => {
 		const c = { ...withMarks(), format: "other/9" };
 		expect(() => validateCase(c)).toThrow(
@@ -158,7 +145,7 @@ describe("validateCase limits", () => {
 		[
 			"a shot id used twice",
 			{ shots: [shotOf("s1"), shotOf("s1")] },
-			"used twice",
+			"case.shots[1].id: is used twice",
 		],
 		[
 			"a language tag that is no tag",
@@ -586,53 +573,6 @@ describe("a shape on another box", () => {
 	});
 });
 
-describe("a case for a page", () => {
-	const on = (url: string): Case => {
-		const c = sampleCase();
-		return { ...c, page: { ...c.page, url } };
-	};
-
-	// Offered under "This page" only on the same page of the same site (DEC-050).
-	test("a page in another environment is not offered", () => {
-		expect(isOfferedOn(on("https://a.ch/kk"), "http://localhost:3000/kk")).toBe(
-			false,
-		);
-		expect(isOfferedOn(on("https://a.ch/kk"), "https://a.ch/kk/?x=1")).toBe(
-			true,
-		);
-	});
-
-	test("the same site's home page is that page", () => {
-		expect(isOfferedOn(on("https://a.ch/"), "https://a.ch/")).toBe(true);
-	});
-
-	test("another site's home page is not", () => {
-		expect(isOfferedOn(on("https://a.ch/"), "https://b.ch/")).toBe(false);
-	});
-});
-
-describe("the same page", () => {
-	test("whatever the origin or a last slash", () => {
-		expect(
-			samePage("https://www.example.com/kk/", "http://localhost:3000/kk"),
-		).toBe(true);
-		expect(samePage("https://a.ch/kk", "https://a.ch/hypo")).toBe(false);
-		expect(samePage("not an address", "https://a.ch/")).toBe(false);
-	});
-
-	test("a hash route is another page, a plain anchor is not", () => {
-		expect(samePage("https://a.ch/#/orders", "https://b.ch/#/orders")).toBe(
-			true,
-		);
-		expect(samePage("https://a.ch/#/orders", "https://a.ch/#/settings")).toBe(
-			false,
-		);
-		expect(samePage("https://a.ch/kk#top", "https://a.ch/kk#bottom")).toBe(
-			true,
-		);
-	});
-});
-
 describe("settling, editing and deleting a mark", () => {
 	const NOW = "2026-11-08T16:00:00.000Z";
 	/** Marks 1 and 2 on s1, mark 3 alone on s2. */
@@ -898,8 +838,6 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		).toThrow(
 			"Mark 1 is open already: it was reopened meanwhile. Your note is not saved; add it to the comment, or Cancel.",
 		);
-		// An AI app's call stays idempotent.
-		expect(withReopen(c, "m1", { note: "x" }, T1)).toBe(c);
 	});
 
 	test("the note of the fix a reopen ended is kept to the reopen note's limit", () => {
@@ -1079,7 +1017,7 @@ describe("a case's title (DEC-026)", () => {
 		);
 	});
 
-	test("a title of invisible characters only is refused (review of PR 57)", () => {
+	test("a title of invisible characters only is refused", () => {
 		for (const title of [
 			"\u200b",
 			"\u200b \u00a0\u2060",
@@ -1171,12 +1109,6 @@ describe("a case's link (DEC-028)", () => {
 		expect(withLink(linked, TICKET, "2026-11-16T10:00:00.000Z")).toBe(linked);
 	});
 
-	test("stored: none is fine, a link is kept", () => {
-		expect("link" in validateCase(sampleCase())).toBe(false);
-		const linked = withLink(sampleCase(), TICKET, NOW);
-		expect(validateCase(JSON.parse(JSON.stringify(linked))).link).toBe(TICKET);
-	});
-
 	test("a user name and password in the address are not kept; the query is", () => {
 		expect(
 			cleanLink("https://user:token@tickets.example.com/t/1?tab=2#c"),
@@ -1253,7 +1185,7 @@ describe("a mark's ends (DEC-047)", () => {
 	});
 });
 
-describe("the thread's rules (review of DEC-046)", () => {
+describe("the thread's rules (DEC-046)", () => {
 	const base = (): Case => {
 		const c = withOneMark(sampleCase());
 		return {

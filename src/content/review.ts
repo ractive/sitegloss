@@ -82,10 +82,17 @@ const askPanel: AskPanel = async (request) => {
 	}
 };
 
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /** How long "Really delete?" waits for its second click. */
 export const DELETE_ARMED_MS = 4000;
 /** A double click is no second thought. */
-const DELETE_CLICK_GAP_MS = 400;
+const DELETE_CLICK_GAP_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 100
+		: 400;
 
 /** How long one tick looks again for the marks a route did not have. */
 const STALE_BUDGET_MS = 25;
@@ -184,10 +191,17 @@ export class Reviewer {
 	/** The mark whose popover is open (DEC-027). */
 	#open: OpenMark | undefined;
 	readonly #ask: AskPanel;
+	/** How often the page is looked at without a scroll: 500 ms, unless a unit test gives its own. */
+	readonly #tickMs: number;
 
-	constructor(overlay: Overlay, ask: AskPanel = askPanel) {
+	constructor(
+		overlay: Overlay,
+		ask: AskPanel = askPanel,
+		options: { tickMs?: number } = {},
+	) {
 		this.overlay = overlay;
 		this.#ask = ask;
+		this.#tickMs = options.tickMs ?? 500;
 		overlay.onPick = (number) => this.pick(number);
 		const doc = overlay.doc;
 		// Capture phase: scrolling inside a container moves elements too.
@@ -287,7 +301,7 @@ export class Reviewer {
 			// The marks the last route did not have, a few a tick.
 			else this.#lookAgain(STALE_BUDGET_MS);
 			this.#schedule();
-		}, 500);
+		}, this.#tickMs);
 		this.#renderBar();
 		this.#render();
 		clearTextCache();

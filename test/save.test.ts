@@ -313,7 +313,7 @@ describe("saveCase", () => {
 		expect(store.images.has("c_1/shots/s1.webp")).toBe(true);
 	});
 
-	test("a mark is stored with a mark's fields only: no resolution, findings or anything else the draft carries (CR-07)", async () => {
+	test("a mark is stored with a mark's fields only: no resolution, findings or anything else the draft carries", async () => {
 		const store = new MemoryStore();
 		await captured(store, "c_1", "p_a");
 		const forged = {
@@ -354,7 +354,7 @@ describe("saveCase", () => {
 		);
 	});
 
-	test("a save from the page is the user's: an AI author in its draft does not count (CR-07)", async () => {
+	test("a save from the page is the user's: an AI author in its draft does not count", async () => {
 		const store = new MemoryStore();
 		await putCase(store, sampleCase("c_1"));
 		await captured(store, "c_1", "p_a");
@@ -501,7 +501,7 @@ describe("saveCase", () => {
 		expect(validateCase(after)).toEqual(after);
 	});
 
-	test("a save from the page cannot choose a number far above the case's next (review of PR 45)", async () => {
+	test("a save from the page cannot choose a number far above the case's next", async () => {
 		const store = new MemoryStore();
 		await newCase(store); // marks 1 and 2
 		for (const n of [99_999, 2 + 1 + MAX_NUMBER_GAP + 1]) {

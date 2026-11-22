@@ -243,7 +243,7 @@ describe("what a case keeps of a look", () => {
 	});
 });
 
-describe("the colour behind an element: only what holds (review of #26)", () => {
+describe("the colour behind an element: only what holds", () => {
 	test("a colour it cannot read ends the walk without a depth", () => {
 		// happy-dom keeps hsl() as written, as a browser keeps oklch().
 		doc.body.innerHTML = `<div style="background-color: hsl(0 0% 50%)"><a id="a">x</a></div>`;
@@ -278,7 +278,7 @@ describe("the colour behind an element: only what holds (review of #26)", () => 
 	});
 });
 
-describe("the look line never shows a ratio known not to hold (review of #26)", () => {
+describe("the look line never shows a ratio known not to hold", () => {
 	const look = (
 		styles: Record<string, string>,
 		backdrop?: ElementDetails["backdrop"],
@@ -360,7 +360,7 @@ describe("the look line never shows a ratio known not to hold (review of #26)", 
 	});
 });
 
-describe("siblings in a shadow root, and at the screenshot (review of #26)", () => {
+describe("siblings in a shadow root, and at the screenshot", () => {
 	test("an element at the top of an open shadow root has the root's other children as siblings", () => {
 		doc.body.innerHTML = `<div id="host"><span>slotted</span></div>`;
 		const host = doc.getElementById("host") as Element;

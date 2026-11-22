@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build, FIREFOX_ID } from "../../../scripts/build.ts";
 import { DB_VERSION } from "../../../src/lib/store.ts";
+import { E2E_FULL } from "../mode.ts";
 import { FfRdp, findFfRdp, findFirefox, freePort, takeLock } from "./ffrdp.ts";
 
 export const ffRdpBinary = findFfRdp();
@@ -25,7 +26,8 @@ export const firefoxBinary = findFirefox();
 export const firefoxReady =
 	ffRdpBinary !== undefined && firefoxBinary !== undefined;
 
-if (!firefoxReady && process.env["CI"])
+// Required in CI where the full set runs (mode.ts); the smoke set has none.
+if (!firefoxReady && process.env["CI"] && E2E_FULL)
 	throw new Error(
 		`ff-rdp and Firefox are needed for the Firefox end-to-end tests in CI (ff-rdp: ${ffRdpBinary ?? "not found, set FF_RDP_PATH"}; Firefox: ${firefoxBinary ?? "not found, set FIREFOX_PATH"})`,
 	);
@@ -82,6 +84,10 @@ export function userJs(downloads: string): string {
 		"browser.sessionstore.resume_from_crash": false,
 		"browser.shell.checkDefaultBrowser": false,
 		"datareporting.policy.dataSubmissionEnabled": false,
+		// An idle event page stops after 3 s, not 30 s (Firefox's
+		// ext-backgroundPage.js reads it, at least 100 ms): the test build's
+		// keepalive (FIREFOX_KEEPALIVE_MS) is shorter than that.
+		"extensions.background.idle.timeout": 3000,
 		"toolkit.telemetry.reportingpolicy.firstRun": false,
 	};
 	return `${Object.entries(prefs)

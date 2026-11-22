@@ -170,7 +170,7 @@ describe("keptQuery on hostile input", () => {
 	});
 });
 
-describe("a query inside a value (amendment 5)", () => {
+describe("a query inside a value", () => {
 	test("a secret in a return address's own query drops the piece", () => {
 		for (const piece of [
 			"next=%2Freset%3Ftoken%3Dabc123def",

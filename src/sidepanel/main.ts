@@ -66,10 +66,12 @@ import {
 } from "../lib/messages.ts";
 import { IdbStore } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
+import { testWait } from "../lib/test-waits.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
+import { DELETE_ARMED_MS, deleteClick } from "./delete.ts";
 import { byId, isWebPage, sitePattern } from "./dom.ts";
 import {
 	askForDownloads,
@@ -117,10 +119,10 @@ const allSites = byId<HTMLInputElement>("all-sites");
 
 const ALL_SITES = { origins: ["<all_urls>"] };
 
-/** After a first click on Delete: the second click of a double-click is no decision. */
-const DELETE_CLICK_GAP_MS = 500;
-/** After a first click on Delete: a click much later is no decision either. */
-const DELETE_ARMED_MS = 4000;
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+/** The test build's guards and delays are short (DEC-053): its clicks come fast. */
+const TEST_BUILD =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD;
 
 /**
  * Chrome's prompt to let Sitegloss run on the site of `url` from now on. It
@@ -453,16 +455,19 @@ async function readMatches(
 	hint({ kind: "found" });
 	void showPending();
 	if (!again) return;
-	setTimeout(() => {
-		// Still that page of that case on that tab: what it has now.
-		if (
-			state.loaded?.tabId === tabId &&
-			state.loaded.caseId === c.id &&
-			state.loaded.url === result.url &&
-			state.current?.id === c.id
-		)
-			void readMatches(state.current, tabId, hint, false);
-	}, ROUTE_SETTLE_MS);
+	setTimeout(
+		() => {
+			// Still that page of that case on that tab: what it has now.
+			if (
+				state.loaded?.tabId === tabId &&
+				state.loaded.caseId === c.id &&
+				state.loaded.url === result.url &&
+				state.current?.id === c.id
+			)
+				void readMatches(state.current, tabId, hint, false);
+		},
+		testWait("routeSettleMs", ROUTE_SETTLE_MS),
+	);
 }
 
 /**
@@ -487,9 +492,12 @@ async function readLoaded(c: Case, tabId: number): Promise<void> {
 	void showPending();
 }
 
-/** A page busy with a mark is asked again this often, this many times (20 s). */
-const BUSY_WAIT_MS = 500;
-const BUSY_TRIES = 40;
+/**
+ * A page busy with a mark is asked again this often (more often in the test
+ * build), for 20 s in every build.
+ */
+const BUSY_WAIT_MS = TEST_BUILD ? 50 : 500;
+const BUSY_TRIES = Math.ceil(20_000 / BUSY_WAIT_MS);
 
 /**
  * Loads the case onto a page that has just loaded. What a script draws after
@@ -506,7 +514,8 @@ async function loadOnLoaded(
 	const work = startLoad(target);
 	setDrawing(target);
 	try {
-		const waits = [0, 1000, 2000];
+		const step = testWait("searchAgainMs", 1000);
+		const waits = [0, step, 2 * step];
 		for (const [i, wait] of waits.entries()) {
 			let now = c;
 			if (wait > 0) {
@@ -927,7 +936,7 @@ async function endToolbars(
 				chrome.tabs
 					.sendMessage(tabId, { type: "overlay:end", caseId, ...how })
 					.catch(() => undefined),
-				sleep(END_TIMEOUT_MS).then(() => {
+				sleep(testWait("endMs", END_TIMEOUT_MS)).then(() => {
 					timedOut = true;
 					return undefined;
 				}),
@@ -1159,7 +1168,7 @@ async function endDeleted(
 				chrome.tabs
 					.sendMessage(id, { type: "overlay:end", caseId, discard: true })
 					.catch(() => undefined),
-				sleep(END_TIMEOUT_MS),
+				sleep(testWait("endMs", END_TIMEOUT_MS)),
 			]);
 		}),
 	);
@@ -1460,7 +1469,9 @@ async function startNewCase(): Promise<void> {
 		try {
 			page = await Promise.race([
 				askPage(tabId),
-				sleep(PAGE_ANSWER_MS).then(() => "late" as const),
+				sleep(testWait("pageAnswerMs", PAGE_ANSWER_MS)).then(
+					() => "late" as const,
+				),
 			]);
 		} catch (error) {
 			update((s) => (s.hint = describeError(error)));
@@ -1963,9 +1974,9 @@ const actions: Actions = {
 	},
 
 	deleteCase(c) {
-		const armedAt = state.deleteArmedAt;
-		if (armedAt === undefined) {
-			const now = Date.now();
+		const now = Date.now();
+		const click = deleteClick(state.deleteArmedAt, now);
+		if (click === "arm") {
 			update((s) => (s.deleteArmedAt = now));
 			setTimeout(() => {
 				update((s) => {
@@ -1974,7 +1985,7 @@ const actions: Actions = {
 			}, DELETE_ARMED_MS);
 			return;
 		}
-		if (Date.now() - armedAt < DELETE_CLICK_GAP_MS) return;
+		if (click === "nothing") return;
 		// The team's case, and not this user's to delete there (DEC-039).
 		if (!caseSync(state.cloud, c.id).mayDelete) return;
 		const hint = caseHintWriter();
@@ -2064,8 +2075,12 @@ const actions: Actions = {
 
 	deleteMark(c, a) {
 		const armed = state.markDeleteArmed;
-		if (armed?.markId !== a.id) {
-			const at = Date.now();
+		const at = Date.now();
+		const click = deleteClick(
+			armed?.markId === a.id ? armed.at : undefined,
+			at,
+		);
+		if (click === "arm") {
 			update((s) => {
 				s.markEdit = undefined;
 				s.markDeleteArmed = { markId: a.id, mark: markKey(c, a), at };
@@ -2078,8 +2093,7 @@ const actions: Actions = {
 			return;
 		}
 		// A double click is no second thought, nor a second delete.
-		if (Date.now() - armed.at < DELETE_CLICK_GAP_MS) return;
-		if (deleting.has(a.id)) return;
+		if (click === "nothing" || deleting.has(a.id)) return;
 		deleting.add(a.id);
 		const now = new Date().toISOString();
 		void changeMark(c, a, (current, id) =>
@@ -2089,8 +2103,14 @@ const actions: Actions = {
 
 	deleteFinding(c, a, findingId) {
 		const armed = state.findingDeleteArmed;
-		if (armed?.markId !== a.id || armed.findingId !== findingId) {
-			const at = Date.now();
+		const at = Date.now();
+		const click = deleteClick(
+			armed?.markId === a.id && armed.findingId === findingId
+				? armed.at
+				: undefined,
+			at,
+		);
+		if (click === "arm") {
 			update(
 				(s) =>
 					(s.findingDeleteArmed = {
@@ -2108,7 +2128,7 @@ const actions: Actions = {
 			return;
 		}
 		// A double click is no second thought, nor a second delete.
-		if (Date.now() - armed.at < DELETE_CLICK_GAP_MS) return;
+		if (click === "nothing") return;
 		// A finding's id is unique on its mark only.
 		const key = `${a.id} ${findingId}`;
 		if (deleting.has(key)) return;

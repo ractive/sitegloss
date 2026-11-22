@@ -4,12 +4,24 @@ import { join } from "node:path";
 import { type Case, newId, type PageInfo } from "../../src/lib/case.ts";
 import type { OverlayState } from "../../src/lib/messages.ts";
 import { DB_VERSION } from "../../src/lib/store.ts";
+import type { TestWait } from "../../src/lib/test-waits.ts";
 import { newCase } from "../../src/sidepanel/fresh.ts";
 import type { Page } from "./browser.ts";
 import { type Harness, opened } from "./harness.ts";
 import { step } from "./trace.ts";
 
 export const HOST = `document.getElementById("sitegloss-root")`;
+
+/**
+ * Shorten some of the extension's waits for this test, in the context `page`
+ * is (the panel's page, or the worker): src/lib/test-waits.ts. Until that
+ * page is loaded again.
+ */
+export const testWaits = (
+	page: Page,
+	waits: Partial<Record<TestWait, number>>,
+): Promise<unknown> =>
+	page.eval(`globalThis.siteglossTestWaits = ${JSON.stringify(waits)}`);
 
 /** An element inside Sitegloss's shadow root. */
 export const shadow = (selector: string) =>

@@ -218,18 +218,6 @@ export async function clickNotification(
 	await w.eval(`siteglossNotificationButton(${JSON.stringify(id)}, ${index})`);
 }
 
-/**
- * Closing a notification, or a click on its body: Don't allow. The worker's
- * own handler, as for `clickNotification`.
- */
-export async function dismissNotification(
-	h: Harness,
-	id: string,
-): Promise<void> {
-	const w = await worker(h);
-	await w.eval(`siteglossNotificationDismissed(${JSON.stringify(id)})`);
-}
-
 /** Answer the panel's oldest question, once its Allow (or Always allow) counts. */
 export async function answerInPanel(
 	panel: Page,

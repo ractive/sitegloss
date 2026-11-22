@@ -63,6 +63,8 @@ export class FillQuestion {
 	readonly #holdMs: number;
 	readonly #askMs: number;
 	readonly #problemMs: number;
+	/** How long `takeCode` waits for a code; the library's own wait unless set. */
+	readonly #codeWaitMs: number | undefined;
 	#question: Question | undefined;
 	/**
 	 * What the panel says, and the tab it is about: a code that comes for a
@@ -79,12 +81,18 @@ export class FillQuestion {
 
 	constructor(
 		host: FillQuestionHost,
-		options: { holdMs?: number; askMs?: number; problemMs?: number } = {},
+		options: {
+			holdMs?: number;
+			askMs?: number;
+			problemMs?: number;
+			codeWaitMs?: number;
+		} = {},
 	) {
 		this.#host = host;
 		this.#holdMs = options.holdMs ?? FILL_HOLD_MS;
 		this.#askMs = options.askMs ?? FILL_ASK_MS;
 		this.#problemMs = options.problemMs ?? FILL_PROBLEM_MS;
+		this.#codeWaitMs = options.codeWaitMs;
 	}
 
 	/** The question that waits, for the panel. */
@@ -194,7 +202,10 @@ export class FillQuestion {
 		}
 		let code: string | undefined;
 		try {
-			code = await takeCode(host.codes(), signal, { now: host.now() });
+			code = await takeCode(host.codes(), signal, {
+				now: host.now(),
+				...(this.#codeWaitMs === undefined ? {} : { waitMs: this.#codeWaitMs }),
+			});
 		} finally {
 			this.#fetching.splice(this.#fetching.indexOf(tabId), 1);
 		}

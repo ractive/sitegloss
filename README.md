@@ -433,9 +433,19 @@ Permission for signing in: `identity` (no install warning).
 ## Development
 
 ```sh
-bun run verify     # Biome, type check, tests
-bun run fix        # format and apply safe lint fixes
+bun run verify        # Biome, type check, unit tests, the end-to-end smoke set
+bun run fix           # format and apply safe lint fixes
+bun run test:e2e      # every Chromium end-to-end test
+bun run test:firefox  # the Firefox end-to-end tests
+bun run test:server   # the tests against a real sitegloss.dev server
 ```
+
+`verify` runs before every commit and in CI on every pull request and on main; its
+end-to-end part is a smoke set of about a dozen tests, each crossing a boundary only a
+browser has. The full Chromium and Firefox sets run every night (when main has moved),
+on a release tag before anything is built, and by hand (Actions, "End-to-end tests").
+So a break that only a browser shows is found the next night or at the release, not
+before the commit. `SITEGLOSS_E2E=full` is the switch (`test/e2e/mode.ts`).
 
 `bun scripts/api-types.ts` writes the types of the sitegloss.dev API
 (`src/lib/cloud/api.gen.ts`) from the copy of its OpenAPI document in
@@ -450,11 +460,13 @@ Three tests run only against a real sitegloss.dev server, named in `SITEGLOSS_SE
 `test/e2e/firefox/cloud.test.ts` (in Firefox; the server has to allow Firefox's
 redirect address, in its `EXTENSION_REDIRECT_URIS`). In both browsers "Sign in" opens
 the browser's real sign-in window, and the test signs the demo user in there. Without
-the variable they are skipped.
+the variable they are skipped. `bun run test:server` runs the three, before every
+release.
 
 The end-to-end tests load the extension into Chrome for Testing or Chromium
 (`CHROME_PATH`, or Playwright's download in its usual cache). Branded Chrome ignores
 `--load-extension`, so without one of them the tests are skipped locally; CI runs them.
+The Firefox ones need Firefox and `ff-rdp` (`FIREFOX_PATH`, `FF_RDP_PATH`).
 
 ### Building the Firefox package from source
 

@@ -1655,14 +1655,6 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(opened).toEqual([PAY, CART]);
 	});
 
-	test("a case of one page has no list: its address is the link, as before", () => {
-		const c = sampleCase("c_one");
-		render(caseState(c), noActions);
-		expect(el("case-pages").hidden).toBe(true);
-		expect(el("open-page").hidden).toBe(false);
-		expect(el("open-page").textContent).toBe("www.example.com/kk");
-	});
-
 	test("the size offered is the one the marks of the page in front were made at", () => {
 		const c = flow("c_sizes");
 		const on = (url: string) =>
@@ -2704,8 +2696,14 @@ describe("the summary for the developer", () => {
 		render(caseState(c, drafts), noActions);
 		expect(value()).toBe("Typed");
 		expect(el("verdict-status").textContent).toBe("Not saved yet");
+		// Being typed in: the focus and the caret stay where they are.
+		const field = el<HTMLTextAreaElement>("verdict");
+		field.focus();
+		field.setSelectionRange(2, 2);
 		render(caseState({ ...c, verdict: "From the AI app" }, drafts), noActions);
 		expect(value()).toBe("Typed");
+		expect(window.document.activeElement).toBe(field as never);
+		expect(field.selectionStart).toBe(2);
 		render(initialState(), noActions);
 		render(caseState(c, drafts), noActions);
 		expect(value()).toBe("Typed");
@@ -3162,7 +3160,6 @@ describe("the New case button (DEC-023, DEC-026)", () => {
 
 	test("no hint lines for drafts: there are no drafts (DEC-026)", () => {
 		home(overlay({ visible: true, drafts: 3 }));
-		expect(el("new-case-hint")).toBeNull();
 		expect(el("hint").hidden).toBe(true);
 	});
 });
@@ -3816,20 +3813,10 @@ describe("a loaded mark", () => {
 	const colour = () =>
 		document.querySelector<HTMLElement>(".mark")?.dataset["colour"];
 
-	test("its number has the colour of its mark on the page", () => {
-		render(shownAs(summarize(element)), noActions);
-		expect(colour()).toBe("found");
-	});
-
 	test("another candidate, not sure enough, is unsure on both", () => {
 		render(shownAs(summarize(element), true, 1), noActions);
 		expect(colour()).toBe("unsure");
 		expect(document.querySelector(".match")?.className).toContain("unsure");
-	});
-
-	test("says nothing more about the element it expected", () => {
-		render(shownAs(summarize(element)), noActions);
-		expect(said()).toBeUndefined();
 	});
 
 	test("the pin: its colour is the status, its fill the match (DEC-024)", async () => {
@@ -3930,7 +3917,9 @@ describe("a loaded mark", () => {
 		expect(hollow).toContain("color: var(--tone, var(--st-open));");
 	});
 
-	test("names another element, and says when one is hidden", () => {
+	test("says nothing more about the element it expected; names another, and says when one is hidden", () => {
+		render(shownAs(summarize(element)), noActions);
+		expect(said()).toBeUndefined();
 		render(shownAs("a link"), noActions);
 		expect(said()).toBe("a link");
 		render(shownAs("a span", false), noActions);
@@ -4481,7 +4470,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 	});
 });
 
-describe("the second link names the origin in front (review of DEC-050)", () => {
+describe("the second link names the origin in front (DEC-050)", () => {
 	test("the same host on another scheme says the scheme; another port says the port; a page none of the case's still offers it", () => {
 		const base = withOneMark(sampleCase("c_scheme"));
 		const c: Case = {

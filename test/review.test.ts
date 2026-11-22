@@ -73,6 +73,18 @@ function stubOverlay(document: Document) {
 	};
 }
 
+/** How often the reviewer looks at the page by itself, here. */
+const TICK_MS = 50;
+
+/** Until `ok`, a second at most: a tick may fire late on a busy machine. */
+async function until(ok: () => boolean): Promise<void> {
+	const end = Date.now() + 1000;
+	while (!ok()) {
+		if (Date.now() > end) throw new Error("timed out");
+		await Bun.sleep(5);
+	}
+}
+
 beforeEach(() => {
 	const window = new Window({ url: "https://www.example.com/kk" });
 	doc = window.document as unknown as Document;
@@ -93,10 +105,14 @@ beforeEach(() => {
 	overlay = stubOverlay(doc);
 	asked = [];
 	answer = { ok: true };
-	reviewer = new Reviewer(overlay as unknown as Overlay, async (request) => {
-		asked.push(request);
-		return answer;
-	});
+	reviewer = new Reviewer(
+		overlay as unknown as Overlay,
+		async (request) => {
+			asked.push(request);
+			return answer;
+		},
+		{ tickMs: TICK_MS },
+	);
 });
 
 afterEach(() => {
@@ -171,7 +187,9 @@ describe("elements replaced after loading", () => {
 		expect(reviewer.caseId).toBeUndefined();
 		expect(reviewer.loadingCaseId).toBe(c.id);
 		reviewer.clear();
+		// Replaced, which is no failure, and no case is loaded.
 		await expect(loading).rejects.toBeInstanceOf(LoadReplaced);
+		expect(reviewer.caseId).toBeUndefined();
 		expect(overlay.reviewing).toBe(false);
 		expect(overlay.items).toEqual([]);
 		expect(reviewer.loadingCaseId).toBeUndefined();
@@ -193,13 +211,15 @@ describe("elements replaced after loading", () => {
 		await reviewer.load(caseOf($("button")));
 		const old = $("button");
 		$("main").innerHTML = `<h1>Prämien</h1><button>Berechnen</button>`;
-		await Bun.sleep(700);
 		expect(old.isConnected).toBe(false);
+		// The outline goes onto the new button by itself.
+		await until(() => reviewer.target("m1")?.element === $("button"));
 		expect(overlay.items.length).toBe(1);
 		$("button").remove();
-		await Bun.sleep(700);
-		expect(bar()).toContain("0 of 1 found");
-		expect(overlay.items.length).toBe(0);
+		await until(
+			() =>
+				(bar() ?? "").includes("0 of 1 found") && overlay.items.length === 0,
+		);
 	});
 
 	test("an element still on the page is not searched for again", async () => {
@@ -298,12 +318,6 @@ describe("the outline", () => {
 		await reviewer.load(c);
 		expect(overlay.items.length).toBe(1);
 		expect(overlay.items[0]?.found).toBe(false);
-	});
-
-	test("is green for a found element", async () => {
-		doc.body.innerHTML = `<main><button>Berechnen</button></main>`;
-		await reviewer.load(caseOf($("button")));
-		expect(overlay.items[0]?.found).toBe(true);
 	});
 });
 
@@ -455,15 +469,6 @@ describe("loads close together", () => {
 		expect(a).toEqual({ ...b, adopted: true });
 		expect(b.adopted).toBeUndefined();
 		expect(reviewer.caseId).toBe(c.id);
-	});
-
-	test("a clear during a load stops it: replaced, no failure", async () => {
-		doc.body.innerHTML = PAGE;
-		const c = caseOf($("button"));
-		const loading = reviewer.load(c);
-		reviewer.clear();
-		await expect(loading).rejects.toBeInstanceOf(LoadReplaced);
-		expect(reviewer.caseId).toBeUndefined();
 	});
 
 	test("another case's load stops the one before: replaced", async () => {
@@ -964,7 +969,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 	});
 });
 
-describe("a case of several pages on the page in front (review of DEC-038)", () => {
+describe("a case of several pages on the page in front (DEC-038)", () => {
 	const KK = "https://www.example.com/kk";
 	const PAY = "https://www.example.com/kk/pay";
 	const CART_PAGE = `<main class="Cart_form"><h1>Warenkorb</h1><button class="Button_primary" type="submit">Weiter</button></main>`;
@@ -1031,13 +1036,13 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 		await reviewer.load(c);
 		// The address first, the route's content only after a second.
 		go("/kk/pay", `<main><p>Lädt…</p></main>`);
-		await Bun.sleep(700);
+		await Bun.sleep(TICK_MS * 1.4);
 		expect(overlay.items).toHaveLength(0);
 		doc.body.innerHTML = PAY_PAGE;
-		await Bun.sleep(2300);
+		await until(() => overlay.items.length > 0);
 		expect(overlay.items.map((i) => i.number)).toEqual([2]);
 		expect(overlay.items[0]?.found).toBe(true);
-	}, 10_000);
+	});
 
 	test("a look-alike of another page's mark is drawn unsure, and is not a find of this page", async () => {
 		const c = flow();
@@ -1064,7 +1069,7 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 	});
 });
 
-describe("the popover and a mark that takes another number (review B, sync 8)", () => {
+describe("the popover and a mark that takes another number", () => {
 	const PAGE = `<main><h1>Prämien</h1><button>Berechnen</button><p>Tipp</p></main>`;
 	const field = () =>
 		overlay.popover.querySelector("textarea") as HTMLTextAreaElement;
@@ -1136,7 +1141,7 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 		});
 	});
 
-	test("the id is another mark's and two marks have its screenshot and drawing: nothing is asked, and that is said (review B, re-check E)", async () => {
+	test("the id is another mark's and two marks have its screenshot and drawing: nothing is asked, and that is said", async () => {
 		const { before, after } = cases();
 		await reviewer.load(before);
 		overlay.onPick?.(3);

@@ -23,6 +23,7 @@ import {
 import { MAX_SIDE } from "../../../src/lib/images.ts";
 import { cropRectFor } from "../../../src/lib/save.ts";
 import { readZip } from "../../../src/lib/zip.ts";
+import { E2E_FULL } from "../mode.ts";
 import {
 	backgroundLog,
 	clickButton,
@@ -128,7 +129,7 @@ async function stopStarted(
 	await started?.stop();
 }
 
-describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
+describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 	let h: FirefoxHarness;
 	let starting: Promise<FirefoxHarness> | undefined;
 	let relay: TestRelay | undefined;
@@ -348,7 +349,7 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 		);
 	}, 120_000);
 
-	test("AI access: a read tool, a question answered in the panel, still connected after 30 s idle", async () => {
+	test("AI access: a read tool, a question answered in the panel, still connected after a while idle", async () => {
 		relay = startTestRelay();
 		const url = relay.url;
 		await h.rdp.run(["--tab", h.panel, "navigate", h.panelUrl]);
@@ -357,6 +358,17 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 			"document.documentElement.dataset.aiState === 'disconnected'",
 			"the panel",
 		);
+		// The control: with AI access off nothing keeps the event page, and
+		// this profile stops it after 3 s idle (its user.js). Else the wait
+		// below would prove nothing about the keepalive.
+		const timeOrigin = () =>
+			h.rdp.eval<number>(
+				h.panel,
+				"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
+			);
+		const idleBefore = await timeOrigin();
+		await Bun.sleep(5000);
+		expect(await timeOrigin()).not.toBe(idleBefore);
 		await h.rdp.eval(
 			h.panel,
 			`(() => {
@@ -425,19 +437,12 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 				verdict: "From Firefox",
 			});
 
-			// Firefox stops an event page after 30 s without extension events,
-			// its WebSocket with it, unless something keeps it.
-			const started = await h.rdp.eval<number>(
-				h.panel,
-				"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
-			);
-			await Bun.sleep(35_000);
-			expect(
-				await h.rdp.eval<number>(
-					h.panel,
-					"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
-				),
-			).toBe(started);
+			// Firefox stops an event page that had no extension events for a
+			// while (30 s; 3 s in this profile), its WebSocket with it, unless
+			// something keeps it.
+			const started = await timeOrigin();
+			await Bun.sleep(8000);
+			expect(await timeOrigin()).toBe(started);
 			expect(
 				await h.rdp.eval<string>(
 					h.panel,
@@ -459,42 +464,45 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 	});
 });
 
-describe.skipIf(!firefoxReady)("Firefox: the store package", () => {
-	let h: FirefoxHarness;
-	let starting: Promise<FirefoxHarness> | undefined;
+describe.skipIf(!firefoxReady || !E2E_FULL)(
+	"Firefox: the store package",
+	() => {
+		let h: FirefoxHarness;
+		let starting: Promise<FirefoxHarness> | undefined;
 
-	beforeAll(async () => {
-		starting = startFirefox("store");
-		h = await starting;
-	}, START_TIMEOUT_MS);
+		beforeAll(async () => {
+			starting = startFirefox("store");
+			h = await starting;
+		}, START_TIMEOUT_MS);
 
-	afterAll(async () => {
-		await stopStarted(starting);
-	}, STOP_TIMEOUT_MS);
+		afterAll(async () => {
+			await stopStarted(starting);
+		}, STOP_TIMEOUT_MS);
 
-	test("installs with no manifest warning; its panel's page in a tab is no panel", async () => {
-		expect(h.warnings).toEqual([]);
-		expect(await h.rdp.eval<string>(h.panel, PANEL_TEXT)).toContain(
-			"Open the sidebar from the Sitegloss icon for AI access",
-		);
-		expect(
-			await h.rdp.eval<boolean>(
-				h.panel,
-				"document.getElementById('connect').disabled",
-			),
-		).toBe(true);
-		// The event page closes a port from it at once, and tells it nothing.
-		expect(
-			await h.rdp.eval<string>(
-				h.panel,
-				`new Promise((resolve) => {
+		test("installs with no manifest warning; its panel's page in a tab is no panel", async () => {
+			expect(h.warnings).toEqual([]);
+			expect(await h.rdp.eval<string>(h.panel, PANEL_TEXT)).toContain(
+				"Open the sidebar from the Sitegloss icon for AI access",
+			);
+			expect(
+				await h.rdp.eval<boolean>(
+					h.panel,
+					"document.getElementById('connect').disabled",
+				),
+			).toBe(true);
+			// The event page closes a port from it at once, and tells it nothing.
+			expect(
+				await h.rdp.eval<string>(
+					h.panel,
+					`new Promise((resolve) => {
 					const port = chrome.runtime.connect({ name: "ai" });
 					let told = false;
 					port.onMessage.addListener(() => { told = true; });
 					port.onDisconnect.addListener(() => resolve(told ? "told" : "closed"));
 					setTimeout(() => resolve("still open"), 5000);
 				})`,
-			),
-		).toBe("closed");
-	}, 60_000);
-});
+				),
+			).toBe("closed");
+		}, 60_000);
+	},
+);

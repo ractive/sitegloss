@@ -6,7 +6,7 @@
  * the connection (DEC-016).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import { TabMcp } from "@ractive-ch/tab-mcp-client";
@@ -18,14 +18,21 @@ import {
 	clickNotification,
 	closeSidePanel,
 	connectAi,
-	dismissNotification,
 	mcpClient,
 	newNotification,
 	notifications,
 	openSidePanel,
 } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inBothSets,
+	inFullSet,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
+import { E2E_FULL, fullTest } from "./mode.ts";
 import {
 	KV,
 	putCases,
@@ -47,52 +54,52 @@ const verdictOf = async (h: Harness, caseId: string) =>
 		(c) => c.id === caseId,
 	)?.verdict;
 
-describe.skipIf(browserBinary === undefined)(
-	"the AI connection without the side panel",
-	() => {
-		let h: Harness;
-		let panel: Page;
-		let client: Client;
-		let address: string;
-		let tab: { page: Page; tabId: number };
-		const relay = startTestRelay();
+inBothSets("the AI connection without the side panel", () => {
+	let h: Harness;
+	let panel: Page;
+	let client: Client;
+	let address: string;
+	let tab: { page: Page; tabId: number };
+	const relay = startTestRelay();
 
-		const call = (name: string, args: Record<string, unknown> = {}) =>
-			client.callTool({ name, arguments: args }) as Promise<CallResult>;
-		const badge = async () =>
-			(await worker(h)).eval<string>("chrome.action.getBadgeText({})");
-		const title = async () =>
-			(await worker(h)).eval<string>("chrome.action.getTitle({})");
-		/** The icon the worker last set: drawn and set without an error. */
-		const icon = async () => {
-			const w = await worker(h);
-			for (let i = 0; i < 50; i++) {
-				const shown = await w.eval<string | null>(
-					"globalThis.siteglossIcon ?? null",
-				);
-				if (shown === "spark") return shown;
-				await Bun.sleep(100);
-			}
-			return w.eval<string | null>("globalThis.siteglossIcon ?? null");
-		};
+	const call = (name: string, args: Record<string, unknown> = {}) =>
+		client.callTool({ name, arguments: args }) as Promise<CallResult>;
+	const badge = async () =>
+		(await worker(h)).eval<string>("chrome.action.getBadgeText({})");
+	const title = async () =>
+		(await worker(h)).eval<string>("chrome.action.getTitle({})");
+	/** The icon the worker last set: drawn and set without an error. */
+	const icon = async () => {
+		const w = await worker(h);
+		for (let i = 0; i < 50; i++) {
+			const shown = await w.eval<string | null>(
+				"globalThis.siteglossIcon ?? null",
+			);
+			if (shown === "spark") return shown;
+			await Bun.sleep(100);
+		}
+		return w.eval<string | null>("globalThis.siteglossIcon ?? null");
+	};
 
-		beforeAll(async () => {
-			h = await startHarness(browserBinary as string);
-			await putCases(h, [sampleCase("c_1")]);
-			tab = await h.open("v1");
-			await step("bring the page to the front", () => tab.page.activate());
-			panel = await openSidePanel(h);
-			address = await connectAi(panel, relay.url);
-			client = await mcpClient(relay, address);
-		}, 60_000);
+	beforeAll(async () => {
+		h = await startHarness(browserBinary as string);
+		await putCases(h, [sampleCase("c_1")]);
+		tab = await h.open("v1");
+		await step("bring the page to the front", () => tab.page.activate());
+		panel = await openSidePanel(h);
+		address = await connectAi(panel, relay.url);
+		client = await mcpClient(relay, address);
+	}, 60_000);
 
-		afterAll(async () => {
-			await client?.close();
-			await h?.stop();
-			await relay.stop();
-		});
+	afterAll(async () => {
+		await client?.close();
+		await h?.stop();
+		await relay.stop();
+	});
 
-		test("a question with the side panel of the window in front open: there, and no notification", async () => {
+	fullTest(
+		"a question with the side panel of the window in front open: there, and no notification",
+		async () => {
 			// Every notification the worker makes, also one cleared at once.
 			const w = await worker(h);
 			await w.eval(`(() => {
@@ -124,9 +131,12 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await icon()).toBe("spark");
 			expect(await w.eval("globalThis.e2eCreated")).toEqual([]);
 			await panel.waitFor(`!document.querySelector("[data-question]")`);
-		});
+		},
+	);
 
-		test("a long summary shows whole in the panel's question, scrolling (CR-03)", async () => {
+	fullTest(
+		"a long summary shows whole in the panel's question, scrolling",
+		async () => {
 			const summary = `${"Harmless. ".repeat(400)}${"Unseen before. ".repeat(1000)}END-OF-SUMMARY`;
 			const asked = call("set_summary", { caseId: "c_1", summary });
 			// The note follows the box's layout.
@@ -156,9 +166,12 @@ describe.skipIf(browserBinary === undefined)(
 			await answerInPanel(panel, "deny");
 			expect((await asked).isError).toBe(true);
 			await panel.waitFor(`!document.querySelector("[data-question]")`);
-		});
+		},
+	);
 
-		test("the scroll note goes by whether the box overflows, not by a length", async () => {
+	fullTest(
+		"the scroll note goes by whether the box overflows, not by a length",
+		async () => {
 			const width = (w: number) =>
 				panel.send("Emulation.setDeviceMetricsOverride", {
 					width: w,
@@ -218,32 +231,38 @@ describe.skipIf(browserBinary === undefined)(
 			} finally {
 				await panel.send("Emulation.clearDeviceMetricsOverride");
 			}
-		});
+		},
+	);
 
-		test("a panel closed during a question hands it to a notification", async () => {
-			const asked = call("set_summary", { caseId: "c_1", summary: "Handed" });
-			await panel.waitFor(`document.querySelector("[data-question]")`, 10_000);
-			await closeSidePanel(h, panel);
-			const id = await newNotification(h);
-			// After the guard against an Allow that came too soon.
-			await Bun.sleep(600);
-			await clickNotification(h, id, 0);
-			expect((await asked).isError).toBeFalsy();
-			expect(await verdictOf(h, "c_1")).toBe("Handed");
-			// Answered: the notification is gone.
-			expect(await notifications(h)).toEqual([]);
-		});
+	test("a panel closed during a question hands it to a notification", async () => {
+		const asked = call("set_summary", { caseId: "c_1", summary: "Handed" });
+		await panel.waitFor(`document.querySelector("[data-question]")`, 10_000);
+		await closeSidePanel(h, panel);
+		const id = await newNotification(h);
+		// After the guard against an Allow that came too soon.
+		await Bun.sleep(PAST_GUARD_MS);
+		await clickNotification(h, id, 0);
+		expect((await asked).isError).toBeFalsy();
+		expect(await verdictOf(h, "c_1")).toBe("Handed");
+		// Answered: the notification is gone.
+		expect(await notifications(h)).toEqual([]);
+	});
 
-		test("with the side panel closed the AI app still calls the tools", async () => {
+	fullTest(
+		"with the side panel closed the AI app still calls the tools",
+		async () => {
 			const result = await call("list_cases");
 			expect(result.isError).toBeFalsy();
 			expect(result.content[0]?.text).toContain("c_1");
 			expect(await badge()).toBe("");
 			expect(await title()).toBe("Sitegloss: AI access is on");
 			expect(await icon()).toBe("spark");
-		});
+		},
+	);
 
-		test("Blur form fields, changed while connected, holds for the next screenshot", async () => {
+	fullTest(
+		"Blur form fields, changed while connected, holds for the next screenshot",
+		async () => {
 			const w = await worker(h);
 			// What the tools ask the page to blur.
 			await w.eval(`(() => {
@@ -278,35 +297,20 @@ describe.skipIf(browserBinary === undefined)(
 			}
 			await set(false);
 			await closeSidePanel(h, side);
-		});
+		},
+	);
 
-		test("with the side panel closed a question is a notification: closing it is Don't allow, Allow, late clicks", async () => {
-			const denied = call("set_summary", { caseId: "c_1", summary: "No" });
-			const first = await newNotification(h);
-			expect(await badge()).toBe("?");
-			await dismissNotification(h, first);
-			expect((await denied).isError).toBe(true);
-			expect(await verdictOf(h, "c_1")).toBe("Handed");
-			// A click on a notification whose call is settled answers nothing.
-			const allowed = call("set_summary", { caseId: "c_1", summary: "Yes" });
-			const second = await newNotification(h, [first]);
-			await Bun.sleep(600);
-			await clickNotification(h, first, 0);
-			await Bun.sleep(200);
-			expect(await notifications(h)).toEqual([second]);
-			await clickNotification(h, second, 0);
-			expect((await allowed).isError).toBeFalsy();
-			expect(await verdictOf(h, "c_1")).toBe("Yes");
-		});
-
-		test("reopening the side panel shows the same connection and the last call", async () => {
+	fullTest(
+		"reopening the side panel shows the same connection and the last call",
+		async () => {
 			panel = await openSidePanel(h);
 			await panel.waitFor(
 				`document.documentElement.dataset.aiState === "connected"`,
 			);
+			// The test above's screenshot.
 			expect(
 				await panel.eval<string>(`${byId("ai-call")}.textContent`),
-			).toContain("Last AI call: Record the summary for the developer");
+			).toContain("Last AI call: Screenshot of the page in front");
 			expect(await panel.eval(`${byId("relay")}.value`)).toBe(relay.url);
 			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(false);
 			// The same address: shown with the code at once with no app paired
@@ -343,32 +347,38 @@ describe.skipIf(browserBinary === undefined)(
 				await panel.eval(`${byId("pair-done")}.click()`);
 				expect(await panel.eval(`${byId("pairing")}.hidden`)).toBe(true);
 			}
-		});
+		},
+	);
 
-		test("the worker stopped by Chrome connects again by itself, with the same address", async () => {
-			const { targetId } = await h.browser.waitForTarget(
-				(t) =>
-					t.type === "service_worker" &&
-					t.url === `chrome-extension://${h.extensionId}/background.js`,
-			);
-			await (await worker(h)).eval("globalThis.e2eBefore = true");
-			await h.browser.send("Target.closeTarget", { targetId });
-			await Bun.sleep(500);
-			// The side panel's port wakes it again, as the alarm would.
-			const end = Date.now() + 20_000;
-			for (;;) {
-				const result = await call("list_cases").catch(() => undefined);
-				if (result !== undefined && !result.isError) break;
-				if (Date.now() > end) throw new Error("the address did not answer");
-				await Bun.sleep(250);
-			}
-			// A new worker, not the old one.
-			expect(
-				await (await worker(h)).eval("globalThis.e2eBefore ?? false"),
-			).toBe(false);
-		}, 40_000);
+	test("the worker stopped by Chrome connects again by itself, with the same address", async () => {
+		// The side panel open, whose port wakes the worker: in the smoke set
+		// the test that opens it again did not run.
+		if (!E2E_FULL) panel = await openSidePanel(h);
+		const { targetId } = await h.browser.waitForTarget(
+			(t) =>
+				t.type === "service_worker" &&
+				t.url === `chrome-extension://${h.extensionId}/background.js`,
+		);
+		await (await worker(h)).eval("globalThis.e2eBefore = true");
+		await h.browser.send("Target.closeTarget", { targetId });
+		await Bun.sleep(500);
+		// The side panel's port wakes it again, as the alarm would.
+		const end = Date.now() + 20_000;
+		for (;;) {
+			const result = await call("list_cases").catch(() => undefined);
+			if (result !== undefined && !result.isError) break;
+			if (Date.now() > end) throw new Error("the address did not answer");
+			await Bun.sleep(250);
+		}
+		// A new worker, not the old one.
+		expect(await (await worker(h)).eval("globalThis.e2eBefore ?? false")).toBe(
+			false,
+		);
+	}, 40_000);
 
-		test("Stop AI access ends the session, keeps the pairing and turns Keep AI access off", async () => {
+	fullTest(
+		"Stop AI access ends the session, keeps the pairing and turns Keep AI access off",
+		async () => {
 			await panel.eval(`${byId("stop-ai")}.click()`);
 			await panel.waitFor(
 				`document.documentElement.dataset.aiState === "disconnected"`,
@@ -393,9 +403,12 @@ describe.skipIf(browserBinary === undefined)(
 				10_000,
 			);
 			expect((await call("list_cases")).isError).toBeFalsy();
-		});
+		},
+	);
 
-		test("a side panel covered by another extension's panel hands its questions to notifications", async () => {
+	fullTest(
+		"a side panel covered by another extension's panel hands its questions to notifications",
+		async () => {
 			/**
 			 * What Chrome does when another extension's panel for the tab (Claude
 			 * in Chrome's) covers ours: the page stays open, hidden.
@@ -414,14 +427,14 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await notifications(h)).toEqual([]);
 			await cover(true);
 			const handed = await newNotification(h);
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await clickNotification(h, handed, 0);
 			expect((await first).isError).toBeFalsy();
 			expect(await verdictOf(h, "c_1")).toBe("Covered");
 			// Asked while covered: a notification at once.
 			const second = call("set_summary", { caseId: "c_1", summary: "Hidden" });
 			const asked = await newNotification(h, [handed]);
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await clickNotification(h, asked, 0);
 			expect((await second).isError).toBeFalsy();
 			// On screen again: the panel asks, no notification.
@@ -431,9 +444,12 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await notifications(h)).toEqual([]);
 			await answerInPanel(panel, "allow");
 			expect((await third).isError).toBeFalsy();
-		});
+		},
+	);
 
-		test("after a takeover, Disconnect all apps in the notice drops the connection taken over; the address stays", async () => {
+	fullTest(
+		"after a takeover, Disconnect all apps in the notice drops the connection taken over; the address stays",
+		async () => {
 			const key = `tab-mcp:secret:${relay.url}:sitegloss`;
 			const secret = (await settingsOf(h))[key];
 			expect(typeof secret).toBe("string");
@@ -474,11 +490,11 @@ describe.skipIf(browserBinary === undefined)(
 			} finally {
 				other.disconnect();
 			}
-		});
-	},
-);
+		},
+	);
+});
 
-describe.skipIf(browserBinary === undefined)("who may command it", () => {
+inFullSet("who may command it", () => {
 	let h: Harness;
 
 	beforeAll(async () => {
@@ -499,83 +515,77 @@ describe.skipIf(browserBinary === undefined)("who may command it", () => {
 		setTimeout(() => resolve("open"), 3000);
 	})`;
 
-	test("a content script's port is closed at once and changes nothing", async () => {
-		const { tabId } = await h.open("v1");
-		const answer = await h.control.eval<string>(
-			`chrome.scripting.executeScript({
+	fullTest(
+		"a content script's port is closed at once and changes nothing",
+		async () => {
+			const { tabId } = await h.open("v1");
+			const answer = await h.control.eval<string>(
+				`chrome.scripting.executeScript({
 				target: { tabId: ${tabId} },
 				func: () => ${PROBE},
 			}).then(([injected]) => injected.result)`,
-		);
-		expect(answer).toBe("closed");
-		expect((await settingsOf(h))["keepAiOn"]).toBeUndefined();
-		// chrome.storage.local is closed to content scripts where Chrome can
-		// (best effort, DEC-016); nothing of the AI connection is kept there.
-		const tried = await h.control.eval<string[]>(
-			`chrome.scripting.executeScript({
+			);
+			expect(answer).toBe("closed");
+			expect((await settingsOf(h))["keepAiOn"]).toBeUndefined();
+			// chrome.storage.local is closed to content scripts where Chrome can
+			// (best effort, DEC-016); nothing of the AI connection is kept there.
+			const tried = await h.control.eval<string[]>(
+				`chrome.scripting.executeScript({
 				target: { tabId: ${tabId} },
 				func: () => Promise.all([
 					chrome.storage.local.get(null).then(() => "read", (e) => e.message),
 					chrome.storage.local.set({ keepAiOn: true }).then(() => "written", (e) => e.message),
 				]),
 			}).then(([injected]) => injected.result)`,
-		);
-		expect(tried).toEqual([
-			"Access to storage is not allowed from this context.",
-			"Access to storage is not allowed from this context.",
-		]);
-		expect((await settingsOf(h))["keepAiOn"]).toBeUndefined();
-	});
+			);
+			expect(tried).toEqual([
+				"Access to storage is not allowed from this context.",
+				"Access to storage is not allowed from this context.",
+			]);
+			expect((await settingsOf(h))["keepAiOn"]).toBeUndefined();
+		},
+	);
 
-	test("the panel's page in a tab is no side panel: closed too, and its AI buttons are off", async () => {
-		expect(await h.control.eval<string>(PROBE)).toBe("closed");
-		await h.control.waitFor(`${byId("connect")}.disabled`);
-		// Nor can it change Blur form fields: that goes over the port too.
-		expect(await h.control.eval(`${byId("blur-forms")}.disabled`)).toBe(true);
-		// Said where it is seen: under the top bar, and in the pill.
-		expect(
-			await h.control.eval(
-				`${byId("ai-problem")}.getClientRects().length > 0 && ${byId("ai-problem-text")}.textContent`,
-			),
-		).toBe("Open the side panel from the Sitegloss icon for AI access.");
-		expect(await h.control.eval(`${byId("ai-label")}.textContent`)).toBe(
-			"AI: side panel only",
-		);
-	});
-
-	test("the side panel's port gets the state", async () => {
-		await (await h.open("v1")).page.activate();
-		const panel = await openSidePanel(h);
-		expect(
-			await panel.eval<string>(`new Promise((resolve) => {
-				const port = chrome.runtime.connect({ name: "ai" });
-				port.onMessage.addListener((m) => resolve(m.type));
-				port.onDisconnect.addListener(() => resolve("closed"));
-			})`),
-		).toBe("state");
-	});
+	fullTest(
+		"the panel's page in a tab is no side panel: closed too, and its AI buttons are off",
+		async () => {
+			expect(await h.control.eval<string>(PROBE)).toBe("closed");
+			await h.control.waitFor(`${byId("connect")}.disabled`);
+			// Nor can it change Blur form fields: that goes over the port too.
+			expect(await h.control.eval(`${byId("blur-forms")}.disabled`)).toBe(true);
+			// Said where it is seen: under the top bar, and in the pill.
+			expect(
+				await h.control.eval(
+					`${byId("ai-problem")}.getClientRects().length > 0 && ${byId("ai-problem-text")}.textContent`,
+				),
+			).toBe("Open the side panel from the Sitegloss icon for AI access.");
+			expect(await h.control.eval(`${byId("ai-label")}.textContent`)).toBe(
+				"AI: side panel only",
+			);
+		},
+	);
 });
 
-describe.skipIf(browserBinary === undefined)(
-	"a Stop in this browser session",
-	() => {
-		let h: Harness;
-		const relay = startTestRelay();
+inFullSet("a Stop in this browser session", () => {
+	let h: Harness;
+	const relay = startTestRelay();
 
-		beforeAll(async () => {
-			h = await startHarness(browserBinary as string);
-			await (await h.open("v1")).page.activate();
-			const panel = await openSidePanel(h);
-			await connectAi(panel, relay.url, { keepOn: true });
-			await closeSidePanel(h, panel);
-		}, 60_000);
+	beforeAll(async () => {
+		h = await startHarness(browserBinary as string);
+		await (await h.open("v1")).page.activate();
+		const panel = await openSidePanel(h);
+		await connectAi(panel, relay.url, { keepOn: true });
+		await closeSidePanel(h, panel);
+	}, 60_000);
 
-		afterAll(async () => {
-			await h?.stop();
-			await relay.stop();
-		});
+	afterAll(async () => {
+		await h?.stop();
+		await relay.stop();
+	});
 
-		test("a Stop in this browser session holds over a stored Keep AI access on, in a new worker too", async () => {
+	fullTest(
+		"a Stop in this browser session holds over a stored Keep AI access on, in a new worker too",
+		async () => {
 			// What a Stop whose write of Keep AI access on failed leaves behind.
 			expect((await settingsOf(h))["keepAiOn"]).toBe(true);
 			await h.control.eval(`chrome.storage.session.set({ aiStopped: true })`);
@@ -602,11 +612,12 @@ describe.skipIf(browserBinary === undefined)(
 				),
 			).toBe(false);
 			await closeSidePanel(h, panel);
-		}, 60_000);
-	},
-);
+		},
+		60_000,
+	);
+});
 
-describe.skipIf(browserBinary === undefined)(
+inFullSet(
 	"Blur form fields for open overlays, and a worker that cannot start",
 	() => {
 		let h: Harness;
@@ -648,71 +659,79 @@ describe.skipIf(browserBinary === undefined)(
 				})`,
 			);
 
-		test("the worker tells open overlays its value when it starts and when a panel attaches", async () => {
-			const { page, tabId } = await h.open("v1");
-			await listen(tabId);
-			// Stored on, as the side panel would have set it.
-			await h.control.eval(KV(`store.put(true, "blurForms")`, "readwrite"));
-			await restartWorker(h);
-			await until(
-				() => told(tabId),
-				(t) => t.some(([type, on]) => type === "overlay:settings" && on),
-				10_000,
-			);
-			await clear(tabId);
-			await page.activate();
-			const panel = await openSidePanel(h);
-			await until(
-				() => told(tabId),
-				(t) => t.some(([type, on]) => type === "overlay:settings" && on),
-				10_000,
-			);
-			await closeSidePanel(h, panel);
-			await page.send("Page.close");
-		}, 60_000);
+		fullTest(
+			"the worker tells open overlays its value when it starts and when a panel attaches",
+			async () => {
+				const { page, tabId } = await h.open("v1");
+				await listen(tabId);
+				// Stored on, as the side panel would have set it.
+				await h.control.eval(KV(`store.put(true, "blurForms")`, "readwrite"));
+				await restartWorker(h);
+				await until(
+					() => told(tabId),
+					(t) => t.some(([type, on]) => type === "overlay:settings" && on),
+					10_000,
+				);
+				await clear(tabId);
+				await page.activate();
+				const panel = await openSidePanel(h);
+				await until(
+					() => told(tabId),
+					(t) => t.some(([type, on]) => type === "overlay:settings" && on),
+					10_000,
+				);
+				await closeSidePanel(h, panel);
+				await page.send("Page.close");
+			},
+			60_000,
+		);
 
-		test("a worker that cannot start says so in the panel, and an overlay started then blurs", async () => {
-			// Stored off; then the database is one the worker cannot open (a
-			// newer version). The worker's open connection closes on request,
-			// or this upgrade would be blocked.
-			await h.control.eval(KV(`store.put(false, "blurForms")`, "readwrite"));
-			await h.control.eval(`new Promise((resolve, reject) => {
+		fullTest(
+			"a worker that cannot start says so in the panel, and an overlay started then blurs",
+			async () => {
+				// Stored off; then the database is one the worker cannot open (a
+				// newer version). The worker's open connection closes on request,
+				// or this upgrade would be blocked.
+				await h.control.eval(KV(`store.put(false, "blurForms")`, "readwrite"));
+				await h.control.eval(`new Promise((resolve, reject) => {
 				const open = indexedDB.open("sitegloss-settings", 2);
 				open.onsuccess = () => { open.result.close(); resolve(true); };
 				open.onerror = () => reject(open.error);
 				open.onblocked = () => reject(new Error("blocked"));
 			})`);
-			await restartWorker(h);
-			const { page, tabId } = await h.open("v1");
-			await listen(tabId);
-			await page.activate();
-			const panel = await openSidePanel(h);
-			await panel.waitFor(
-				`document.documentElement.dataset.aiState === "failed"`,
-				10_000,
-			);
-			// Said in words under the top bar, and named in the pill.
-			expect(
-				await panel.eval<[boolean, string, string | undefined]>(
-					`[${byId("ai-problem")}.getClientRects().length > 0, ${byId("ai-label")}.textContent, ${byId("bar")}.dataset.ai]`,
-				),
-			).toEqual([true, "AI unavailable", "problem"]);
-			expect(
-				await panel.eval<string>(`${byId("ai-problem-text")}.textContent`),
-			).toContain("AI access is not available");
-			expect(await panel.eval(`${byId("blur-forms")}.disabled`)).toBe(true);
-			expect(await panel.eval(`${byId("connect")}.disabled`)).toBe(true);
-			expect(await panel.eval(`${byId("ai-switch")}.disabled`)).toBe(true);
-			// Without the worker's value the panel blurs: the safe side.
-			await panel.eval(`${byId("new-case")}.click()`);
-			await until(
-				() => told(tabId),
-				(t) => t.some(([type]) => type === "overlay:show"),
-				10_000,
-			);
-			expect(
-				(await told(tabId)).filter(([type]) => type === "overlay:show"),
-			).toEqual([["overlay:show", true]]);
-		}, 60_000);
+				await restartWorker(h);
+				const { page, tabId } = await h.open("v1");
+				await listen(tabId);
+				await page.activate();
+				const panel = await openSidePanel(h);
+				await panel.waitFor(
+					`document.documentElement.dataset.aiState === "failed"`,
+					10_000,
+				);
+				// Said in words under the top bar, and named in the pill.
+				expect(
+					await panel.eval<[boolean, string, string | undefined]>(
+						`[${byId("ai-problem")}.getClientRects().length > 0, ${byId("ai-label")}.textContent, ${byId("bar")}.dataset.ai]`,
+					),
+				).toEqual([true, "AI unavailable", "problem"]);
+				expect(
+					await panel.eval<string>(`${byId("ai-problem-text")}.textContent`),
+				).toContain("AI access is not available");
+				expect(await panel.eval(`${byId("blur-forms")}.disabled`)).toBe(true);
+				expect(await panel.eval(`${byId("connect")}.disabled`)).toBe(true);
+				expect(await panel.eval(`${byId("ai-switch")}.disabled`)).toBe(true);
+				// Without the worker's value the panel blurs: the safe side.
+				await panel.eval(`${byId("new-case")}.click()`);
+				await until(
+					() => told(tabId),
+					(t) => t.some(([type]) => type === "overlay:show"),
+					10_000,
+				);
+				expect(
+					(await told(tabId)).filter(([type]) => type === "overlay:show"),
+				).toEqual([["overlay:show", true]]);
+			},
+			60_000,
+		);
 	},
 );

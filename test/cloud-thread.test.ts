@@ -372,7 +372,7 @@ describe("the AI app's name (via)", () => {
 	});
 });
 
-describe("who did it, per thing (review of DEC-046)", () => {
+describe("who did it, per thing (DEC-046)", () => {
 	test("a hand delete of one's own comment and an app's change to the case, in one push: the delete names no app and is taken", async () => {
 		await shared();
 		await change(tess, "c_flow", (c, now) =>
@@ -531,7 +531,7 @@ describe("who did it, per thing (review of DEC-046)", () => {
 	});
 });
 
-describe("the thread kept right (review of DEC-046)", () => {
+describe("the thread kept right (DEC-046)", () => {
 	test("a server restored without a case's comments gets them again", async () => {
 		await shared();
 		await change(tess, "c_flow", (c, now) =>
@@ -638,7 +638,7 @@ describe("the thread kept right (review of DEC-046)", () => {
 	});
 });
 
-describe("a file put in place of a synced case (review of DEC-046)", () => {
+describe("a file put in place of a synced case (DEC-046)", () => {
 	test("an older file without the thread deletes none of it, and an older text does not replace a newer one", async () => {
 		await shared();
 		const before = await caseHere(tess);

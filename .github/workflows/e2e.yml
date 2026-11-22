@@ -1,0 +1,134 @@
+name: End-to-end tests
+
+# The full end-to-end sets (DEC-053): every Chromium test (bun run test:e2e)
+# and the Firefox tests (bun run test:firefox), in two jobs side by side.
+# CI on a pull request and on main runs only the smoke set, with the unit
+# tests (bun run verify). These run:
+#   - every night, on main, unless main is still the commit the last green
+#     run here tested;
+#   - on a release tag, called by release.yml before anything is built or
+#     published: a red run stops the release;
+#   - by hand: Actions, "End-to-end tests", "Run workflow", on any branch.
+# A scheduled run's failure is mailed by GitHub to the person who last
+# changed the schedule below (the account that pushed that commit), as their
+# notification settings for Actions say.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  # Chrome for Testing, pinned as in ci.yml (test/workflows.test.ts holds
+  # every workflow to one value). Branded Chrome ignores --load-extension.
+  CHROME_VERSION: "156.0.8078.80"
+  # Firefox from Mozilla's release archive, checked against its SHA256SUMS
+  # line; ff-rdp from its GitHub release, checked against the build
+  # attestation its release workflow made. Bump on purpose: FIREFOX_SHA256
+  # is the line for linux-x86_64/en-US/firefox-<version>.tar.xz in
+  # https://archive.mozilla.org/pub/firefox/releases/<version>/SHA256SUMS.
+  FIREFOX_VERSION: "160.0"
+  FIREFOX_SHA256: fde774e9757c8878534c05ec210db592bf6a1b244c57941ffb2e364c04f35fcd
+  FF_RDP_VERSION: "0.5.0"
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Reads this workflow's earlier runs.
+      actions: read
+    outputs:
+      run: ${{ steps.since.outputs.run }}
+    steps:
+      - name: Whether main moved since the last green run
+        id: since
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          HEAD: ${{ github.sha }}
+        run: |
+          # Only the nightly run skips; a release or a run by hand always runs.
+          if [ "$EVENT" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow e2e.yml \
+            --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // ""')"
+          if [ "$last" = "$HEAD" ]; then
+            echo "main is still $HEAD, which the last green run tested: nothing to run"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  chromium:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2.2.0
+        id: chrome
+        with:
+          chrome-version: ${{ env.CHROME_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run test:e2e
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+
+  firefox:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # gh attestation verify reads ff-rdp's attestation.
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - name: Install Firefox ${{ env.FIREFOX_VERSION }}
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/firefox.tar.xz" \
+            "https://archive.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.xz"
+          echo "${FIREFOX_SHA256}  $RUNNER_TEMP/firefox.tar.xz" | sha256sum --check --strict
+          tar -xJf "$RUNNER_TEMP/firefox.tar.xz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/firefox/firefox" --version
+      - name: Install ff-rdp ${{ env.FF_RDP_VERSION }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="ff-rdp-v${FF_RDP_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          gh release download "v${FF_RDP_VERSION}" --repo ractive/ff-rdp \
+            --pattern "$archive" --dir "$RUNNER_TEMP"
+          # Built from that tag of ractive/ff-rdp by the release workflow it
+          # calls (ractive/release-workflows), or the job stops here.
+          gh attestation verify "$RUNNER_TEMP/$archive" --repo ractive/ff-rdp \
+            --signer-repo ractive/release-workflows \
+            --source-ref "refs/tags/v${FF_RDP_VERSION}"
+          mkdir -p "$RUNNER_TEMP/ff-rdp"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/ff-rdp"
+          "$RUNNER_TEMP/ff-rdp/ff-rdp" --version
+      - run: bun install --frozen-lockfile
+      - run: bun run test:firefox
+        env:
+          FIREFOX_PATH: ${{ runner.temp }}/firefox/firefox
+          FF_RDP_PATH: ${{ runner.temp }}/ff-rdp/ff-rdp

@@ -1,19 +1,25 @@
 /**
  * End to end: AI apps' findings on a mark (DEC-019). An AI app adds one once
  * the user allows it; the side panel shows it under the mark with the app's
- * name; another AI app cannot edit or delete it, even when the user allows
- * the call; the user deletes it in the panel with a second click, and an
- * unsaved comment form on the mark stays as it is.
+ * name; the user deletes it in the panel with a second click, and an
+ * unsaved comment form on the mark stays as it is. That another AI app can
+ * neither edit nor delete it is tools.test.ts's.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
 import { sampleCase } from "../fixtures.ts";
 import { answerInPanel, connectAi, mcpClient, openSidePanel } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import { putCases, READ_DB } from "./steps.ts";
 import { step } from "./trace.ts";
 
@@ -59,12 +65,10 @@ const QUESTION = `document.querySelector("[data-question]")`;
 const FINDING = `document.querySelector('[data-mark="m1"] [data-finding]')`;
 const DELETE = `${FINDING}?.querySelector('[data-finding-action="delete"]')`;
 
-describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
+inFullSet("AI findings on a mark", () => {
 	let h: Harness;
 	let panel: Page;
 	let claude: Client;
-	let other: Client;
-	let findingId: string;
 	const relay = startTestRelay();
 
 	const call = (client: Client, name: string, args: Record<string, unknown>) =>
@@ -91,10 +95,6 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 		panel = await openSidePanel(h);
 		const address = await connectAi(panel, relay.url);
 		claude = await mcpClient(relay, address);
-		other = await mcpClient(relay, address, {
-			clientId: "https://other.example/cimd.json",
-			clientName: "Other app",
-		});
 		// The case open in the panel, its mark open.
 		const item = `document.querySelector('button[data-case="c_f"]')`;
 		await panel.waitFor(item, 10_000);
@@ -106,7 +106,6 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 
 	afterAll(async () => {
 		await claude?.close();
-		await other?.close();
 		await h?.stop();
 		await relay.stop();
 	});
@@ -121,10 +120,7 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 		// The question names the case and the mark.
 		expect(question).toContain("Case: “Findings case”");
 		expect(question).toContain("Mark 1: “The button is too light”");
-		findingId = /finding (f_[0-9a-f]+)/.exec(
-			result.content[0]?.text ?? "",
-		)?.[1] as string;
-		expect(findingId).toBeDefined();
+		expect(result.content[0]?.text).toMatch(/finding f_[0-9a-f]+/);
 		await panel.waitFor(FINDING, 10_000);
 		const text = await panel.eval<string>(`${FINDING}.textContent`);
 		expect(text).toContain("Button_primary sets a light grey background.");
@@ -138,45 +134,8 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 		);
 	});
 
-	test("another AI app cannot edit or delete it, even when allowed", async () => {
-		const edit = await allowed(other, "edit_finding", {
-			caseId: "c_f",
-			mark: 1,
-			finding: findingId,
-			text: "Overwritten",
-		});
-		expect(edit.question).toContain("It is not this AI app's own");
-		expect(edit.result.isError).toBe(true);
-		expect(JSON.stringify(edit.result.content)).toContain("another AI app's");
-		const del = await allowed(other, "delete_finding", {
-			caseId: "c_f",
-			mark: 1,
-			finding: findingId,
-		});
-		expect(del.result.isError).toBe(true);
-		expect((await storedMark(h))?.findings?.map((f) => f.text)).toEqual([
-			"Button_primary sets a light grey background.",
-		]);
-	});
-
-	test("the user deletes it in the panel: the first click asks", async () => {
-		await panel.eval(`${DELETE}.click()`);
-		await panel.waitFor(`${DELETE}?.textContent === "Really delete?"`);
-		expect((await storedMark(h))?.findings).toHaveLength(1);
-		// Past the double-click guard: a second thought.
-		await Bun.sleep(600);
-		await panel.eval(`${DELETE}.click()`);
-		await panel.waitFor(`!${FINDING}`, 10_000);
-		expect((await storedMark(h))?.findings).toBeUndefined();
-	});
-
-	test("deleting a finding leaves the mark's unsaved comment form open", async () => {
-		const { result } = await allowed(claude, "add_finding", {
-			caseId: "c_f",
-			mark: 1,
-			text: "Another finding",
-		});
-		expect(result.isError).toBeFalsy();
+	test("deleting a finding asks first, and leaves the mark's unsaved comment form open", async () => {
+		// The finding the test above added.
 		await panel.waitFor(FINDING, 10_000);
 		const form = `document.querySelector('[data-mark="m1"] [data-form="comment"] textarea')`;
 		await panel.eval(
@@ -190,7 +149,9 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 		})()`);
 		await panel.eval(`${DELETE}.click()`);
 		await panel.waitFor(`${DELETE}?.textContent === "Really delete?"`);
-		await Bun.sleep(600);
+		expect((await storedMark(h))?.findings).toHaveLength(1);
+		// Past the double-click guard: a second thought.
+		await Bun.sleep(PAST_GUARD_MS);
 		await panel.eval(`${DELETE}.click()`);
 		await panel.waitFor(`!${FINDING}`, 10_000);
 		expect((await storedMark(h))?.findings).toBeUndefined();

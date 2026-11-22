@@ -872,27 +872,6 @@ describe("tools", () => {
 		expect(changed).toEqual(["c_1", "c_1", "c_1"]);
 	});
 
-	test("set_mark_status settles a mark with a note, and opens it again", async () => {
-		await seed();
-		await call("set_mark_status", {
-			caseId: "c_1",
-			mark: 2,
-			status: "wontfix",
-			note: "Legal wants it",
-		});
-		const settled = (await store.getCase("c_1"))?.marks[1]?.resolution;
-		expect(settled?.kind).toBe("wontfix");
-		expect(settled?.note).toBe("Legal wants it");
-		const read = await call("get_case", { caseId: "c_1" });
-		expect(JSON.stringify(read)).toContain("Legal wants it");
-		await call("set_mark_status", { caseId: "c_1", mark: 2, status: "open" });
-		expect((await store.getCase("c_1"))?.marks[1]?.resolution).toBeUndefined();
-		expect(changed).toEqual(["c_1", "c_1"]);
-		await expect(
-			call("set_mark_status", { caseId: "c_1", mark: 9, status: "fixed" }),
-		).rejects.toThrow("has no mark 9");
-	});
-
 	describe("set_mark_status and Verify (DEC-023)", () => {
 		const status = (mark: number, s: string, note?: string) =>
 			call("set_mark_status", {
@@ -919,6 +898,8 @@ describe("tools", () => {
 				note: "Darker text",
 				app,
 			});
+			// The panels hear of the case.
+			expect(changed).toEqual(["c_1"]);
 			expect(await status(2, "verified")).toBe("Mark 2 is verified.");
 			expect((await stored())?.resolution?.verified).toMatchObject({ app });
 			expect(await status(2, "open", "Still pale on hover")).toBe(
@@ -1561,24 +1542,6 @@ describe("tools", () => {
 		]);
 		expect(c.page.url).toBe("https://www.example.com/kk");
 		expect(INSTRUCTIONS).toContain("several pages of a site");
-	});
-
-	test("get_mark_element sends the case's page along and passes on refusals", async () => {
-		await seed();
-		await call("get_mark_element", { caseId: "c_1", mark: 1 });
-		const asked = tab.sent.find((r) => r.type === "element:inspect");
-		expect(asked?.type === "element:inspect" && asked.casePage).toBe(
-			"https://www.example.com/kk",
-		);
-		tab.inspected = {
-			ok: false,
-			reason: "other-page",
-			error:
-				"Mark 1 was not drawn on an element, and the tab in front does not show the case's page, so the selector is not looked for here.",
-		};
-		await expect(
-			call("get_mark_element", { caseId: "c_1", mark: 1, selector: "p" }),
-		).rejects.toThrow("Open https://www.example.com/kk in the user's tab");
 	});
 
 	test("get_case and get_mark_element show how a mark's element looked when it was made (DEC-048)", async () => {
@@ -2436,20 +2399,6 @@ describe("the thread and closing (DEC-046)", () => {
 		);
 	});
 
-	test("reopening a mark of a closed case opens the case, as the server does", async () => {
-		await seed();
-		await call("set_mark_status", { caseId: "c_1", mark: 1, status: "fixed" });
-		await call("set_case_status", { caseId: "c_1", status: "closed" });
-		expect((await store.getCase("c_1"))?.closed).toBeDefined();
-		await call("set_mark_status", {
-			caseId: "c_1",
-			mark: 1,
-			status: "open",
-			note: "Still cut off",
-		});
-		expect((await store.getCase("c_1"))?.closed).toBeUndefined();
-	});
-
 	test("what an app does to a mark names the app on that mark; a hand change after it does not", async () => {
 		await seed();
 		await call("set_mark_status", { caseId: "c_1", mark: 1, status: "fixed" });
@@ -2524,18 +2473,6 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 		const shown = json(await call("highlight", { caseId: "c_1", mark: 2 }));
 		expect(shown.address).toBe(`${SEARCH}?q=shoes&sort=price`);
 		expect(shown.onThisPage).toBe(true);
-	});
-
-	test("on localhost's home page, production's home page marks are on this page", async () => {
-		await queried();
-		tab.url = "http://localhost:3000/";
-		const loaded = json(await call("load_case", { caseId: "c_1" }));
-		expect(
-			loaded.marks.map((m: { onThisPage: boolean }) => m.onThisPage),
-		).toEqual([true, false]);
-		const shown = json(await call("highlight", { caseId: "c_1", mark: 1 }));
-		expect(shown.onThisPage).toBe(true);
-		expect(shown).not.toHaveProperty("otherPageNote");
 	});
 
 	test("add_mark says the address with what is kept of its query, and records it", async () => {

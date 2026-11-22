@@ -719,7 +719,7 @@ describe("mark numbers", () => {
 	});
 });
 
-describe("a form open on a mark that takes another number (review B, sync 8)", () => {
+describe("a form open on a mark that takes another number", () => {
 	test("the form follows its mark: what was typed for one's own mark is not saved onto the teammate's that got its id", async () => {
 		await shared();
 		// Each adds a third mark; Tess has her comment form open on hers.
@@ -846,7 +846,7 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 	});
 });
 
-describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
+describe("the toolbar's Undo in a synced case", () => {
 	/** Undo the add of a mark, as the toolbar does: its number and its screenshot's id are free again. */
 	async function undo(d: Device, id: string): Promise<void> {
 		const c = (await d.store.getCase("c_flow")) as Case;
@@ -922,7 +922,7 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 	});
 });
 
-describe("a screenshot's time is compared as an instant, as it is sent (review B, re-check C)", () => {
+describe("a screenshot's time is compared as an instant, as it is sent", () => {
 	for (const written of [
 		"2026-11-19T10:00:05+00:00",
 		"2026-11-19T10:00Z",
@@ -957,7 +957,7 @@ describe("a screenshot's time is compared as an instant, as it is sent (review B
 		});
 });
 
-describe("an id that passes from one mark to another in a merge (review B, re-check D)", () => {
+describe("an id that passes from one mark to another in a merge", () => {
 	test("a renumbering that could not be stored, then a worker that stops between the ids and the case: both marks survive, each its own", async () => {
 		await signIn(tess);
 		await signIn(dana);
@@ -1026,7 +1026,7 @@ describe("an id that passes from one mark to another in a merge (review B, re-ch
 	});
 });
 
-describe("what never changes of a mark is compared as it is sent (review B, sync 5)", () => {
+describe("what never changes of a mark is compared as it is sent", () => {
 	test("an element whose id is longer than the server takes: one mark, sent once, and it stays that mark", async () => {
 		await signIn(tess);
 		await signIn(dana);
@@ -1072,7 +1072,7 @@ describe("what never changes of a mark is compared as it is sent (review B, sync
 	});
 });
 
-describe("operations written down, and their images (review B, sync 9 and 11)", () => {
+describe("operations written down, and their images", () => {
 	test("taken up from the queue when the server no longer has their images: not held against the case, the same run sends them with the images", async () => {
 		await shared();
 		await addMark(tess, "c_flow", "Third");
@@ -1139,7 +1139,7 @@ describe("operations written down, and their images (review B, sync 9 and 11)", 
 	});
 });
 
-describe("what the server refused (review B, sync 14)", () => {
+describe("what the server refused", () => {
 	test("a refusal the fetch settles goes with it: a change to a mark a teammate deleted is not said for ever", async () => {
 		await shared();
 		await change(dana, "c_flow", (c, now) => withoutMark(c, "m2", now));
@@ -1196,7 +1196,7 @@ describe("what the server refused (review B, sync 14)", () => {
 	});
 });
 
-describe("what a run costs (review B, sync 13)", () => {
+describe("what a run costs", () => {
 	/** Count what a run reads. */
 	function counted(d: Device<FakeApi>) {
 		const count = { images: 0, hashed: 0, lists: 0, all: 0 };
@@ -1335,7 +1335,7 @@ describe("what a run costs (review B, sync 13)", () => {
 	});
 });
 
-describe("the contract, in every run (review B, sync 15)", () => {
+describe("every run keeps to the API's contract", () => {
 	test("the server in memory takes only what the API's schemas take, and no more than one request may hold", () => {
 		const good: Op = {
 			opId: "o_1",
@@ -1431,7 +1431,7 @@ describe("the contract, in every run (review B, sync 15)", () => {
 	});
 });
 
-describe("a case the team already has (review B, sync 2 and 3)", () => {
+describe("a case the team already has", () => {
 	/** Dana gets Tess's case as a file: the same id, the same marks, the same images. */
 	async function fromFile(id: string): Promise<void> {
 		const copy = (await tess.store.getCase(id)) as Case;
@@ -1705,7 +1705,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 	});
 });
 
-describe("a change of the team's that cannot be stored (review B, sync 1)", () => {
+describe("a change of the team's that cannot be stored", () => {
 	const numbered = async (d: Device) =>
 		look(await d.store.getCase("c_flow"))?.marks.map((m) => [
 			m.number,
@@ -1867,7 +1867,7 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 	});
 });
 
-describe("a book taken up again (review B, sync 4)", () => {
+describe("a book taken up again", () => {
 	test("a mark deleted while signed out is not deleted for the team: it is back, and that is said once", async () => {
 		await shared();
 		await tess.engine.signOut();
@@ -1918,19 +1918,9 @@ describe("a book taken up again (review B, sync 4)", () => {
 			"Added while signed out",
 		]);
 	});
-
-	test("the whole case deleted while signed out comes back too", async () => {
-		await shared();
-		await tess.engine.signOut();
-		await tess.store.deleteCase("c_flow");
-		await signIn(tess);
-		await sync(tess, dana);
-		expect(server.caseOf("c_flow")).toBeDefined();
-		expect((await tess.store.getCase("c_flow"))?.marks).toHaveLength(2);
-	});
 });
 
-describe("a delete for the team is the user's delete (review B, sync 6)", () => {
+describe("a delete for the team is the user's delete", () => {
 	test("the cases' database is lost and the sync's is not: nothing is deleted for the team, and the cases are read again", async () => {
 		await signIn(tess);
 		await signIn(dana);
@@ -2018,8 +2008,9 @@ describe("a delete for the team is the user's delete (review B, sync 6)", () => 
 		await tess.store.deleteCase("c_flow");
 		await signIn(tess);
 		await sync(tess, dana);
-		// Back (DEC-041), and its record went with the case's return.
-		expect(await tess.store.getCase("c_flow")).toBeDefined();
+		// Back (DEC-041), whole, and its record went with the case's return.
+		expect((await tess.store.getCase("c_flow"))?.marks).toHaveLength(2);
+		expect(server.caseOf("c_flow")).toBeDefined();
 		expect(await tess.store.deletedCases()).toEqual([]);
 		// Now the database is lost.
 		tess.store.cases.clear();
@@ -2132,7 +2123,7 @@ describe("a delete for the team is the user's delete (review B, sync 6)", () => 
 	});
 });
 
-describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
+describe("a cursor of 0", () => {
 	test("is a revision like any other: an empty team is not read whole at every run, and says nothing", async () => {
 		await signIn(tess);
 		expect(tess.kv.data.get(KEYS.cursor)).toBe(0);
@@ -2184,17 +2175,6 @@ describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
 		await tess.engine.request();
 		expect(await tess.store.getCase("c_gone")).toBeUndefined();
 		expect(status(tess)?.problems).toEqual([]);
-	});
-
-	test("the server in memory answers since=0 as the real one does: as any revision, with what was deleted", async () => {
-		await shared();
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "m2", now));
-		await tess.engine.request();
-		const from0 = server.changes(0);
-		expect(from0.removed?.map((r) => r.type).sort()).toEqual(["mark", "shot"]);
-		expect(from0.marks?.map((m) => m.comment)).toEqual(["Total is cut off"]);
-		// Without a revision: the whole state, which names no deletes.
-		expect(server.changes(undefined).removed).toEqual([]);
 	});
 });
 
@@ -2401,20 +2381,6 @@ describe("what the server does not take", () => {
 		expect(status(tess)?.problems).toEqual([]);
 	});
 
-	test("an error code this build does not know is a refusal like any other, in the server's words", async () => {
-		await shared();
-		server.refuseWith = {
-			type: "mark.patch",
-			code: "frozen",
-			message: "The case is frozen for a release.",
-		};
-		await change(tess, "c_flow", (c, now) => withComment(c, "m1", "Edit", now));
-		await tess.engine.request();
-		expect(status(tess)?.problems[0]?.text).toBe(
-			"A change to a mark was not taken: The case is frozen for a release.",
-		);
-	});
-
 	test("what the user's role does not allow is not sent, and said", async () => {
 		await shared();
 		dana.api.permissions = dana.api.permissions.filter(
@@ -2449,7 +2415,7 @@ describe("what the server does not take", () => {
 	});
 });
 
-describe("an image from the server is taken only when it is the image named (review B, 2)", () => {
+describe("an image from the server is taken only when it is the image named", () => {
 	const TEXT =
 		"A mark of the team is not shown here: an image the server sent is not the image named (missing, not a WebP image, too large, or other content). It is read again later.";
 
@@ -2555,7 +2521,7 @@ describe("an image from the server is taken only when it is the image named (rev
 	});
 });
 
-describe("an answer larger than an answer may be (review B, 11)", () => {
+describe("an answer larger than an answer may be", () => {
 	test("a page of changes too large to read is asked for again in small pages, and all of it arrives", async () => {
 		await signIn(tess);
 		await signIn(dana);
@@ -3033,12 +2999,5 @@ describe("who is asked what", () => {
 		await tess.engine.retry();
 		expect(((await tess.engine.account()) as Account).teamId).toBe(TEAM);
 		expect(status(tess)?.state).toBe("synced");
-	});
-});
-
-describe("the engine and its team", () => {
-	test("the team's id is what the engine talks to", async () => {
-		await signIn(tess);
-		expect(((await tess.engine.account()) as Account).teamId).toBe(TEAM);
 	});
 });

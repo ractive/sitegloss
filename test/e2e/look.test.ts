@@ -5,7 +5,7 @@
  * on the page has its casing, and the toolbar's rows are the ones meant.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import {
 	CASING_EXTRA,
@@ -15,7 +15,13 @@ import {
 import { MARK_COLOUR } from "../../src/lib/marks.ts";
 import { openSidePanel, setRelay } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import { markElement, parkControl, saveAs, shadow } from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
@@ -27,7 +33,7 @@ const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
  */
 const WIDTHS = [345, 360, 420];
 
-describe.skipIf(browserBinary === undefined)("the look", () => {
+inFullSet("the look", () => {
 	let h: Harness;
 	let panel: Page;
 	let page: Page;
@@ -227,9 +233,9 @@ describe.skipIf(browserBinary === undefined)("the look", () => {
 		} finally {
 			await relay.stop();
 		}
-		// The steps above take less than half a second: a click on the back
-		// button that soon after "All cases" counts as a double click's second.
-		await Bun.sleep(600);
+		// The steps above are quick: a click on the back button that soon after
+		// "All cases" counts as a double click's second.
+		await Bun.sleep(PAST_GUARD_MS);
 		await panel.eval(`${id("back")}.click()`);
 		await panel.waitFor(`!${id("case-view")}.hidden`);
 		await panel.send("Emulation.clearDeviceMetricsOverride");

@@ -291,10 +291,16 @@ describe("build", () => {
 	});
 
 	test("a package has no test switch left for a page to answer", async () => {
+		// Nor can one be built as a test build.
+		await expect(
+			build({ outdir: tempDir(), store: true, test: true }),
+		).rejects.toThrow("a store package is never a test build");
 		const outdir = mkdtempSync(join(tmpdir(), "sitegloss-flag-"));
 		try {
 			await build({ outdir, store: true });
 			const content = await Bun.file(join(outdir, "content.js")).text();
+			// The store package runs minified bundles.
+			expect(content.startsWith("(()=>{")).toBe(true);
 			expect(content).not.toContain("SITEGLOSS_TEST_BUILD");
 			expect(content).toContain('"closed"');
 			// Nor the worker's way to pause a folder that cannot be (DEC-025).
@@ -303,6 +309,8 @@ describe("build", () => {
 			expect(worker).not.toContain("test:access");
 			// Nor the worker's record of what went wrong, for the tests.
 			expect(worker).not.toContain("siteglossTestLog");
+			// Nor the waits a test may shorten for itself (DEC-053).
+			expect(worker).not.toContain("siteglossTestWaits");
 			// Nor the side panel's way to take a folder without the picker (DEC-021).
 			const panel = new Bun.Glob("sidepanel/**/*.js");
 			let scripts = 0;
@@ -310,6 +318,7 @@ describe("build", () => {
 				scripts++;
 				const text = await Bun.file(join(outdir, file)).text();
 				expect(text).not.toContain("siteglossUseFolder");
+				expect(text).not.toContain("siteglossTestWaits");
 				expect(text).not.toContain("SITEGLOSS_TEST_BUILD");
 			}
 			expect(scripts).toBeGreaterThan(0);
@@ -360,6 +369,7 @@ describe("build", () => {
 		for (const file of names.filter((n) => n.endsWith(".js"))) {
 			const text = await Bun.file(join(outdir, file)).text();
 			expect(text).not.toContain("siteglossUseFolder");
+			expect(text).not.toContain("siteglossTestWaits");
 			// The panel's page in a tab is no panel there (`window.ts`).
 			if (file.startsWith("sidepanel/"))
 				expect(text).not.toContain("location.search");

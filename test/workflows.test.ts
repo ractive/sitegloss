@@ -19,7 +19,13 @@ interface Step {
 }
 
 interface Workflow {
-	on: { workflow_dispatch?: { inputs: Record<string, unknown> } };
+	on: {
+		workflow_dispatch?: { inputs: Record<string, unknown> } | null;
+		workflow_call?: unknown;
+		schedule?: { cron: string }[];
+		push?: unknown;
+		pull_request?: unknown;
+	};
 	env?: Record<string, string>;
 	permissions?: Record<string, string>;
 	jobs: Record<
@@ -351,10 +357,9 @@ describe("release.yml", () => {
 			"artifact-metadata": "write",
 		});
 		expect(w.permissions).toEqual({ contents: "read" });
-		// Read-only: the contents, and ff-rdp's attestation to check it.
+		// Read-only: the contents (ff-rdp's attestation is the job e2e's).
 		expect(w.jobs["build"]?.permissions).toEqual({
 			contents: "read",
-			attestations: "read",
 		});
 		expect(
 			w.jobs["build"]?.steps.some((s) => s.uses?.startsWith("actions/attest")),
@@ -395,70 +400,122 @@ describe("release.yml", () => {
 	});
 });
 
-describe("Firefox and ff-rdp for the Firefox end-to-end tests", () => {
-	const FILES = ["ci.yml", "release.yml"];
-	const PINS = ["FIREFOX_VERSION", "FIREFOX_SHA256", "FF_RDP_VERSION"];
+describe("the end-to-end sets (DEC-053)", () => {
 	/** A GitHub expression, as the workflows write it. */
 	const expression = (inner: string) => `$${"{{"} ${inner} }}`;
 	const FIREFOX = `Install Firefox ${expression("env.FIREFOX_VERSION")}`;
 	const FF_RDP = `Install ff-rdp ${expression("env.FF_RDP_VERSION")}`;
+	const runs = (job: Workflow["jobs"][string] | undefined) =>
+		(job?.steps ?? []).map((s) => s.run?.trim() ?? "");
 
-	/** Every job of every workflow that runs `bun run verify`, by "file job". */
-	async function verifying(): Promise<Map<string, Workflow["jobs"][string]>> {
-		const jobs = new Map<string, Workflow["jobs"][string]>();
-		for (const name of await Array.fromAsync(
-			new Bun.Glob("*.yml").scan(join(import.meta.dir, "../.github/workflows")),
-		)) {
-			const w = await workflow(name);
-			for (const [id, job] of Object.entries(w.jobs))
-				if ((job.steps ?? []).some((s) => s.run?.trim() === "bun run verify"))
-					jobs.set(`${name} ${id}`, job);
+	test("CI runs the smoke set with the unit tests; the full sets run nightly, by hand and before a release is built", async () => {
+		const [ci, e2e, release] = await Promise.all(
+			["ci.yml", "e2e.yml", "release.yml"].map(workflow),
+		);
+		expect(runs(ci?.jobs["verify"])).toContain("bun run verify");
+		for (const job of Object.values(ci?.jobs ?? {}))
+			for (const script of ["bun run test:e2e", "bun run test:firefox"])
+				expect(runs(job)).not.toContain(script);
+		expect(e2e?.on.schedule?.length).toBe(1);
+		expect("workflow_dispatch" in (e2e?.on ?? {})).toBe(true);
+		expect("workflow_call" in (e2e?.on ?? {})).toBe(true);
+		expect(runs(e2e?.jobs["chromium"])).toContain("bun run test:e2e");
+		expect(runs(e2e?.jobs["firefox"])).toContain("bun run test:firefox");
+		for (const job of ["chromium", "firefox"]) {
+			expect(e2e?.jobs[job]?.needs).toBe("changed");
+			expect(e2e?.jobs[job]?.if).toBe("needs.changed.outputs.run == 'true'");
 		}
-		return jobs;
-	}
-
-	test("both workflows pin the same Firefox, checksum and ff-rdp", async () => {
-		const [ci, release] = await Promise.all(FILES.map(workflow));
-		for (const pin of PINS) {
-			expect(ci?.env?.[pin]).toBeTruthy();
-			expect(release?.env?.[pin]).toBe(ci?.env?.[pin] as string);
-		}
-		expect(ci?.env?.["FIREFOX_SHA256"]).toMatch(/^[0-9a-f]{64}$/);
+		// A red full set builds nothing, so nothing is released or published.
+		expect(release?.jobs["e2e"]?.uses).toBe("./.github/workflows/e2e.yml");
+		expect(release?.jobs["build"]?.needs).toBe("e2e");
+		expect(release?.jobs["release"]?.needs).toBe("build");
+		// What the called jobs need, and no more: nothing writes.
+		expect(release?.jobs["e2e"]?.permissions).toEqual({
+			contents: "read",
+			attestations: "read",
+			actions: "read",
+		});
+		expect(e2e?.permissions).toEqual({ contents: "read" });
 	});
 
-	test("every job that runs bun run verify installs them alike, checked, and points the tests at them", async () => {
-		const jobs = await verifying();
-		expect([...jobs.keys()].sort()).toEqual([
-			"ci.yml verify",
-			"release.yml build",
-		]);
-		const scripts = new Set<string>();
-		for (const [where, job] of jobs) {
-			const names = job.steps.map((s) => s.name ?? s.run ?? s.uses);
-			const verify = names.indexOf("bun run verify");
-			for (const install of [FIREFOX, FF_RDP]) {
-				const at = names.indexOf(install);
-				expect(at, `${where}: ${install}`).toBeGreaterThanOrEqual(0);
-				expect(at, `${where}: ${install} before verify`).toBeLessThan(verify);
-				scripts.add(`${install}\n${job.steps[at]?.run}`);
-			}
-			const env = job.steps[verify]?.env ?? {};
-			const temp = expression("runner.temp");
-			expect(env["FIREFOX_PATH"]).toBe(`${temp}/firefox/firefox`);
-			expect(env["FF_RDP_PATH"]).toBe(`${temp}/ff-rdp/ff-rdp`);
-			// The attestation check reads; nothing more is given.
-			expect(job.permissions).toEqual({
-				contents: "read",
-				attestations: "read",
-			});
+	test("every workflow pins the same Chrome for Testing", async () => {
+		const pins = await Promise.all(
+			["ci.yml", "e2e.yml", "release.yml"].map(
+				async (name) => (await workflow(name)).env?.["CHROME_VERSION"],
+			),
+		);
+		expect(pins[0]).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+		expect(new Set(pins).size).toBe(1);
+	});
+
+	test("the Firefox job installs Firefox and ff-rdp, checked, and points the tests at them", async () => {
+		const w = await workflow("e2e.yml");
+		expect(w.env?.["FIREFOX_VERSION"]).toBeTruthy();
+		expect(w.env?.["FF_RDP_VERSION"]).toBeTruthy();
+		expect(w.env?.["FIREFOX_SHA256"]).toMatch(/^[0-9a-f]{64}$/);
+		const job = w.jobs["firefox"];
+		const names = (job?.steps ?? []).map((s) => s.name ?? s.run ?? s.uses);
+		const tests = names.indexOf("bun run test:firefox");
+		for (const install of [FIREFOX, FF_RDP]) {
+			expect(names.indexOf(install)).toBeGreaterThanOrEqual(0);
+			expect(names.indexOf(install)).toBeLessThan(tests);
 		}
-		// The same two scripts everywhere: one per install step.
-		expect(scripts.size).toBe(2);
-		const all = [...scripts].join("\n");
+		const all = (job?.steps ?? []).map((s) => s.run ?? "").join("\n");
 		expect(all).toContain("sha256sum --check --strict");
 		expect(all).toContain("gh attestation verify");
 		expect(all).toContain("--signer-repo ractive/release-workflows");
 		expect(all).toContain(`--source-ref "refs/tags/v$${"{"}FF_RDP_VERSION}"`);
+		const env = job?.steps[tests]?.env ?? {};
+		const temp = expression("runner.temp");
+		expect(env["FIREFOX_PATH"]).toBe(`${temp}/firefox/firefox`);
+		expect(env["FF_RDP_PATH"]).toBe(`${temp}/ff-rdp/ff-rdp`);
+		// The attestation check reads; nothing more is given.
+		expect(job?.permissions).toEqual({
+			contents: "read",
+			attestations: "read",
+		});
+	});
+
+	describe("the nightly run skips itself when main is what the last green run tested", () => {
+		const SINCE = "Whether main moved since the last green run";
+		const EVENT = expression("github.event_name");
+		const HEAD = expression("github.sha");
+		const outputOf = async (event: string, last: string) => {
+			const step = stepOf(await workflow("e2e.yml"), "changed", SINCE);
+			const gh = fakeGh(last);
+			const outputs = join(tempDir(), "outputs");
+			const result = await run(
+				step,
+				{ [EVENT]: event, [HEAD]: "aaaa" },
+				{ PATH: PATH_WITH(gh), GITHUB_OUTPUT: outputs },
+			);
+			expect(result.code).toBe(0);
+			const asked = await Bun.file(join(gh, "gh.log"))
+				.text()
+				.catch(() => "");
+			return { output: await Bun.file(outputs).text(), asked };
+		};
+
+		test("main unchanged since a green run: nothing runs", async () => {
+			const { output, asked } = await outputOf("schedule", "aaaa");
+			expect(output).toBe("run=false\n");
+			expect(asked).toContain(
+				"run list --repo ractive/sitegloss --workflow e2e.yml --branch main --status success",
+			);
+		});
+
+		test("main moved, or no green run yet: it runs", async () => {
+			expect((await outputOf("schedule", "bbbb")).output).toBe("run=true\n");
+			expect((await outputOf("schedule", "")).output).toBe("run=true\n");
+		});
+
+		test("a release or a run by hand always runs, without asking", async () => {
+			for (const event of ["push", "workflow_dispatch"]) {
+				const { output, asked } = await outputOf(event, "aaaa");
+				expect(output).toBe("run=true\n");
+				expect(asked).toBe("");
+			}
+		});
 	});
 });
 

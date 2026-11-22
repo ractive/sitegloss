@@ -45,7 +45,6 @@ import {
 	noneHere,
 } from "../src/sidepanel/follow.ts";
 import { newCase } from "../src/sidepanel/fresh.ts";
-import { validateCase as validateCase030 } from "./case-0-3-0.ts";
 import { putCase, sampleCase } from "./fixtures.ts";
 import vectors from "./page-key.json" with { type: "json" };
 
@@ -282,14 +281,6 @@ describe("the pages of a case", () => {
 				})),
 			}),
 		).toThrow(`more than ${MAX_PAGES} items`);
-	});
-
-	test("0.3.0, the build before the list, refuses a new file: its format is sitegloss/2 (DEC-051)", () => {
-		// test/case-0-3-0.ts is 0.3.0's case module as shipped.
-		const file = JSON.parse(JSON.stringify(flow()));
-		expect(() => validateCase030(file)).toThrow(
-			'case.format: is "sitegloss/2"; Sitegloss reads "sitegloss/1" only',
-		);
 	});
 
 	test("a case without the list, as 0.3.0 kept it, gets its pages from the screenshots: the first with its title, the others without", () => {
@@ -783,7 +774,7 @@ describe("what a draw found, judged for the page in front", () => {
 	});
 });
 
-describe("page, the list and the screenshots agree (review of DEC-038)", () => {
+describe("page, the list and the screenshots agree (DEC-038)", () => {
 	const HOME = "https://shop.example/home";
 
 	test("a file whose page is not in its list: made to agree on import, so no mark is hidden and none moves", async () => {

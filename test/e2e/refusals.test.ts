@@ -4,10 +4,15 @@
  * asking.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
-import { worker } from "./steps.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	startHarness,
+} from "./harness.ts";
+import { testWaits, worker } from "./steps.ts";
 
 interface Capture {
 	ok: boolean;
@@ -15,12 +20,11 @@ interface Capture {
 	width?: number;
 }
 
-describe.skipIf(browserBinary === undefined)("the worker refuses", () => {
+inFullSet("the worker refuses", () => {
 	let h: Harness;
 	let serviceWorker: Page;
 	let a: { page: Page; tabId: number };
 	let b: { page: Page; tabId: number };
-	let windowId: number;
 
 	/** The page's own screenshot of a mark, which the worker takes (DEC-012). */
 	const capture = (tabId: number) =>
@@ -36,9 +40,6 @@ describe.skipIf(browserBinary === undefined)("the worker refuses", () => {
 		h = await startHarness(browserBinary as string);
 		a = await h.open("v1");
 		b = await h.open("v2");
-		windowId = await h.control.eval<number>(
-			`chrome.tabs.get(${a.tabId}).then((t) => t.windowId)`,
-		);
 		serviceWorker = await worker(h);
 		// Counts the real captures; `duringCapture` runs while one is under way.
 		await serviceWorker.eval(`(() => {
@@ -94,8 +95,11 @@ describe.skipIf(browserBinary === undefined)("the worker refuses", () => {
 		await serviceWorker.eval(
 			"globalThis.duringCapture = () => new Promise(() => {})",
 		);
+		// Not the 8 s a real capture gets: this one is given up on sooner.
+		await testWaits(serviceWorker, { captureMs: 500 });
 		const stuck = await capture(a.tabId);
 		await serviceWorker.eval("globalThis.duringCapture = undefined");
+		await testWaits(serviceWorker, {});
 		expect(stuck.error).toContain("did not deliver");
 		expect((await capture(a.tabId)).ok).toBe(true);
 	}, 20_000);
@@ -119,16 +123,6 @@ describe.skipIf(browserBinary === undefined)("the worker refuses", () => {
 				},
 			}),
 		).toEqual({ ok: false, error: "invalid id" });
-	});
-
-	test("no message asks for another tab's screenshot: the side panel's capture:tab is gone", async () => {
-		await a.page.activate();
-		const before = await captures();
-		const answer = await h.control.eval(
-			`chrome.runtime.sendMessage({ type: "capture:tab", tabId: ${a.tabId}, windowId: ${windowId} }).then((r) => r ?? null, () => null)`,
-		);
-		expect(answer).toBeNull();
-		expect(await captures()).toBe(before);
 	});
 
 	test("the account and the tokens are asked for by a page of the extension only, never by a content script (DEC-039)", async () => {

@@ -3,10 +3,15 @@
  * get_mark_element, over the test relay.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import { connectAi, mcpClient, openSidePanel } from "./ai.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	startHarness,
+} from "./harness.ts";
 import {
 	type Db,
 	markElement,
@@ -32,7 +37,7 @@ interface Read {
 	children: { tag: string }[];
 }
 
-describe.skipIf(browserBinary === undefined)("get_mark_element", () => {
+inFullSet("get_mark_element", () => {
 	let h: Harness;
 	const relay = startTestRelay();
 

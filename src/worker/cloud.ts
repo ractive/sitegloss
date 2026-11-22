@@ -86,6 +86,8 @@ export interface CloudDeps {
 	redirect: () => string;
 	fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 	now?: () => number;
+	/** How long changes in a row wait to be one run (`QUIET_MS` unless set). */
+	quietMs?: number;
 	/** The alarms, as `chrome.alarms` has them. */
 	alarms?: Pick<typeof chrome.alarms, "create" | "clear" | "get">;
 	/** Something that resets the browser's idle timer for the worker. */
@@ -249,7 +251,10 @@ export class Cloud {
 	/** A case changed, or it is time to look: one run, after a quiet moment. */
 	request(): void {
 		clearTimeout(this.#timer);
-		this.#timer = setTimeout(() => void this.#run(), QUIET_MS);
+		this.#timer = setTimeout(
+			() => void this.#run(),
+			this.#deps.quietMs ?? QUIET_MS,
+		);
 	}
 
 	async #run(

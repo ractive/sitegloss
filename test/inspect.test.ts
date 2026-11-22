@@ -492,7 +492,7 @@ function refusal(base: Element, selector: string): string | undefined {
 	return "error" in found ? found.error : undefined;
 }
 
-describe("a selector cannot ask about form state (CR-01)", () => {
+describe("a selector cannot ask about form state", () => {
 	const FORM = `<main class="Page"><form class="Form_root" data-testid="pay">
 		<input name="iban" value="CH9300762011623852957">
 		<input type="checkbox" name="terms" checked>

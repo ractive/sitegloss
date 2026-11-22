@@ -18,7 +18,10 @@
 		"typecheck": "bun check -p tsconfig.json && bun check -p tsconfig.test.json",
 		"lint": "biome check .",
 		"fix": "biome check --write .",
-		"test": "bun test --timeout 30000"
+		"test": "bun test --timeout 30000",
+		"test:e2e": "SITEGLOSS_E2E=full bun test --timeout 30000 test/e2e/*.test.ts",
+		"test:firefox": "SITEGLOSS_E2E=full bun test --timeout 30000 test/e2e/firefox/firefox.test.ts",
+		"test:server": "SITEGLOSS_E2E=full bun test --timeout 30000 test/cloud-server.test.ts test/e2e/cloud.test.ts test/e2e/firefox/cloud.test.ts"
 	},
 	"dependencies": {
 		"@ractive-ch/tab-mcp-client": "0.20.0"

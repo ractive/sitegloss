@@ -24,8 +24,16 @@ import {
 } from "./protocol.ts";
 
 export { QUESTION_TIMEOUT_MS };
+
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /** An Allow or Always allow this soon after a notification showed does not count. */
-export const NOTIFICATION_GUARD_MS = 500;
+export const NOTIFICATION_GUARD_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 100
+		: 500;
 /**
  * The arguments in a notification are cut to this; the panel shows all of
  * them (CR-03), which the tools' schemas bound (the library checks them

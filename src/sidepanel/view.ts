@@ -2830,11 +2830,18 @@ function renderAi({ ai }: PanelState): void {
 	setHint(aiCall, ai.lastCall && callText(ai.lastCall));
 }
 
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /**
  * A click on the back button this soon after the last one, which it did
  * something else for, is that double click's second (as Delete's).
  */
-export const BACK_CLICK_GAP_MS = 500;
+export const BACK_CLICK_GAP_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 100
+		: 500;
 
 /** The back button's last click, and what it did then. */
 let lastBack: { at: number; role: string } | undefined;
