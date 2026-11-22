@@ -3,15 +3,13 @@
  * the tester imports the file over the copy here, reads what differs in the
  * prompt, and finds the marks to verify; Verified moves the bar and the
  * chips; Reopen asks what is still wrong, and the note shows in the card and
- * in get_case. An AI app's "verified" asks first and shows who set it.
+ * the case. An AI app's "verified" (it asks first, and who set it shows),
+ * and a reopen read back through get_case, are tools.test.ts's and
+ * view.test.ts's.
  */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { Client } from "@modelcontextprotocol/client";
-import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
-import { sampleCase } from "../fixtures.ts";
-import { answerInPanel, connectAi, mcpClient, openSidePanel } from "./ai.ts";
 import type { Page } from "./browser.ts";
 import {
 	browserBinary,
@@ -29,23 +27,15 @@ import {
 	putCases,
 	READ_DB,
 	saveAs,
-	shadow,
 	showToolbar,
 	until,
 } from "./steps.ts";
-
-interface CallResult {
-	isError?: boolean;
-	content: { type: string; text?: string }[];
-}
 
 const row = (id: string) => `document.querySelector('[data-mark="${id}"]')`;
 const act = (id: string, name: string) =>
 	`${row(id)}?.querySelector('[data-mark-action="${name}"]')`;
 const chips = `[...document.querySelectorAll("#case-status .chip")].map((b) => b.textContent.trim())`;
 const bar = `[...document.querySelectorAll("#case-status .progress > span")].map((s) => s.dataset.kind)`;
-
-/** Put `cases` into the extension's database as they are. */
 
 /** Reopen… on mark `id`, its note `note`: the button waits for the text. */
 async function reopen(panel: Page, id: string, note: string): Promise<void> {
@@ -206,124 +196,4 @@ inFullSet("Verify", () => {
 			at: expect.any(String),
 		});
 	}, 90_000);
-});
-
-inFullSet("Verify with an AI app", () => {
-	let h: Harness;
-	let panel: Page;
-	let page: Page;
-	let claude: Client;
-	const relay = startTestRelay();
-	const QUESTION = `document.querySelector("[data-question]")`;
-
-	const call = (name: string, args: Record<string, unknown>) =>
-		claude.callTool({ name, arguments: args }) as Promise<CallResult>;
-
-	beforeAll(async () => {
-		h = await startHarness(browserBinary as string);
-		const tab = await h.open("v1");
-		page = tab.page;
-		const url = await page.eval<string>("location.href");
-		// A fixed mark without an element, on this page: drawn where it was.
-		const c: Case = {
-			...sampleCase("c_v"),
-			title: "Verify case",
-			page: { ...sampleCase().page, url },
-			shots: [
-				{
-					id: "s1",
-					image: "shots/s1.webp",
-					scrollX: 0,
-					scrollY: 0,
-					viewport: { width: 1280, height: 800, dpr: 2 },
-					capturedAt: "2026-11-13T10:00:00Z",
-				},
-			],
-			marks: [
-				{
-					id: "m1",
-					number: 1,
-					shot: "s1",
-					comment: "Too pale",
-					author: "user",
-					shape: { kind: "note", at: { x: 40, y: 40 } },
-					crop: "crops/m1.webp",
-					element: null,
-					resolution: {
-						kind: "fixed",
-						note: "Darker text",
-						at: "2026-11-13T11:00:00Z",
-					},
-				},
-			],
-		};
-		await putCases(h, [c]);
-		await page.activate();
-		panel = await openSidePanel(h);
-		const address = await connectAi(panel, relay.url);
-		claude = await mcpClient(relay, address);
-		const item = `document.querySelector('button[data-case="c_v"]')`;
-		await panel.waitFor(item, 10_000);
-		await panel.eval(`${item}.click()`);
-		await panel.waitFor(row("m1"), 10_000);
-	}, 60_000);
-
-	afterAll(async () => {
-		await claude?.close();
-		await h?.stop();
-		await relay.stop();
-	});
-
-	test("verified asks first, then shows who set it", async () => {
-		const result = call("set_mark_status", {
-			caseId: "c_v",
-			mark: 1,
-			status: "verified",
-		});
-		await panel.waitFor(QUESTION, 10_000);
-		expect(await panel.eval<string>(`${QUESTION}.textContent`)).toContain(
-			"Mark 1: “Too pale”, now Fixed, to verify.",
-		);
-		await answerInPanel(panel, "allow");
-		const done = await result;
-		expect(done.isError).toBeFalsy();
-		expect(done.content[0]?.text).toBe("Mark 1 is verified.");
-		await panel.waitFor(`${row("m1")}?.dataset.status === "verified"`, 10_000);
-		await panel.eval(`${row("m1")}.querySelector(".mark-toggle").click()`);
-		const verified = `[...${row("m1")}.querySelectorAll(".history li")].find((li) => li.dataset.kind === "verified")`;
-		await panel.waitFor(verified);
-		expect(await panel.eval<string>(`${verified}.textContent`)).toMatch(
-			/^Verified .+ by .*client\.example/,
-		);
-		// On the page, a verified mark steps back.
-		await page.waitFor(
-			`${shadow("svg.marks")}?.querySelector('[data-review="1"][data-resolved]')`,
-			10_000,
-		);
-	});
-
-	test("a reopen in the panel: its note is in get_case", async () => {
-		await reopen(panel, "m1", "Still pale on hover");
-		await panel.waitFor(`${row("m1")}?.dataset.status === "open"`);
-		const read = await call("get_case", { caseId: "c_v", images: false });
-		const view = JSON.parse(read.content[0]?.text ?? "{}");
-		expect(view.marks[0].status).toBe("open");
-		expect(view.marks[0].resolution).toBeNull();
-		expect(view.marks[0].reopens).toEqual([
-			{ note: "Still pale on hover", at: expect.any(String), was: "verified" },
-		]);
-		// An AI app may not verify an open mark.
-		const refused = call("set_mark_status", {
-			caseId: "c_v",
-			mark: 1,
-			status: "verified",
-		});
-		await panel.waitFor(QUESTION, 10_000);
-		await answerInPanel(panel, "allow");
-		const answer = await refused;
-		expect(answer.isError).toBe(true);
-		expect(JSON.stringify(answer.content)).toContain(
-			"only a fixed mark can be verified",
-		);
-	});
 });
