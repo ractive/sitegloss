@@ -719,13 +719,6 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	background: var(--danger);
 }
 
-#stop-ai {
-	min-height: 28px;
-	padding: 0 10px;
-	font-size: 12px;
-	line-height: 16px;
-}
-
 /* "Fill in the code for <app>?", under the top bar on every view (DEC-044). */
 .pair-fill-ask {
 	display: grid;
@@ -1259,8 +1252,99 @@ ul.cases .title {
 	margin: 0;
 }
 
-.case-title-row > #rename-case {
+/* "…": the case's rare actions (DEC-061), a menu under it. */
+.case-more {
+	position: relative;
 	flex: none;
+}
+
+.case-more > .more {
+	min-height: 28px;
+	padding: 0 var(--s2);
+	font-size: 18px;
+	line-height: 1;
+	letter-spacing: 0.05em;
+}
+
+.case-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	z-index: 4;
+	display: grid;
+	min-width: 180px;
+	padding: var(--s1);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+	background: var(--sheet);
+	box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+
+.case-menu > button {
+	justify-content: flex-start;
+	min-height: 32px;
+	border: 0;
+	background: none;
+	font-weight: 400;
+	text-align: left;
+}
+
+.case-menu > button:hover:not(:disabled),
+.case-menu > button:focus-visible {
+	background: var(--wash);
+}
+
+.case-menu > button.danger {
+	margin: 0;
+	color: var(--danger);
+}
+
+/* The status counts under the title. */
+.case-counts {
+	margin-top: -6px;
+}
+
+/*
+ * The case's facts (DEC-061): one quiet block, a label and its value per
+ * row, as the web's case page has them.
+ */
+.case-facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: var(--s2) var(--s3);
+	margin: 0;
+	padding: var(--s3) 0 0;
+	border-top: 1px solid var(--rule);
+	font-size: 12px;
+	line-height: 17px;
+}
+
+.case-facts > .fact {
+	display: contents;
+}
+
+.case-facts > .fact[hidden] {
+	display: none;
+}
+
+.case-facts dt {
+	color: var(--ink-2);
+}
+
+.case-facts dd {
+	display: grid;
+	gap: var(--s1);
+	margin: 0;
+	min-width: 0;
+}
+
+.case-facts dd > * {
+	min-width: 0;
+}
+
+.case-facts .pages-more {
+	justify-self: start;
+	min-height: 0;
 	font-size: 12px;
 }
 
@@ -1279,13 +1363,9 @@ ul.cases .title {
 	margin: 0;
 }
 
-/* Where and when the marks were made, in one line: a · b · c. */
+/* The case's page (or how many), first in the Pages fact. */
 .case-meta {
-	margin-top: -8px;
-}
-
-.case-meta > :not([hidden]) ~ :not([hidden])::before {
-	content: " · ";
+	margin: 0;
 }
 
 /* The address is a link in the line, not a button beside it. */
@@ -1303,7 +1383,7 @@ ul.cases .title {
 .case-pages {
 	display: grid;
 	grid-template-columns: 3px minmax(0, 1fr) auto auto;
-	margin: -4px 0 0;
+	margin: 0;
 	padding: 0;
 	list-style: none;
 }
@@ -1435,7 +1515,7 @@ ul.cases .title {
 
 /* Whether the case is the team's, and "Share with team" (DEC-039). */
 .case-team {
-	margin-top: -4px;
+	margin: 0;
 }
 
 /* A case the team does not have, in the list; a closed one under This page (DEC-050). */
@@ -1489,7 +1569,6 @@ ul.cases .title {
 	display: flex;
 	align-items: baseline;
 	gap: var(--s2);
-	margin-top: -4px;
 }
 
 .case-link > #case-link-open {
@@ -1606,11 +1685,16 @@ ul.cases .title {
 	flex: 1;
 }
 
-/* What the tab in front shows of the case, in words. */
+/*
+ * What the tab in front shows of the case, in words: under the head, where
+ * the marks start, so the head does not move when the tab does (DEC-061).
+ */
 .this-tab {
 	display: grid;
 	justify-items: start;
 	gap: 6px;
+	padding: var(--s3) var(--s4);
+	border-bottom: 1px solid var(--rule);
 }
 
 .this-tab > * {
@@ -1682,9 +1766,14 @@ ul.cases .title {
 	padding: var(--s4) var(--s4) var(--s5);
 }
 
-/* Close case / Reopen case (DEC-046): on the right, Delete keeps its place. */
+/* Close case / Reopen case (DEC-046): on the right. */
 #close-case {
 	margin-left: auto;
+}
+
+/* Match size: a quiet action with its one line (DEC-061). */
+.this-tab > .size {
+	color: var(--ink-2);
 }
 
 /* Its word on the gutter while it is quiet; a button once it is armed. */
@@ -2194,10 +2283,6 @@ button.crop:hover img {
 	margin: 0;
 }
 
-.picture:has(> .tile[aria-pressed="true"]) {
-	grid-column: 1 / -1;
-}
-
 .picture figcaption {
 	overflow: hidden;
 	color: var(--ink-2);
@@ -2236,18 +2321,6 @@ button.tile:hover:not(:disabled) {
 	object-fit: contain;
 	border: 0;
 	border-radius: 0;
-}
-
-/* Shown large: the picture at its own shape, as wide as the grid. */
-button.tile[aria-pressed="true"] {
-	aspect-ratio: auto;
-	cursor: zoom-out;
-}
-
-.mark button.tile[aria-pressed="true"] img {
-	width: auto;
-	height: auto;
-	max-width: 100%;
 }
 
 /* A picture whose file is not here: said, in the place it would take. */
@@ -2909,6 +2982,35 @@ ol.comments {
 	font: inherit;
 }
 
+/* A mark's comments, at the mark (DEC-061): after its actions, quietly ruled off. */
+.mark-thread {
+	display: grid;
+	gap: var(--s1);
+	padding-top: var(--s2);
+	border-top: 1px solid var(--rule);
+}
+
+.mark-thread h3 {
+	margin: 0;
+}
+
+.mark-thread ol.comments {
+	margin: 0;
+}
+
+.mark-thread .comment-item:last-child {
+	border-bottom: 0;
+}
+
+.mark-thread > button.link {
+	justify-self: start;
+	min-height: 0;
+}
+
+.mark-thread .comment-form .row {
+	margin-top: var(--s1);
+}
+
 /* Closed cases, filed away under the list, folded (DEC-046). */
 .closed-cases {
 	margin-top: var(--s3);
@@ -2917,18 +3019,4 @@ ol.comments {
 .closed-cases > summary {
 	cursor: pointer;
 	font-weight: 600;
-}
-
-/*
- * "Open larger" on a picture shown large: the viewer, a tab of its own
- * (DEC-060). Only while the picture is large; small, a click shows it so.
- */
-.picture .open-larger {
-	display: none;
-	justify-self: start;
-	margin-top: var(--s1);
-}
-
-.picture:has(> .tile[aria-pressed="true"]) .open-larger {
-	display: inline-flex;
 }

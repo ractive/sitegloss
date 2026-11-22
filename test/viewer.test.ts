@@ -49,14 +49,13 @@ test("the viewer's pictures of a mark: its screenshot, then the added images and
 		["i_b", "images/i_b.webp", "Image 2 of mark 1"],
 		["i_c", "images/i_c.webp", "Image 3 of mark 1"],
 	]);
-	expect(list[0]?.caption).toBe(
-		"Mark 1 of “Checkout”: the screenshot Sitegloss took",
-	);
-	expect(list[1]?.caption).toMatch(
-		/^Mark 1 of “Checkout”: image 1, added by Ann on /,
-	);
-	expect(list[2]?.caption).toMatch(/: image 2, from an imported file on /);
-	expect(list[3]?.caption).toMatch(/, not sent yet$/);
+	// Short: case, mark, picture; who and when on the second line.
+	expect(list[0]?.title).toBe("“Checkout” · Mark 1 · Screenshot");
+	expect(list[0]?.detail).toMatch(/^Taken by Sitegloss, /);
+	expect(list[1]?.title).toBe("“Checkout” · Mark 1 · Image 1 of 3");
+	expect(list[1]?.detail).toMatch(/^Added by Ann, /);
+	expect(list[2]?.detail).toMatch(/^From an imported file, /);
+	expect(list[3]?.detail).toMatch(/; not sent yet$/);
 	// Previous and next go by this order; an unknown picture starts at the first.
 	expect(pictureIndex(list, "i_b")).toBe(2);
 	expect(pictureIndex(list, "gone")).toBe(0);

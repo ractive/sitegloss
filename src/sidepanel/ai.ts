@@ -242,7 +242,6 @@ export async function startAi(
 	const buttons = [
 		byId<HTMLButtonElement>("ai-button"),
 		byId<HTMLButtonElement>("connect"),
-		byId<HTMLButtonElement>("stop-ai"),
 	];
 
 	// The panel's page opened in a tab by its address is no side panel: the
@@ -584,10 +583,6 @@ export async function startAi(
 		turnedOn("button");
 		turnOn({ type: "connect" }, notTurnedOn);
 	});
-
-	byId<HTMLButtonElement>("stop-ai").addEventListener("click", () =>
-		send({ type: "stop" }),
-	);
 
 	aiSwitch.addEventListener("change", () => {
 		const intent = { on: aiSwitch.checked, until: Date.now() + SWITCH_WAIT_MS };
@@ -1095,7 +1090,7 @@ export async function startAi(
 	}
 
 	// The way out that allows nothing (the rest of the panel is inert, the
-	// top bar's Stop with it): every waiting call is refused.
+	// AI view's switch with it): every waiting call is refused.
 	const stopInDialog = h(
 		"button",
 		{

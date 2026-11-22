@@ -9,7 +9,9 @@ import { markPictures, pictureIndex, type ViewerPicture } from "./pictures.ts";
 
 const byId = <T extends HTMLElement>(id: string) =>
 	document.getElementById(id) as T;
-const caption = byId<HTMLParagraphElement>("caption");
+const caption = byId<HTMLSpanElement>("caption-title");
+const detail = byId<HTMLSpanElement>("caption-detail");
+const close = byId<HTMLButtonElement>("close");
 const position = byId<HTMLSpanElement>("position");
 const previous = byId<HTMLButtonElement>("previous");
 const next = byId<HTMLButtonElement>("next");
@@ -32,6 +34,7 @@ function say(text: string): void {
 	problem.hidden = false;
 	img.hidden = true;
 	caption.textContent = text;
+	detail.textContent = "";
 	for (const b of [previous, next, size]) b.disabled = true;
 }
 
@@ -43,9 +46,10 @@ async function show(index: number): Promise<void> {
 	if (index !== at) return;
 	if (url !== undefined) URL.revokeObjectURL(url);
 	url = undefined;
-	caption.textContent = picture.caption;
+	caption.textContent = picture.title;
+	detail.textContent = picture.detail;
 	position.textContent = `${index + 1} of ${pictures.length}`;
-	document.title = `${picture.caption} · Sitegloss`;
+	document.title = `${picture.title} · Sitegloss`;
 	previous.disabled = index === 0;
 	next.disabled = index === pictures.length - 1;
 	if (stored === undefined) {
@@ -72,6 +76,17 @@ function fit(on: boolean): void {
 	size.setAttribute("aria-pressed", String(!on));
 }
 
+/** The tab goes: it was opened for this picture. */
+function closeTab(): void {
+	void chrome.tabs
+		.getCurrent()
+		.then((tab) =>
+			tab?.id === undefined ? window.close() : chrome.tabs.remove(tab.id),
+		)
+		.catch(() => window.close());
+}
+
+close.addEventListener("click", closeTab);
 previous.addEventListener("click", () => void show(at - 1));
 next.addEventListener("click", () => void show(at + 1));
 size.addEventListener("click", () => fit(!stage.hasAttribute("data-fit")));
@@ -81,6 +96,7 @@ document.addEventListener("keydown", (e) => {
 	else if (e.key === "ArrowRight" && at < pictures.length - 1)
 		void show(at + 1);
 	else if (e.key === "f" || e.key === "F") fit(!stage.hasAttribute("data-fit"));
+	else if (e.key === "Escape") closeTab();
 	else return;
 	e.preventDefault();
 });

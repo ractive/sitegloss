@@ -216,6 +216,8 @@ inBothSets("the side panel's page", () => {
 			await fresh([sampleCase("c_keys")]);
 			await openCase("c_keys");
 			await h.control.activate();
+			// Delete case is in the case's "…" menu (DEC-061).
+			await h.control.eval(`${id("case-more")}.click()`);
 			await h.control.eval(`${id("delete-case")}.focus()`);
 			const enter = async () => {
 				for (const type of ["keyDown", "keyUp"])
@@ -272,6 +274,8 @@ inBothSets("the side panel's page", () => {
 				// The first click arms it (where the button is then does not
 				// matter); the second goes to the spot it was armed at, which a
 				// hand sees: below the case's thread, it is scrolled to first.
+				// Delete case is in the case's "…" menu (DEC-061).
+				await panel.eval(`${id("case-more")}.click()`);
 				await panel.eval(
 					`${id("delete-case")}.scrollIntoView({ block: "center" })`,
 				);
@@ -1086,14 +1090,13 @@ inBothSets("the side panel's page", () => {
 						)) === 2,
 					"the new mark among the loaded ones",
 				);
-				// Hide still hides, also while adding.
+				// Hide hides, and ends the adding: hidden marks and adding do not
+				// go together (DEC-061).
 				await h.control.eval(`${id("load-case")}.click()`);
 				await until(
 					async () => (await pageCase(tabId)) === null,
 					"the marks to go again",
 				);
-				expect(await toolbarUp(tabId)).toBe(true);
-				await h.control.eval(`${id("add-marks")}.click()`);
 				await until(async () => !(await toolbarUp(tabId)), "the toolbar to go");
 				await page.send("Page.close");
 			},
@@ -1355,8 +1358,10 @@ inBothSets("the side panel's page", () => {
 					);
 					expect(await pageCase(tabId)).toBeNull();
 				} finally {
-					// Stop works while it is hidden too (no app connected).
-					await panel.eval(`${id("stop-ai")}.click()`);
+					// AI access off, as the AI view's switch does.
+					await panel.eval(
+						`${id("ai-switch")}.checked && ${id("ai-switch")}.click()`,
+					);
 					await page.send("Page.close");
 					await relay.stop();
 				}

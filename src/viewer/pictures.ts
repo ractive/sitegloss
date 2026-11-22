@@ -11,8 +11,10 @@ export interface ViewerPicture {
 	id: string;
 	/** Its path in the case's images. */
 	path: string;
-	/** Which mark of which case, and what this picture is. */
-	caption: string;
+	/** Which case, which mark, which picture: «Checkout» · Mark 3 · Image 1 of 2. */
+	title: string;
+	/** Who and when: "Added by Dana, 22 Nov 2026". */
+	detail: string;
 	/** For the image itself, said by a screen reader. */
 	alt: string;
 }
@@ -33,29 +35,33 @@ const day = (iso: string) => {
 export function markPictures(c: Case, markId: string): ViewerPicture[] {
 	const a: Mark | undefined = c.marks.find((m) => m.id === markId);
 	if (a === undefined) return [];
-	const of = `Mark ${a.number} of “${c.title}”`;
+	const of = `“${c.title}” · Mark ${a.number}`;
 	const added = a.images ?? [];
 	const held = a.heldImages ?? [];
+	const all = [...added, ...held];
+	const shot = c.shots.find((s) => s.id === a.shot);
 	return [
 		{
 			id: "screenshot",
 			path: a.crop,
-			caption: `${of}: the screenshot Sitegloss took`,
+			title: `${of} · Screenshot`,
+			detail: `Taken by Sitegloss${shot ? `, ${day(shot.capturedAt)}` : ""}`,
 			alt: `Screenshot of mark ${a.number}`,
 		},
-		...[...added, ...held].map((image, i) => {
+		...all.map((image, i) => {
 			const n = i + 1;
+			const name = byline(image.added.user, image.added.app);
 			const who = image.added.imported
-				? "from an imported file"
-				: (() => {
-						const name = byline(image.added.user, image.added.app);
-						return name ? `added by ${name}` : "added";
-					})();
-			const waiting = i >= added.length ? ", not sent yet" : "";
+				? "From an imported file"
+				: name
+					? `Added by ${name}`
+					: "Added";
+			const waiting = i >= added.length ? "; not sent yet" : "";
 			return {
 				id: image.id,
 				path: image.image,
-				caption: `${of}: image ${n}, ${who} on ${day(image.added.at)}${waiting}`,
+				title: `${of} · Image ${n} of ${all.length}`,
+				detail: `${who}, ${day(image.added.at)}${waiting}`,
 				alt: `Image ${n} of mark ${a.number}`,
 			};
 		}),

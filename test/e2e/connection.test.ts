@@ -317,8 +317,6 @@ inBothSets("the AI connection without the side panel", () => {
 			const state = `${byId("ai-state")}.dataset.state`;
 			await panel.waitFor(`["on", "waiting"].includes(${state})`);
 			const paired = (await panel.eval<string>(state)) === "on";
-			// Stop beside the pill while an app is paired, as before the reopening.
-			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(!paired);
 			if (paired) {
 				expect(await panel.eval(`${byId("pairing")}.hidden`)).toBe(true);
 				await panel.eval(`${byId("add-app")}.click()`);
@@ -378,9 +376,9 @@ inBothSets("the AI connection without the side panel", () => {
 	}, 40_000);
 
 	fullTest(
-		"Stop AI access ends the session, keeps the pairing and turns Keep AI access off",
+		"The AI access switch turned off ends the session, keeps the pairing and turns Keep AI access off",
 		async () => {
-			await panel.eval(`${byId("stop-ai")}.click()`);
+			await panel.eval(`${byId("ai-switch")}.click()`);
 			await panel.waitFor(
 				`document.documentElement.dataset.aiState === "disconnected"`,
 			);

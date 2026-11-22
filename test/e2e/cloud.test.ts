@@ -25,7 +25,14 @@ import {
 import { PASSWORD, real, SERVER } from "../cloud-real.ts";
 import { browserBinary, type Harness, startHarness } from "./harness.ts";
 import { E2E_FULL } from "./mode.ts";
-import { type Db, openCase, panelHome, READ_DB, until } from "./steps.ts";
+import {
+	type Db,
+	openCase,
+	openMenuOf,
+	panelHome,
+	READ_DB,
+	until,
+} from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
 const text = (name: string) => `(${id(name)}?.textContent ?? "")`;
@@ -177,6 +184,7 @@ describe.skipIf(
 			"Dana Developer",
 		);
 		// Deleting it would delete it for the team: the button says so.
+		await openMenuOf(panel, id("delete-case"));
 		await panel.click(id("delete-case"));
 		expect(await panel.eval<string>(text("delete-case"))).toBe(
 			"Really delete for the team?",
@@ -209,6 +217,7 @@ describe.skipIf(
 
 		// What is done here reaches the team: renamed in the panel.
 		await openCase(panel, `${title}, renamed`);
+		await openMenuOf(panel, id("rename-case"));
 		await panel.click(id("rename-case"));
 		await panel.eval(
 			`(() => { const f = ${id("rename-field")}; f.value = ${JSON.stringify(`${title}, by Tess`)}; f.dispatchEvent(new Event("input")); })()`,

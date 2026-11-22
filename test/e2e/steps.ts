@@ -685,6 +685,16 @@ export function exportOpenCase(h: Harness, panel: Page): Promise<string> {
 }
 
 /**
+ * The open case's rare actions are in its "…" menu (DEC-061): open it when
+ * the control `button` (an expression) is in it and it is closed.
+ */
+export async function openMenuOf(panel: Page, button: string): Promise<void> {
+	await panel.eval(
+		`(() => { const m = (${button})?.closest("[role=menu]"); if (m && m.hidden) document.getElementById("case-more").click(); })()`,
+	);
+}
+
+/**
  * Click the button `button` (an expression) that saves through the
  * `downloads` API (DEC-020), into Chrome's own downloads folder; answers the
  * path the panel shows in `saved` (an element's id) once the file is there.
@@ -697,6 +707,7 @@ export async function downloadShown(
 ): Promise<string> {
 	// Chrome's own way, by its settings: CDP's "allow" names a file by a GUID.
 	await h.browser.send("Browser.setDownloadBehavior", { behavior: "default" });
+	await openMenuOf(panel, button);
 	await panel.click(button);
 	const code = `document.querySelector("#${saved} code")?.textContent`;
 	await panel.waitFor(code, 15_000);
@@ -721,6 +732,7 @@ export async function download(
 		eventsEnabled: true,
 	});
 	const begun = h.browser.event("Browser.downloadWillBegin");
+	await openMenuOf(panel, button);
 	await panel.click(button);
 	const { suggestedFilename } = (await begun) as { suggestedFilename: string };
 	const path = join(folder, suggestedFilename);

@@ -7,8 +7,10 @@
  * and the browser's own scroll anchoring cannot hold a row that is replaced.
  * So the panel holds it: for a moment after the click, every frame, the
  * page is scrolled by however far the acted element (or, when it went, the
- * mark that takes its place) moved from where it was clicked. A scroll of
- * the person's own (wheel, touch, a key, a press elsewhere) ends it.
+ * mark that takes its place) moved from where it was clicked. Any scroll
+ * not its own (the person's wheel, touch, keys or scrollbar, a script's, a
+ * focus that brings a field into view) and a press elsewhere end it; while
+ * it holds, the browser's own scroll anchoring is off.
  */
 
 /** How long after a click the acted element is held: the save, the redraw, the pictures. */
@@ -60,6 +62,17 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 	if (win === null) return () => {};
 	let held: { keys: string[]; top: number; until: number } | undefined;
 	let frame = 0;
+	/**
+	 * Where the page is scrolled to as far as the hold knows: any other
+	 * scroll (the person's, a script's, a focus that scrolls a field into
+	 * view) ends the hold, or the two pull against each other.
+	 */
+	let expected = 0;
+	const html = doc.documentElement;
+	/** While held, the browser's own anchoring is off: only the hold moves the page. */
+	const hold = (on: boolean) => {
+		html.style.overflowAnchor = on ? "none" : "";
+	};
 	const elementOf = (key: string) =>
 		key.startsWith("chip:")
 			? root.querySelector<HTMLElement>(key.slice(5))
@@ -67,8 +80,9 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 	const step = () => {
 		frame = 0;
 		if (held === undefined) return;
-		if (Date.now() > held.until) {
-			held = undefined;
+		// Over, or scrolled by someone else since the last frame: let go.
+		if (Date.now() > held.until || Math.abs(win.scrollY - expected) > 1) {
+			release();
 			return;
 		}
 		const delta = anchorShift(held.keys, held.top, (key) => {
@@ -77,7 +91,10 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 				? e.getBoundingClientRect().top
 				: undefined;
 		});
-		if (delta) win.scrollBy(0, delta);
+		if (delta) {
+			win.scrollBy(0, delta);
+			expected = win.scrollY;
+		}
 		frame = win.requestAnimationFrame(step);
 	};
 	root.addEventListener(
@@ -107,6 +124,8 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 				keys = markAnchorKeys(order, row.dataset["mark"] ?? "");
 				element = row;
 			} else return;
+			expected = win.scrollY;
+			hold(true);
 			held = {
 				keys,
 				top: element.getBoundingClientRect().top,
@@ -117,17 +136,32 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 		true,
 	);
 	// The person scrolls, or acts elsewhere: no longer held.
-	const release = () => {
+	function release(): void {
 		held = undefined;
-	};
+		hold(false);
+	}
+	win.addEventListener(
+		"scroll",
+		() => {
+			if (held !== undefined && Math.abs(win.scrollY - expected) > 1) release();
+		},
+		{ passive: true },
+	);
 	// A press comes before its click: it ends the hold of the click before.
 	for (const type of ["wheel", "touchstart", "pointerdown"] as const)
 		doc.addEventListener(type, release, { passive: true, capture: true });
 	doc.addEventListener("keydown", (e) => {
 		if (
-			["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"].includes(
-				e.key,
-			) ||
+			[
+				"PageUp",
+				"PageDown",
+				"Home",
+				"End",
+				"ArrowUp",
+				"ArrowDown",
+				// The focus moves on, and the page scrolls to it.
+				"Tab",
+			].includes(e.key) ||
 			(e.key === " " && !(e.target as HTMLElement | null)?.closest("button"))
 		)
 			release();

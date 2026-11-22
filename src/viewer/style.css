@@ -63,10 +63,19 @@ body {
 	background: var(--paper);
 }
 
+/* Two lines: which case, mark and picture; then who and when. */
 .caption {
+	display: grid;
 	margin: 0;
 	min-width: 0;
 	font-weight: 600;
+}
+
+.caption .detail {
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 17px;
+	font-weight: 400;
 }
 
 .tools {
