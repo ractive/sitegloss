@@ -3221,8 +3221,7 @@ web app comes later.
 
 - **The format.** `sitegloss/2` gains an optional `marks[].images`, a list of
   `{ id, image, added: { at, user? } }` (`MarkImage`), absent when there are none, as
-  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 12 per mark
-  (the team's six, and as many added here that could not be sent beside them), an
+  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 6 per mark, an
   id unique in the whole case, the path exactly `images/<id>.webp`, and `added` as every
   stamp. The import requires each file as it does a crop ("The export lacks
   images/….webp."). The format is not released, so it keeps its name: a reader from before
@@ -3250,9 +3249,11 @@ web app comes later.
   the import's own limits (`MAX_IMAGE_BYTES`, `MAX_IMAGE_PIXELS`). The pixels are read from
   the file's header before anything is decoded (`declaredSize`): a small file can declare a
   picture whose decode alone takes gigabytes and ends the panel. So only formats whose
-  header says the size cheaply: PNG, JPEG, WebP and GIF; no AVIF (its size sits deep in
-  the file), no SVG. An animated picture (APNG, animated WebP or GIF) keeps its first
-  frame, and its preview says so. Every picture is re-encoded in the panel
+  header says the size the decoder will use: PNG, JPEG and WebP, what a screenshot is. No
+  GIF (its decoder grows to the first frame's bounds, which its screen size does not
+  bound), no AVIF (its size sits deep in the file), no SVG. A JPEG with a stray `FF 00` or
+  a marker no JPEG has is refused, so the reader walks the segments as the decoder does.
+  An animated picture (APNG, animated WebP) keeps its first frame, and its preview says so. Every picture is re-encoded in the panel
   (`toAddedImage`): WebP at the crops' quality 0.85, the longest side at most 2048 px
   (`ADDED_MAX_SIDE`), turned as its EXIF orientation says. 2048 px stays readable enlarged
   and mostly fits what an AI app is sent. The canvas writes no EXIF, XMP or GPS, so the
@@ -3275,13 +3276,18 @@ web app comes later.
   A server mark without `images` is "not told": nothing here is removed, and the shadow
   keeps what it knew. An added image whose picture does not come is left out of that read
   and said; nothing here is removed for it.
-- **Never deleted unsent.** An image this device has not sent (not in the shadow) is never
-  removed by a merge: past the team's six it stays here, the mark holding up to 12, and
-  its tile says "Not sent:" and why: "the mark already holds six images" (the server's
-  `limit`), the storage's refusal, or "your role in the team does not allow it". It goes
-  by itself once the team's mark has room (a refused add is tried again when that mark's
-  images change), or once the role allows it, and the person may remove it. Only an image
-  the server took, or that the person removes, leaves the device.
+- **Never deleted unsent, never past six.** An image this device has not sent (not in the
+  shadow) is never removed by a merge. `Mark.images` holds six at most, everywhere: here, in
+  a file, in an operation. What does not fit once the team's images come back is held back
+  in `Mark.heldImages`, this browser's own like `via` (left out of the file, the Markdown,
+  the AI tools and the wire), its file kept, its tile "Not sent: the mark already holds six
+  images" with its Remove. When a place frees up, here or at the server, the oldest held
+  image moves into `images` and is sent as an ordinary add. So no patch carries an add that
+  cannot fit, and a held image never holds back the mark's other changes (a first answer
+  had it in the patch, refused whole with `limit` at every edit). A refusal for the
+  storage or the role leaves the image out of the patch, said on its tile ("Not sent:" and
+  why, with "Try again"); a role is looked at again at every run. Only an image the server
+  took, or that the person removes, leaves the device.
 - **From a file, again.** The panel re-encodes the images of an imported case as the
   dialog does, so a file's metadata or animation is not stored or synced. One case's file
   may have as many entries as the format allows (`MAX_CASE_ENTRIES`).

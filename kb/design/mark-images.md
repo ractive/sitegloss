@@ -100,7 +100,16 @@ Read against both main checkouts, 2026-11-22. Code word: **image** (`MarkImage`,
   "not told": no local image is removed for it. Teammates then miss the images and a shadow
   that believes it sent them does not resend, so the server ships first, on dev and prod.
 - **Offline** adding works; the next run sends it. Two devices adding at once keep both (ids
-  differ); past 6 the later patch is refused `limit`, its images stay here and that is said.
+  differ). **Past six**: `Mark.images` never holds more than six, here, in a file or on the
+  wire. An image added on this device that does not fit once the team's come back is held
+  back in `Mark.heldImages`, this browser's own (never in a file, the Markdown, an AI app's
+  view or an operation), its file kept, its tile "Not sent: the mark already holds six
+  images" with its Remove. When a place frees up, here or at the server, the oldest held
+  image moves into `images` and goes as an ordinary add. So a patch never carries an add
+  that cannot fit, and a held image never holds back the mark's comment, status or findings.
+  A refusal for the storage or the role leaves the image out of the patch (as a missing
+  file), said on its tile with "Try again" (the sync's "Sync now"); a role is looked at
+  again at every run.
 - **Delete**: `images.remove` plus the local file in one `store.change`; a mark's or case's
   delete takes its images.
 
@@ -152,14 +161,14 @@ the `Lightbox`'s `media`.
   or another state of the page." Then one area: "Paste an image (⌘V), drop one here, or
   choose a file", with "To capture a menu that closes: ⌘⇧⌃4 on a Mac, Windows+Shift+S on
   Windows, then paste." "Choose files…" (`<input type=file multiple accept="image/png,
-  image/jpeg,image/webp,image/gif">`; not "Upload…": nothing uploads unless the
+  image/jpeg,image/webp">`; not "Upload…": nothing uploads unless the
   case syncs). `paste` reads `clipboardData.items` of kind file: no `clipboardRead`
   permission, no install warning. Each picture is re-encoded at once (section 5) and
   previewed with its size ("1440 × 900") and "Remove"; the previews are numbered after the
   mark's images ("Image 3", "Image 4" when it holds two); footer "Add 2 images" and
   "Cancel"; several at once, up to the free places.
 - **Errors**, in a `role="status"` line: "The clipboard holds no image. Copy a screenshot
-  first." · "This file is not an image Sitegloss can read: PNG, JPEG, WebP or GIF." ·
+  first." · "This file is not an image Sitegloss can read: PNG, JPEG or WebP." ·
   "This image is larger than 30 MB." · "This image has more than 64 million pixels." ·
   "Mark 3 holds at most 6 images; 2 more fit." · "This image is on the mark already." (same
   SHA-256). A failed save says the store's sentence and the dialog stays.
@@ -172,9 +181,10 @@ the `Lightbox`'s `media`.
 
 ## 5. Limits and re-encoding
 
-- Accepted: PNG, JPEG, WebP and GIF, whose headers say their size (`declaredSize`, read
-  before any decode); an animated one keeps its first frame, said in the preview. No AVIF
-  (its size sits deep in the file), no SVG. At most 30 MB and 64 MP (`MAX_IMAGE_BYTES`,
+- Accepted: PNG, JPEG and WebP, whose headers say the size the decoder uses
+  (`declaredSize`, read before any decode); an animated one keeps its first frame, said in
+  the preview. No GIF (its decoder grows past its header's size), no AVIF (its size sits
+  deep in the file), no SVG. At most 30 MB and 64 MP (`MAX_IMAGE_BYTES`,
   `MAX_IMAGE_PIXELS` of `export.ts`), checked before decoding. At most 6 per mark; no case
   limit beyond the team quota and the import's 150 MB.
 - Always re-encoded in the panel: `toAddedImage(blob)` in `src/lib/images.ts` through
