@@ -98,6 +98,20 @@
 				<p id="ai-state" class="ai-state" data-state="off" role="status">
 					<span class="dot" aria-hidden="true"></span><span id="ai-state-text">AI access is off · paired apps stay paired</span>
 				</p>
+				<!-- Right under the switch it belongs to (owner, 22 November 2026): it decides
+				     whether that switch comes back on by itself. -->
+				<label class="check" title="Connect again by itself after an idle or expired session, after an update of Sitegloss, and when the browser starts. Stop AI access and the AI access switch turn it off.">
+					<input id="keep-on" type="checkbox" />
+					Keep AI access on
+				</label>
+				<p id="keep-on-note" class="meta">
+					AI access stays on with this panel closed, until you turn it off. Keep AI access on
+					also connects again after an idle or expired session, after an update of Sitegloss,
+					and at the next start.
+				</p>
+				<!-- Asked once, when the person turns AI access on (DEC-059; ai.ts). A status
+				     region that is always there: what is put in it is said. -->
+				<div id="keep-on-ask" class="keep-on-ask" role="status"></div>
 				<!-- An AI app was just paired: what to do next, and the way back (DEC-045; view.ts). -->
 				<div id="paired-next" class="paired-next" role="status" hidden>
 					<p id="paired-next-text"></p>
@@ -149,14 +163,6 @@
 					Relay
 					<input id="relay" type="url" spellcheck="false" autocomplete="off" />
 				</label>
-				<label class="check" title="Connect again by itself after an idle or expired session, after an update of Sitegloss, and when the browser starts. Stop AI access and the AI access switch turn it off.">
-					<input id="keep-on" type="checkbox" />
-					Keep AI access on
-				</label>
-				<p class="meta">
-					AI access stays on with this panel closed, until you turn it off. Keep AI access on
-					also connects again after an idle or expired session, and at the next start.
-				</p>
 			</section>
 			<section aria-labelledby="options-heading">
 				<h2 id="options-heading">Options</h2>

@@ -3302,3 +3302,40 @@ web app comes later.
   `test/cloud.test.ts` (two devices), `test/tools.test.ts`, `test/review.test.ts`,
   `test/cloud-server.test.ts` (a real server), `test/e2e/images.test.ts` (full set: a
   pasted PNG kept as WebP of at most 2048 px).
+
+## DEC-059: Asked once whether to keep AI access on; never on by default (owner)
+
+2026-11-22. AI access is a session: after a reload or an update of Sitegloss, an idle or
+expired session, or a browser start it is off unless "Keep AI access on" is ticked. The
+owner was surprised that it had gone off, and asked to move the checkbox next to the AI
+access switch and to ask about it when AI access is first turned on.
+
+- **Where.** "Keep AI access on" and its sentence sit right under the AI access switch and
+  its state line in the AI app card: it decides whether that switch comes back on by itself.
+- **Asked once.** When the person turns AI access on (the card's switch, its "Turn on AI
+  access" button, the top bar's pill), keep-on is not ticked, this browser never answered,
+  and the connection is not taken over by another browser or program, the card asks under
+  the checkbox: "Keep AI access on after a reload, an update of Sitegloss or a restart of
+  the browser? Without it, you turn AI access on again each time." with "Keep it on" and
+  "Not now" (`asksKeepOn` in `src/sidepanel/card.ts`). Not when AI access comes on by
+  itself. It shows only once AI access is really on after that action, and goes whenever
+  it is not on (a refused consent, an unreachable relay, turned off, a session that ended;
+  `nextKeepOnAsk`): unanswered, it comes again the next time. A note in the card, a status
+  region, not a dialog: pairing goes on, no focus is taken, nothing scrolls; while it
+  shows, the sentence under the checkbox, which says the same, is hidden, so the address
+  and the code stay in the first view of a narrow panel. After an answer, or when it goes
+  while one of its buttons has the focus, the focus goes to the switch. Neither button is
+  amber (DEC-024).
+- **One answer.** "Keep it on" is the same as ticking the checkbox (the same handler,
+  Firefox's consent step included). The answer is kept in this browser's own storage (the
+  panel's `localStorage`, not a case, not synced) when it holds: "Not now" and unticking
+  by hand at once; "Keep it on" and ticking by hand once keep-on is really on
+  (`keepOnChosen`), so a refused consent leaves the question to come again. An answer in
+  one panel takes the question away in another (the `storage` event). It does not come
+  again.
+- **Not on by default.** AI access left on means every paired AI app can reach Sitegloss
+  whenever the browser runs, with the person's cases and the pages in front. That stays
+  the person's choice, made once and visibly, and always undone by the same checkbox.
+- Tests: `test/card.test.ts` (the table: each way AI access comes on, keep-on ticked or
+  not, answered or not, taken over; the question's course; when an answer is kept),
+  `test/view.test.ts` (the question's markup, its two answers, the focus when it goes).
