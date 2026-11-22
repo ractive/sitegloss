@@ -878,6 +878,21 @@ describe("filling in the code on the relay's pairing page, in the worker (DEC-04
 		expect(w.last().fill).toBeUndefined();
 	});
 
+	test("the same request's page again in the same tab after a fill is asked about again: no code is filled in without a yes", async () => {
+		const { w } = await connected({ fillCode: true });
+		await w.connection.pageLoaded(7, PAGE);
+		await until(() => w.last().fill !== undefined);
+		w.send({ type: "fill", id: w.last().fill?.id, yes: true });
+		await until(() => fake.filled.length > 0);
+		// The relay answers the post with the same request's page (a code
+		// it did not take). The library would fill that once more unasked.
+		await w.connection.pageLoaded(7, PAGE);
+		await until(() => w.last().fill !== undefined || fake.filled.length > 1);
+		expect(w.last().fill).toBeDefined();
+		await Bun.sleep(50);
+		expect(fake.filled).toHaveLength(1);
+	});
+
 	test("pairing is held on for a fill; a yes sends pairing.start also while the panel shows the code, and the code the card shows is filled in", async () => {
 		const start = spyOn(TabMcp.prototype, "startPairing");
 		try {
