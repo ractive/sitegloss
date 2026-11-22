@@ -35,6 +35,7 @@ import {
 import { type Account, forgetCases } from "../src/lib/cloud/book.ts";
 import { CloudSync } from "../src/lib/cloud/engine.ts";
 import { listen } from "../src/lib/cloud/sse.ts";
+import { memoryKv } from "../src/lib/kv.ts";
 import { MemoryStore } from "../src/lib/store.ts";
 import {
 	addMark,
@@ -682,10 +683,11 @@ serverTest("a browser's 0.3.0 data, opened by this build", () => {
 		// The extension reloaded as this build (DEC-051): its store starts
 		// empty, the cloud's database forgets what it kept about cases.
 		const store = new MemoryStore();
-		await forgetCases(old.kv as never);
+		const kv = memoryKv(Object.fromEntries(old.kv.data));
+		await forgetCases(kv);
 		const engine = new CloudSync({
 			store,
-			kv: old.kv as never,
+			kv,
 			api: () => api,
 			onStatus: (s) => statuses.push(s),
 		});

@@ -142,15 +142,28 @@ globalThis.__siteglossStore = {
 		const store = new IdbStore({ blockedWaitMs: 200, retryAfterMs: 400 });
 		const said = (error: unknown) =>
 			error instanceof StoreBlockedError ? error.message : String(error);
+		const wait = (ms: number) =>
+			new Promise((resolve) => setTimeout(resolve, ms));
 		const first = await store.listCases().then(() => "opened", said);
-		old.result.close();
 		// A call right after: the same error at once, no new open (no tight loop).
 		const during = await store.listCases().then(() => "opened", said);
-		await new Promise((resolve) => setTimeout(resolve, 500));
-		const after = await store.listCases().then(
-			(cases) => `opened, ${cases.length} cases`,
-			(error: unknown) => String(error),
-		);
+		// After the retry time, the old connection still open: the request
+		// under way is waited on again, and given up on again, not hung on.
+		await wait(500);
+		const again = await store.listCases().then(() => "opened", said);
+		// Another context: its request waits behind the first without a
+		// blocked event of its own, and is given up on all the same.
+		const other = new IdbStore({ blockedWaitMs: 200, retryAfterMs: 400 });
+		const otherFirst = await other.listCases().then(() => "opened", said);
+		old.result.close();
+		await wait(500);
+		const opened = (cases: unknown[]) => `opened, ${cases.length} cases`;
+		const after = await store
+			.listCases()
+			.then(opened, (error: unknown) => String(error));
+		const otherAfter = await other
+			.listCases()
+			.then(opened, (error: unknown) => String(error));
 		// A later version, while this build's connection is open: not blocked.
 		const newer = indexedDB.open("sitegloss", DB_VERSION + 1);
 		let blocked = false;
@@ -161,7 +174,17 @@ globalThis.__siteglossStore = {
 		newer.result?.close();
 		const deleting = indexedDB.deleteDatabase("sitegloss");
 		const deleted = await settled(deleting, 2000);
-		return { first, during, after, upgraded, blocked, deleted };
+		return {
+			first,
+			during,
+			again,
+			otherFirst,
+			after,
+			otherAfter,
+			upgraded,
+			blocked,
+			deleted,
+		};
 	},
 	/**
 	 * Database `sitegloss` (of a page whose origin has none yet) written by

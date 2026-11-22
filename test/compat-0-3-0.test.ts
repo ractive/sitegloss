@@ -19,6 +19,7 @@ import {
 import { forgetCases } from "../src/lib/cloud/book.ts";
 import { CloudSync } from "../src/lib/cloud/engine.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
+import { memoryKv } from "../src/lib/kv.ts";
 import { MemoryStore } from "../src/lib/store.ts";
 import { readZip } from "../src/lib/zip.ts";
 import type { FakeApi } from "./cloud-fake.ts";
@@ -216,8 +217,10 @@ describe("0.3.0's data after this build's upgrade (DEC-051): the cases emptied, 
 		// The update: the store's version 2 starts empty, the cloud's
 		// database forgets what it kept about cases (books, cursor, queue).
 		const store = new MemoryStore();
-		await forgetCases(dana.kv as never);
-		const left = [...dana.kv.data.keys()];
+		// (0.3.0's own database, as this build's opens it: one step at a time.)
+		const kv = memoryKv(Object.fromEntries(dana.kv.data));
+		await forgetCases(kv);
+		const left = [...kv.data.keys()];
 		expect(left.some((k) => /(^|\s)(case:|cursor$|queue$)/.test(k))).toBe(
 			false,
 		);
@@ -231,7 +234,7 @@ describe("0.3.0's data after this build's upgrade (DEC-051): the cases emptied, 
 		const statuses: { state: string; problems: unknown[] }[] = [];
 		const engine = new CloudSync({
 			store,
-			kv: dana.kv as never,
+			kv,
 			api: () => dana.api as never,
 			onStatus: (s) => statuses.push(s),
 		});

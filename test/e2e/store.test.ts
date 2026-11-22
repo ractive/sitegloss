@@ -125,7 +125,10 @@ describe.skipIf(browserBinary === undefined)("IdbStore and openKv", () => {
 		).toEqual({
 			first: new StoreBlockedError().message,
 			during: new StoreBlockedError().message,
+			again: new StoreBlockedError().message,
+			otherFirst: new StoreBlockedError().message,
 			after: "opened, 0 cases",
+			otherAfter: "opened, 0 cases",
 			upgraded: "success",
 			blocked: false,
 			deleted: "success",

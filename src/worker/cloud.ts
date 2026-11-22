@@ -38,6 +38,8 @@ import {
 	BOOK,
 	type CaseBook,
 	type CloudStatus,
+	casesForgotten,
+	forgetCases,
 	KEYS,
 	readAccount,
 	teamOf,
@@ -54,7 +56,7 @@ import {
 import { cropImages } from "../lib/images.ts";
 import type { Kv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
-import type { CaseStore } from "../lib/store.ts";
+import { type CaseStore, DB_VERSION } from "../lib/store.ts";
 
 /** The alarm that looks for the team's changes while no panel listens. */
 export const CLOUD_ALARM = "sitegloss-cloud";
@@ -143,6 +145,7 @@ export class Cloud {
 			// The panel's question is answered once the choice is written down.
 			later: (run) => void this.#run(() => run),
 			elsewhere: () => this.#elsewhere(server),
+			casesReady: () => this.#casesReady(),
 			// A crop for a mark an AI app added at the server (DEC-047).
 			cutCrop: async (shot, rect, viewportWidth) => {
 				const [crop] = await cropImages(
@@ -157,6 +160,20 @@ export class Cloud {
 		const scope: ServerScope = { server, kv, session, engine };
 		this.#scopes.set(server, scope);
 		return scope;
+	}
+
+	/**
+	 * Whether the cases and the books are this build's (DEC-051): the case
+	 * store opened at its version 2 (its upgrade emptied it), then the cloud's
+	 * database brought along in one step (`forgetCases`): here, in the
+	 * worker, and nowhere else. The store not open yet (held up by a build
+	 * before this one, say): no, and nothing is forgotten.
+	 */
+	async #casesReady(): Promise<boolean> {
+		const deps = this.#deps;
+		if ((await deps.store.version()) !== DB_VERSION) return false;
+		await forgetCases(deps.kv);
+		return casesForgotten(deps.kv);
 	}
 
 	/**

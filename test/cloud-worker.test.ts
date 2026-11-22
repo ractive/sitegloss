@@ -16,6 +16,8 @@ import {
 } from "../src/lib/cloud/auth.ts";
 import {
 	type Account,
+	CASES,
+	CASES_KEY,
 	type CaseBook,
 	type CloudStatus,
 	KEYS,
@@ -382,6 +384,46 @@ describe("syncing from the worker", () => {
 		await signIn();
 		expect(status()?.state).toBe("synced");
 		expect(server.marksOf("c_1")).toHaveLength(1);
+	});
+});
+
+describe("the update to the store's version 2 (DEC-051)", () => {
+	test("while the case store is not at version 2, nothing is forgotten and nothing is sent; then the books of before go in one step and nothing but reads follows", async () => {
+		await signIn();
+		const d = here();
+		await startCase(d, "c_1");
+		await addMark(d, "c_1", "One");
+		await settled();
+		expect(server.marksOf("c_1")).toHaveLength(1);
+		// As a build before this one left it: its book, no marker, and the
+		// store still at version 1 (another context of it holds it open).
+		kv.data.delete(CASES_KEY);
+		let version = 1;
+		store.version = async () => version;
+		await change(d, "c_1", (c, at) => withComment(c, "m1", "Not to go", at));
+		http.state.requests.length = 0;
+		cloud = worker();
+		cloud.request();
+		await Bun.sleep(400);
+		await settled();
+		expect(http.state.requests).toEqual([]);
+		expect(data.has("case:c_1")).toBe(true);
+		expect(kv.data.has(CASES_KEY)).toBe(false);
+		// The store opened at version 2: its upgrade emptied it.
+		version = 2;
+		store.cases.clear();
+		store.images.clear();
+		cloud.request();
+		await Bun.sleep(400);
+		await settled();
+		expect(kv.data.get(CASES_KEY)).toBe(CASES);
+		expect(http.state.requests.filter((r) => !r.startsWith("GET "))).toEqual(
+			[],
+		);
+		// The team's case is back, as the team has it.
+		expect((await store.getCase("c_1"))?.marks.map((a) => a.comment)).toEqual([
+			"One",
+		]);
 	});
 });
 

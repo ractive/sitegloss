@@ -2873,20 +2873,34 @@ side of it is its DEC-024.
   version 1; the error says what failed by its name only, once in the console, and for
   ten seconds every call (the panel's list, the folder sync, the cloud sync) gets the
   same error without opening again. A build before this one cannot open version 2. The
-  cloud's database forgets, once, what it kept about cases (`forgetCases` in
-  `cloud/book.ts`, run wherever that database is opened): every server's books, how far
-  the team's changes were read, what waited to be sent, the whole-read and status
-  notes, and the deletes an expired sign-in recorded. It keeps the server chosen, the
-  account and its team, and the tokens; settings and the AI connection are in other
-  databases and stay. Undo (the ledger in `storage.session`) and the drafts on open
-  pages end with the update anyway. So the first run has no case, no book, no cursor
-  and no delete on record: it sends nothing and reads the team's whole state, and every
-  case of the team comes back with `m` ids.
-- **The open waits for no one for ever**: an open blocked by a connection of the build
-  before waits five seconds, then fails with a sentence that says what to close; its
-  request stays, so the upgrade runs once that connection goes. A connection of this
-  build closes when another context upgrades or deletes the database, as the settings'
-  database does.
+  cloud's database forgets what it kept about cases (`forgetCases` in `cloud/book.ts`):
+  every server's books, how far the team's changes were read, what waited to be sent,
+  the whole-read and status notes, and the deletes an expired sign-in recorded. It
+  keeps the server chosen, the account and its team, and the tokens; settings and the
+  AI connection are in other databases and stay. Undo (the ledger in `storage.session`)
+  and the drafts on open pages end with the update anyway. So the first run has no
+  case, no book, no cursor and no delete on record: it sends nothing and reads the
+  team's whole state, and every case of the team comes back with `m` ids.
+- **The forgetting happens once, in one place, in one step, and only after the case
+  store is open at version 2.** Only the service worker forgets (`casesReady` in
+  `worker/cloud.ts`): it opens the case store first, and only when that answers version
+  2 does it run `forgetCases`, whose look at the marker (`cases`), removals and marker
+  are one readwrite transaction (`Kv.update`); a second call finds the marker and
+  removes nothing, so nothing written after it is touched. The engine does nothing
+  (no run, no choice, no book read or written, nothing sent) until `casesReady` has
+  said yes once; the panel shows no sync status and no case's sync mode until the
+  marker is there. Two builds running at once are guarded only this far: while one of
+  the build before holds the case store at version 1, this build neither forgets nor
+  syncs, so the old engine keeps its books and its cases as they were; once this
+  build has opened version 2, a build before cannot open the store at all.
+- **The open waits for no one for ever**: a store has at most one open request under
+  way, and every call waits on it for at most five seconds unless its upgrade has begun
+  (IndexedDB fires `blocked` only for the first request in line; the others just wait,
+  so the time counts from each call, not from that event). Then the call fails with a
+  sentence that says what to close; the request stays, so the upgrade runs once the old
+  connection goes, and no request piles up; no failed or pending promise is kept as the
+  store's connection. A connection of this build closes when another context upgrades
+  or deletes the database, as the settings' database does.
 - **The folder and Downloads mirror (DEC-025) leaves files of before alone.** It reads
   nothing back. A file whose record has no format in its version (written before this
   version) is moved aside in the records: never written over, never removed, its name
@@ -2909,12 +2923,15 @@ side of it is its DEC-024.
   this page", "Stop annotating", "Continue annotating") as they were.
 - Tests: `test/compat-0-3-0.test.ts` (a 0.3.0 browser's data after the update: no
   operation at all, not even the delete 0.3.0 had on record; the team's cases back with
-  `m` ids; the case only 0.3.0 had is gone), `test/forget-cases.test.ts`,
+  `m` ids; the case only 0.3.0 had is gone), `test/forget-cases.test.ts` (once, in one
+  step, two callers), `test/cloud-worker.test.ts` (nothing forgotten and nothing sent
+  while the store is at version 1), `test/kv-contract.ts` (`update`, also in IndexedDB),
   `test/sync.test.ts` (the mirror after the update, to a folder and to Downloads),
   `test/export.test.ts` (a `sitegloss/1` file refused in that sentence),
   `test/case.test.ts` (an `a<number>` id refused), `test/e2e/store.test.ts` (a database
   written by 0.3.0's `IdbStore` emptied by the upgrade, an older build's open refused;
-  the blocked open and the version change), and with a real server
+  the blocked open, again after the retry time and from a second context, and the
+  version change), and with a real server
   `test/cloud-server.test.ts` and `test/e2e/upgrade.test.ts` (a profile of 0.3.0 and a
   later build opened by this one: nothing sent, the team's cases back in `sitegloss/2`
   with `m` ids).

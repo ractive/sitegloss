@@ -13,7 +13,7 @@
  */
 
 import type { CaseComment } from "../case.ts";
-import { type Kv, openKv } from "../kv.ts";
+import type { Kv } from "../kv.ts";
 import type {
 	ImageRef,
 	Op,
@@ -24,13 +24,6 @@ import type {
 } from "./api.ts";
 
 export const CLOUD_DATABASE = "sitegloss-cloud";
-
-/** The cloud's database, opened, and brought along once (`forgetCases`). */
-export async function openCloudKv(): Promise<Kv> {
-	const kv = await openKv(CLOUD_DATABASE);
-	await forgetCases(kv);
-	return kv;
-}
 
 /**
  * Keys in one server's part of the database (servers.ts: everything here is
@@ -69,28 +62,49 @@ const ABOUT_CASES: ReadonlySet<string> = new Set([
 	KEYS.status,
 ]);
 
+/** Whether `forgetCases` has run: the books are this build's. */
+export async function casesForgotten(kv: Kv): Promise<boolean> {
+	return (await kv.get(CASES_KEY)) === CASES;
+}
+
 /**
  * Forget, once, everything the cloud's database kept about the cases of
  * before DEC-051, for every server: the books (which mark here is which
  * there, what was sent), how far the team's changes were read, what waited
  * to be sent, and the deletes an expired sign-in recorded. What is not about
- * cases stays: the server chosen, the account and its team, the tokens. The
- * cases are gone from the store too, so the next run has no book, no cursor
- * and no case: it sends nothing and reads the team's whole state again.
+ * cases stays: the server chosen, the account and its team, the tokens.
+ *
+ * In one transaction (`Kv.update`): the look at the marker, the removals and
+ * the marker itself, so a second caller finds the marker and removes
+ * nothing, and nothing written after it is touched. Only the service worker
+ * calls it, and only once the case store is open at its version 2
+ * (`casesReady` in worker/cloud.ts): before that, the cases of before may
+ * still be there for a build before this one.
  */
 export async function forgetCases(kv: Kv): Promise<void> {
-	if ((await kv.get(CASES_KEY)) === CASES) return;
-	for (const [key, value] of Object.entries(await kv.all())) {
-		const space = key.startsWith("@") ? key.indexOf(" ") : -1;
-		const own = space < 0 ? key : key.slice(space + 1);
-		// (Keys without a server's scope are as 0.3.0 kept them, before DEC-041.)
-		if (own.startsWith(BOOK) || ABOUT_CASES.has(own)) await kv.remove(key);
-		else if (own === KEYS.account) {
-			const { liveDeletes: _gone, ...account } = value as Account;
-			if ("liveDeletes" in (value as object)) await kv.set({ [key]: account });
+	if (kv.update === undefined)
+		throw new Error("forgetCases needs a database that changes in one step");
+	await kv.update((entries) => {
+		if (entries[CASES_KEY] === CASES) return undefined;
+		const remove: string[] = [];
+		const set: Record<string, unknown> = { [CASES_KEY]: CASES };
+		for (const [key, value] of Object.entries(entries)) {
+			const space = key.startsWith("@") ? key.indexOf(" ") : -1;
+			const own = space < 0 ? key : key.slice(space + 1);
+			// (Keys without a server's scope are as 0.3.0 kept them, before DEC-041.)
+			if (own.startsWith(BOOK) || ABOUT_CASES.has(own)) remove.push(key);
+			else if (
+				own === KEYS.account &&
+				typeof value === "object" &&
+				value !== null &&
+				"liveDeletes" in value
+			) {
+				const { liveDeletes: _gone, ...account } = value as Account;
+				set[key] = account;
+			}
 		}
-	}
-	await kv.set({ [CASES_KEY]: CASES });
+		return { set, remove };
+	});
 }
 
 /** Who is signed in, and where. */

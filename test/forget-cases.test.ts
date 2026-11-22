@@ -49,3 +49,18 @@ test("forgetCases: what was kept about cases goes, for every server and 0.3.0's 
 	expect(await kv.get(`${A}case:c_4`)).toEqual({ caseId: "c_4" });
 	expect(await kv.get(`${A}cursor`)).toBe(1);
 });
+
+test("forgetCases: two contexts at once forget once, in one step; a database that cannot change in one step is refused", async () => {
+	const kv = memoryKv({
+		[`${A}case:c_1`]: { caseId: "c_1" },
+		[`${A}cursor`]: 12,
+	});
+	await Promise.all([forgetCases(kv), forgetCases(kv)]);
+	expect(await kv.all()).toEqual({ [CASES_KEY]: CASES });
+	// What the engine writes after the marker stays, whoever calls again.
+	await kv.set({ [`${A}case:c_1`]: { caseId: "c_1", again: true } });
+	await forgetCases(kv);
+	expect(await kv.get(`${A}case:c_1`)).toEqual({ caseId: "c_1", again: true });
+	const { update: _update, ...plain } = memoryKv({ cursor: 1 });
+	await expect(forgetCases(plain)).rejects.toThrow("in one step");
+});

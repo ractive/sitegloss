@@ -61,4 +61,26 @@ export const kvContract: Record<string, (kv: Kv) => Promise<void>> = {
 		await kv.set({ relay: "https://r.test" });
 		same(await kv.all(), { relay: "https://r.test" });
 	},
+
+	"update reads every entry and writes in one step; a change that throws writes nothing":
+		async (kv) => {
+			if (kv.update === undefined) throw new Error("no update");
+			await kv.set({ a: 1, b: 2 });
+			await kv.update((all) => ({
+				set: { c: (all["a"] as number) + (all["b"] as number) },
+				remove: ["a"],
+			}));
+			same(sorted(await kv.all()), { b: 2, c: 3 });
+			await kv.update(() => undefined);
+			same(sorted(await kv.all()), { b: 2, c: 3 });
+			await rejects(
+				kv.update(() => {
+					throw new Error("no");
+				}),
+			);
+			await rejects(
+				kv.update(() => ({ set: { d: () => "no" }, remove: ["b"] })),
+			);
+			same(sorted(await kv.all()), { b: 2, c: 3 });
+		},
 };

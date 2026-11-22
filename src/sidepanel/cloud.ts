@@ -16,14 +16,15 @@ import { askDataConsent, BROWSER, PANEL, webAuthFlow } from "../lib/browser.ts";
 import { eventsUrl } from "../lib/cloud/api.ts";
 import {
 	type Account,
+	CLOUD_DATABASE,
 	type CloudStatus,
+	casesForgotten,
 	KEYS,
-	openCloudKv,
 	type SyncMode,
 } from "../lib/cloud/book.ts";
 import { chosenServer, scopedKv, serverProblem } from "../lib/cloud/servers.ts";
 import { listen } from "../lib/cloud/sse.ts";
-import { type Kv, kvWhenOpen } from "../lib/kv.ts";
+import { type Kv, kvWhenOpen, openKv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
 import type { CloudActions } from "./cloud-view.ts";
 import type { PanelState } from "./state.ts";
@@ -81,7 +82,7 @@ export const STREAM_GAP_MS = 10_000;
 /** The panel's cloud; `kv` is the cloud's database (tests pass their own). */
 export function startCloud(
 	update: Update,
-	kv: Kv = kvWhenOpen(openCloudKv),
+	kv: Kv = kvWhenOpen(() => openKv(CLOUD_DATABASE)),
 	send: (request: CloudRequest) => Promise<CloudAnswer> = ask,
 ): PanelCloud {
 	/** The stream listened to: the server and team it is of, and its end. */
@@ -164,7 +165,12 @@ export function startCloud(
 		try {
 			server = await chosenServer(kv);
 			const mine = scopedKv(kv, server);
-			for (const key of [KEYS.account, KEYS.status, KEYS.modes])
+			// What is about cases only once the worker forgot those of before
+			// (DEC-051): until then they may be a build before this one's.
+			const ours = await casesForgotten(kv);
+			for (const key of ours
+				? [KEYS.account, KEYS.status, KEYS.modes]
+				: [KEYS.account])
 				all[key] = await mine.get(key);
 		} catch (error) {
 			problem(

@@ -31,7 +31,7 @@ import {
 	signInRedirect,
 } from "./lib/browser.ts";
 import { isSafeId, pendingImage } from "./lib/case.ts";
-import { openCloudKv } from "./lib/cloud/book.ts";
+import { CLOUD_DATABASE } from "./lib/cloud/book.ts";
 import {
 	cropImages,
 	drawMarks,
@@ -173,7 +173,7 @@ void sync.request();
  * changed here is told as any other change (the panels show it, the folder
  * sync writes it), but not back to itself.
  */
-const cloudKv = kvWhenOpen(openCloudKv);
+const cloudKv = kvWhenOpen(() => openKv(CLOUD_DATABASE));
 const cloud = new Cloud({
 	store,
 	kv: cloudKv,
