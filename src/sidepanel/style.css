@@ -13,6 +13,8 @@
 	/* Text; meta and placeholders */
 	--ink: #1b2130;
 	--ink-2: #535c6e;
+	/* A placeholder: clearly lighter than typed text, still 4.5:1 on a field (DEC-060) */
+	--placeholder: #6e7583;
 	/* Lines: separators (decoration only); boundaries of buttons, fields, chips */
 	--rule: #dedad0;
 	--edge: #7b8291;
@@ -72,6 +74,7 @@
 		--wash: #242a37;
 		--ink: #eceef3;
 		--ink-2: #a6aebd;
+		--placeholder: #7f8797;
 		--rule: #2b313d;
 		--edge: #737c8e;
 		--accent-hover: #ffc233;
@@ -326,8 +329,20 @@ textarea {
 }
 
 ::placeholder {
-	color: var(--ink-2);
+	color: var(--placeholder);
 	opacity: 1;
+}
+
+/* Help under a field's label: what a placeholder must not carry (DEC-060). */
+.field-help {
+	margin: 0 0 var(--s1);
+}
+
+.mark-form .note-label {
+	display: block;
+	margin: var(--s2) 0 var(--s1);
+	color: var(--ink-2);
+	font-size: 12px;
 }
 
 textarea + .row {

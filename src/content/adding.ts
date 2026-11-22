@@ -663,7 +663,6 @@ export class MarkAdder {
 		label.append(pin, "Comment");
 		const field = doc.createElement("textarea");
 		field.setAttribute("aria-label", `Comment for mark ${draft.number}`);
-		field.placeholder = "What is wrong, or what should change?";
 		field.maxLength = MAX_COMMENT;
 		field.value = draft.comment;
 		field.addEventListener("keydown", (e) => {

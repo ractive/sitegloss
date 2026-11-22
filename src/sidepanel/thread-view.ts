@@ -256,7 +256,6 @@ function form(c: Case, actions: ThreadActions): HTMLElement {
 		id: "comment-new",
 		rows: "3",
 		maxlength: String(MAX_CASE_COMMENT),
-		placeholder: "Write a comment…",
 		"aria-label": "A new comment",
 		"data-thread-focus": "new",
 		oninput: (e: Event) => {

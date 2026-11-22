@@ -69,6 +69,8 @@ const SURFACES = ["--paper", "--sheet", "--wash"];
 const PANEL: Row[] = [
 	["--ink", SURFACES, [14.61, 16.07, 13.12], [15.89, 14.37, 12.38], TEXT],
 	["--ink-2", SURFACES, [6.11, 6.72, 5.49], [8.26, 7.48, 6.44], TEXT],
+	// A placeholder on a field (fields are the sheet): lighter than text (DEC-060).
+	["--placeholder", ["--sheet"], [4.63], [4.62], TEXT],
 	["--edge", ["--paper", "--sheet"], [3.51, 3.86], [4.39, 3.97], EDGE],
 	[
 		"--accent-ink",
@@ -204,6 +206,7 @@ describe("the page's fixed colours", () => {
 		["its white ring on a black page", L.casing, BLACK, 21, EDGE],
 		["popover text", L.popoverText, L.popover, 16.07, TEXT],
 		["popover muted text", L.popoverMuted, L.popover, 6.72, TEXT],
+		["popover placeholder", L.popoverPlaceholder, L.popover, 4.63, TEXT],
 		["popover field edge", L.popoverEdge, L.popover, 3.86, EDGE],
 		["popover amber button's edge", L.amberEdge, L.popover, 4.53, EDGE],
 		["the hover outline on white", HOVER_COLOUR, WHITE, 4.63, EDGE],
@@ -233,6 +236,7 @@ describe("the page's fixed colours", () => {
 		expect<string>(L.amber).toBe(light["--accent"] as string);
 		expect<string>(L.popoverEdge).toBe(light["--edge"] as string);
 		expect<string>(L.popoverMuted).toBe(light["--ink-2"] as string);
+		expect<string>(L.popoverPlaceholder).toBe(light["--placeholder"] as string);
 	});
 
 	test("an open mark on the page is the colour of the mark on its screenshot", () => {

@@ -46,6 +46,8 @@ export const PAGE_LOOK = {
 	popover: "#ffffff",
 	popoverText: "#1b2130",
 	popoverMuted: "#535c6e",
+	/** A placeholder on the popover's fields: lighter than text, still 4.5:1 (DEC-060). */
+	popoverPlaceholder: "#6e7583",
 	popoverEdge: "#7b8291",
 	/** The edge of an amber button on the popover's white. */
 	amberEdge: "#a06c00",
@@ -171,7 +173,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	font: inherit; padding: 6px 8px; border: 1px solid ${L.popoverEdge}; border-radius: 6px;
 	color: ${L.popoverText}; background: ${L.popover};
 }
-.popover textarea::placeholder { color: ${L.popoverMuted}; opacity: 1; }
+.popover textarea::placeholder { color: ${L.popoverPlaceholder}; opacity: 1; }
 .popover textarea:focus-visible, .popover button:focus-visible { outline: 2px solid ${HOVER_COLOUR}; outline-offset: 1px; }
 .popover .row { display: flex; gap: 6px; justify-content: space-between; margin-top: 8px; }
 .popover button {
@@ -197,7 +199,9 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	font: inherit; padding: 6px 8px; border: 1px solid ${L.popoverEdge}; border-radius: 6px;
 	color: ${L.popoverText}; background: ${L.popover};
 }
-.popover input.note::placeholder { color: ${L.popoverMuted}; opacity: 1; }
+.popover input.note::placeholder { color: ${L.popoverPlaceholder}; opacity: 1; }
+.popover .note-label { display: block; margin: 8px 0 4px; font-size: 12px; color: ${L.popoverMuted}; }
+.popover .help { margin: 0 0 6px; font-size: 12px; line-height: 16px; color: ${L.popoverMuted}; }
 .popover input:focus-visible { outline: 2px solid ${HOVER_COLOUR}; outline-offset: 1px; }
 .popover .problem { margin: 8px 0 0; color: #a4161a; }
 .popover button:disabled { opacity: 0.6; cursor: default; }

@@ -1460,10 +1460,14 @@ describe("Verify (DEC-023)", () => {
 			"Won't fix",
 			"Can't reproduce",
 		]);
-		expect(
-			(form.querySelector("input.note") as unknown as HTMLInputElement)
-				.placeholder,
-		).toBe("Note (optional): what was done, or why");
+		// A label that shows, no placeholder in its place (DEC-060).
+		const note = form.querySelector(
+			"input.note",
+		) as unknown as HTMLInputElement;
+		expect(note.placeholder).toBe("");
+		expect(form.querySelector(`label[for="${note.id}"]`)?.textContent).toBe(
+			"Note (optional): what was done, or why",
+		);
 		(
 			form.querySelector(
 				'input[value="verified"]',
@@ -1502,9 +1506,12 @@ describe("Verify (DEC-023)", () => {
 		const field = form.querySelector(
 			"textarea",
 		) as unknown as HTMLTextAreaElement;
-		expect(field.placeholder).toBe(
-			"What is still wrong? The developer reads this first.",
-		);
+		expect(field.placeholder).toBe("");
+		expect(
+			window.document.getElementById(
+				field.getAttribute("aria-describedby") ?? "",
+			)?.textContent,
+		).toBe("What is still wrong? The developer reads this first.");
 		const done = form.querySelector(
 			'[data-mark-action="reopen-done"]',
 		) as unknown as HTMLButtonElement;
@@ -3457,9 +3464,13 @@ describe("the summary for the developer", () => {
 		expect(
 			window.document.querySelector('label[for="verdict"]')?.textContent,
 		).toBe("Summary for the developer");
-		expect(el<HTMLTextAreaElement>("verdict").placeholder).toContain(
+		// Help under the label, no placeholder (DEC-060).
+		expect(el<HTMLTextAreaElement>("verdict").placeholder).toBe("");
+		expect(el("verdict-help").textContent).toContain(
 			"Whoever loads this case sees it first.",
 		);
+		// A comment box gets no placeholder (the owner, DEC-060).
+		expect(el<HTMLTextAreaElement>("comment-new").placeholder).toBe("");
 		expect(el("save-verdict").textContent).toBe("Save summary");
 		const home = initialState();
 		home.cases = [c];
@@ -4155,7 +4166,8 @@ describe("a case's link (DEC-028)", () => {
 		expect(field.value).toBe(TICKET);
 		expect(field.type).toBe("url");
 		expect(field.getAttribute("aria-label")).toBe("Link of this case");
-		expect(field.placeholder).toContain("a ticket");
+		// Only the address's form (DEC-060).
+		expect(field.placeholder).toBe("https://…");
 		expect(shown("case-link-hint")).toBe(false);
 	});
 

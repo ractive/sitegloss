@@ -1209,8 +1209,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const verdict: HTMLTextAreaElement = h("textarea", {
 		id: "verdict",
 		rows: "2",
-		placeholder:
-			"What should change, as agreed. Whoever loads this case sees it first.",
+		// Help under the label, not a placeholder that looks like text (DEC-060).
+		"aria-describedby": "verdict-help",
 		maxlength: String(MAX_VERDICT),
 		"data-case": c.id,
 		oninput: () => actions.typeVerdict(c.id, verdict.value),
@@ -1296,7 +1296,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		id: "case-link-field",
 		"aria-label": "Link of this case",
 		"aria-describedby": "case-link-hint",
-		placeholder: "https://… a ticket, a design, a pull request",
+		// Only the address's form: what a link is for is the button's title.
+		placeholder: "https://…",
 		autocomplete: "off",
 		spellcheck: "false",
 		oninput: () => actions.typeLink(linkField.value),
@@ -1598,6 +1599,11 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				h("label", { for: "verdict" }, "Summary for the developer"),
 				verdictStatus,
 				created.saveVerdict,
+			),
+			h(
+				"p",
+				{ class: "meta field-help", id: "verdict-help" },
+				"What should change, as agreed. Whoever loads this case sees it first.",
 			),
 			verdict,
 			created.summaryBy,
@@ -2061,12 +2067,12 @@ function resolveForm(
 	actions: Actions,
 ): HTMLElement {
 	const name = `resolution-${a.id}`;
+	const noteId = `resolution-note-${a.id}`;
 	const noteField: HTMLInputElement = h("input", {
 		type: "text",
 		class: "note",
-		placeholder: "Note (optional): what was done, or why",
+		id: noteId,
 		maxlength: String(MAX_COMMENT),
-		"aria-label": `Note for mark ${a.number}`,
 		value: note,
 		oninput: () => actions.typeMark({ text: noteField.value }),
 		onkeydown: (e) => {
@@ -2100,6 +2106,12 @@ function resolveForm(
 					CHOICE_LABEL[k],
 				),
 			),
+		),
+		// A label that shows, not a placeholder in its place (DEC-060).
+		h(
+			"label",
+			{ class: "note-label", for: noteId },
+			"Note (optional): what was done, or why",
 		),
 		noteField,
 		h(
@@ -2206,8 +2218,8 @@ function reopenForm(
 		"textarea",
 		{
 			maxlength: String(MAX_REOPEN_NOTE),
-			placeholder: "What is still wrong? The developer reads this first.",
 			"aria-label": `What is still wrong with mark ${a.number}`,
+			"aria-describedby": `reopen-help-${a.id}`,
 			oninput: () => {
 				// No redraw while typing: the button follows the text itself.
 				done.disabled = empty(field.value);
@@ -2228,7 +2240,17 @@ function reopenForm(
 	return h(
 		"div",
 		{ class: "mark-form", "data-form": "reopen" },
-		h("fieldset", {}, h("legend", {}, `Reopen mark ${a.number}`), field),
+		h(
+			"fieldset",
+			{},
+			h("legend", {}, `Reopen mark ${a.number}`),
+			h(
+				"p",
+				{ class: "meta field-help", id: `reopen-help-${a.id}` },
+				"What is still wrong? The developer reads this first.",
+			),
+			field,
+		),
 		h(
 			"div",
 			{ class: "row" },
