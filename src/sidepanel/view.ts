@@ -928,6 +928,13 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					armed ? "Really remove?" : h("span", { "aria-hidden": "true" }, "×"),
 				),
 				h("figcaption", {}, `Image ${n}`),
+				x.notSent?.[image.id] === undefined
+					? null
+					: h(
+							"p",
+							{ class: "tile-note" },
+							`Not sent: ${x.notSent[image.id]?.replace(/[.\s]+$/, "")}.`,
+						),
 			);
 		}),
 		added.length < MAX_MARK_IMAGES
@@ -958,7 +965,9 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			? h(
 					"p",
 					{ class: "meta pictures-full" },
-					`${added.length} of ${MAX_MARK_IMAGES} images`,
+					added.length > MAX_MARK_IMAGES
+						? `${added.length} images; the team's mark holds ${MAX_MARK_IMAGES}`
+						: `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images`,
 				)
 			: null,
 	);
@@ -2657,6 +2666,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const markArmed = state.markDeleteArmed?.markId;
 	const findingArmed = state.findingDeleteArmed;
 	const imageArmed = state.imageDeleteArmed;
+	// Images added here the team does not have, and why (DEC-058).
+	const notSent = state.cloud.status?.notSent?.[c.id];
 	// A mark's pin was clicked on the page (DEC-027): its row opens, once.
 	const picked =
 		state.picked?.caseId === c.id && state.picked.at !== p.pickedAt
@@ -2678,6 +2689,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		markArmed ?? null,
 		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
 		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
+		notSent ?? null,
 		ok,
 	]);
 	if (marksKey !== p.marksKey) {
@@ -2709,6 +2721,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
 				imageArmed:
 					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
+				notSent,
 				actions,
 				canReach: ok,
 				changed: () => syncToggleAll(),
@@ -2806,9 +2819,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 							)
 						: null,
 		);
+		const refocus = focusInMarks(p.marks);
 		p.marks.replaceWith(marks);
 		p.marks = marks;
 		if (kept !== undefined && !kept.hidden) kept.focus();
+		refocus?.(marks);
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
 			const row = items.find((li) => li.dataset["mark"] === picked.markId);
@@ -2861,6 +2876,71 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	if (body) body.hidden = !open;
 }
 
+/** A value inside a quoted attribute selector. */
+const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
+
+/**
+ * The button in the marks list that has the focus, as something to find
+ * again once the list is drawn anew: a Delete or Remove clicked once redraws
+ * the list, and the second press from the keyboard must find the armed
+ * control where the first left it (mark Delete, a finding's Delete, an added
+ * image's Remove). A control that went with its finding or image leaves the
+ * focus on the next picture's, the way to add one, or the mark's head.
+ */
+function focusInMarks(
+	list: HTMLElement,
+): ((next: HTMLElement) => void) | undefined {
+	const at = document.activeElement as HTMLElement | null;
+	if (at === null || at.tagName !== "BUTTON" || !list.contains(at))
+		return undefined;
+	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
+	const which = ["data-mark-action", "data-finding-action", "data-action"].find(
+		(name) => at.hasAttribute(name),
+	);
+	if (markId === undefined || which === undefined) return undefined;
+	const value = at.getAttribute(which) as string;
+	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
+	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
+	const pictures = [
+		...list.querySelectorAll(
+			`li.mark[data-mark="${quoted(markId)}"] [data-picture]`,
+		),
+	].map((e) => e.getAttribute("data-picture"));
+	return (next) => {
+		const row = next.querySelector<HTMLElement>(
+			`li.mark[data-mark="${quoted(markId)}"]`,
+		);
+		if (row === null) return;
+		const within =
+			picture != null
+				? `[data-picture="${quoted(picture)}"] `
+				: finding != null
+					? `[data-finding="${quoted(finding)}"] `
+					: "";
+		const same = row.querySelector<HTMLElement>(
+			`${within}[${which}="${quoted(value)}"]`,
+		);
+		if (same !== null) return same.focus();
+		// Gone with its picture: the next picture's control, else the way to
+		// add one; gone with its finding: the mark's head.
+		const after =
+			picture == null ? [] : pictures.slice(pictures.indexOf(picture) + 1);
+		const fallback =
+			after
+				.map((id) =>
+					row.querySelector<HTMLElement>(
+						`[data-picture="${quoted(id as string)}"] [data-action="remove-image"]`,
+					),
+				)
+				.find((e) => e !== null) ??
+			(picture == null
+				? null
+				: row.querySelector<HTMLElement>("[data-action=add-image]")) ??
+			row.querySelector<HTMLElement>(".mark-toggle");
+		fallback?.focus();
+	};
+}
+
 interface MarkContext {
 	/** The case's images as object URLs, by path; none: not read yet. */
 	urls: ReadonlyMap<string, string> | undefined;
@@ -2877,6 +2957,8 @@ interface MarkContext {
 	findingArmed: string | undefined;
 	/** The added image of this mark whose Remove was clicked once. */
 	imageArmed: string | undefined;
+	/** The case's added images the team does not have, and why. */
+	notSent: Readonly<Record<string, string>> | undefined;
 	actions: Actions;
 	/** Sitegloss may run on the tab in front: Show can scroll it. */
 	canReach: boolean;

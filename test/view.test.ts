@@ -754,6 +754,109 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		).toBe("6 of 6 images");
 	});
 
+	test("a Delete or Remove pressed from the keyboard keeps the focus on its armed control, and on the next one when its image goes", () => {
+		const c = marked("c_pictures5");
+		const a = c.marks[0] as Mark;
+		c.marks = [
+			{
+				...a,
+				findings: [
+					{
+						id: "f_1",
+						text: "Padding",
+						app: { id: "x", name: "Claude", host: "claude.ai" },
+						at: "2026-11-10T10:00:00Z",
+					},
+				],
+			},
+		];
+		const urls = new Map([
+			[a.crop, "blob:crop"],
+			["images/i_a.webp", "blob:a"],
+			["images/i_b.webp", "blob:b"],
+			["images/i_c.webp", "blob:c"],
+		]);
+		const draw = (armed: (s: PanelState) => void, of: Case = c) =>
+			render(
+				caseState(of, (s) => {
+					s.images = { caseId: of.id, version: of.updatedAt, urls };
+					armed(s);
+				}),
+				noActions,
+			);
+		const at = (selector: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] ${selector}`,
+			) as unknown as HTMLElement;
+		const focused = () =>
+			window.document.activeElement as unknown as HTMLElement;
+		draw(() => undefined);
+		at(".mark-toggle").click();
+		at('[data-picture="i_b"] [data-action=remove-image]').focus();
+		draw((s) => {
+			s.imageDeleteArmed = { markId: a.id, mark: "", imageId: "i_b", at: 1 };
+		});
+		expect(focused().getAttribute("aria-label")).toBe(
+			`Really remove image 2 from mark ${a.number}?`,
+		);
+		// Removed: the next picture's Remove has the focus.
+		const without = {
+			...c,
+			updatedAt: "2026-11-22T12:00:00Z",
+			marks: c.marks.map((x) => ({
+				...x,
+				images: (x.images ?? []).filter((i) => i.id !== "i_b"),
+			})),
+		};
+		draw(() => undefined, without);
+		expect(
+			focused().closest("[data-picture]")?.getAttribute("data-picture"),
+		).toBe("i_c");
+		at('[data-mark-action="delete"]').focus();
+		draw((s) => {
+			s.markDeleteArmed = { markId: a.id, mark: "", at: 1 };
+		}, without);
+		expect(focused().textContent).toBe("Really delete?");
+		at('[data-finding="f_1"] [data-finding-action="delete"]').focus();
+		draw((s) => {
+			s.findingDeleteArmed = {
+				markId: a.id,
+				mark: "",
+				findingId: "f_1",
+				at: 1,
+			};
+		}, without);
+		expect(focused().getAttribute("data-finding-action")).toBe("delete");
+		expect(focused().hasAttribute("data-armed")).toBe(true);
+	});
+
+	test("an image the team does not have says so on its tile, in words", () => {
+		const c = marked("c_pictures6");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([["images/i_b.webp", "blob:b"]]),
+				};
+				s.cloud.status = {
+					state: "problem",
+					problems: [],
+					undecided: 0,
+					notSent: { [c.id]: { i_b: "the mark already holds six images" } },
+				};
+			}),
+			noActions,
+		);
+		const note = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-picture="${id}"] .tile-note`,
+			)?.textContent;
+		expect(note("i_b")).toBe("Not sent: the mark already holds six images.");
+		expect(note("i_a")).toBeUndefined();
+	});
+
 	test("with the page filter on, a mark of that page keeps its pictures", () => {
 		const c = marked("c_pictures4");
 		const a = c.marks[0] as Mark;

@@ -27,6 +27,7 @@ import {
 	MAX_COMMENT,
 	MAX_FINDING,
 	MAX_FINDINGS,
+	MAX_HELD_IMAGES,
 	MAX_LINK,
 	MAX_MARK_IMAGES,
 	MAX_PAGE_TITLE,
@@ -1425,8 +1426,11 @@ function mergeImages(
 	const now = new Set(incoming.images.map((x) => x.id));
 	return [
 		...incoming.images.filter((x) => here.has(x.id) || !was.has(x.id)),
+		// Never sent from here (not in the shadow): kept whatever the team's
+		// mark holds, and said as not sent; only one the server took, or the
+		// person removes, leaves the device.
 		...(local.images ?? []).filter((x) => !now.has(x.id) && !was.has(x.id)),
-	].slice(0, MAX_MARK_IMAGES);
+	].slice(0, MAX_HELD_IMAGES);
 }
 
 /** The next free number above every number of `c` and those in `taken`. */
@@ -1699,6 +1703,19 @@ export function mergeCase(
 					: content,
 			fixed: fixedOf(drawn),
 		};
+		// Its images changed at the server: an add refused for the mark's
+		// limit may go now (DEC-058).
+		if (
+			content.images !== undefined &&
+			!same(
+				(before?.content.images ?? []).map((x) => x.id),
+				content.images.map((x) => x.id),
+			) &&
+			book.rejected !== undefined
+		) {
+			book.rejected = book.rejected.filter((r) => r.mark !== w.id);
+			if (book.rejected.length === 0) delete book.rejected;
+		}
 		/** The files of the images `next` has that `was` had not, from the server. */
 		const imageFiles = (was: Mark | undefined, next: Mark) => {
 			const had = new Set((was?.images ?? []).map((x) => x.id));

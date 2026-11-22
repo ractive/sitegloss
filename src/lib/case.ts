@@ -53,8 +53,14 @@ export const MAX_FINDINGS_TEXT = 200_000;
 /** The most findings a mark may have. */
 export const MAX_FINDINGS = 20;
 
-/** The most images a person may add to a mark (DEC-058). */
+/** The most images a person may add to a mark, and the team's mark holds (DEC-058). */
 export const MAX_MARK_IMAGES = 6;
+
+/**
+ * The most a mark holds here: the team's six, and images added on this
+ * device that could not be sent beside them (DEC-058), never deleted unsent.
+ */
+export const MAX_HELD_IMAGES = 2 * MAX_MARK_IMAGES;
 
 /** The most points a freehand mark may have. */
 export const MAX_PEN_POINTS = 5000;
@@ -1910,7 +1916,7 @@ function imagesOf(
 	taken: Set<string>,
 ): { images?: MarkImage[] } {
 	if (value === undefined) return {};
-	const images = arr(value, path, MAX_MARK_IMAGES).map((v, i): MarkImage => {
+	const images = arr(value, path, MAX_HELD_IMAGES).map((v, i): MarkImage => {
 		const p = `${path}[${i}]`;
 		const x = obj(v, p);
 		const imageId = id(x["id"], `${p}.id`);

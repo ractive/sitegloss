@@ -690,6 +690,53 @@ describe("images added to a mark in the sync (DEC-058)", () => {
 		expect(removed?.deleteImages).toEqual(["images/i_a.webp"]);
 	});
 
+	test("an image added here after the run's push is kept when the team's mark comes back full, its file too", () => {
+		const c = withImage();
+		const { book } = synced(c);
+		// Added between the push and the pull: not in the shadow.
+		const late: Case = {
+			...c,
+			marks: [
+				mark(1),
+				{
+					...(c.marks[1] as Mark),
+					images: [
+						...((c.marks[1] as Mark).images ?? []),
+						{ id: "i_late", image: "images/i_late.webp", added: { at: NOW } },
+					],
+				},
+			],
+		};
+		const six = ["i_a", "t1", "t2", "t3", "t4", "t5"].map((id) => ({
+			id,
+			image: ref(`images/${id}.webp`),
+			added: { at: NOW, user: { id: "u_dana", name: "Dana" } },
+		}));
+		const merged = mergeCase(
+			late,
+			book,
+			{
+				shots: [],
+				marks: [theirs(book, six)],
+				removedMarks: [],
+				removedShots: [],
+			},
+			new Map(six.map((x) => [x.image.sha256, `picture ${x.id}`])),
+			new Map(),
+			{ teamId: "team_1", whole: false, now: NOW },
+		);
+		expect(merged?.value.marks[1]?.images?.map((x) => x.id)).toEqual([
+			"i_a",
+			"t1",
+			"t2",
+			"t3",
+			"t4",
+			"t5",
+			"i_late",
+		]);
+		expect(merged?.deleteImages).toEqual([]);
+	});
+
 	test("an image added here goes as an add by id, one removed here as a remove, with a key that does not hang on the picture", () => {
 		const c = withImage();
 		const { book } = synced(c);

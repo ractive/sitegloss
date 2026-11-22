@@ -2283,6 +2283,14 @@ button.tile-add:hover:not(:disabled) {
 	font-weight: 700;
 }
 
+/* An image added here that the team does not have: said in words under it. */
+.tile-note {
+	margin: 0;
+	color: var(--warn);
+	font-size: 12px;
+	line-height: 16px;
+}
+
 .pictures-box {
 	display: grid;
 	gap: var(--s1);

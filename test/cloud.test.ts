@@ -3081,28 +3081,91 @@ describe("images added to a mark (DEC-058)", () => {
 		expect(status(tess)?.problems).toEqual([]);
 	});
 
-	test("two devices adding at once keep both; past six both show the server's six", async () => {
+	const filled = async (d: Device, tags: string[]) => {
+		await addImages(d, "m2", tags);
+		await sync(tess, dana);
+	};
+	const notSent = (d: Device) => status(d)?.notSent?.["c_flow"] ?? {};
+
+	test("two devices adding at once past six: the later keeps its image, said as not sent, and sends it once there is room", async () => {
 		await shared();
 		await addImages(tess, "m2", ["a", "b", "c", "d"]);
-		await addImages(dana, "m2", ["e"]);
-		await sync(tess, dana);
-		expect((await shown(dana)).length).toBe(5);
-		expect((await shown(tess)).length).toBe(5);
-		// Each adds one more before hearing of the other's: the later is
-		// refused (the server's limit), and both end with the same six.
+		await filled(dana, ["e"]);
+		// Each adds one more before hearing of the other's.
 		await addImages(tess, "m2", ["f"]);
 		await addImages(dana, "m2", ["g"]);
 		await sync(tess, dana);
-		const there = server
-			.marksOf("c_flow")
-			.find((m) => m.number === 2)
-			?.images?.map((x) => x.id);
-		expect(there).toHaveLength(6);
-		expect((await shown(dana)).map((x) => x.split(" ")[0])).toEqual(
-			there as string[],
+		const team = [
+			"i_tess_a by Tess Tester: image a",
+			"i_tess_b by Tess Tester: image b",
+			"i_tess_c by Tess Tester: image c",
+			"i_tess_d by Tess Tester: image d",
+			"i_dana_e by Dana Developer: image e",
+			"i_tess_f by Tess Tester: image f",
+		];
+		expect(await shown(tess)).toEqual(team);
+		// Dana's seventh stays with her, its file too, and says why.
+		expect(await shown(dana)).toEqual([...team, "i_dana_g by nobody: image g"]);
+		expect(notSent(dana)).toEqual({
+			i_dana_g: "the mark already holds six images",
+		});
+		expect(status(dana)?.problems.map((p) => p.text)).toEqual([
+			"A change to a mark was not taken: A mark holds at most 6 images.",
+		]);
+		// Tess removes one: there is room, and Dana's goes by itself.
+		await tess.store.updateCase("c_flow", (current) => {
+			const { value, images } = withoutImage(
+				current as Case,
+				"m2",
+				"i_tess_a",
+				tess.clock.now.toISOString(),
+			);
+			return { value, deleteImages: images };
+		});
+		await sync(tess, dana, tess);
+		const now = [...team.slice(1), "i_dana_g by Dana Developer: image g"];
+		expect(await shown(tess)).toEqual(now);
+		expect(await shown(dana)).toEqual(now);
+		expect(notSent(dana)).toEqual({});
+	});
+
+	test("an image the team's storage refuses stays here, said on it, also once the team's mark is full", async () => {
+		await shared();
+		tess.api.putBlob = async () => {
+			throw new ApiFailure(
+				"refused",
+				"The team's storage is full.",
+				507,
+				"quota",
+			);
+		};
+		await addImages(tess, "m2", ["big"]);
+		await filled(dana, ["a", "b", "c", "d", "e", "f"]);
+		expect(await shown(tess)).toContain("i_tess_big by nobody: image big");
+		expect(notSent(tess)).toEqual({ i_tess_big: "The team's storage is full" });
+		expect(
+			status(tess)
+				?.problems.map((p) => p.text)
+				.join(" "),
+		).toContain(
+			"An image added to mark 2 was not taken, so the team does not see it: The team's storage is full.",
 		);
-		expect((await shown(tess)).map((x) => x.split(" ")[0])).toEqual(
-			there as string[],
+	});
+
+	test("a role that may not change marks keeps the image here, said on it, also once the team's mark is full", async () => {
+		await shared();
+		tess.api.permissions = tess.api.permissions.filter(
+			(p) => p !== "mark:update",
 		);
+		await signIn(tess);
+		await addImages(tess, "m2", ["mine"]);
+		await filled(dana, ["a", "b", "c", "d", "e", "f"]);
+		expect(await shown(tess)).toContain("i_tess_mine by nobody: image mine");
+		expect(notSent(tess)).toEqual({
+			i_tess_mine: "your role in the team does not allow it",
+		});
+		expect(
+			server.marksOf("c_flow").find((m) => m.number === 2)?.images,
+		).toHaveLength(6);
 	});
 });

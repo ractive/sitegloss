@@ -16,8 +16,8 @@ import {
 	MAX_FINDING,
 	MAX_FINDINGS,
 	MAX_FINDINGS_TEXT,
+	MAX_HELD_IMAGES,
 	MAX_LINK,
-	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	MAX_REOPENS,
 	MAX_TITLE,
@@ -1153,9 +1153,9 @@ describe("images added to a mark (DEC-058)", () => {
 		};
 		bad({}, undefined, "images: must be an array");
 		bad(
-			Array.from({ length: MAX_MARK_IMAGES + 1 }, (_, i) => image(`i_${i}`)),
+			Array.from({ length: MAX_HELD_IMAGES + 1 }, (_, i) => image(`i_${i}`)),
 			undefined,
-			`more than ${MAX_MARK_IMAGES} items`,
+			`more than ${MAX_HELD_IMAGES} items`,
 		);
 		bad([image("../x")], undefined, "not a valid id");
 		bad(
