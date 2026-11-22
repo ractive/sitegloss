@@ -1039,7 +1039,7 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 	const statuses = (matches: { status: string }[] | undefined) =>
 		matches?.map((m) => m.status);
 
-	test("a single-page app goes on to its next route: the marks it did not have are looked for there", async () => {
+	test("a single-page app goes on to its next route: its marks are drawn and the previous route's go", async () => {
 		const c = flow();
 		doc.body.innerHTML = CART_PAGE;
 		const first = await reviewer.load(c);
@@ -1055,7 +1055,7 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 		expect(now?.url).toBe(PAY);
 		expect(statuses(now?.matches)).toEqual(["lost", "found"]);
 		expect(overlay.items.map((i) => i.number)).toEqual([2]);
-		expect(bar()).toContain("1 of 2 found");
+		expect(bar()).toContain("1 of 1 found");
 		expect(await reviewer.matches("c_other")).toBeNull();
 	});
 
@@ -1073,27 +1073,52 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 		expect(overlay.items[0]?.found).toBe(true);
 	});
 
-	test("a look-alike of another page's mark is drawn unsure, and is not a find of this page", async () => {
+	test("a mark is looked for and drawn only on its own page, also once the page in front joins the case", async () => {
 		const c = flow();
-		// The payment page has the same button as the cart, and mark 1 is the cart's.
-		doc.body.innerHTML = `<main class="Pay_form"><button class="Button_primary" type="submit">Weiter</button><a class="Help_link" href="/hilfe">Hilfe zur Zahlung</a></main>`;
-		(doc.defaultView as unknown as Window).history.pushState({}, "", "/kk/pay");
-		const result = await reviewer.load(c);
-		const [one, two] = result.matches;
-		expect(one?.status).not.toBe("lost");
-		expect(one?.otherPage).toBe(true);
-		expect(two?.status).toBe("found");
-		expect(two?.otherPage).toBeUndefined();
-		// Drawn, dashed: only the page's own mark is sure.
-		expect(overlay.items.map((i) => [i.number, i.found])).toEqual([
-			[1, false],
-			[2, true],
+		// Another page with the cart's button in it, and none of the case's pages.
+		const DONE = "https://www.example.com/kk/done";
+		const DONE_PAGE = `<main class="Done_page"><h1>Danke</h1><button class="Button_primary" type="submit">Weiter</button></main>`;
+		go("/kk/done", DONE_PAGE);
+		const first = await reviewer.load(c);
+		// Neither is looked for here: no candidate, nothing drawn, nothing counted.
+		expect(first.matches.map((m) => [m.status, m.candidates.length])).toEqual([
+			["lost", 0],
+			["lost", 0],
 		]);
-		expect(bar()).toContain("1 of 2 found");
-		// On the mark's own page it is sure again.
+		expect(overlay.items).toHaveLength(0);
+		expect(bar()).toContain("no marks on this page");
+		// A mark added here: the page is one of the case's now, and the cart's
+		// button is still not mark 1 (it was, dashed: "Unsure").
+		const element = describeElement($("h1"));
+		const added: Case = {
+			...c,
+			pages: [...(c.pages ?? []), { url: DONE, title: "Danke", lang: "de" }],
+			shots: [...c.shots, shot("s3", 0, DONE)],
+			marks: [
+				...c.marks,
+				{
+					id: "m3",
+					number: 3,
+					shot: "s3",
+					shape: { kind: "element", rect: element.rect },
+					element,
+				} as Mark,
+			],
+		};
+		const next = await reviewer.update(added);
+		expect(
+			next?.matches.map((m) => [m.number, m.status, m.candidates.length]),
+		).toEqual([
+			[1, "lost", 0],
+			[2, "lost", 0],
+			[3, "found", 1],
+		]);
+		expect(overlay.items.map((i) => i.number)).toEqual([3]);
+		expect(bar()).toContain("1 of 1 found");
+		// On the cart, the cart's mark is drawn, and the done page's goes.
 		go("/kk", CART_PAGE);
 		const back = await reviewer.matches(c.id);
-		expect(back?.matches[0]?.otherPage).toBeUndefined();
+		expect(statuses(back?.matches)).toEqual(["found", "lost", "lost"]);
 		expect(overlay.items.map((i) => [i.number, i.found])).toEqual([[1, true]]);
 	});
 });

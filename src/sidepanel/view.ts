@@ -55,7 +55,7 @@ import {
 	teamOf,
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortUrl } from "./dom.ts";
-import { foundLine, isFound, noneHere } from "./follow.ts";
+import { foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
@@ -217,18 +217,23 @@ export function access(state: PanelState): "yes" | "ask" | "never" {
 	return state.allSites ? "never" : "ask";
 }
 
-/** "None of this case's marks were found on this page…" (DEC-022). */
+/**
+ * The page in front shows none of the case's marks (DEC-022): none was
+ * found, or the case has none of this page, and then where they are
+ * (DEC-057).
+ */
 export function noneFoundText(c: Case, url: string | undefined): string {
-	const here = "None of this case's marks were found on this page.";
-	if (url !== undefined && url !== "" && pageInFront(c, url) !== undefined)
-		return here;
+	if (
+		url !== undefined &&
+		url !== "" &&
+		c.marks.some((a) => onPageInFront(c, a, url))
+	)
+		return "None of this case's marks were found on this page.";
 	// Its pages, the first few by name (DEC-038).
 	const pages = casePages(c).map((p) => shortUrl(p.url));
 	const named = pages.slice(0, 3).join(", ");
 	const more = pages.length > 3 ? ` and ${pages.length - 3} more` : "";
-	return pages.length === 1
-		? `${here} It is probably for another page: ${named}.`
-		: `${here} It is probably for other pages: ${named}${more}.`;
+	return `This case has no marks on this page. They are on ${named}${more}.`;
 }
 
 /** `shop.example/cart and 2 more pages`: a case's pages in the list. */
@@ -730,18 +735,13 @@ function renderHome(state: PanelState, actions: Actions): void {
 /** The colour of the mark on the page: the shown candidate decides (review.ts). */
 function colourOf(m: MarkMatch): "found" | "unsure" | "lost" {
 	if (m.status === "lost") return "lost";
-	// On a page that is not the mark's own it may be a look-alike (DEC-038).
-	const sure =
-		m.status !== "ambiguous" &&
-		m.otherPage !== true &&
-		m.candidates[m.current]?.found;
+	const sure = m.status !== "ambiguous" && m.candidates[m.current]?.found;
 	return sure ? "found" : "unsure";
 }
 
 /** Where the mark is on the tab in front, in words: the number's colour says it too, but not to everyone. */
 function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
-	if (m.otherPage === true && m.status !== "lost") return "Also on this page?";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
 }
 
@@ -757,9 +757,6 @@ const PILL: Record<MarkStatus, string | undefined> = {
 function matchText(m: MarkMatch): string {
 	if (m.current > 0)
 		return `Candidate ${m.current + 1} of ${m.candidates.length} (${percent(m.score)})`;
-	// Found, but on a page that is not the mark's own (DEC-038).
-	if (m.otherPage === true && (m.status === "found" || m.status === "probable"))
-		return `Also on this page? (${percent(m.score)})`;
 	switch (m.status) {
 		case "found":
 			return `Found here (${percent(m.score)})`;
@@ -2128,8 +2125,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
 	setHint(p.webApp, webAppNote(state));
-	// The search is over and found none of the marks this page should have:
-	// the case is probably for another page (judged per page, DEC-038).
+	// The case has no mark of this page (DEC-057), or the search is over and
+	// found none of those it has.
 	const none =
 		here !== undefined &&
 		!here.settling &&
@@ -2287,19 +2284,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 			.filter(
 				(a) => filter === undefined || GROUP_OF[markStatus(a)] === filter,
 			);
-		// The page drawn on is one of the case's: a mark of another of its
-		// pages that is not here is "on another page", not lost (DEC-038).
-		const onCasePage =
-			several &&
-			loaded !== undefined &&
-			pageInFront(c, loaded.url) !== undefined;
+		// A mark of another page than the one drawn on is not looked for
+		// there: "on another page", whatever the page (DEC-057).
 		const items = sorted.map((a) => {
 			const match = loaded?.matches.get(a.id);
 			const elsewhere =
-				onCasePage &&
-				match !== undefined &&
-				!isFound(match) &&
-				!onPageInFront(c, a, loaded?.url ?? "");
+				loaded !== undefined && !onPageInFront(c, a, loaded.url);
 			return markItem(c, a, {
 				crop: images?.urls.get(a.crop),
 				match: elsewhere ? undefined : match,
