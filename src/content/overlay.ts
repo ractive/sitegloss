@@ -746,7 +746,7 @@ export class Overlay {
 					svg(doc, "rect", {
 						...box,
 						"data-element": "",
-						fill: "rgba(229, 25, 95, 0.08)",
+						fill: "rgba(224, 24, 92, 0.08)",
 						stroke: colour,
 						"stroke-width": 1,
 					}),

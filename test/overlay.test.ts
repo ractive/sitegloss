@@ -133,7 +133,7 @@ describe("a mark on the page", () => {
 			cantreproduce: o.STATUS_COLOUR.dismissed,
 		} as const;
 		expect(o.STATUS_COLOUR).toEqual({
-			open: "#e5195f",
+			open: "#e0185c",
 			toVerify: "#4f53e0",
 			verified: "#1a7f37",
 			dismissed: "#667085",

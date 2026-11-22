@@ -191,7 +191,7 @@ describe("the page's fixed colours", () => {
 		STATUS_COLOUR.verified,
 		STATUS_COLOUR.dismissed,
 	];
-	const STROKES = [4.53, 5.76, 5.08, 4.97];
+	const STROKES = [4.71, 5.76, 5.08, 4.97];
 
 	const rows: [string, string, string, number, number][] = [
 		["toolbar text on the bar", L.barText, L.bar, 16.07, TEXT],

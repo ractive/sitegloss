@@ -5,7 +5,7 @@
 
 import type { Point, Shape } from "./case.ts";
 
-export const MARK_COLOUR = "#e5195f";
+export const MARK_COLOUR = "#e0185c";
 
 export interface RenderedMark {
 	number: number;
