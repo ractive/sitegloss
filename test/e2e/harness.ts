@@ -79,8 +79,10 @@ export interface Harness {
 	manifest: BuildResult["manifest"];
 	/** An extension page for calling `chrome.*` (the side panel's document, in a tab). */
 	control: Page;
-	/** Open a test page in a new tab and return it with its tab id. */
-	/** A page of `base` (`v1`), or a whole address (`nextBuild`). */
+	/**
+	 * Open a page of `base` (`v1`), or a whole address (`nextBuild`), in a
+	 * new tab and return it with its tab id.
+	 */
 	open(path: string): Promise<{ page: Page; tabId: number }>;
 	stop(): Promise<void>;
 }
