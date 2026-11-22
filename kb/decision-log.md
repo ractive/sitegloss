@@ -3040,3 +3040,25 @@ same review already asserted.
   nightly, by hand and before a release is built; one Chrome for Testing; the nightly
   skip), `test/delete.test.ts` (Delete's two clicks, pulled out of `main.ts` for it),
   `test/browser.test.ts` (Firefox's keepalive within its idle time).
+
+## DEC-056: tab-mcp client 0.21.0 changes nothing for Sitegloss (owner)
+
+2026-11-22. The owner approved the bump of `@ractive-ch/tab-mcp-client` from 0.20.0 to
+0.21.0, once it was stable. Its breaking change is the library's DEC-215: a WebMCP call
+that the tab-mcp browser extension did not vouch for is no longer asked about; the
+dialog is not shown, and a tool that asks runs unless the page's `onConfirm` refuses it.
+
+- **Not reached.** Sitegloss has WebMCP off and registers every tool with
+  `callers: ["relay"]` (`src/worker/connection.ts`), so no WebMCP call can arrive. Relay
+  calls are unchanged, and its `onConfirm` (`#decide`) still decides them.
+- **Output schemas** are now checked when a tool is registered (`registerTool` throws on
+  one the validator cannot use). Sitegloss's tools declare none.
+- **`ui.strings.clientWebMcp` is gone.** Sitegloss sets no `ui.strings`.
+- **`./extension`** (the pairing-code filler, DEC-049) is unchanged in 0.21.0's changelog.
+- **`disconnectAll()`**: 0.21.0 fixes the case where the storage can be read but not
+  written, which kept the old secret in use. Sitegloss's Disconnect behaves the same:
+  `CachedSecretStorage` (`src/worker/secret.ts`) sets the new secret in memory first and
+  reads from memory, so the library's failing path is not reached; a failed IndexedDB
+  write is only logged, as before.
+- Tests: none added; the existing ones in `test/client.test.ts`, `test/tools.test.ts` and
+  `test/connection.test.ts` cover the relay-only registration and Disconnect.
