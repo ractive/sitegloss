@@ -1066,6 +1066,7 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 				shot: shotId,
 				shape: { kind: "element", rect: element.rect },
 				element,
+				comment: "",
 			}) as Mark;
 		return {
 			...flow(),
@@ -1084,6 +1085,10 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 		const first = await reviewer.load(c);
 		expect(statuses(first.matches)).toEqual(["found", "lost"]);
 		const logo = $("a.Logo_home");
+		// The logo's popover open, a comment typed: the route change closes it.
+		overlay.onPick?.(1);
+		(overlay.popover.querySelector("textarea") as HTMLTextAreaElement).value =
+			"Larger";
 		route("/kk/pay", PAY_PAGE);
 		expect(location.href).toBe(PAY);
 		// The logo is still there, and still not the payment page's mark.
@@ -1092,6 +1097,12 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 		expect(reviewer.target("m2")?.match.status).toBe("found");
 		expect(reviewer.target("m2")?.element).toBe($("a.Help_link"));
 		expect(reviewer.target("m1")?.element).toBeUndefined();
+		expect(overlay.popover.hidden).toBe(true);
+		expect(asked.at(-1)).toMatchObject({
+			type: "mark:comment",
+			markId: "m1",
+			text: "Larger",
+		});
 		// The panel's question: what is there now, for the page it shows now.
 		const now = await reviewer.matches(c.id);
 		expect(now?.url).toBe(PAY);

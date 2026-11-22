@@ -403,6 +403,9 @@ export class Reviewer {
 			else if (entry.here) {
 				this.#stale.delete(entry);
 				Object.assign(entry, this.#elsewhere(entry.mark));
+				// Its popover goes with it, what was typed kept as on any close.
+				if (entry.mark.id === this.#open?.markId) this.overlay.dismissPopover();
+				if (entry.mark.id === this.#focused) this.#focused = undefined;
 			}
 		}
 		// A route's content often comes after its address.
