@@ -392,6 +392,9 @@ describe("the status line, from the engine's real states (DEC-045)", () => {
 		);
 		await tess.engine.request();
 		const offline = await panelOf(tess, false);
+		expect(status(tess)?.state).toBe("offline");
+		expect(status(tess)?.waiting).toBe(1);
+		expect(statusLine(offline)).toStartWith("Offline:");
 		expect(statusLine(offline)).toContain("1 case waits to be sent");
 		expect(syncNowHelps(offline)).toBe(true);
 		// A run said "syncing" on its way.
@@ -1252,18 +1255,22 @@ describe("what a run costs", () => {
 		}
 	});
 
-	test("a run with nothing to do reads the cases once and the sync's database once, and no image", async () => {
+	test("a run with nothing to do reads the cases once and the sync's database once; a first sync of thirty cases does not read them thirty times", async () => {
 		await signIn(tess);
-		for (let n = 0; n < 5; n++) {
+		for (let n = 0; n < 30; n++) {
 			await startCase(tess, `c_${n}`);
 			await addMark(tess, `c_${n}`, "Mark");
 		}
 		const { count, zero, done } = counted(tess);
 		try {
-			// (The run after the first fetches what it sent itself.)
+			zero();
 			await tess.engine.request();
+			expect(server.cases.size).toBe(30);
+			// (Before: the cases 33 times, the database 35 times.)
+			expect(count.lists).toBeLessThan(6);
+			expect(count.all).toBeLessThan(10);
+			// (The run after it fetches what it sent itself; then there is nothing.)
 			await tess.engine.request();
-			expect(server.cases.size).toBe(5);
 			zero();
 			await tess.engine.request();
 			expect([count.lists, count.all, count.images, count.hashed]).toEqual([
