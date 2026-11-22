@@ -3145,3 +3145,55 @@ dialog is not shown, and a tool that asks runs unless the page's `onConfirm` ref
   write is only logged, as before.
 - Tests: none added; the existing ones in `test/client.test.ts`, `test/tools.test.ts` and
   `test/connection.test.ts` cover the relay-only registration and Disconnect.
+
+## DEC-058: Images a person adds to a mark: by id in the case, added in the side panel, always re-encoded (owner)
+
+2026-11-22. The owner: "When a mark is open, I'd like to have an 'add screenshot...'
+button. The dialog that opens needs to support a simple cmd-v to get the image in the
+clipboard, but obviously also have a classic 'Upload...' button and the possibility to
+drag/drop images onto it." For what Sitegloss cannot capture, such as a menu that closes as
+soon as a tool is picked. The owner settled the design's open questions the same day
+(`kb/design/mark-images.md`): the word is "image", the button "Add image…" ("screenshot"
+stays the case's own capture, which adds a page); at most 6 per mark, the longest side
+2048 px, input up to 30 MB; the side panel first; a share link shows them; adding from the
+web app comes later.
+
+- **The format.** `sitegloss/2` gains an optional `marks[].images`, a list of
+  `{ id, image, added: { at, user? } }` (`MarkImage`), absent when there are none, as
+  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 6 per mark, an
+  id unique in the whole case, the path exactly `images/<id>.webp`, and `added` as every
+  stamp. The import requires each file as it does a crop ("The export lacks
+  images/….webp."). The format is not released, so it keeps its name: a reader from before
+  builds its marks from the fields it knows and reads only the files it names, so it drops
+  the images and imports the rest.
+- **By the image's id, not the mark's number.** An image is only added or removed, never
+  changed, so its id (`newId("i")`) is the same here, on the wire and in a file, and needs
+  no mapping in the sync's book. A crop is named after its mark (`crops/m3.webp`) and moves
+  when the sync gives the mark another number; an image named by its own id never moves.
+- **What counts as a change.** `fixedOf` (the drawing the sync compares) leaves images
+  out: an added picture is not another drawing (the lesson of `ends`, DEC-047).
+  `markSignature` counts the images' ids where a mark has any, unlike the design, which
+  left them out: an image added by hand after an AI app's change must end the app's note,
+  or the sync would send the image as the app's doing. A mark without images keeps the
+  signature it had, so no note made before this ends.
+- **The side panel, not the page.** The page's own scripts see `paste` and `drop` on
+  `window` in their capture phase before the overlay's shadow root does, so a picture
+  pasted on the page (maybe of another app's window) would reach the site being marked; its
+  bytes would also cross from the content script to the panel as text, and the panel owns
+  the store (DEC-027). The panel's open mark gets "Add image…"; later the page's popover
+  only asks the panel to open the dialog for that mark. No picture touches the page. The
+  panel reads the clipboard only from a paste into its dialog, so no `clipboardRead`
+  permission and no install warning.
+- **Limits and re-encoding.** At most 6 per mark; input up to 30 MB and 64 million pixels,
+  the import's own limits (`MAX_IMAGE_BYTES`, `MAX_IMAGE_PIXELS`); PNG, JPEG, WebP, GIF
+  (its first frame) and AVIF, no SVG. Every picture is re-encoded in the panel
+  (`toAddedImage`): WebP at the crops' quality 0.85, the longest side at most 2048 px
+  (`ADDED_MAX_SIDE`), turned as its EXIF orientation says. 2048 px stays readable enlarged
+  and mostly fits what an AI app is sent. The canvas writes no EXIF, XMP or GPS, so the
+  re-encoding is what removes a photo's camera, place and time; no file name is kept; and
+  the server takes WebP only.
+- **case.md**: after the mark's crop, `- Images added: 2`, then each image as
+  `![Mark 3, added image 1](images/<id>.webp)`, a link only where the path is the one its
+  id gives.
+- Tests: `test/case.test.ts` ("images added to a mark"), `test/export.test.ts` (round trip,
+  a missing file refused), `test/markdown.test.ts`.
