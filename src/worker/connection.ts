@@ -45,6 +45,11 @@ import {
 import type { CaseStore } from "../lib/store.ts";
 import { AlwaysAllowed, removeOldStore } from "./always.ts";
 import { badge } from "./badge.ts";
+import {
+	CODE_USED_WAIT_MS,
+	type CodeShown,
+	nextCodeShown,
+} from "./code-shown.ts";
 import { decide } from "./decide.ts";
 import { FillQuestion } from "./fill-question.ts";
 import { endedProblem, KeepOn } from "./keep-on.ts";
@@ -318,6 +323,8 @@ export class Connection {
 	/** Why the last command failed, until the next connection. */
 	#problem: string | undefined;
 	#lastCall: CallView | undefined;
+	/** The pairing code the card shows: a used one waits for its app (`nextCodeShown`). */
+	#codeShown: CodeShown = {};
 	/** Why Disconnect did not work, by grant: until it goes, or connected again. */
 	readonly #revokeProblems = new Map<string, RevokeFailure>();
 	/** A revoke of this session timed out: its answer may still come. */
@@ -528,6 +535,16 @@ export class Connection {
 		const changed = () => this.#changed();
 		for (const type of ["pairingcode", "grantschange"] as const)
 			mcp.addEventListener(type, changed, { signal });
+		// A used code waits for its app; once the wait is over, the next code.
+		mcp.addEventListener(
+			"pairingcode",
+			() => {
+				if (mcp.pairingCode?.reason !== "used") return;
+				const timer = setTimeout(changed, CODE_USED_WAIT_MS + 100);
+				signal.addEventListener("abort", () => clearTimeout(timer));
+			},
+			{ signal },
+		);
 		// Allowances changed (by a switch, Always allow, an app's grant gone).
 		signal.addEventListener("abort", AlwaysAllowed.of(mcp).onChange(changed));
 		// The relay's list of the apps connected: only it, so a start or a
@@ -1213,7 +1230,14 @@ export class Connection {
 		const mcp = this.#mcp;
 		const problem = this.#keep.problem ?? this.#problem;
 		const address = mcp.session?.address;
-		const code = mcp.pairingCode?.code;
+		// Idempotent: the same state for the same code, apps and time.
+		this.#codeShown = nextCodeShown(
+			this.#codeShown,
+			mcp.pairingCode,
+			mcp.grants.map((g) => g.grantId),
+			Date.now(),
+		);
+		const { code, used: codeUsed } = this.#codeShown;
 		const replaced = this.#settings.replaced;
 		const fill = this.#fillAsk.question;
 		const fillProblem = this.#fillAsk.problem;
@@ -1247,6 +1271,7 @@ export class Connection {
 			}),
 			pairing: [...this.#panels].some((p) => p.pairing),
 			...(code !== undefined ? { code } : {}),
+			...(codeUsed !== undefined ? { codeUsed: true } : {}),
 			...(replaced !== undefined
 				? { replaced: { sibling: replaced.sibling } }
 				: {}),

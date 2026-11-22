@@ -2309,6 +2309,11 @@ ul.always button.link {
 	letter-spacing: 0.08em;
 }
 
+/* Typed in already, its app not connected yet: not to be typed again. */
+.pairing .code[data-used] {
+	color: var(--ink-2);
+}
+
 /* "Copy" and "Copied" take the same width: nothing beside them moves. */
 button.copy {
 	min-width: 5em;
