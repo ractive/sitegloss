@@ -157,6 +157,18 @@ inFullSet(
 
 		test("the question explains Always allow, which arms with Allow", async () => {
 			const result = call("set_summary", { caseId: "c_1", summary: "One" });
+			// Neither yes counts the moment the question shows (the test build's
+			// wait is short): read in the page as it appears.
+			expect(
+				await panel.eval<boolean>(`new Promise((resolve) => {
+					const timer = setInterval(() => {
+						const always = ${QUESTION}?.querySelector('button[data-answer="always"]');
+						if (!always) return;
+						clearInterval(timer);
+						resolve(always.disabled);
+					}, 5);
+				})`),
+			).toBe(true);
 			await panel.waitFor(QUESTION, 10_000);
 			// In a modal dialog (DEC-037): over the panel wherever it is scrolled
 			// to, and Escape does not close it. Its buttons look alike, the
@@ -219,11 +231,6 @@ inFullSet(
 			expect(await panel.eval<string>(`${QUESTION}.textContent`)).toContain(
 				"Always allow: Record the summary for the developer runs without asking for Test client (client.example), until you disconnect it or an update of Sitegloss changes this tool.",
 			);
-			expect(
-				await panel.eval(
-					`${QUESTION}.querySelector('button[data-answer="always"]').disabled`,
-				),
-			).toBe(true);
 			await answerInPanel(panel, "allow");
 			expect((await result).isError).toBeFalsy();
 			// It closes with its last question.
