@@ -3339,3 +3339,43 @@ access switch and to ask about it when AI access is first turned on.
 - Tests: `test/card.test.ts` (the table: each way AI access comes on, keep-on ticked or
   not, answered or not, taken over; the question's course; when an answer is kept),
   `test/view.test.ts` (the question's markup, its two answers, the focus when it goes).
+
+## DEC-060: Nothing jumps; pictures at their size in a tab of the extension's own; placeholders only as hints (owner)
+
+2026-11-22. The owner, on a case of 25 marks: Verify "lets the content jump around", the
+screenshots cannot be seen larger than the panel, and the placeholders "almost look like
+there's real text in it". The rules of the redesign (rules 5, 6 and 7, shared with the web
+app) apply.
+
+- **Nothing jumps.** Measured in the real panel before the change, a Verify moved the acted
+  row 190 px down at 340 px wide (134 px at 460); so did Resolve's and Reopen's Save and the
+  second click of Delete mark (95 to 190 px), and the focus fell to the page's start. The
+  open case's mark list is drawn anew for every change, its pictures come after it, and the
+  browser's own scroll anchoring cannot hold a row that is replaced. So the panel holds it
+  (`src/sidepanel/scroll-anchor.ts`): a click on a mark's control or a filter chip notes where the
+  row (or chip) was on screen; for 2.5 s, every frame, the page is scrolled by however far
+  it moved, and when the row went (deleted, or left out by a filter) the mark that takes
+  its place is held there instead. The person's own scroll (wheel, touch, a key, a press
+  elsewhere) ends it. The row may still change below its top (two buttons fewer). The focus
+  goes to the same row's next control that shows (its head when none does); the row's head
+  is found again after a second redraw. After: 0 px for each of these at 340 and 460 px.
+- **Pictures at their size.** "Open larger" on a picture shown large opens the viewer, an
+  extension page (`viewer/index.html`) in a new tab: the picture fitted to the window
+  (never larger than it is) or at its actual size, its caption (which mark of which case;
+  for an added image who added it and when), the mark's other pictures with Previous and
+  Next, ← → and F from the keyboard. It reads the case and its pictures from the extension's
+  own store, so it works for a case that is not synced, and asks nothing of a server. Not in
+  the web page: a picture of one site never goes through another site's page (as the add
+  dialog, DEC-058). An extension page needs no permission and no `web_accessible_resources`
+  (it is opened by the extension itself); the store build only gains the page's files.
+- **Placeholders.** A field with a label that shows gets no placeholder that repeats it;
+  a comment box gets none. A hint worth keeping becomes help under the label (the summary,
+  a reopen's note), a note without a label gets one that shows (a resolution's note). What
+  stays is only an address's form (`https://…`, a case's link, another server), in
+  `--placeholder`: `#6e7583` on the white field (4.63:1), `#7f8797` on the dark one
+  (4.62:1), clearly lighter than typed text (16.07:1 and 14.37:1); the page's dialogs, white
+  in both schemes, use the same light value. `test/contrast.test.ts` holds both pairs.
+- Tests: `test/scroll-anchor.test.ts` (which element is held and how far), `test/viewer.test.ts`
+  (the pictures, their order and captions, the address), `test/view.test.ts` (the fields'
+  help and labels, no placeholder on the comment box, "Open larger"), `test/build.test.ts`
+  (the viewer in both builds), `test/contrast.test.ts`.
