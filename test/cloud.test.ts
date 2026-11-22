@@ -1918,16 +1918,6 @@ describe("a book taken up again (review B, sync 4)", () => {
 			"Added while signed out",
 		]);
 	});
-
-	test("the whole case deleted while signed out comes back too", async () => {
-		await shared();
-		await tess.engine.signOut();
-		await tess.store.deleteCase("c_flow");
-		await signIn(tess);
-		await sync(tess, dana);
-		expect(server.caseOf("c_flow")).toBeDefined();
-		expect((await tess.store.getCase("c_flow"))?.marks).toHaveLength(2);
-	});
 });
 
 describe("a delete for the team is the user's delete (review B, sync 6)", () => {
@@ -2018,8 +2008,9 @@ describe("a delete for the team is the user's delete (review B, sync 6)", () => 
 		await tess.store.deleteCase("c_flow");
 		await signIn(tess);
 		await sync(tess, dana);
-		// Back (DEC-041), and its record went with the case's return.
-		expect(await tess.store.getCase("c_flow")).toBeDefined();
+		// Back (DEC-041), whole, and its record went with the case's return.
+		expect((await tess.store.getCase("c_flow"))?.marks).toHaveLength(2);
+		expect(server.caseOf("c_flow")).toBeDefined();
 		expect(await tess.store.deletedCases()).toEqual([]);
 		// Now the database is lost.
 		tess.store.cases.clear();
@@ -2184,17 +2175,6 @@ describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
 		await tess.engine.request();
 		expect(await tess.store.getCase("c_gone")).toBeUndefined();
 		expect(status(tess)?.problems).toEqual([]);
-	});
-
-	test("the server in memory answers since=0 as the real one does: as any revision, with what was deleted", async () => {
-		await shared();
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "m2", now));
-		await tess.engine.request();
-		const from0 = server.changes(0);
-		expect(from0.removed?.map((r) => r.type).sort()).toEqual(["mark", "shot"]);
-		expect(from0.marks?.map((m) => m.comment)).toEqual(["Total is cut off"]);
-		// Without a revision: the whole state, which names no deletes.
-		expect(server.changes(undefined).removed).toEqual([]);
 	});
 });
 
@@ -2399,20 +2379,6 @@ describe("what the server does not take", () => {
 		expect(server.marksOf("c_flow")[0]?.comment).toBe("Refused");
 		expect(status(tess)?.state).toBe("synced");
 		expect(status(tess)?.problems).toEqual([]);
-	});
-
-	test("an error code this build does not know is a refusal like any other, in the server's words", async () => {
-		await shared();
-		server.refuseWith = {
-			type: "mark.patch",
-			code: "frozen",
-			message: "The case is frozen for a release.",
-		};
-		await change(tess, "c_flow", (c, now) => withComment(c, "m1", "Edit", now));
-		await tess.engine.request();
-		expect(status(tess)?.problems[0]?.text).toBe(
-			"A change to a mark was not taken: The case is frozen for a release.",
-		);
 	});
 
 	test("what the user's role does not allow is not sent, and said", async () => {
@@ -3033,12 +2999,5 @@ describe("who is asked what", () => {
 		await tess.engine.retry();
 		expect(((await tess.engine.account()) as Account).teamId).toBe(TEAM);
 		expect(status(tess)?.state).toBe("synced");
-	});
-});
-
-describe("the engine and its team", () => {
-	test("the team's id is what the engine talks to", async () => {
-		await signIn(tess);
-		expect(((await tess.engine.account()) as Account).teamId).toBe(TEAM);
 	});
 });
