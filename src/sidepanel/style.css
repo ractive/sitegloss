@@ -1660,6 +1660,11 @@ ul.cases .progress {
 	padding: var(--s3) var(--s4);
 }
 
+/* "Add marks" under the last mark: inside the section's padding, as the rest. */
+.marks > .row {
+	padding: var(--s3) var(--s4);
+}
+
 /*
  * The list, as a proofreader's sheet (DEC-024): a margin on the left with
  * each mark's pin on a rail from the first pin to the last, the marks right
