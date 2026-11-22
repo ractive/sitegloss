@@ -2,10 +2,11 @@
 type: design
 title: "Images a person adds to a mark"
 description: >-
-  Design, not built, for pictures a person pastes, chooses or drops onto a mark. It covers
-  the data model and case file, the service's API and storage, sync, the side panel's
-  dialog, limits and re-encoding, privacy, and the order of the pull requests. Written on
-  22 November 2026 against both main checkouts and put on the backlog the same day.
+  Design, being built (DEC-058), for pictures a person pastes, chooses or drops onto a mark.
+  It covers the data model and case file, the service's API and storage, sync, the side
+  panel's row of pictures and dialog, limits and re-encoding, privacy, and the order of the
+  pull requests. Written on 22 November 2026 against both main checkouts; the owner settled
+  its open questions and the mark's screenshot as the first picture the same day.
 tags:
   - design
   - backlog
@@ -66,8 +67,9 @@ Read against both main checkouts, 2026-11-22. Code word: **image** (`MarkImage`,
   json_each(marks.images)` of the team's live marks. Removed images and a deleted mark's go at
   the first sweep a day on, as crops (DEC-011). No index on a JSON value; revisit only if
   DEC-027's measurement says so.
-- **Web app** (`case-view.tsx`): thumbnails under the crop, each a button "Image 1 of mark 3,
-  added by Dana" opening the existing `Lightbox` (crop and images as `media`). Read only.
+- **Web app** (`case-view.tsx`): the rule of section 4, one row with the crop first, then the
+  added images, each a button "Image 1 of 2 of mark 3, added by Dana" opening the existing
+  `Lightbox` (the crop first, then the images, as `media`). Read only.
 - **Share** (`server/shares.ts`): `publicCase` copies `images` with `publicStamp`;
   `imageOfShare` also accepts a live mark's image of that case. Its download follows (Q3).
 - **Download** (`case-file.ts`, `case-markdown.ts`): the extension's format ported; an image
@@ -104,35 +106,63 @@ Read against both main checkouts, 2026-11-22. Code word: **image** (`MarkImage`,
 
 ## 4. The user interface in the extension
 
-- **The side panel first.** The open mark (`markItem`, `src/sidepanel/view.ts`) gets
-  "Add image…" in `markActions` after "Edit comment". Not the page's popover first: (1) the
+**The rule, for the panel and later the web app (owner, 22 November 2026):** "it must be clear
+that every mark already has a screenshot attached to it. Maybe this default screenshot should
+be visible as the first image already, so that people don't think that they need to upload a
+screenshot by themselves for every mark." So a mark's pictures are one row, and its own crop
+is always the first of them; what a person adds comes after it and reads as extra. The web
+app follows the same rule when it shows images (S3): the crop first in one row, and first in
+the `Lightbox`'s `media`.
+
+- **The side panel first.** The open mark (`markItem`, `src/sidepanel/view.ts`) gets the row,
+  and the way to add a picture sits at its end. Not the page's popover first: (1) the
   page's own scripts see `paste` and `drop` in their capture phase on `window` before the
   overlay's shadow root, so the picture (maybe another app's window) would go to the site
   being marked; (2) its bytes would cross from content script to panel as text; (3) DEC-027:
   the page asks, the panel changes and owns the store; (4) the owner's dropdown is on the page,
   the panel beside it. Later the popover gets "Add image…" that only asks the panel to open
   the dialog for that mark (E5); no picture ever touches the page.
+- **The row on the open mark**, in this order:
+  1. **The screenshot**: the mark's crop, captioned "Screenshot", `aria-label="Screenshot of
+     mark 3, taken by Sitegloss"`, tooltip "Taken by Sitegloss when the mark was made". A click
+     shows it large and small again, as `cropView` does today (a button, `aria-pressed`). No
+     Remove: it goes only with the mark. Every mark has one in the format (`crop` is
+     required, an AI app's `add_mark` cuts one around the element as a person's mark does);
+     where its file is not here (a teammate's mark whose crop did not come down), the first
+     place says so in words, "The screenshot is not here yet." or "The screenshot is
+     missing.", instead of leaving the row to start with an added image.
+  2. **The added images**, oldest first, each a thumbnail button that opens large the same way,
+     `aria-label="Image 1 of 2 of mark 3, added by Dana"` (no name in a case that never
+     synced: "added here"), tooltip "Added by Dana, 22 Nov", and beside it "Remove image 1"
+     with Delete's two clicks. **Numbering counts only the added images**: the screenshot is
+     named "Screenshot", never "image 1", so the numbers agree with the limit ("at most 6
+     images"), the closed mark's "+2 images", case.md's "added image 1" and the dialog.
+  3. **"Add another image…"**, last in the row, worded as an extra. It is the one place to add
+     (not also in `markActions`): the row and the actions show on the open mark only. Hidden
+     when the mark holds 6.
+- **A closed mark**: the head's subline counts only what was added, "+2 images" ("+1 image");
+  nothing for none. Never "3 images". "Delete mark"'s tooltip names the added images.
 - **Dialog** (new `src/sidepanel/add-images.ts`, a `<dialog>` with `showModal` as `ai.ts`):
-  "Add images to mark 3". One area: "Paste an image (⌘V), drop one here, or choose a file",
-  with "To capture a menu that closes: ⌘⇧⌃4 on a Mac, Windows+Shift+S on Windows, then paste."
-  "Choose files…" (`<input type=file multiple accept="image/png,image/jpeg,image/webp,
-  image/gif,image/avif">`; not "Upload…": nothing uploads unless the case syncs). `paste` reads
-  `clipboardData.items` of kind file: no `clipboardRead` permission, no install warning.
-  Each picture is re-encoded at once (section 5) and previewed with its size ("1440 × 900") and
-  "Remove"; footer "Add 2 images" and "Cancel"; several at once, up to the free places.
+  "Add images to mark 3". Its head shows the mark's screenshot small, with "Mark 3 has its
+  screenshot already. Add a picture of what it does not show, for example a menu that closes
+  or another state of the page." Then one area: "Paste an image (⌘V), drop one here, or
+  choose a file", with "To capture a menu that closes: ⌘⇧⌃4 on a Mac, Windows+Shift+S on
+  Windows, then paste." "Choose files…" (`<input type=file multiple accept="image/png,
+  image/jpeg,image/webp,image/gif,image/avif">`; not "Upload…": nothing uploads unless the
+  case syncs). `paste` reads `clipboardData.items` of kind file: no `clipboardRead`
+  permission, no install warning. Each picture is re-encoded at once (section 5) and
+  previewed with its size ("1440 × 900") and "Remove"; the previews are numbered after the
+  mark's images ("Image 3", "Image 4" when it holds two); footer "Add 2 images" and
+  "Cancel"; several at once, up to the free places.
 - **Errors**, in a `role="status"` line: "The clipboard holds no image. Copy a screenshot
   first." · "This file is not an image Sitegloss can read: PNG, JPEG, WebP, GIF or AVIF." ·
   "This image is larger than 30 MB." · "This image has more than 64 million pixels." ·
   "Mark 3 holds at most 6 images; 2 more fit." · "This image is on the mark already." (same
   SHA-256). A failed save says the store's sentence and the dialog stays.
-- **On the mark**: under the crop, `imagesView` shows thumbnails as `cropView` does (a
-  button, `aria-pressed`, a click panel-wide and back), `aria-label="Image 1 of mark 3, shown
-  large"`, tooltip "Added by Dana, 22 Nov"; beside each "Remove image 1" with Delete's two
-  clicks. The head's subline says "2 images" on a closed mark; "Delete mark"'s tooltip names
-  the images. `main.ts`: `addImages(c, a, images)`, `removeImage(c, a, id)`; the object URLs
+- **Wiring**: `main.ts`: `addImages(c, a, images)`, `removeImage(c, a, id)`; the object URLs
   come from `caseImages`.
-- **Keyboard**: focus on "Choose files…" at open, back on "Add image…" at close; Escape
-  cancels; every control a button, so the drop area is never the only way.
+- **Keyboard**: focus on "Choose files…" at open, back on "Add another image…" at close;
+  Escape cancels; every control a button, so the drop area is never the only way.
 - **Paste without the dialog**: worth it, as a shortcut into the dialog: Cmd-V with focus in
   an open mark (not a text field) opens it with that image; nothing is added without "Add".
 
