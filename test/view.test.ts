@@ -1685,10 +1685,19 @@ describe("a case of several pages (DEC-038)", () => {
 			actionsWith({ openPage: (_c, url) => void opened.push(url) }),
 		);
 		expect(el("case-pages").hidden).toBe(false);
+		// The title, its marks, its path: the host only where pages differ in it.
 		expect(pages()).toEqual([
-			"shop.example/cart · 2 marks",
-			"shop.example/checkout/pay · 1 mark · this tab",
+			"Your cart2 marks/cart",
+			"Payment (this tab)1 mark/checkout/pay",
 		]);
+		// The page in front is said to a screen reader, and shown by its row's
+		// bar and weight, not by a word that would move the list.
+		const here = el("case-pages").querySelector("[aria-current=page]");
+		expect(here?.textContent).toBe("Payment (this tab)");
+		expect(here?.querySelector(".visually-hidden")).not.toBeNull();
+		expect(el("case-pages").querySelectorAll("[aria-current]").length).toBe(1);
+		// The tooltip has the whole title and the whole address.
+		expect((here as unknown as HTMLElement).title).toBe(`Payment\n${PAY}`);
 		// The one link of a case of one page gives way to the list.
 		expect(el("open-page").hidden).toBe(true);
 		expect(el("case-view").querySelector(".case-meta")?.textContent).toContain(
@@ -1698,6 +1707,21 @@ describe("a case of several pages (DEC-038)", () => {
 		(links[1] as unknown as HTMLButtonElement).click();
 		(links[0] as unknown as HTMLButtonElement).click();
 		expect(opened).toEqual([PAY, CART]);
+
+		// Pages on two hosts are named with them; one without a title by its address.
+		const other = "https://staging.shop.example/checkout/pay";
+		render(
+			caseState({
+				...c,
+				pages: [c.pages?.[0] ?? c.page, { url: other, title: " ", lang: "" }],
+			}),
+			noActions,
+		);
+		expect(pages()).toEqual([
+			"Your cart2 marksshop.example/cart",
+			"staging.shop.example/checkout/pay1 mark",
+		]);
+		expect(el("case-pages").querySelectorAll("button")[1]?.title).toBe(other);
 	});
 
 	test("the size offered is the one the marks of the page in front were made at", () => {

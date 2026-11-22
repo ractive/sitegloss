@@ -54,7 +54,7 @@ import {
 	renderCloudSection,
 	teamOf,
 } from "./cloud-view.ts";
-import { byId, formatDate, h, isWebPage, shortUrl } from "./dom.ts";
+import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { foundLine, isFound, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
 import { type Size, sameSize } from "./size.ts";
@@ -1999,6 +1999,10 @@ function reopenForm(
 /**
  * The pages of a case that has several (DEC-038): each with its marks
  * counted, and a link that opens it; the one the tab in front shows says so.
+ * A row is the page's title (its address where it has none), its marks and,
+ * under the title, its path: titles of one app repeat. Every row is two lines
+ * whatever it holds and whichever page is in front, so the list never moves;
+ * what does not fit is cut by the style sheet, and the tooltip has it whole.
  */
 function renderPages(
 	p: CaseParts,
@@ -2019,30 +2023,46 @@ function renderPages(
 	if (key === p.pagesKey) return;
 	p.pagesKey = key;
 	p.pages.hidden = pages.length === 0;
+	// The host only where it tells the pages apart.
+	const hosts = new Set(
+		pages.filter((page) => isWebPage(page.url)).map((page) => hostOf(page.url)),
+	);
 	p.pages.replaceChildren(
 		...pages.map((page) => {
 			const marks = marksOn(page.url);
 			const front = here !== undefined && here.url === page.url;
+			const title = page.title.trim();
+			const web = isWebPage(page.url);
+			const path = web ? shortPath(page.url, hosts.size > 1) : page.url;
+			// An address is cut at its start: its end tells two pages apart.
+			const address = () => h("bdi", { dir: "ltr" }, path);
+			const name = [
+				title || address(),
+				front ? h("span", { class: "visually-hidden" }, " (this tab)") : "",
+			];
+			const tooltip = title ? `${title}\n${page.url}` : page.url;
+			const nameClass = `page-name${title ? "" : " cut-start"}`;
 			return h(
 				"li",
 				{ "data-page": page.url, ...(front ? { "data-here": true } : {}) },
-				isWebPage(page.url)
+				web
 					? h(
 							"button",
 							{
 								type: "button",
-								class: "link page-link",
-								title: `Open ${page.title || "this page"} in a new tab; the case's marks are drawn there`,
+								class: `link ${nameClass}`,
+								title: tooltip,
+								...(front ? { "aria-current": "page" } : {}),
 								onclick: () => actions.openPage(p.current, page.url),
 							},
-							shortUrl(page.url),
+							...name,
 						)
-					: h("span", {}, page.url),
-				h(
-					"span",
-					{ class: "meta" },
-					` · ${marks} mark${marks === 1 ? "" : "s"}${front ? " · this tab" : ""}`,
-				),
+					: h("span", { class: nameClass, title: tooltip }, ...name),
+				h("span", { class: "page-count" }, String(marks)),
+				h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+				title
+					? h("span", { class: "page-address cut-start" }, address())
+					: null,
 			);
 		}),
 	);

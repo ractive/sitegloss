@@ -74,3 +74,17 @@ export function shortUrl(url: string): string {
 		return url;
 	}
 }
+
+/**
+ * `/teams/t_1/cases` or `/#/cart`: a page's path with its hash route, as
+ * `shortUrl` names it without the host; with it where `withHost`.
+ */
+export function shortPath(url: string, withHost: boolean): string {
+	if (withHost) return shortUrl(url);
+	try {
+		const u = new URL(url);
+		return `${u.pathname}${hashRoute(u.hash)}`;
+	} catch {
+		return url;
+	}
+}
