@@ -754,6 +754,30 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		).toBe("6 of 6 images");
 	});
 
+	test("with the page filter on, a mark of that page keeps its pictures", () => {
+		const c = marked("c_pictures4");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([[a.crop, "blob:crop"]]),
+				};
+				s.markPage = {
+					caseId: c.id,
+					choice: { page: new URL(c.page.url).pathname },
+					upTo: 3,
+				};
+			}),
+			noActions,
+		);
+		const row = window.document.querySelector(`[data-mark="${a.id}"]`);
+		expect(row).not.toBeNull();
+		expect(row?.querySelectorAll(".pictures figure").length).toBe(4);
+		expect(row?.querySelector(".images-count")?.textContent).toBe("+3 images");
+	});
+
 	test("a Remove clicked once says so on its tile, in words", () => {
 		const c = marked("c_pictures3");
 		const a = c.marks[0] as Mark;
