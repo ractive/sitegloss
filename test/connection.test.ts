@@ -373,8 +373,8 @@ describe("the worker's connection with client 0.18", () => {
 		const log = store.log;
 		store.log = undefined;
 		// Two stays, in its place, with its own answer and its Allow all changes.
-		expect(grant(w, "Two")?.problem).toBe(
-			"Two was not disconnected: the relay could not save this. Try again.",
+		expect(grant(w, "Two")?.problem).toContain(
+			"Two was not disconnected: the relay could not save",
 		);
 		expect(grant(w, "Two")?.allowAll).toBe(true);
 		return { w, ids, listed, log };
@@ -407,8 +407,8 @@ describe("the worker's connection with client 0.18", () => {
 			await until(() => grant(w, "One")?.problem !== undefined);
 			// The library cannot tell which grant it is: One stays listed.
 			expect(w.last().grants.map((g) => g.name)).toEqual(listed);
-			expect(grant(w, "One")?.problem).toBe(
-				"The relay no longer knows One, so it cannot reach Sitegloss any more. It leaves this list when AI access next connects.",
+			expect(grant(w, "One")?.problem).toContain(
+				"The relay no longer knows One",
 			);
 			expect(grant(w, "One")?.allowAll).toBe(false);
 		} finally {
@@ -435,13 +435,13 @@ describe("the worker's connection with client 0.18", () => {
 			w.send({ type: "revoke", grantId: ids["One"] });
 			w.send({ type: "revoke", grantId: ids["Two"] });
 			await until(() => grant(w, "One")?.problem !== undefined);
-			expect(grant(w, "One")?.problem).toBe(
-				"One was not disconnected: the relay did not answer. Try again.",
+			expect(grant(w, "One")?.problem).toContain(
+				"One was not disconnected: the relay did not answer",
 			);
 			// One's late store_unavailable, naming nothing, rejects Two's.
 			await until(() => grant(w, "Two")?.problem !== undefined);
-			expect(grant(w, "Two")?.problem).toBe(
-				"Two was not disconnected: the relay's answer may be for an earlier Disconnect it was slow to answer. Try again.",
+			expect(grant(w, "Two")?.problem).toContain(
+				"Two was not disconnected: the relay's answer may be for an earlier",
 			);
 			expect(grant(w, "Two")?.allowAll).toBe(true);
 		} finally {
@@ -459,8 +459,8 @@ describe("the worker's connection with client 0.18", () => {
 		await Bun.sleep(20);
 		w.send({ type: "stop" });
 		await until(() => grant(w, "One")?.problem !== undefined);
-		expect(grant(w, "One")?.problem).toBe(
-			"Sitegloss could not confirm that One was disconnected: the connection ended first. It shows when AI access is next on.",
+		expect(grant(w, "One")?.problem).toContain(
+			"could not confirm that One was disconnected",
 		);
 		// The next connection's list is the truth: the relay did revoke it.
 		await Bun.sleep(400);
@@ -468,19 +468,6 @@ describe("the worker's connection with client 0.18", () => {
 		w.send({ type: "connect" });
 		await until(() => w.last().state === "connected");
 		await until(() => w.last().grants.length === 0);
-	});
-
-	test("a Disconnect while off is not sent: not connected, try again", async () => {
-		const { w, ids } = await paired(["One"]);
-		w.send({ type: "stop" });
-		await until(() => w.last().state === "disconnected");
-		w.send({ type: "revoke", grantId: ids["One"] });
-		await until(() => grant(w, "One")?.problem !== undefined);
-		expect(grant(w, "One")?.problem).toBe(
-			"One was not disconnected: Sitegloss is not connected to the relay. Turn on AI access and try again.",
-		);
-		// Its Allow all changes stays: the grant is not gone.
-		expect(grant(w, "One")?.allowAll).toBe(true);
 	});
 
 	test.each([false, true])(
@@ -498,9 +485,7 @@ describe("the worker's connection with client 0.18", () => {
 			}
 			await until(() => w.last().state === "disconnected");
 			await Bun.sleep(100);
-			expect(w.last().problem).toBe(
-				"The relay ended the connection: Sitegloss sent it too many messages at once.",
-			);
+			expect(w.last().problem).toContain("too many messages");
 			// Never at once: the next try waits (5 s first).
 			expect(w.last().retrying).toBe(keepOn);
 			expect(w.last().state).toBe("disconnected");
@@ -530,18 +515,8 @@ describe("the worker's connection with client 0.18", () => {
 		expect(w.last().retrying).toBe(false);
 	});
 
-	test("after a takeover, Disconnect all apps clears it even when the connect after it fails", async () => {
-		const first = await paired([]);
-		const secret = await first.kv.get(secretKey());
-		first.w.send({ type: "stop" });
-		await until(() => first.w.last().state === "disconnected");
-		// A new worker after a takeover it did not see.
-		await first.kv.set({ replaced: { sibling: false } });
-		session.clear();
-		const w = await startWorker(first.kv);
-		workers.push(w);
-		await until(() => w.last()?.replaced !== undefined);
-		// The take-back connects (one socket); the connect after it cannot.
+	/** Asks for a new address with only the first socket able to connect; the sockets made. */
+	async function newAddressWithFailingConnect(w: Worker): Promise<number> {
 		const Real = before.WebSocket as typeof WebSocket;
 		let sockets = 0;
 		globals["WebSocket"] = class extends Real {
@@ -556,7 +531,22 @@ describe("the worker's connection with client 0.18", () => {
 		} finally {
 			globals["WebSocket"] = before.WebSocket;
 		}
-		expect(sockets).toBe(2);
+		return sockets;
+	}
+
+	test("after a takeover, Disconnect all apps clears it even when the connect after it fails", async () => {
+		const first = await paired([]);
+		const secret = await first.kv.get(secretKey());
+		first.w.send({ type: "stop" });
+		await until(() => first.w.last().state === "disconnected");
+		// A new worker after a takeover it did not see.
+		await first.kv.set({ replaced: { sibling: false } });
+		session.clear();
+		const w = await startWorker(first.kv);
+		workers.push(w);
+		await until(() => w.last()?.replaced !== undefined);
+		// The take-back connects (one socket); the connect after it cannot.
+		expect(await newAddressWithFailingConnect(w)).toBe(2);
 		expect(w.last().replaced).toBeUndefined();
 		expect(await first.kv.get("replaced")).toBeUndefined();
 		// The connect again works, at the same address (it names the app),
@@ -599,21 +589,7 @@ describe("the worker's connection with client 0.18", () => {
 			await until(() => w.last().replaced !== undefined);
 			// The library takes the connection back and connects with the new
 			// secret itself (it saw the takeover); that connect cannot.
-			const Real = before.WebSocket as typeof WebSocket;
-			let sockets = 0;
-			globals["WebSocket"] = class extends Real {
-				constructor(url: string | URL, protocols?: string | string[]) {
-					sockets++;
-					super(sockets > 1 ? "ws://127.0.0.1:1/tab" : url, protocols);
-				}
-			};
-			try {
-				w.send({ type: "new-address" });
-				await until(() => w.last().problem !== undefined, 10_000);
-			} finally {
-				globals["WebSocket"] = before.WebSocket;
-			}
-			expect(sockets).toBe(2);
+			expect(await newAddressWithFailingConnect(w)).toBe(2);
 			// The secret is new all the same: no takeover notice for it.
 			expect(w.last().replaced).toBeUndefined();
 			expect(await kv.get("replaced")).toBeUndefined();

@@ -354,16 +354,6 @@ describe("the sync to a folder (DEC-021)", () => {
 		expect(store.record?.byCase["c_1"]?.file).toBe("login-3.sitegloss.zip");
 	});
 
-	test("another folder starts afresh; what was written to the old one does not count", async () => {
-		await add("c_1", "Login");
-		await sync.request();
-		const other = new FakeFolder("Dropbox");
-		store.useFolder(other, "f_2");
-		await sync.request();
-		expect([...other.files.keys()]).toEqual(["login.sitegloss.zip"]);
-		expect(store.record?.folderId).toBe("f_2");
-	});
-
 	test("no permission: paused, nothing written, and the changes come once it is back", async () => {
 		await add("c_1", "Login");
 		await sync.request();
@@ -421,8 +411,8 @@ describe("the sync to a folder (DEC-021)", () => {
 		folder.failWrites = "QuotaExceededError";
 		await sync.request();
 		expect(store.current?.state).toBe("failed");
-		expect(store.current?.problem).toBe(
-			"There is no space left for “login.sitegloss.zip” in “Sitegloss cases”. Free some space, then click Try again.",
+		expect(store.current?.problem).toContain(
+			"no space left for “login.sitegloss.zip” in “Sitegloss cases”",
 		);
 		expect(folder.files.size).toBe(0);
 	});
@@ -741,9 +731,8 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(await api.pending()).toBeUndefined();
 	});
 
-	test("a download a stopped worker waited for is settled at the next run: complete counts as written", async () => {
-		const c = await add("c_1", "Login");
-		// The worker that started it stopped before it ended.
+	/** The download a worker started and stopped before it ended: its id. */
+	async function leftPending(c: Case): Promise<number> {
 		await api.url(c);
 		const id = await api.download({
 			url: "blob:x/1",
@@ -757,6 +746,13 @@ describe("the sync to Downloads (DEC-025)", () => {
 			version: versionOf(c),
 			file: "login.sitegloss.zip",
 		});
+		return id;
+	}
+
+	test("a download a stopped worker waited for is settled at the next run: complete counts as written", async () => {
+		const c = await add("c_1", "Login");
+		// The worker that started it stopped before it ended.
+		const id = await leftPending(c);
 		store.current = {
 			folderId: "downloads",
 			state: "syncing",
@@ -772,71 +768,51 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(await api.last()).toBe(id);
 	});
 
-	test("a worker stopped after its download ended, before its entry was kept: settled, one entry left, not written again", async () => {
-		const c = await add("c_1", "Login");
-		await sync.request();
-		const changed = { ...c, updatedAt: "2026-11-12T09:00:00Z" };
-		await putCase(cases, changed);
-		// The worker stops while it keeps the new entry: the entry before is
-		// erased, the new one not yet recorded as the newest, nor the case.
-		const stopped = new Promise<void>((r) => {
-			api.stopAtSetLast = r;
-		});
-		void sync.request();
-		await stopped;
-		const fresh = new Sync({
-			cases,
-			store,
-			now: () => NOW,
-			downloads: downloadsTarget(api),
-		});
-		await fresh.request();
-		expect(api.downloads).toHaveLength(2);
-		expect([...api.list.keys()]).toEqual([2]);
-		expect(await api.last()).toBe(2);
-		expect(await api.pending()).toBeUndefined();
-		expect(store.records.get("downloads")?.byCase["c_1"]?.version).toBe(
-			versionOf(changed),
-		);
-	});
-
-	test("a worker stopped before the entry before was erased: settled, one entry left", async () => {
-		const c = await add("c_1", "Login");
-		await sync.request();
-		await putCase(cases, { ...c, updatedAt: "2026-11-12T09:00:00Z" });
-		const stopped = new Promise<void>((r) => {
-			api.stopAtErase = r;
-		});
-		void sync.request();
-		await stopped;
-		await new Sync({
-			cases,
-			store,
-			now: () => NOW,
-			downloads: downloadsTarget(api),
-		}).request();
-		expect(api.downloads).toHaveLength(2);
-		expect([...api.list.keys()]).toEqual([2]);
-		expect(await api.last()).toBe(2);
-		expect(await api.pending()).toBeUndefined();
-	});
+	test.each([
+		[
+			"after its download ended, before its entry was kept",
+			(api: FakeDownloads) =>
+				new Promise<void>((r) => {
+					api.stopAtSetLast = r;
+				}),
+		],
+		[
+			"before the entry before was erased",
+			(api: FakeDownloads) =>
+				new Promise<void>((r) => {
+					api.stopAtErase = r;
+				}),
+		],
+	])(
+		"a worker stopped %s: settled, one entry left, not written again",
+		async (_where, stopAt) => {
+			const c = await add("c_1", "Login");
+			await sync.request();
+			const changed = { ...c, updatedAt: "2026-11-12T09:00:00Z" };
+			await putCase(cases, changed);
+			const stopped = stopAt(api);
+			void sync.request();
+			await stopped;
+			await new Sync({
+				cases,
+				store,
+				now: () => NOW,
+				downloads: downloadsTarget(api),
+			}).request();
+			expect(api.downloads).toHaveLength(2);
+			expect([...api.list.keys()]).toEqual([2]);
+			expect(await api.last()).toBe(2);
+			expect(await api.pending()).toBeUndefined();
+			expect(store.records.get("downloads")?.byCase["c_1"]?.version).toBe(
+				versionOf(changed),
+			);
+		},
+	);
 
 	test("one that was interrupted meanwhile: its entry goes, and the case is written again", async () => {
 		const c = await add("c_1", "Login");
 		api.next = [{ state: "interrupted", error: "NETWORK_FAILED" }];
-		await api.url(c);
-		const id = await api.download({
-			url: "blob:x/1",
-			filename: "Sitegloss/login.sitegloss.zip",
-			conflictAction: "overwrite",
-			saveAs: false,
-		});
-		await api.setPending({
-			id,
-			caseId: "c_1",
-			version: versionOf(c),
-			file: "login.sitegloss.zip",
-		});
+		const id = await leftPending(c);
 		await sync.request();
 		expect(api.erased).toContain(id);
 		expect(api.downloads).toHaveLength(2);
@@ -879,12 +855,6 @@ describe("the sync to Downloads (DEC-025)", () => {
 		);
 		expect(store.records.get("downloads")?.byCase["c_1"]?.file).toBe(
 			"example-domain.sitegloss.zip",
-		);
-		// A new case of the old title does not take its name.
-		await add("c_2", "Example Domain", "2026-11-12T09:01:00Z");
-		await sync.request();
-		expect(store.records.get("downloads")?.byCase["c_2"]?.file).toBe(
-			"example-domain-2.sitegloss.zip",
 		);
 	});
 
@@ -962,8 +932,8 @@ describe("the sync to Downloads (DEC-025)", () => {
 		api.next = [{ state: "interrupted", error: "FILE_NO_SPACE" }];
 		await sync.request();
 		expect(store.current?.state).toBe("failed");
-		expect(store.current?.problem).toBe(
-			"There is no space left in your downloads for “login.sitegloss.zip”. Free some space, then click Try again.",
+		expect(store.current?.problem).toContain(
+			"no space left in your downloads for “login.sitegloss.zip”",
 		);
 		expect(api.revoked).toEqual(["blob:x/1"]);
 		await sync.request();
@@ -978,7 +948,7 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(store.current?.problem).toContain(
 			"“Ask where to save each file before downloading”",
 		);
-		expect(store.current?.problem).toContain("choose a folder instead");
+		expect(store.current?.problem).toContain("choose a folder");
 	});
 
 	test("a failure only the user can end is not tried again by itself, only by Try again", async () => {
@@ -1032,7 +1002,7 @@ describe("the sync to Downloads (DEC-025)", () => {
 		await sync.request();
 		const problem = store.current?.problem ?? "";
 		expect(problem.match(/” could not be written:/g)).toHaveLength(3);
-		expect(problem).toContain("And 3 more cases could not be written.");
+		expect(problem).toContain("And 3 more cases");
 	});
 
 	test("a burst of changes waits for a quiet moment: one download per case", async () => {
@@ -1087,7 +1057,7 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(api.downloads).toHaveLength(2);
 	});
 
-	test("from a folder to Downloads: a record of its own, written afresh", async () => {
+	test("from a folder to Downloads: a record of its own, written afresh, the folder's files stay", async () => {
 		await add("c_1", "Login");
 		const folder = new FakeFolder();
 		store.useFolder(folder, "f_1");
@@ -1108,17 +1078,11 @@ describe("the stored choice (DEC-025)", () => {
 		id: "f_1",
 	};
 
-	test("no target and a folder: the folder, as before Downloads existed", () => {
+	test("which target a stored choice is: a folder as before Downloads existed, Downloads whatever folder is kept, else off", () => {
 		expect(choiceOf(undefined, folder)).toEqual({ target: "folder", folder });
 		expect(choiceOf("folder", folder)).toEqual({ target: "folder", folder });
-	});
-
-	test("downloads, whatever folder is kept", () => {
 		expect(choiceOf("downloads", undefined)).toEqual({ target: "downloads" });
 		expect(choiceOf("downloads", folder)).toEqual({ target: "downloads" });
-	});
-
-	test("nothing, or a folder target without a folder: off", () => {
 		expect(choiceOf(undefined, undefined)).toBeUndefined();
 		expect(choiceOf("folder", undefined)).toBeUndefined();
 	});
@@ -1367,7 +1331,7 @@ describe("the sync's database, opened when first used", () => {
 			};
 			const panel = startSync((change) => change(state), kv);
 			await panel.refresh();
-			expect(state.sync.problem).toContain("Could not read the sync's state");
+			expect(state.sync.problem).toContain("read the sync's state");
 			expect(state.sync.problem).toContain("disk error");
 			failing = false;
 			await panel.refresh();

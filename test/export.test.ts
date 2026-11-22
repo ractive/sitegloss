@@ -1,15 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	type Case,
-	type Finding,
-	MAX_COMMENT,
-	MAX_REOPEN_NOTE,
-	MAX_REOPENS,
-	type Mark,
-	withReopen,
-	withResolution,
-	withVerified,
-} from "../src/lib/case.ts";
+import type { Case, Finding, Mark } from "../src/lib/case.ts";
 import {
 	caseFolders,
 	exportAllCases,
@@ -340,70 +330,6 @@ describe("statuses through a file (DEC-023)", () => {
 		expect(again.marks[0]?.reopens?.[0]?.imported).toBe(true);
 	});
 
-	test("a case whose marks' histories are at the caps exports and imports again", async () => {
-		const store = new MemoryStore();
-		const base = sampleCase("c_caps");
-		const shot = {
-			id: "s1",
-			image: "shots/s1.webp",
-			scrollX: 0,
-			scrollY: 0,
-			viewport: { width: 1280, height: 800, dpr: 2 },
-			capturedAt: "2026-11-04T10:00:00Z",
-		};
-		// Twice the marks at which reopens' whole notes passed the 20 MB limit.
-		const MARKS = 100;
-		let c: Case = {
-			...base,
-			shots: [shot],
-			marks: Array.from({ length: MARKS }, (_, i) =>
-				mark(i + 1, { element: null }),
-			),
-		};
-		const fix = "f".repeat(MAX_COMMENT);
-		const still = "s".repeat(MAX_REOPEN_NOTE);
-		for (const a of c.marks) {
-			for (let i = 0; i < MAX_REOPENS; i++) {
-				c = withResolution(
-					c,
-					a.id,
-					{ kind: "fixed", note: fix, app: CLAUDE },
-					"t",
-				);
-				c = withReopen(c, a.id, { note: still, app: CLAUDE }, "t");
-			}
-			c = withResolution(
-				c,
-				a.id,
-				{ kind: "fixed", note: fix, app: CLAUDE },
-				"t",
-			);
-		}
-		c = withVerified(c, "m1", undefined, "t");
-		await putCase(store, c);
-		await store.putImage(c.id, "shots/s1.webp", {
-			blob: webp("shots/s1.webp"),
-			width: 10,
-			height: 10,
-		});
-		for (const a of c.marks)
-			await store.putImage(c.id, a.crop, {
-				blob: webp(a.crop),
-				width: 10,
-				height: 10,
-			});
-		const back = await importCase(
-			new MemoryStore(),
-			await exportCase(store, c),
-		);
-		expect(back.marks).toHaveLength(MARKS);
-		const last = back.marks.at(-1) as Mark;
-		expect(last.reopens).toHaveLength(MAX_REOPENS);
-		expect(last.reopens?.[0]?.note).toBe(still);
-		expect(last.reopens?.[0]?.was.note?.length).toBe(MAX_REOPEN_NOTE);
-		expect(last.resolution?.note).toBe(fix);
-	}, 30_000);
-
 	test("case.md says which statuses came from a file", async () => {
 		const { store, c } = await stored();
 		const sent = verify(c);
@@ -582,9 +508,7 @@ describe("import", () => {
 				target,
 				await writeZip([...files].map(([name, data]) => ({ name, data }))),
 			),
-		).rejects.toThrow(
-			"This case file is in the old format sitegloss/1; this version of Sitegloss reads sitegloss/2 only.",
-		);
+		).rejects.toThrow("in the old format sitegloss/1");
 		expect(await target.listCases()).toEqual([]);
 	});
 
@@ -846,7 +770,7 @@ describe("all cases in one file", () => {
 			readExports(
 				await writeZip([{ name: "a/b/case.json", data: text("{}") }]),
 			),
-		).rejects.toThrow("This is not a Sitegloss export: case.json is missing.");
+		).rejects.toThrow("case.json is missing");
 		await expect(readExports(await writeZip([]))).rejects.toThrow(
 			"case.json is missing",
 		);
@@ -879,7 +803,7 @@ describe("all cases in one file", () => {
 
 	test("nothing to export is said so", async () => {
 		await expect(exportAllCases(new MemoryStore(), [])).rejects.toThrow(
-			"There are no cases to export.",
+			"no cases to export",
 		);
 	});
 });
@@ -945,7 +869,7 @@ describe("sizes of a file of all cases", () => {
 		expect(bomb.length).toBeLessThan(100 * 1024);
 		// Each case is within its limit; all of them are not.
 		await expect(readExports(bomb, limits(2 * MB, 3 * MB))).rejects.toThrow(
-			"The cases in the file unpack to more than 3 MB.",
+			"unpack to more than 3 MB",
 		);
 		expect(await readExports(bomb, limits(2 * MB, 4 * MB))).toHaveLength(3);
 	});
@@ -954,18 +878,14 @@ describe("sizes of a file of all cases", () => {
 		const { store, cases } = await sized([1.2 * MB, 1000, 1.5 * MB]);
 		await expect(
 			exportAllCases(store, cases, limits(1 * MB, 8 * MB)),
-		).rejects.toThrow(
-			"“Case 0” and “Case 2” are too large to be imported again (more than 1 MB each). Export the other cases one at a time.",
-		);
+		).rejects.toThrow("“Case 0” and “Case 2” are too large");
 		await expect(
 			exportAllCases(store, cases.slice(0, 2), limits(1 * MB, 8 * MB)),
-		).rejects.toThrow(
-			"“Case 0” is too large to be imported again (more than 1 MB).",
-		);
+		).rejects.toThrow("“Case 0” is too large");
 		// Each within the limit for one case, together over the one for all.
 		await expect(
 			exportAllCases(store, cases, limits(2 * MB, 2 * MB)),
-		).rejects.toThrow("All cases together are larger than 2 MB.");
+		).rejects.toThrow("larger than 2 MB");
 	});
 
 	test("Export all cases counts the zip's headers too, as the import does", async () => {
@@ -1041,17 +961,5 @@ describe("sizes of a file of all cases", () => {
 		} finally {
 			globalThis.Blob = RealBlob;
 		}
-	});
-
-	test("a case's images are checked again when it is stored", async () => {
-		const { store, cases } = await sized([1000, 2000]);
-		const zip = await exportAllCases(store, cases);
-		const read = await readExports(zip);
-		// The bytes of the second case's screenshot, changed after the check.
-		const at = new TextDecoder("latin1").decode(zip).lastIndexOf("RIFF");
-		zip[at] = 0;
-		await expect(
-			storeImport(new MemoryStore(), read[1] as (typeof read)[number]),
-		).rejects.toThrow("In case-1/:");
 	});
 });

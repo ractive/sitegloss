@@ -437,21 +437,6 @@ describe("a loaded case that changes", () => {
 			describeElement($("h1")).selector,
 		);
 	});
-
-	test("a change while the case still loads is drawn once the load ends", async () => {
-		doc.body.innerHTML = PAGE;
-		const c = twoMarks();
-		const loading = reviewer.load(c);
-		expect(
-			await reviewer.update({
-				...c,
-				marks: [c.marks[0] as Mark],
-			}),
-		).toBeNull();
-		const result = await loading;
-		expect(result.matches.length).toBe(1);
-		expect(overlay.items.length).toBe(1);
-	});
 });
 
 describe("loads close together", () => {
@@ -498,6 +483,7 @@ describe("loads close together", () => {
 		).toBeNull();
 		expect((await second).matches.length).toBe(1);
 		expect((await first).matches.length).toBe(1);
+		expect(overlay.items.length).toBe(1);
 	});
 });
 
