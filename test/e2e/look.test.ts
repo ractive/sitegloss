@@ -15,7 +15,12 @@ import {
 import { MARK_COLOUR } from "../../src/lib/marks.ts";
 import { openSidePanel, setRelay } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import { markElement, parkControl, saveAs, shadow } from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
@@ -227,9 +232,9 @@ describe.skipIf(browserBinary === undefined)("the look", () => {
 		} finally {
 			await relay.stop();
 		}
-		// The steps above take less than half a second: a click on the back
-		// button that soon after "All cases" counts as a double click's second.
-		await Bun.sleep(600);
+		// The steps above are quick: a click on the back button that soon after
+		// "All cases" counts as a double click's second.
+		await Bun.sleep(PAST_GUARD_MS);
 		await panel.eval(`${id("back")}.click()`);
 		await panel.waitFor(`!${id("case-view")}.hidden`);
 		await panel.send("Emulation.clearDeviceMetricsOverride");

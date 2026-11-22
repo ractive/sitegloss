@@ -486,7 +486,7 @@ describe("the worker's connection with client 0.18", () => {
 	test.each([false, true])(
 		"a session the relay ends as rate_limited says why, and tries again only with Keep AI access on (on: %p)",
 		async (keepOn) => {
-			const { w } = await paired([]);
+			const { w, kv } = await paired([]);
 			if (keepOn) {
 				w.send({ type: "keep-on", on: true });
 				await until(() => w.last().keepOn);
@@ -507,11 +507,28 @@ describe("the worker's connection with client 0.18", () => {
 			// Without Keep AI access on, it stays off: the alarm does not connect.
 			expect(session.get("aiOn")).toBe(keepOn);
 			expect(alarms.has("sitegloss-ai")).toBe(keepOn);
+			// Unchecked, it stops trying by itself, before any Stop.
 			w.send({ type: "keep-on", on: false });
-			w.send({ type: "stop" });
 			await until(() => !w.last().retrying);
+			expect(await kv.get("keepAiOn")).toBe(false);
+			w.send({ type: "stop" });
+			await until(() => w.last().state === "disconnected");
 		},
 	);
+
+	test("Stop AI access with Keep AI access on turns that off, here and in the store, and nothing connects again", async () => {
+		const { w, kv } = await paired([]);
+		w.send({ type: "keep-on", on: true });
+		await until(() => w.last().keepOn);
+		expect(await kv.get("keepAiOn")).toBe(true);
+		w.send({ type: "stop" });
+		await until(() => w.last().state === "disconnected");
+		expect(w.last().keepOn).toBe(false);
+		expect(await kv.get("keepAiOn")).toBe(false);
+		await Bun.sleep(300);
+		expect(w.last().state).toBe("disconnected");
+		expect(w.last().retrying).toBe(false);
+	});
 
 	test("after a takeover, Disconnect all apps clears it even when the connect after it fails", async () => {
 		const first = await paired([]);
@@ -732,6 +749,11 @@ describe("filling in the code on the relay's pairing page, in the worker, with t
 		w.send({ type: "fill", id, yes: true });
 		await Bun.sleep(50);
 		expect(fake.filled).toEqual([]);
+		// Turned on again, the page still open is not asked about again.
+		w.send({ type: "connect" });
+		await until(() => w.last().state === "connected");
+		await Bun.sleep(20);
+		expect(w.last().fill).toBeUndefined();
 	});
 
 	test("a yes queued behind Stop AI access (the panel's commands run in order) fills in nothing", async () => {

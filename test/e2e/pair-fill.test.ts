@@ -81,10 +81,11 @@ describe.skipIf(browserBinary === undefined)(
 			await fixture.stop(true);
 		});
 
-		test("off by default, also with access to all sites: a pairing page gets no question; Fill in the code for me turns it on", async () => {
+		test("Fill in the code for me turns it on (off by default: connection.test.ts holds that no page is asked about then)", async () => {
+			// Chrome refused the request below as made outside a click when it
+			// came straight after the beforeAll; after a tab opened and closed,
+			// it lets it through (seen, not understood).
 			const tab = await h.browser.newPage(`${origin}/authorize?r=0`);
-			await Bun.sleep(1500);
-			expect(await panel.eval(`${ASK}.hidden`)).toBe(true);
 			await close(tab);
 			await panel.waitFor(`!${byId("pair-fill")}.hidden`, 10_000);
 			expect(await panel.eval(`${byId("pair-fill-off")}.hidden`)).toBe(true);
@@ -129,21 +130,6 @@ describe.skipIf(browserBinary === undefined)(
 			await close(tab);
 		});
 
-		test("No: nothing is filled in, the form stays as it was", async () => {
-			const tab = await h.browser.newPage(`${origin}/authorize?r=2`);
-			await panel.waitFor(`!${ASK}.hidden`, 10_000);
-			await panel.eval(`${byId("pair-fill-no")}.click()`);
-			await panel.waitFor(`${ASK}.hidden`, 10_000);
-			await Bun.sleep(500);
-			expect(posted).toHaveLength(1);
-			expect(
-				await tab.eval<string>(
-					`document.querySelector("[data-tab-mcp-field=code]").value`,
-				),
-			).toBe("");
-			await close(tab);
-		});
-
 		test("a second pairing page while a question waits: not asked about, and the panel says so", async () => {
 			const first = await h.browser.newPage(`${origin}/authorize?r=3`);
 			await panel.waitFor(`!${ASK}.hidden`, 10_000);
@@ -172,32 +158,6 @@ describe.skipIf(browserBinary === undefined)(
 			expect(posted).toHaveLength(1);
 		});
 
-		test("a form for another app, or a page of another origin: no question", async () => {
-			const other = await h.browser.newPage(`${origin}/authorize?app=other`);
-			const elsewhere = await h.browser.newPage(`${h.base}/v1?/authorize`);
-			await Bun.sleep(1500);
-			expect(await panel.eval(`${ASK}.hidden`)).toBe(true);
-			expect(posted).toHaveLength(1);
-			await close(other);
-			await close(elsewhere);
-		});
-
-		test("Stop AI access withdraws the question at once", async () => {
-			const tab = await h.browser.newPage(`${origin}/authorize?r=7`);
-			await panel.waitFor(`!${ASK}.hidden`, 10_000);
-			await panel.eval(`${byId("stop-ai")}.click()`);
-			await panel.waitFor(`${ASK}.hidden`, 10_000);
-			await panel.eval(`${byId("connect")}.click()`);
-			await panel.waitFor(
-				`document.documentElement.dataset.aiState === "connected"`,
-				10_000,
-			);
-			await Bun.sleep(500);
-			expect(await panel.eval(`${ASK}.hidden`)).toBe(true);
-			expect(posted).toHaveLength(1);
-			await close(tab);
-		});
-
 		test("with the panel covered, a notification asks to answer in the panel; it goes with the question", async () => {
 			const cover = (hidden: boolean) =>
 				panel.eval(`(() => {
@@ -220,15 +180,6 @@ describe.skipIf(browserBinary === undefined)(
 			} finally {
 				await cover(false);
 			}
-		});
-
-		test("Stop filling in the code: no question any more", async () => {
-			await panel.eval(`${byId("pair-fill-off")}.click()`);
-			await panel.waitFor(`!${byId("pair-fill-on")}.hidden`, 10_000);
-			const tab = await h.browser.newPage(`${origin}/authorize?r=5`);
-			await Bun.sleep(1500);
-			expect(await panel.eval(`${ASK}.hidden`)).toBe(true);
-			await close(tab);
 		});
 
 		test("Review of #29, 1: the pairing view open across a relay switch shows the new relay's code (the panel turns pairing off and on again)", async () => {
@@ -258,6 +209,13 @@ describe.skipIf(browserBinary === undefined)(
 				await switchTo(relay.url);
 				await other.stop();
 			}
+		});
+
+		test("Stop filling in the code turns it off: the panel offers Fill in the code for me again", async () => {
+			// What it withdraws is connection.test.ts's: the question, the site.
+			await panel.eval(`${byId("pair-fill-off")}.click()`);
+			await panel.waitFor(`!${byId("pair-fill-on")}.hidden`, 10_000);
+			expect(await panel.eval(`${byId("pair-fill-off")}.hidden`)).toBe(true);
 		});
 	},
 );

@@ -2696,8 +2696,14 @@ describe("the summary for the developer", () => {
 		render(caseState(c, drafts), noActions);
 		expect(value()).toBe("Typed");
 		expect(el("verdict-status").textContent).toBe("Not saved yet");
+		// Being typed in: the focus and the caret stay where they are.
+		const field = el<HTMLTextAreaElement>("verdict");
+		field.focus();
+		field.setSelectionRange(2, 2);
 		render(caseState({ ...c, verdict: "From the AI app" }, drafts), noActions);
 		expect(value()).toBe("Typed");
+		expect(window.document.activeElement).toBe(field as never);
+		expect(field.selectionStart).toBe(2);
 		render(initialState(), noActions);
 		render(caseState(c, drafts), noActions);
 		expect(value()).toBe("Typed");

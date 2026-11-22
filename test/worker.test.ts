@@ -145,6 +145,10 @@ describe("who may send what", () => {
 		).toBe(true);
 		for (const odd of [null, "capture", 1, {}, { type: "toString" }])
 			expect(isWorkerRequest(odd)).toBe(false);
+		// Nor another tab's screenshot: the side panel's capture:tab is gone.
+		expect(
+			isWorkerRequest({ type: "capture:tab", tabId: 1, windowId: 1 }),
+		).toBe(false);
 	});
 
 	test("commands are checked: only well-formed ones pass, as they are", () => {

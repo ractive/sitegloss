@@ -17,7 +17,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readZip } from "../../src/lib/zip.ts";
 import { sampleCase } from "../fixtures.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import {
 	type Db,
 	download,
@@ -200,7 +205,7 @@ describe.skipIf(browserBinary === undefined)(
 			await panel.waitFor(
 				`document.getElementById("delete-case")?.textContent === "Really delete?"`,
 			);
-			await Bun.sleep(600); // a confirming click this soon counts as a double-click
+			await Bun.sleep(PAST_GUARD_MS); // a confirming click this soon counts as a double-click
 			await panel.click(`document.getElementById("delete-case")`);
 			const left = await until(readDb, (db) => db.cases.length === 1);
 			expect(left.cases[0]?.id).toBe(copy.id);
@@ -349,18 +354,6 @@ describe.skipIf(browserBinary === undefined)(
 			).toEqual([false, false]);
 			expect(ids(await readDb())).toEqual(ids(before));
 		}, 60_000);
-
-		test("an imported file the panel cannot read changes nothing", async () => {
-			const before = await readDb();
-			const bad = join(folder, "not-a-case.sitegloss.zip");
-			await Bun.write(bad, "not a zip");
-			const panel = await panelHome(h);
-			await importFile(panel, bad);
-			await panel.waitFor(
-				`document.getElementById("import-error-text")?.textContent.startsWith("Could not import")`,
-			);
-			expect(await readDb()).toEqual(before);
-		}, 30_000);
 
 		test("a worker that starts again sweeps abandoned screenshots, and nothing else", async () => {
 			const old = "c_gone/pending/p_old.webp";

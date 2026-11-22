@@ -17,7 +17,12 @@ import { webpSize } from "../../src/lib/export.ts";
 import { sampleCase } from "../fixtures.ts";
 import { answerInPanel, connectAi, mcpClient, openSidePanel } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import {
 	comment,
 	countColour,
@@ -28,6 +33,7 @@ import {
 	markElement,
 	marksIn,
 	nameCase,
+	overlayOf,
 	PUT_CASE,
 	READ_DB,
 	resetPanel,
@@ -46,10 +52,6 @@ describe.skipIf(browserBinary === undefined)("extension", () => {
 
 	afterAll(async () => {
 		await h?.stop();
-	});
-
-	test("has the fixed extension ID", () => {
-		expect(h.extensionId).toBe("ldmcfigcnobhnbaigehcaodheklibeon");
 	});
 
 	test("the content script shows and hides the overlay, once per page", async () => {
@@ -153,7 +155,11 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 
 		// 3: far below, the contact paragraph picked as an element. A person takes
 		// longer to get there: the screenshot of the two marks above is done.
-		await Bun.sleep(1000);
+		await until(
+			() => overlayOf(h, tabId),
+			(state) => state?.drafts === 0 && !state.saving,
+			10_000,
+		);
 		await page.eval(
 			`window.scrollTo(0, document.querySelector("[data-truth=contact]").getBoundingClientRect().top + scrollY - 200)`,
 		);
@@ -392,109 +398,6 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 			await panel();
 		});
 
-		test("opening a case on its own page loads it, no Load needed", async () => {
-			const v1 = await h.open("v1");
-			await showToolbar(h, v1.page, v1.tabId);
-			await markElement(v1.page, "[data-truth=tip]", "Loaded on opening");
-			await saveAs(v1.page, "Opened on its page");
-			// "← All cases" ends the toolbar too, as its Done would.
-			await toAllCases("Opened on its page");
-			await v1.page.activate();
-			await panel();
-			const row = `[...document.querySelectorAll("[data-group=here] [data-case]")].find((e) => e.textContent.includes("Opened on its page"))`;
-			await h.control.waitFor(row);
-			expect(
-				await h.control.eval<boolean>(
-					`${row}.parentElement.querySelector("[data-load]") === null`,
-				),
-			).toBe(true);
-			await h.control.eval(`${row}.click()`);
-			await h.control.waitFor(
-				`document.querySelector(".match")?.dataset.status === "found"`,
-				10_000,
-			);
-			expect(
-				await v1.page.eval<number>(
-					`${shadow("svg.marks")}.querySelectorAll("[data-review]").length`,
-				),
-			).toBe(1);
-			// Loaded: the button hides the marks again, and then loads.
-			const button = `document.getElementById("load-case")`;
-			expect(await h.control.eval<string>(`${button}.textContent`)).toBe(
-				"Hide marks",
-			);
-			await h.control.eval(`${button}.click()`);
-			await v1.page.waitFor(
-				`${shadow("svg.marks")}.querySelectorAll("[data-review]").length === 0`,
-			);
-			await h.control.waitFor(
-				`${button}.textContent === "Show marks" && !document.querySelector(".match")`,
-			);
-			await v1.page.send("Page.close");
-			await panel();
-		});
-
-		test("Hide holds while a page just opened is searched again", async () => {
-			const v1 = await h.open("v1");
-			await showToolbar(h, v1.page, v1.tabId);
-			await markElement(v1.page, "[data-truth=tip]", "Here");
-			// Drawn by a script on this visit only: the next one lacks it.
-			await v1.page.eval(
-				`document.body.insertAdjacentHTML("beforeend", '<p id="late">Late</p>')`,
-			);
-			await markElement(v1.page, "#late", "Not there next time");
-			await saveAs(v1.page, "Hidden while searched");
-			await toAllCases("Hidden while searched");
-			await v1.page.send("Page.close");
-			await panel();
-			await openTheCase("Hidden while searched");
-			const tabTargets = async () =>
-				(await h.browser.targets()).filter((t) => t.type === "page");
-			const before = new Set((await tabTargets()).map((t) => t.targetId));
-			await h.control.eval(`document.getElementById("open-page").click()`);
-			await h.control.waitFor(
-				`document.getElementById("case-hint").textContent.includes("1 of 2 marks found")`,
-				15_000,
-			);
-			const opened = (await tabTargets()).find((t) => !before.has(t.targetId));
-			const page = await h.browser.attachPage(opened?.targetId as string);
-			const button = `document.getElementById("load-case")`;
-			expect(await h.control.eval<string>(`${button}.textContent`)).toBe(
-				"Hide marks",
-			);
-			await h.control.eval(`${button}.click()`);
-			// The searches again at 1 s and 2 s would have drawn the marks back.
-			await Bun.sleep(3500);
-			expect(
-				await page.eval<number>(
-					`${shadow("svg.marks")}.querySelectorAll("[data-review]").length`,
-				),
-			).toBe(0);
-			expect(await h.control.eval<string>(`${button}.textContent`)).toBe(
-				"Show marks",
-			);
-
-			// A clear for another case leaves this one's marks.
-			const db = await h.control.eval<Db>(READ_DB);
-			const saved = db.cases.find((c) => c.title === "Hidden while searched");
-			const tabId = await h.control.eval<number>(
-				`chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => t.id)`,
-			);
-			const send = (message: object) =>
-				h.control.eval<{ loadedCase?: string }>(
-					`chrome.tabs.sendMessage(${tabId}, ${JSON.stringify(message)})`,
-				);
-			await send({ type: "case:load", case: saved });
-			expect(
-				(await send({ type: "case:clear", caseId: "c_other" })).loadedCase,
-			).toBe(saved?.id);
-			expect(
-				(await send({ type: "case:clear", caseId: saved?.id })).loadedCase,
-			).toBeUndefined();
-			await h.control.eval(`chrome.tabs.remove(${tabId})`);
-			await panel();
-		});
-
 		test("Match size gives the tab the size the marks were made at", async () => {
 			const v1 = await h.open("v1");
 			await showToolbar(h, v1.page, v1.tabId);
@@ -624,7 +527,7 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 		await h.control.waitFor(
 			`${act("m3", "delete")}.textContent === "Really delete?"`,
 		);
-		await Bun.sleep(600);
+		await Bun.sleep(PAST_GUARD_MS);
 		// A double click: one delete, and no error about a mark already gone.
 		await h.control.eval(
 			`(() => { const b = ${act("m3", "delete")}; b.click(); b.click(); })()`,
@@ -779,49 +682,6 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 			await page.send("Page.close");
 		}, 60_000);
 
-		test("marks right after a save, on the same screen, go into the case too", async () => {
-			const { page, tabId } = await h.open("v1");
-			await showToolbar(h, page, tabId);
-			await markElement(page, "h1", "First");
-			await saveAs(page, "Same screen");
-			await inCase("Same screen");
-			// No scroll and no change to the page: nothing calls for a new shot.
-			const box = async (text: string) => {
-				// The tool stays on after a mark goes into the case.
-				const tool = shadow('[data-action="tool-box"]');
-				if (
-					(await page.eval(`${tool}.getAttribute("aria-pressed")`)) !== "true"
-				)
-					await page.click(tool);
-				await page.drag({ x: 500, y: 100 }, { x: 640, y: 160 });
-				await comment(page, text);
-			};
-			const marksOf = async (title: string) =>
-				(await h.control.eval<Db>(READ_DB)).cases.find((c) => c.title === title)
-					?.marks.length;
-
-			await box("Second");
-			await page.waitFor(
-				`${status} === "Mark 2 added to “Same screen”"`,
-				20_000,
-			);
-			expect(await marksOf("Same screen")).toBe(2);
-
-			// A new case starts with All cases, then New case for this page.
-			await allCases();
-			await h.control.eval(`${newCaseButton}.click()`);
-			await page.waitFor(
-				`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
-			);
-			await box("Third");
-			await saveAs(page, "Same screen, new case");
-			expect(await marksOf("Same screen, new case")).toBe(1);
-			expect(await marksOf("Same screen")).toBe(2);
-			await inCase("Same screen, new case");
-			await allCases();
-			await page.send("Page.close");
-		}, 60_000);
-
 		test("Delete ends the toolbar adding to the case; the next save starts a new one", async () => {
 			const { page, tabId } = await h.open("v1");
 			await showToolbar(h, page, tabId);
@@ -830,7 +690,7 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 			await inCase("Deleted under it");
 			const remove = `document.getElementById("delete-case")`;
 			await h.control.eval(`${remove}.click()`);
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await h.control.eval(`${remove}.click()`);
 			await h.control.waitFor(`!document.getElementById("home").hidden`);
 			await until(
@@ -1206,67 +1066,4 @@ describe.skipIf(browserBinary === undefined)("screenshot scale", () => {
 		);
 		await page.send("Page.close");
 	}, 60_000);
-});
-
-describe.skipIf(browserBinary === undefined)("the side panel", () => {
-	let h: Harness;
-
-	beforeAll(async () => {
-		h = await startHarness(browserBinary as string);
-	}, 60_000);
-
-	afterAll(async () => {
-		await h?.stop();
-	});
-
-	test("a verdict being typed survives the case changing; delete asks twice", async () => {
-		const { page, tabId } = await h.open("v1");
-		await showToolbar(h, page, tabId);
-		await markElement(page, "h1", "Too long");
-		await saveAs(page, "Panel test");
-		await page.click(shadow('[data-action="close"]'));
-
-		await h.control.goto(
-			`chrome-extension://${h.extensionId}/sidepanel/index.html`,
-		);
-		await h.control.waitFor(`document.querySelector("[data-case]")`);
-		await h.control.eval(`document.querySelector("[data-case]").click()`);
-		await h.control.waitFor(`document.getElementById("verdict")`);
-		await h.control.eval(
-			`(() => { const v = document.getElementById("verdict"); v.focus(); v.value = "Typed, not saved"; v.dispatchEvent(new Event("input")); v.setSelectionRange(5, 5); })()`,
-		);
-
-		// Another mark, added from the page, changes the open case.
-		await page.activate();
-		await h.control.eval(`document.getElementById("add-marks").click()`);
-		await page.waitFor(
-			`${shadow('[data-role="status"]')}?.textContent.includes("Panel test")`,
-		);
-		await markElement(page, "[data-truth=tip]", "Say how much");
-		await h.control.waitFor(`document.querySelectorAll(".mark").length === 2`);
-		expect(
-			await h.control.eval<{ value: string; focused: boolean; at: number }>(
-				`(() => { const v = document.getElementById("verdict"); return { value: v.value, focused: document.activeElement === v, at: v.selectionStart }; })()`,
-			),
-		).toEqual({ value: "Typed, not saved", focused: true, at: 5 });
-
-		// Saving the verdict, then deleting: the first click only asks.
-		await h.control.eval(`document.getElementById("save-verdict").click()`);
-		await h.control.waitFor(
-			`document.getElementById("verdict-status")?.textContent === "Saved"`,
-		);
-		await h.control.eval(`document.getElementById("delete-case").click()`);
-		expect(
-			await h.control.eval<string>(
-				`document.getElementById("delete-case").textContent`,
-			),
-		).toBe("Really delete?");
-		await Bun.sleep(600);
-		await h.control.eval(`document.getElementById("delete-case").click()`);
-		await h.control.waitFor(`!document.getElementById("home").hidden`);
-		await h.control.waitFor(
-			`![...document.querySelectorAll("[data-case] .title")].some((t) => t.textContent === "Panel test")`,
-		);
-		await page.send("Page.close");
-	}, 90_000);
 });

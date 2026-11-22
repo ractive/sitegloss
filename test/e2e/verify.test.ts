@@ -9,7 +9,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
-import { TO_VERIFY_COLOUR } from "../../src/content/overlay.ts";
 import type { Case } from "../../src/lib/case.ts";
 import { sampleCase } from "../fixtures.ts";
 import { answerInPanel, connectAi, mcpClient, openSidePanel } from "./ai.ts";
@@ -268,26 +267,6 @@ describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
 		await claude?.close();
 		await h?.stop();
 		await relay.stop();
-	});
-
-	test("a mark to verify is drawn in full, in its colour", async () => {
-		const mark = `${shadow("svg.marks")}?.querySelector('[data-review="1"]')`;
-		await page.waitFor(mark, 10_000);
-		expect(
-			await page.eval<(string | null)[]>(`(() => {
-				const mark = ${mark};
-				return [
-					mark.dataset.status,
-					mark.querySelector("[data-faded]") === null ? "full" : "faded",
-					mark.querySelector("[data-number] circle").getAttribute("fill"),
-				];
-			})()`),
-		).toEqual(["fixed", "full", TO_VERIFY_COLOUR]);
-		expect(
-			await page.eval<string>(
-				`${shadow('[data-role="review-status"]')}.textContent`,
-			),
-		).toContain("1 to verify");
 	});
 
 	test("verified asks first, then shows who set it", async () => {

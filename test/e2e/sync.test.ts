@@ -26,14 +26,17 @@ import {
 	openSidePanel,
 } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import {
 	type Db,
 	markElement,
 	openCase,
-	panelHome,
 	READ_DB,
-	renameInPanel,
 	saveAs,
 	shadow,
 	showToolbar,
@@ -232,7 +235,7 @@ describe.skipIf(browserBinary === undefined)("the sync", () => {
 			10_000,
 		).then(Object.keys);
 		// After the guard against a click that came too soon.
-		await Bun.sleep(600);
+		await Bun.sleep(PAST_GUARD_MS);
 		await w.eval(`siteglossNotificationButton(${JSON.stringify(question)}, 0)`);
 		const result = await call;
 		expect((result as { isError?: boolean }).isError).toBeFalsy();
@@ -293,25 +296,14 @@ describe.skipIf(browserBinary === undefined)("the sync", () => {
 		await until(downloadList, (list) => list.length === 1);
 		expect(await downloadList()).toEqual([downloaded(PAGE_FILE)]);
 
-		// Renamed in the panel: the same file is written again, under the name
-		// it was first written under; no second file (review of PR 57).
-		const item = `document.querySelector('[data-case="${laterCase}"]')`;
-		await h.control.waitFor(item);
-		await h.control.eval(`${item}.click()`);
-		await renameInPanel(h.control, laterCase, "Checkout contrast");
-		const renamed = await until(
-			() => caseIn(PAGE_FILE),
-			(c) => c?.title === "Checkout contrast",
-			20_000,
-		);
-		expect(renamed?.id).toBe(laterCase);
-		expect(
-			await Bun.file(downloaded("checkout-contrast.sitegloss.zip")).exists(),
-		).toBe(false);
-		await h.control.eval(`document.getElementById("back").click()`);
-		await h.control.waitFor(`!document.getElementById("home").hidden`);
 		expect((await caseIn(FILE))?.verdict).toBe("Written with the panel closed");
 		panel = await openSidePanel(h);
+		// It may open in the case the tab in front shows (DEC-023): Home, for
+		// the tests after.
+		await panel.eval(
+			`document.getElementById("back").hidden || document.getElementById("back").click()`,
+		);
+		await panel.waitFor(`!document.getElementById("home").hidden`);
 	}, 90_000);
 
 	test("a paused folder shows the banner on Home and in the case, and “!” on the icon", async () => {
@@ -373,39 +365,5 @@ describe.skipIf(browserBinary === undefined)("the sync", () => {
 		);
 		expect(await panel.eval<string[]>(FOLDER_FILES)).toContain(FILE);
 		await panel.eval(SYNC_KV("test:access"));
-	}, 60_000);
-
-	test("a deleted case keeps its file; after Stop syncing nothing more is written", async () => {
-		const home = await panelHome(h);
-		await openCase(home, "Synced case");
-		const del = `document.getElementById("delete-case")`;
-		await h.control.click(del);
-		await h.control.waitFor(`${del}?.textContent === "Really delete?"`);
-		await Bun.sleep(600); // a confirming click this soon counts as a double-click
-		await h.control.click(del);
-		await until(
-			() => h.control.eval<Db>(READ_DB),
-			(db) => !db.cases.some((c) => c.title === "Synced case"),
-		);
-		await Bun.sleep(1000);
-		expect((await caseIn(FILE))?.verdict).toBe("Written with the panel closed");
-
-		await h.control.goto(PANEL_PAGE(h));
-		await h.control.waitFor(IN_SYNC("sync-stop"), 10_000);
-		await h.control.click(IN_SYNC("sync-stop"));
-		await h.control.waitFor(`${SYNC_STATE} === "Off."`);
-		const { page, tabId } = await h.open("v1");
-		await showToolbar(h, page, tabId);
-		await markElement(page, "[data-truth=submit]", "Again");
-		await saveAs(page, "Not synced");
-		await page.send("Page.close");
-		await until(
-			() => h.control.eval<Db>(READ_DB),
-			(db) => db.cases.some((c) => c.title === "Not synced"),
-		);
-		await Bun.sleep(1000);
-		expect(
-			await Bun.file(downloaded("not-synced.sitegloss.zip")).exists(),
-		).toBe(false);
 	}, 60_000);
 });

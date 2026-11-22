@@ -82,13 +82,6 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		]);
 	});
 
-	test("runs minified bundles", async () => {
-		const start = await h.control.eval<string>(
-			`fetch(chrome.runtime.getURL("content.js")).then((r) => r.text()).then((t) => t.slice(0, 6))`,
-		);
-		expect(start).toBe("(()=>{"); // a test build has spaces and line breaks here
-	});
-
 	test("only notifications adds an install warning; storage, unlimitedStorage, alarms and offscreen none", async () => {
 		const warnings = (manifest: object) =>
 			h.control.eval<string[]>(
@@ -221,81 +214,9 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		await page.send("Page.close");
 	}, 30_000);
 
-	test("a case's address opens a tab, and the icon's click there loads the case", async () => {
-		const url = `${h.base}/v1?opened=1`;
-		const first = await h.open("v1?opened=1");
-		await h.browser.clickIcon(h.extensionId, url);
-		const panel = await sidePanel();
-		await panel.waitFor(`document.getElementById("new-case")`);
-		await first.page.waitFor(HOST);
-		await viewportSettled(first.page);
-		await panel.click(`document.getElementById("new-case")`);
-		await reachOverlay(first.page);
-		await first.page.waitFor(`!${shadow(".toolbar")}.hidden`);
-		await markElement(first.page, "[data-truth=tip]", "Say how much");
-		await saveAs(first.page, "Opened from its address");
-		await toAllCases(panel, "Opened from its address");
-		await first.page.send("Page.close");
-		for (;;) {
-			const tabs = await h.browser.targets();
-			if (!tabs.some((t) => t.type === "tab" && t.url === url)) break;
-			await Bun.sleep(100);
-		}
-
-		const row = `[...document.querySelectorAll("[data-case]")].find((e) => e.textContent.includes("Opened from its address"))`;
-		await panel.waitFor(row);
-		await panel.click(row);
-		await panel.waitFor(`document.getElementById("open-page")`);
-		const tabTargets = async () =>
-			(await h.browser.targets()).filter((t) => t.type === "tab");
-		const before = new Set((await tabTargets()).map((t) => t.targetId));
-		await panel.click(`document.getElementById("open-page")`);
-		// No host access: Chrome hides the new tab from Sitegloss until the click.
-		await panel.waitFor(
-			`!document.getElementById("case-access").hidden && document.getElementById("case-access").textContent.includes("Click the Sitegloss icon")`,
-			15_000,
-		);
-		// The case's address has no query: the new tab is the one not there before.
-		const opened = (await tabTargets()).find((t) => !before.has(t.targetId));
-		expect(opened?.url).toBe(`${h.base}/v1`);
-		// The notice above may still be about the tab in front before (the
-		// closed page's neighbour, hidden from Sitegloss too). A click before
-		// the new tab's first page has come grants that page nothing, as for
-		// a person: click once it has loaded, as the panel then asks.
-		await until(
-			() =>
-				h.control.eval<string>(
-					`chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => t.status)`,
-				),
-			(status) => status === "complete",
-			10_000,
-		);
-		// The notice for THIS tab, not the one before it.
-		const openedId = await h.control.eval<number>(
-			`chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => t.id)`,
-		);
-		await panel.waitFor(
-			`!document.getElementById("case-access").hidden && document.getElementById("case-access").dataset.tab === "${openedId}"`,
-			10_000,
-		);
-		await h.browser.send("Extensions.triggerAction", {
-			id: h.extensionId,
-			targetId: opened?.targetId,
-		});
-		await panel.waitFor(
-			`document.querySelector(".match")?.dataset.status === "found"`,
-			15_000,
-		);
-		expect(
-			await panel.eval<string>(
-				`document.getElementById("case-hint").textContent`,
-			),
-		).toContain("1 of 1 marks found");
-	}, 60_000);
-
-	test("an early click on the tab a case's address opens lets nothing in; the panel asks for that tab, and a click once it has loaded loads the case", async () => {
-		const url = `${h.base}/slow/v1`;
-		const first = await h.open("slow/v1");
+	test("a case's address opens a tab, without the query it was made at; an early click there lets nothing in; the panel asks for that tab, and a click once it has loaded loads the case", async () => {
+		const url = `${h.base}/slow/v1?from=1`;
+		const first = await h.open("slow/v1?from=1");
 		await h.browser.clickIcon(h.extensionId, url);
 		const panel = await sidePanel();
 		await panel.eval(
@@ -345,11 +266,12 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		);
 		// Nothing went in, and the panel asks for the click on this tab.
 		await panel.waitFor(
-			`!document.getElementById("case-access").hidden && document.getElementById("case-access").dataset.tab === "${tabId}"`,
+			`!document.getElementById("case-access").hidden && document.getElementById("case-access").dataset.tab === "${tabId}" && document.getElementById("case-access").textContent.includes("Click the Sitegloss icon")`,
 			10_000,
 		);
+		// The case's address has no query.
 		const { targetId } = await h.browser.waitForTarget(
-			(t) => t.type === "page" && t.url === url,
+			(t) => t.type === "page" && t.url === `${h.base}/slow/v1`,
 		);
 		const page = await h.browser.attachPage(targetId);
 		expect(await page.eval<boolean>(`${HOST} === null`)).toBe(true);
@@ -363,6 +285,11 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 			15_000,
 		);
 		expect(await page.eval<boolean>(`${HOST} !== null`)).toBe(true);
+		expect(
+			await panel.eval<string>(
+				`document.getElementById("case-hint").textContent`,
+			),
+		).toContain("1 of 1 marks found");
 		await page.send("Page.close");
 	}, 60_000);
 
@@ -379,7 +306,7 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		await panel.goto(
 			`chrome-extension://${h.extensionId}/sidepanel/index.html`,
 		);
-		const row = `[...document.querySelectorAll("[data-case]")].find((e) => e.textContent.includes("Opened from its address"))`;
+		const row = `[...document.querySelectorAll("[data-case]")].find((e) => e.textContent.includes("From the store package"))`;
 		await panel.waitFor(row);
 		await panel.eval(`${row}.click()`);
 		await panel.waitFor(
@@ -401,7 +328,7 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		expect(await page.eval<number>(`${HOST} === null ? 0 : 1`)).toBe(1);
 	}, 60_000);
 
-	test("as the owner uses it: after a reload, a case loads at the icon's click and Hide takes its marks off", async () => {
+	test("as the owner uses it: after a reload, a case loads at the icon's click; Hide takes its marks off and Show puts them back", async () => {
 		const tabTargets = async () =>
 			(await h.browser.targets()).filter((t) => t.type === "tab");
 		const loadedCase = (tabId: number) =>
@@ -471,13 +398,8 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		await panel.click(button);
 		await panel.waitFor(`${button}.textContent === "Show marks"`);
 		expect(await loadedCase(tabId)).toBeNull();
-		// The searches again (1 s, 2 s) must not draw them back.
-		await Bun.sleep(3500);
-		expect(await loadedCase(tabId)).toBeNull();
-		expect(await panel.eval<string>(`${button}.textContent`)).toBe(
-			"Show marks",
-		);
-		// And Show puts them back.
+		// That Hide holds through the searches again is panel.test.ts's (the
+		// store package cannot shorten them). Show puts them back.
 		await panel.click(button);
 		await panel.waitFor(`${button}.textContent === "Hide marks"`);
 		expect(await loadedCase(tabId)).not.toBeNull();

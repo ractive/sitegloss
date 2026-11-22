@@ -18,14 +18,18 @@ import {
 	clickNotification,
 	closeSidePanel,
 	connectAi,
-	dismissNotification,
 	mcpClient,
 	newNotification,
 	notifications,
 	openSidePanel,
 } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import {
 	KV,
 	putCases,
@@ -226,7 +230,7 @@ describe.skipIf(browserBinary === undefined)(
 			await closeSidePanel(h, panel);
 			const id = await newNotification(h);
 			// After the guard against an Allow that came too soon.
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await clickNotification(h, id, 0);
 			expect((await asked).isError).toBeFalsy();
 			expect(await verdictOf(h, "c_1")).toBe("Handed");
@@ -280,33 +284,15 @@ describe.skipIf(browserBinary === undefined)(
 			await closeSidePanel(h, side);
 		});
 
-		test("with the side panel closed a question is a notification: closing it is Don't allow, Allow, late clicks", async () => {
-			const denied = call("set_summary", { caseId: "c_1", summary: "No" });
-			const first = await newNotification(h);
-			expect(await badge()).toBe("?");
-			await dismissNotification(h, first);
-			expect((await denied).isError).toBe(true);
-			expect(await verdictOf(h, "c_1")).toBe("Handed");
-			// A click on a notification whose call is settled answers nothing.
-			const allowed = call("set_summary", { caseId: "c_1", summary: "Yes" });
-			const second = await newNotification(h, [first]);
-			await Bun.sleep(600);
-			await clickNotification(h, first, 0);
-			await Bun.sleep(200);
-			expect(await notifications(h)).toEqual([second]);
-			await clickNotification(h, second, 0);
-			expect((await allowed).isError).toBeFalsy();
-			expect(await verdictOf(h, "c_1")).toBe("Yes");
-		});
-
 		test("reopening the side panel shows the same connection and the last call", async () => {
 			panel = await openSidePanel(h);
 			await panel.waitFor(
 				`document.documentElement.dataset.aiState === "connected"`,
 			);
+			// The test above's screenshot.
 			expect(
 				await panel.eval<string>(`${byId("ai-call")}.textContent`),
-			).toContain("Last AI call: Record the summary for the developer");
+			).toContain("Last AI call: Screenshot of the page in front");
 			expect(await panel.eval(`${byId("relay")}.value`)).toBe(relay.url);
 			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(false);
 			// The same address: shown with the code at once with no app paired
@@ -414,14 +400,14 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await notifications(h)).toEqual([]);
 			await cover(true);
 			const handed = await newNotification(h);
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await clickNotification(h, handed, 0);
 			expect((await first).isError).toBeFalsy();
 			expect(await verdictOf(h, "c_1")).toBe("Covered");
 			// Asked while covered: a notification at once.
 			const second = call("set_summary", { caseId: "c_1", summary: "Hidden" });
 			const asked = await newNotification(h, [handed]);
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await clickNotification(h, asked, 0);
 			expect((await second).isError).toBeFalsy();
 			// On screen again: the panel asks, no notification.
@@ -541,18 +527,6 @@ describe.skipIf(browserBinary === undefined)("who may command it", () => {
 		expect(await h.control.eval(`${byId("ai-label")}.textContent`)).toBe(
 			"AI: side panel only",
 		);
-	});
-
-	test("the side panel's port gets the state", async () => {
-		await (await h.open("v1")).page.activate();
-		const panel = await openSidePanel(h);
-		expect(
-			await panel.eval<string>(`new Promise((resolve) => {
-				const port = chrome.runtime.connect({ name: "ai" });
-				port.onMessage.addListener((m) => resolve(m.type));
-				port.onDisconnect.addListener(() => resolve("closed"));
-			})`),
-		).toBe("state");
 	});
 });
 

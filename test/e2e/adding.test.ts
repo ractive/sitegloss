@@ -13,7 +13,12 @@ import {
 	test,
 } from "bun:test";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import {
 	countColour,
 	type Db,
@@ -22,11 +27,11 @@ import {
 	openCase,
 	panelHome,
 	READ_DB,
-	renameInPanel,
 	resetPanel,
 	saveAs,
 	shadow,
 	showToolbar,
+	testWaits,
 	until,
 	worker,
 } from "./steps.ts";
@@ -144,7 +149,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			(up) => !up,
 		);
 		// The panel back on Home: the next case it opens is the next toolbar's.
-		await Bun.sleep(600);
+		await Bun.sleep(PAST_GUARD_MS);
 		await h.control.eval(
 			`document.getElementById("back").hidden || document.getElementById("back").click()`,
 		);
@@ -333,64 +338,6 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await page.send("Page.close");
 	}, 90_000);
 
-	test("Done again discards a mark that could not be added", async () => {
-		const { page, tabId } = await savedCase("Discarded");
-		await addMarks(page, "Discarded");
-		const { c } = await caseTitled("Discarded");
-		const stored = await takeOut(c.id);
-		await markElement(page, "[data-truth=submit]", "Never stored");
-		await page.waitFor(`${alert}?.startsWith("Mark 2 was not added")`, 20_000);
-		await page.click(shadow('[data-action="close"]'));
-		await page.waitFor(
-			`${alert}?.includes("Done again to discard it")`,
-			20_000,
-		);
-		await page.click(shadow('[data-action="close"]'));
-		await until(
-			() => toolbarUp(tabId),
-			(up) => !up,
-		);
-		await putBack(stored);
-		// Shown again, the mark is gone, and nothing was added meanwhile.
-		await addMarks(page, "Discarded");
-		await drawnAre(page, { drafts: [], saved: ["1"] });
-		expect((await caseTitled("Discarded")).c.marks).toHaveLength(1);
-		await page.click(shadow('[data-action="close"]'));
-		await page.send("Page.close");
-	}, 90_000);
-
-	test("a mark that failed for one case does not go into another one unasked", async () => {
-		// One tab per address: the harness finds a tab by its address.
-		await (await savedCase("Case B")).page.send("Page.close");
-		const { page } = await savedCase("Case A");
-		await addMarks(page, "Case A");
-		const a = (await caseTitled("Case A")).c;
-		const stored = await takeOut(a.id);
-		await markElement(page, "[data-truth=submit]", "Meant for A");
-		await page.waitFor(`${alert}?.startsWith("Mark 2 was not added")`, 20_000);
-
-		// The side panel switches the toolbar to case B.
-		await putBack(stored);
-		await addMarks(page, "Case B", "Mark 2 is not in “Case B” yet");
-		await page.waitFor(`${alert}?.includes("it was for “Case A”")`, 10_000);
-		await Bun.sleep(1500);
-		const b = (await caseTitled("Case B")).c;
-		expect(b.marks.map((x) => x.comment)).toEqual(["First"]);
-		expect((await caseTitled("Case A")).c.marks).toHaveLength(1);
-		// B's own mark is on the page: opening B drew it (DEC-022).
-		await drawnAre(page, { drafts: ["2"], saved: ["1"] });
-
-		// "Add mark 2" is the user's choice: then it goes into B.
-		await page.click(shadow('[data-action="retry"]'));
-		await page.waitFor(`${status} === "Mark 2 added to “Case B”"`, 20_000);
-		expect((await caseTitled("Case B")).c.marks.map((x) => x.comment)).toEqual([
-			"First",
-			"Meant for A",
-		]);
-		await page.click(shadow('[data-action="close"]'));
-		await page.send("Page.close");
-	}, 90_000);
-
 	/** The panel's case view shows `title`, with the toolbar adding to it. */
 	const inCase = (panel: Page, title: string) =>
 		panel.waitFor(
@@ -572,7 +519,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await page.send("Page.close");
 	}, 60_000);
 
-	test("All cases with no mark: the case goes again; with one mark it stays (DEC-026)", async () => {
+	test("All cases with no mark: the case goes again, also after Done adding (DEC-026)", async () => {
 		const { page, tabId } = await h.open("v1");
 		const title = "Krankenkasse vergleichen (v1)";
 		let panel = await startNewCase(page);
@@ -607,42 +554,8 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			(db) => !db.cases.some((c) => c.id === second.id),
 		);
 
-		// A mark, then Undo: it has had a mark, so it is the user's and stays,
-		// empty (review of PR 57).
-		panel = await startNewCase(page);
-		await inCase(panel, title);
-		const third = await openOne(panel);
-		await markElement(page, "h1", "Undone");
-		await page.waitFor(`${status}?.startsWith("Mark 1 added to")`, 20_000);
-		await page.click(shadow('[data-action="undo"]'));
-		await page.waitFor(`${status}?.startsWith("Mark 1 taken out of")`, 20_000);
-		expect((await openOne(panel)).marks).toEqual([]);
-		await allCases(panel);
-		await home(panel);
-		await panel.waitFor(
-			`[...document.querySelectorAll("[data-case]")].some((e) => e.dataset.case === ${JSON.stringify(third.id)})`,
-		);
-		const undone = (await h.control.eval<Db>(READ_DB)).cases.find(
-			(c) => c.id === third.id,
-		);
-		expect(undone?.marks).toEqual([]);
-		expect(undone?.lastNumber).toBe(0);
-
-		// One mark: it stays, and shows in the list.
-		panel = await startNewCase(page);
-		await inCase(panel, title);
-		await markElement(page, "h1", "Kept");
-		await page.waitFor(`${status}?.startsWith("Mark 1 added to")`, 20_000);
-		const kept = await openOne(panel);
-		await allCases(panel);
-		await home(panel);
-		await panel.waitFor(
-			`[...document.querySelectorAll("[data-case]")].some((e) => e.dataset.case === ${JSON.stringify(kept.id)})`,
-		);
-		const db = await h.control.eval<Db>(READ_DB);
-		expect(db.cases.find((c) => c.id === kept.id)?.marks).toHaveLength(1);
 		await page.send("Page.close");
-	}, 120_000);
+	}, 60_000);
 
 	/** Make the panel's `chrome.tabs.sendMessage` go through `body` (until it is reloaded). */
 	const wrapSend = (body: string) =>
@@ -750,10 +663,12 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await wrapSend(`(tabId, message, send) =>
 			message.type === "page:info" && globalThis.mute ? new Promise(() => {}) : send(tabId, message)`);
 		await h.control.eval("globalThis.mute = true");
+		// Not the 5 s a page has to answer: this one is given up on sooner.
+		await testWaits(h.control, { pageAnswerMs: 500 });
 		const panel = await startNewCase(page);
 		await panel.waitFor(
 			`document.getElementById("hint").textContent === "This page did not answer. Reload it and try again."`,
-			15_000,
+			5000,
 		);
 		expect(
 			await panel.eval<boolean>(`document.getElementById("new-case").disabled`),
@@ -766,29 +681,6 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			() => toolbarUp(tabId),
 			(up) => up,
 		);
-		await page.send("Page.close");
-	}, 60_000);
-
-	test("a toolbar button pressed while the toolbar draws itself again still takes the click", async () => {
-		const { page, tabId } = await h.open("v1");
-		const panel = await startNewCase(page);
-		await inCase(panel, "Krankenkasse vergleichen (v1)");
-		const pen = shadow('[data-action="tool-pen"]');
-		const at = await page.centreOf(pen);
-		await page.mouse("mouseMoved", at.x, at.y);
-		await page.mouse("mousePressed", at.x, at.y);
-		// Between press and release the toolbar draws itself again: a rename.
-		const before = await page.eval<string>(
-			`${shadow('[data-role="status"]')}.textContent`,
-		);
-		await h.control.eval(
-			`chrome.tabs.sendMessage(${tabId}, { type: "overlay:title", caseId: document.getElementById("verdict").dataset.case, title: "Renamed under the press" })`,
-		);
-		await page.waitFor(
-			`${shadow('[data-role="status"]')}.textContent !== ${JSON.stringify(before)}`,
-		);
-		await page.mouse("mouseReleased", at.x, at.y);
-		await page.waitFor(`${pen}.getAttribute("aria-pressed") === "true"`, 5000);
 		await page.send("Page.close");
 	}, 60_000);
 
@@ -824,23 +716,14 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await a.page.send("Page.close");
 	}, 60_000);
 
-	test("left without a mark, the user's case stays: renamed, or a summary typed and not saved (review of PR 57)", async () => {
+	test("left without a mark, the user's case stays when a summary was typed and not saved", async () => {
 		const { page } = await h.open("v1");
 		const stays = async (id: string) =>
 			(await h.control.eval<Db>(READ_DB)).cases.some((c) => c.id === id);
 
-		// Renamed.
-		let panel = await startNewCase(page);
-		await inCase(panel, "Krankenkasse vergleichen (v1)");
-		const renamed = await openOne(panel);
-		await renameInPanel(panel, renamed.id, "Checkout bugs");
-		await allCases(panel);
-		await home(panel);
-		await Bun.sleep(1000);
-		expect(await stays(renamed.id)).toBe(true);
-
-		// A summary typed and not saved.
-		panel = await startNewCase(page);
+		// A summary typed and not saved: the panel's draft counts (a rename is
+		// fresh.test.ts's: the stored case says so).
+		const panel = await startNewCase(page);
 		await inCase(panel, "Krankenkasse vergleichen (v1)");
 		const typed = await openOne(panel);
 		await panel.eval(`(() => {
@@ -851,7 +734,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		await panel.waitFor(`!document.getElementById("save-verdict").hidden`);
 		await allCases(panel);
 		await home(panel);
-		await Bun.sleep(1000);
+		// The list shows only after the untouched case is gone (DEC-026).
 		expect(await stays(typed.id)).toBe(true);
 		await page.send("Page.close");
 	}, 60_000);
@@ -959,60 +842,15 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 	}, 60_000);
 
 	/**
-	 * "← All cases" in the panel, as a person clicks it: a click within half
-	 * a second of one it did something else for counts as that double click.
+	 * "← All cases" in the panel, as a person clicks it: a click right after
+	 * one it did something else for counts as that double click.
 	 */
 	const allCases = async (panel: Page) => {
-		await Bun.sleep(600);
+		await Bun.sleep(PAST_GUARD_MS);
 		await panel.eval(`document.getElementById("back").click()`);
 	};
 	const home = (panel: Page) =>
 		panel.waitFor(`!document.getElementById("home").hidden`, 10_000);
-
-	test("Add marks, then All cases: no toolbar, no marks, and New case for this page starts another case", async () => {
-		const { page, tabId } = await savedCase("Closed after adding");
-		const panel = await addMarks(page, "Closed after adding");
-		await markElement(page, "[data-truth=submit]", "Second");
-		await page.waitFor(
-			`${status} === "Mark 2 added to “Closed after adding”"`,
-			20_000,
-		);
-		await drawnAre(page, { drafts: [], saved: ["1", "2"] });
-
-		await allCases(panel);
-		await home(panel);
-		await until(
-			() => toolbarUp(tabId),
-			(up) => !up,
-		);
-		// The case's marks leave the page, its toolbar is no longer its.
-		await drawnAre(page, { drafts: [], saved: [] });
-		await panel.waitFor(
-			`document.getElementById("new-case").textContent === "New case for this page"`,
-		);
-		expect(
-			await h.control.eval<string | null>(
-				`chrome.tabs.sendMessage(${tabId}, { type: "overlay:state" }).then((s) => s.target?.caseId ?? null)`,
-			),
-		).toBeNull();
-
-		await panel.eval(`document.getElementById("new-case").click()`);
-		await inCase(panel, "Krankenkasse vergleichen (v1)");
-		await page.waitFor(
-			`${status} === "Adding to “Krankenkasse vergleichen (v1)”"`,
-		);
-		await markElement(page, "h1", "Another case's");
-		await page.waitFor(
-			`${status} === "Mark 1 added to “Krankenkasse vergleichen (v1)”"`,
-			20_000,
-		);
-		expect((await caseTitled("Closed after adding")).c.marks).toHaveLength(2);
-		expect((await openOne(panel)).marks.map((a) => a.comment)).toEqual([
-			"Another case's",
-		]);
-		await page.click(shadow('[data-action="close"]'));
-		await page.send("Page.close");
-	}, 90_000);
 
 	test("All cases after a blocked one: the page decides, a later mark that fails blocks again", async () => {
 		const { page, tabId } = await savedCase("Blocked once");

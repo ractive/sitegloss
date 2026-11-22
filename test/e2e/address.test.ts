@@ -14,6 +14,7 @@ import {
 	browserBinary,
 	type Harness,
 	opened,
+	SEARCH_AGAIN_MS,
 	startHarness,
 } from "./harness.ts";
 import {
@@ -25,6 +26,7 @@ import {
 	saveAs,
 	shadow,
 	showToolbar,
+	testWaits,
 } from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
@@ -167,20 +169,20 @@ describe.skipIf(browserBinary === undefined)(
 			}
 		}, 60_000);
 
-		test("opened by hand on another host's home page, the home page's marks are the page's own, a box on nothing too", async () => {
+		test("opened by hand on another host's home page, the home page's marks are the page's own; a mark's link opens the same path and query on the host in front, or where it was made, keeping the case open and showing the mark", async () => {
 			await resetPanel(h);
-			const { page } = await visit(`${other}/`);
+			await testWaits(h.control, {
+				searchAgainMs: SEARCH_AGAIN_MS,
+				routeSettleMs: SEARCH_AGAIN_MS,
+			});
+			const { page, tabId } = await visit(`${other}/`);
 			await home();
 			await h.control.click(
 				`document.querySelector('[data-case="${caseId}"]')`,
 			);
-			await h.control.waitFor(
-				`${id("case-hint")}.textContent.includes("marks found")`,
-				15_000,
-			);
 			const host = new URL(other).host;
-			// Before, a home page was its site's only: all three were looked
-			// for as on a page of none of the case's ("1 of 3 marks found").
+			// The home page's marks are this home page's, the box on nothing
+			// too; the other page's is not looked for here.
 			await h.control.waitFor(
 				`${id("case-hint")}.textContent === ${JSON.stringify(`1 of 2 marks found on ${host}. Dashed: unsure. 1 more is on other pages of the case.`)}`,
 				15_000,
@@ -193,23 +195,8 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await page.eval(`${shadow('[data-review="3"]')} === null`)).toBe(
 				true,
 			);
-			await page.send("Page.close");
-		}, 60_000);
-
-		test("a mark's link opens the same path and query on the host in front, or where it was made, keeping the case open and showing the mark", async () => {
-			await resetPanel(h);
-			const { page, tabId } = await visit(`${other}/`);
-			await home();
-			await h.control.click(
-				`document.querySelector('[data-case="${caseId}"]')`,
-			);
-			await h.control.waitFor(
-				`${id("case-hint")}.textContent.includes("marks found")`,
-				15_000,
-			);
 			const row = (n: number) =>
 				`document.querySelector('[data-mark="m${n}"]')`;
-			const host = new URL(other).host;
 			expect(
 				await h.control.eval<string>(
 					`${row(3)}.querySelector(".mark-page").textContent`,

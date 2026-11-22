@@ -29,7 +29,12 @@ import {
 	openSidePanel,
 } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	PAST_GUARD_MS,
+	startHarness,
+} from "./harness.ts";
 import { putCases, READ_DB, settingsOf, until, worker } from "./steps.ts";
 import { step } from "./trace.ts";
 
@@ -224,7 +229,7 @@ describe.skipIf(browserBinary === undefined)(
 			await panel.waitFor(`!${dialog}.open`);
 		});
 
-		test("Always allow skips the next question of that tool for that app, not of another tool", async () => {
+		test("Always allow skips the next question of that tool for that app, not of another tool; Ask again in the card takes it back", async () => {
 			expect(
 				(await asks("set_summary", { caseId: "c_1", summary: "Two" }, "always"))
 					.isError,
@@ -239,9 +244,8 @@ describe.skipIf(browserBinary === undefined)(
 			await panel.waitFor(
 				`${GRANT}.textContent.includes("Always allowed: Record the summary for the developer")`,
 			);
-		});
 
-		test("Ask again in the card takes it back: the tool asks again", async () => {
+			// Ask again in the card takes it back: the tool asks again.
 			// The card is in Settings, which the AI pill opens (DEC-023): focus
 			// stays only in a view that shows.
 			await panel.eval(`document.getElementById("ai-button").click()`);
@@ -267,7 +271,7 @@ describe.skipIf(browserBinary === undefined)(
 			).toBe(true);
 		});
 
-		test("Allow all changes skips every tool's question until it is off", async () => {
+		test("Allow all changes skips every tool's question until it is off, in the card and under the top bar on Home", async () => {
 			const allowAll = `${GRANT}.querySelector('[data-focus="allow-all"]')`;
 			expect(await panel.eval(`${allowAll}.checked`)).toBe(false);
 			// Right after the questions' dialog closed the switch turns nothing
@@ -304,15 +308,11 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await caseIds(h)).not.toContain("c_2");
 			await panel.eval(`${allowAll}.click()`);
 			await until(kept, (k) => k === undefined, 10_000);
-			expect(
-				(await asks("set_summary", { caseId: "c_1", summary: "Six" }, "deny"))
-					.isError,
-			).toBe(true);
-		});
 
-		test("the same switch is under the top bar on Home, and Settings shows only the card's", async () => {
+			// The same switch is under the top bar on Home, and Settings shows
+			// only the card's.
 			const bar = `document.querySelector('#ai-allow [data-focus="allow-all"]')`;
-			const card = `${GRANT}.querySelector('[data-focus="allow-all"]')`;
+			const card = allowAll;
 			const shown = `getComputedStyle(document.getElementById("ai-allow")).display !== "none"`;
 			// In Settings the card has it: the bar's is not shown twice.
 			expect(await panel.eval(shown)).toBe(false);
@@ -344,6 +344,11 @@ describe.skipIf(browserBinary === undefined)(
 			await panel.eval(`${bar}.click()`);
 			await until(kept, (k) => k === undefined, 10_000);
 			await panel.waitFor(`!${bar}.checked && !${card}.checked`);
+			// Off, the tool asks again.
+			expect(
+				(await asks("set_summary", { caseId: "c_1", summary: "Six" }, "deny"))
+					.isError,
+			).toBe(true);
 			// Back where the next tests expect the panel.
 			await panel.eval(`document.getElementById("ai-button").click()`);
 			await panel.waitFor(`!document.getElementById("settings").hidden`);
@@ -356,7 +361,7 @@ describe.skipIf(browserBinary === undefined)(
 			const result = call("set_summary", { caseId: "c_1", summary: "Seven" });
 			const id = await newNotification(h);
 			// After the guard against a click that came too soon.
-			await Bun.sleep(600);
+			await Bun.sleep(PAST_GUARD_MS);
 			await clickNotification(h, id, 1);
 			expect((await result).isError).toBeFalsy();
 			await until(
@@ -407,12 +412,13 @@ describe.skipIf(browserBinary === undefined)(
 			);
 		}, 60_000);
 
-		test("a Disconnect the relay cannot save says so, and keeps the app and its Always allow", async () => {
+		test("a Disconnect the relay cannot save says so, and keeps the app and its Always allow; one that works forgets them", async () => {
 			const disconnect = `${GRANT}.querySelector('[data-focus="disconnect"]')`;
 			store.failing = true;
 			try {
 				await panel.eval(`${disconnect}.click()`);
-				await Bun.sleep(800);
+				// The second click confirms only after a moment (no double click).
+				await Bun.sleep(PAST_GUARD_MS);
 				await panel.eval(`${disconnect}.click()`);
 				await panel.waitFor(`!${byId("pair-problem")}.hidden`, 20_000);
 			} finally {
@@ -429,26 +435,18 @@ describe.skipIf(browserBinary === undefined)(
 				),
 			).toBe(true);
 			expect(Object.keys((await kept()) ?? {})).toHaveLength(1);
-		}, 60_000);
 
-		test("Disconnect forgets it: the app paired again is asked", async () => {
-			const before = await kept();
-			expect(Object.keys(before ?? {})).toHaveLength(1);
-			const disconnect = `${GRANT}.querySelector('[data-focus="disconnect"]')`;
+			// Again, with the relay's store working: the app and its grants go.
 			await panel.eval(`${disconnect}.click()`);
-			// The second click confirms only after a moment (no double click).
-			await Bun.sleep(800);
+			await Bun.sleep(PAST_GUARD_MS);
 			await panel.eval(`${disconnect}.click()`);
 			await panel.waitFor(`!${GRANT}`, 10_000);
 			// The try that worked takes the last one's text away.
 			expect(await panel.eval(`${byId("pair-problem")}.hidden`)).toBe(true);
 			await until(kept, (k) => k === undefined, 10_000);
+			// Paired again for the next test, which is asked.
 			await client.close();
 			await pairApp();
-			expect(
-				(await asks("set_summary", { caseId: "c_3", summary: "Ten" }, "deny"))
-					.isError,
-			).toBe(true);
 		}, 60_000);
 
 		test("Stop AI access in the dialog refuses what waits: the top bar's Stop is under it", async () => {
