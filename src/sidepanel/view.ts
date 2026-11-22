@@ -913,6 +913,8 @@ interface CaseParts {
 	loadedHere: boolean;
 	/** "Add marks", or "Done adding" while the toolbar adds to the case. */
 	addMarks: HTMLButtonElement;
+	/** The same under the last mark of the list, where it has marks. */
+	addMarksEnd: HTMLButtonElement;
 	adding: boolean;
 	/** "← All cases" is finishing the marks, or could not (DEC-023). */
 	leaving: HTMLElement;
@@ -1247,6 +1249,18 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				type: "button",
 				id: "add-marks",
 				class: "primary",
+				onclick: () =>
+					created.adding
+						? actions.doneAdding(created.current)
+						: actions.addMarks(created.current),
+			},
+			"Add marks",
+		),
+		addMarksEnd: h(
+			"button",
+			{
+				type: "button",
+				id: "add-marks-end",
 				onclick: () =>
 					created.adding
 						? actions.doneAdding(created.current)
@@ -2122,6 +2136,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 		: p.adding
 			? "Stop adding marks: the toolbar goes once each mark is in the case"
 			: "Each mark you draw on the page goes into this case when its comment is done";
+	// The same button at the end of a long list of marks; not amber, which
+	// is the view's one button that starts drawing (DEC-024).
+	p.addMarksEnd.disabled = p.addMarks.disabled;
+	p.addMarksEnd.textContent = p.addMarks.textContent;
+	p.addMarksEnd.title = p.addMarks.title;
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
 	setHint(p.webApp, webAppNote(state));
@@ -2364,8 +2383,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 							"Show all",
 						),
 					),
+			items.length > 0 ? h("ol", { class: "marks" }, ...items) : null,
+			items.length > 0 ? h("div", { class: "row" }, p.addMarksEnd) : null,
 			items.length > 0
-				? h("ol", { class: "marks" }, ...items)
+				? null
 				: filter === undefined
 					? h(
 							"p",

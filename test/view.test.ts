@@ -3615,6 +3615,19 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		expect(window.document.querySelectorAll("#case-view .primary").length).toBe(
 			1,
 		);
+		// Under the last mark the same button again, where the list has marks.
+		render(
+			caseState(withOneMark(sampleCase("c_row_end")), (s) => (s.tab = tab)),
+			noActions,
+		);
+		const end = el<HTMLButtonElement>("add-marks-end");
+		expect([
+			end.previousElementSibling === null &&
+				end.parentElement?.previousElementSibling?.matches("ol.marks"),
+			end.textContent,
+			end.title,
+			end.disabled,
+		]).toEqual([true, "Add marks", el("add-marks").title, false]);
 	});
 
 	test("adding: Done adding, and the line says where the marks go", () => {
