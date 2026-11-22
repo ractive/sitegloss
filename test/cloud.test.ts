@@ -1313,25 +1313,64 @@ describe("what a run costs", () => {
 });
 
 describe("every run keeps to the API's contract", () => {
-	test("the server in memory refuses what the API's schemas refuse, and a request over the size one may hold", () => {
-		const good: Op = {
-			opId: "o_1",
-			type: "case.patch",
-			caseId: "c_1",
-			title: "A title",
-		};
-		expect(requestProblem([good])).toBeUndefined();
-		expect(requestProblem([{ ...good, title: 7 } as never])?.status).toBe(400);
-		expect(
-			requestProblem(
-				Array.from({ length: 200 }, (_, i) => ({
-					...good,
-					opId: `o_${i}`,
-					summary: "s".repeat(50_000),
-				})),
-			)?.status,
-		).toBe(413);
-	});
+	const good: Op = {
+		opId: "o_1",
+		type: "case.patch",
+		caseId: "c_1",
+		title: "A title",
+	};
+	test.each([
+		["a good operation", [good], undefined],
+		["a title over 500 characters", [{ ...good, title: "t".repeat(501) }], 400],
+		["a field of another type", [{ ...good, title: 7 }], 400],
+		[
+			"an operation the API does not have",
+			[{ ...good, type: "case.rename" }],
+			400,
+		],
+		[
+			"a capturedAt that is no UTC time",
+			[
+				{
+					opId: "o_2",
+					type: "shot.create",
+					caseId: "c_1",
+					shot: {
+						id: "sh_1",
+						url: "https://shop.example/",
+						image: { sha256: "a".repeat(64), width: 1, height: 1, bytes: 1 },
+						scrollX: 0,
+						scrollY: 0,
+						viewport: { width: 1, height: 1, dpr: 1 },
+						capturedAt: "yesterday",
+					},
+				},
+			],
+			400,
+		],
+		// 500 characters are 500 characters, also when each is two code units.
+		["500 emoji in a title", [{ ...good, title: "😀".repeat(500) }], undefined],
+		["201 operations", Array.from({ length: 201 }, () => good), 400],
+		[
+			"a summary of 50,000 characters",
+			[{ ...good, summary: "s".repeat(50_000) }],
+			undefined,
+		],
+		[
+			"a request over the size one may hold",
+			Array.from({ length: 200 }, (_, i) => ({
+				...good,
+				opId: `o_${i}`,
+				summary: "s".repeat(50_000),
+			})),
+			413,
+		],
+	] as const)(
+		"the server in memory keeps to the API's schemas: %s gives %p",
+		(_what, ops, status) => {
+			expect(requestProblem(ops as never)?.status).toBe(status);
+		},
+	);
 
 	test("a request the server refuses whole is found out one operation at a time: the one it does not take is said, the others go", async () => {
 		await shared();
@@ -2007,9 +2046,12 @@ describe("a delete for the team is the user's delete", () => {
 			await removeCase(tess, "c_flow");
 			end();
 			tess.api.calls.length = 0;
-			await sync(tess, dana);
+			// At once: the next run sends it, and reads nothing first.
+			await tess.engine.request();
 			expect(tess.api.calls).not.toContain("GET case c_flow");
 			expect(server.caseOf("c_flow")).toBeUndefined();
+			await sync(tess, dana);
+			expect(tess.api.calls).not.toContain("GET case c_flow");
 			expect(await tess.store.getCase("c_flow")).toBeUndefined();
 			expect(await dana.store.getCase("c_flow")).toBeUndefined();
 			expect(await tess.store.deletedCases()).toEqual([]);
