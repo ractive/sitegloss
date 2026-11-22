@@ -60,6 +60,7 @@ import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
+import { holdClickedInPlace } from "./scroll-anchor.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
 import {
@@ -155,6 +156,8 @@ const bar = byId<HTMLElement>("bar");
 const back = byId<HTMLButtonElement>("back");
 const home = byId<HTMLElement>("home");
 const caseView = byId<HTMLElement>("case-view");
+// What a click acts on stays where it was on screen (DEC-060).
+holdClickedInPlace(caseView);
 const settingsView = byId<HTMLElement>("settings");
 const pageText = byId<HTMLParagraphElement>("page");
 const hint = byId<HTMLParagraphElement>("hint");
@@ -2916,11 +2919,21 @@ function focusInMarks(
 	if (at === null || at.tagName !== "BUTTON" || !list.contains(at))
 		return undefined;
 	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
-	const which = ["data-mark-action", "data-finding-action", "data-action"].find(
-		(name) => at.hasAttribute(name),
+	// The row's head is found again by its class (a second redraw, when
+	// the pictures come, must not drop the focus the first one put there).
+	const which = [
+		"data-mark-action",
+		"data-finding-action",
+		"data-action",
+		"class",
+	].find((name) =>
+		name === "class"
+			? at.classList.contains("mark-toggle")
+			: at.hasAttribute(name),
 	);
 	if (markId === undefined || which === undefined) return undefined;
-	const value = at.getAttribute(which) as string;
+	const value =
+		which === "class" ? "mark-toggle" : (at.getAttribute(which) as string);
 	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
 	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
 	// The marks around it, for when its row goes (a mark deleted).
@@ -2962,9 +2975,20 @@ function focusInMarks(
 					? `[data-finding="${quoted(finding)}"] `
 					: "";
 		const same = row.querySelector<HTMLElement>(
-			`${within}[${which}="${quoted(value)}"]`,
+			which === "class"
+				? ".mark-toggle"
+				: `${within}[${which}="${quoted(value)}"]`,
 		);
 		if (same !== null) return same.focus();
+		// A mark's action that went with its status (Verify, Save): the same
+		// row's next control, the first of its actions now.
+		if (which === "data-mark-action") {
+			const next =
+				[...row.querySelectorAll<HTMLElement>("[data-mark-action]")].find(
+					(b) => b.getClientRects().length > 0,
+				) ?? row.querySelector<HTMLElement>(".mark-toggle");
+			if (next !== null) return next.focus();
+		}
 		// Gone with its picture: the next picture's control, else the way to
 		// add one; gone with its finding: the mark's head.
 		const after =
