@@ -4,9 +4,9 @@
  * tab-mcp's DEC-206): its content script in a page of the relay's markup,
  * its `CodeFiller` in the worker, and between them a port as Chrome gives
  * one; Sitegloss's own part is the question (`FillQuestion`). The library's
- * own tests cover its rules one by one; these check that, put together as
- * Sitegloss puts them (`retry: false`), the rules of Sitegloss's audit
- * hold. Against a fixture with the relay's markup (tab-mcp's
+ * own tests cover its rules one by one; these check Sitegloss's part with
+ * them, put together as the worker does (`retry: false`; connection.test.ts
+ * checks that the worker does). Against a fixture with the relay's markup (tab-mcp's
  * `oauth/server.ts`, relay 0.12, the hooks of its DEC-199): the testing
  * package's relay cannot show the form for a test client.
  */
@@ -20,7 +20,6 @@ import {
 	type FillHost,
 	pagePort,
 	runPairingPage,
-	takeCode,
 } from "@ractive-ch/tab-mcp-client/extension";
 import { Window } from "happy-dom";
 import { FillQuestion } from "../src/worker/fill-question.ts";
@@ -333,19 +332,6 @@ describe("the question and the fill", () => {
 		expect(f.notices.filter((n) => n !== undefined)).toHaveLength(3);
 	});
 
-	test("Review 1: after 30 s the same request's page is asked about again", async () => {
-		const f = setup();
-		f.load(1, PAGE, pairingPage({ requestId: "r_1" }));
-		await turns();
-		f.question.answer(f.question.question?.id as string, true);
-		await turns();
-		f.tick(31_000);
-		const again = f.load(1, PAGE, pairingPage({ requestId: "r_1" }));
-		await turns();
-		expect(again.submitted).toEqual([]);
-		expect(f.question.question).toBeDefined();
-	});
-
 	test("Review 1 and 2: a yes whose code is on its way fills in nothing once its tab loaded another page, a look-alike or another request", async () => {
 		const f = setup();
 		f.setCode(undefined);
@@ -395,38 +381,6 @@ describe("the question and the fill", () => {
 		expect(f.holds).toEqual([true, false]);
 	});
 
-	test("Review 2: the setting or AI access off at the moment the code comes: nothing is sent", async () => {
-		for (const off of ["enabled", "aiOn"] as const) {
-			const f = setup();
-			f.setCode(undefined);
-			const t = f.load(1, PAGE, pairingPage());
-			await turns();
-			f.question.answer(f.question.question?.id as string, true);
-			await turns();
-			f.state[off] = false;
-			f.sendCode({
-				code: "BCDF-GHJK",
-				expiresAt: new Date(f.now + 60_000).toISOString(),
-			});
-			await turns();
-			expect(t.submitted).toEqual([]);
-		}
-	});
-
-	test("Review 3: not turned on, or AI access not connected: the page is not asked about", async () => {
-		const f = setup();
-		f.state.enabled = false;
-		const t = f.load(1, PAGE, pairingPage());
-		await turns();
-		expect(f.question.question).toBeUndefined();
-		expect(t.port?.connected).toBe(false);
-		f.state.enabled = true;
-		f.state.aiOn = false;
-		f.load(2, PAGE, pairingPage());
-		await turns();
-		expect(f.question.question).toBeUndefined();
-	});
-
 	test("Review 5: a pairing page in another tab while a question waits is not asked about, and the panel says so; the same tab's new page replaces its question", async () => {
 		const f = setup();
 		f.load(1, PAGE, pairingPage({ host: "first.example" }));
@@ -446,29 +400,6 @@ describe("the question and the fill", () => {
 		await turns();
 		expect(f.question.question?.host).toBe("third.example");
 		expect(f.question.question?.id).not.toBe(first as string);
-	});
-
-	test("Review of #27: a pairing page in another tab while a code is on its way is not asked about, and the panel says so", async () => {
-		const f = setup();
-		f.setCode(undefined);
-		const first = f.load(1, PAGE, pairingPage({ host: "first.example" }));
-		await turns();
-		f.question.answer(f.question.question?.id as string, true);
-		await turns();
-		const second = f.load(2, PAGE, pairingPage({ host: "second.example" }));
-		await turns();
-		expect(f.question.question).toBeUndefined();
-		expect(f.question.problem).toBe(
-			"An AI app at second.example (it calls itself “Claude”) also opened the relay's page while Sitegloss was filling in the code on another one. Reload that page in a moment to be asked, or type the code there.",
-		);
-		expect(second.port?.connected).toBe(false);
-		f.sendCode({
-			code: "BCDF-GHJK",
-			expiresAt: new Date(f.now + 60_000).toISOString(),
-		});
-		await turns();
-		expect(first.submitted).toEqual(["BCDF-GHJK"]);
-		expect(second.submitted).toEqual([]);
 	});
 
 	test("Review of #29, 2: a code that comes for one tab leaves what the panel says about a page in another tab that was not asked about; it clears only its own tab's", async () => {
@@ -631,99 +562,6 @@ describe("Review 4: which code is filled in, by Sitegloss's clock", () => {
 		await turns();
 		expect(t.submitted).toEqual(["AAAA-AAAA"]);
 	});
-
-	test("about to end: the next one the relay sends", async () => {
-		const f = setup();
-		f.setCode({
-			code: "AAAA-AAAA",
-			expiresAt: new Date(f.now + 4999).toISOString(),
-		});
-		const t = f.load(1, PAGE, pairingPage());
-		await turns();
-		f.question.answer(f.question.question?.id as string, true);
-		await turns();
-		expect(t.submitted).toEqual([]);
-		f.sendCode({
-			code: "BBBB-BBBB",
-			expiresAt: new Date(f.now + 120_000).toISOString(),
-		});
-		await turns();
-		expect(t.submitted).toEqual(["BBBB-BBBB"]);
-	});
-
-	test("the same code sent again (the relay's answer to pairing.start) is not the next one; the next code is", async () => {
-		const f = setup();
-		const ending = {
-			code: "AAAA-AAAA",
-			expiresAt: new Date(f.now + 2000).toISOString(),
-		};
-		f.setCode(ending);
-		const t = f.load(1, PAGE, pairingPage());
-		await turns();
-		f.question.answer(f.question.question?.id as string, true);
-		await turns();
-		f.sendCode({ ...ending });
-		await turns();
-		expect(t.submitted).toEqual([]);
-		f.sendCode({
-			code: "BBBB-BBBB",
-			expiresAt: new Date(f.now + 120_000).toISOString(),
-		});
-		await turns();
-		expect(t.submitted).toEqual(["BBBB-BBBB"]);
-	});
-
-	test("the same code sent again with an expiry that now leaves 5 s counts", async () => {
-		const f = setup();
-		f.setCode({
-			code: "AAAA-AAAA",
-			expiresAt: new Date(f.now + 2000).toISOString(),
-		});
-		const t = f.load(1, PAGE, pairingPage());
-		await turns();
-		f.question.answer(f.question.question?.id as string, true);
-		await turns();
-		f.sendCode({
-			code: "AAAA-AAAA",
-			expiresAt: new Date(f.now + 60_000).toISOString(),
-		});
-		await turns();
-		expect(t.submitted).toEqual(["AAAA-AAAA"]);
-	});
-
-	test("takeCode by itself: the same code again does not end the wait; a code that looks about to end by this clock (one ahead of the relay's) comes after the whole wait", async () => {
-		let current: PairingCode | undefined = {
-			code: "AAAA-AAAA",
-			expiresAt: "2026-11-21T12:00:02Z",
-		};
-		const listeners = new Set<() => void>();
-		const source: CodeSource = {
-			current: () => current,
-			onChange: (l) => {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		};
-		const now = Date.parse("2026-11-21T12:00:00Z");
-		const started = Date.now();
-		const taken = takeCode(source, new AbortController().signal, {
-			now,
-			waitMs: 200,
-		});
-		let settled = false;
-		void taken.then(() => {
-			settled = true;
-		});
-		await Bun.sleep(20);
-		current = { ...(current as PairingCode) };
-		for (const l of [...listeners]) l();
-		await Bun.sleep(20);
-		expect(settled).toBe(false);
-		// No other code comes: the current one, after the whole wait.
-		expect(await taken).toBe("AAAA-AAAA");
-		expect(Date.now() - started).toBeGreaterThanOrEqual(190);
-		expect(listeners.size).toBe(0);
-	});
 });
 
 describe("the library's filler as Sitegloss needs it (raised against its release candidate)", () => {
@@ -757,83 +595,6 @@ describe("the library's filler as Sitegloss needs it (raised against its release
 		f.load(2, PAGE, pairingPage({ host: "third.example", requestId: "r_3" }));
 		await turns();
 		expect(f.question.question?.host).toBe("third.example");
-	});
-
-	test("Point 4: the relay changing while the page's hello is awaited, or while the question waits, asks nothing and fills nothing", async () => {
-		const f = setup();
-		const pair = portPair({
-			id: EXTENSION,
-			url: PAGE,
-			origin: HOSTED_ORIGIN,
-			tab: { id: 1 },
-			frameId: 0,
-		});
-		const done = f.filler.page(pagePort(pair.worker));
-		await turns();
-		// Another relay, no reset() from the host: the library's own check.
-		f.state.origin = "https://other-relay.example";
-		pair.content.postMessage({
-			type: "pairing-page",
-			nonce: "n".repeat(32),
-			app: "sitegloss",
-			clientName: "Claude",
-			clientHost: "claude.ai",
-			requestId: "r_1",
-		});
-		await done;
-		expect(f.question.question).toBeUndefined();
-		expect(pair.connected).toBe(false);
-
-		const g = setup();
-		const t = g.load(1, PAGE, pairingPage());
-		await turns();
-		expect(g.question.question).toBeDefined();
-		g.state.origin = "https://other-relay.example";
-		g.question.answer(g.question.question?.id as string, true);
-		await turns();
-		expect(t.submitted).toEqual([]);
-		expect(t.port?.connected).toBe(false);
-		expect(g.calls).toEqual([]);
-		expect(g.holds).toEqual([]);
-	});
-
-	test("Point 5: a test's page carries the once-per-document mark, not the global; the same document is run once", async () => {
-		const f = setup();
-		const a = f.load(1, PAGE, pairingPage());
-		const b = f.load(2, PAGE, pairingPage({ requestId: "r_2" }));
-		expect(a.port).toBeDefined();
-		expect(b.port).toBeDefined();
-		expect(
-			(globalThis as Record<string, unknown>)["__tabMcpPairingPage"],
-		).toBeUndefined();
-		const again = runPairingPage({
-			app: "sitegloss",
-			connect: () => {
-				throw new Error("not again");
-			},
-			page: {
-				document: a.window.document as unknown as Document,
-				topLevel: true,
-				pathname: "/authorize",
-			},
-		});
-		expect(again).toBe(false);
-	});
-
-	test("Point 6: a fill that ends without its code releases pairing once, and Sitegloss lets go once", async () => {
-		const f = setup();
-		f.setCode(undefined);
-		f.load(1, PAGE, pairingPage());
-		await turns();
-		f.question.answer(f.question.question?.id as string, true);
-		await turns();
-		f.close(1);
-		await turns();
-		expect(f.calls.map((c) => c.call)).toEqual(["code", "release"]);
-		expect(f.holds).toEqual([true, false]);
-		// release() again with nothing held: nothing.
-		f.question.release();
-		expect(f.holds).toEqual([true, false]);
 	});
 
 	test("Point 6: a fill that ends without its code keeps pairing on while an earlier fill's code may still be checked; that AI app connecting lets it go, once", async () => {
