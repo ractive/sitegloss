@@ -11,10 +11,14 @@ import {
 	requestPermissions,
 } from "../lib/browser.ts";
 import {
+	addedImage,
 	type Case,
+	caseImages,
 	casePages,
 	cleanTitle,
+	heldImagesOf,
 	MARK_CHANGED,
+	MAX_MARK_IMAGES,
 	type Mark,
 	markFor,
 	markKey,
@@ -29,24 +33,29 @@ import {
 	withChoice,
 	withClosed,
 	withComment,
+	withImages,
 	withLink,
 	withoutCaseComment,
 	withoutFinding,
+	withoutImage,
 	withoutMark,
 	withReopen,
 	withTitle,
 	withVerified,
 } from "../lib/case.ts";
+import { sha256Of } from "../lib/cloud/api.ts";
 import {
 	type CheckedExport,
 	exportAllCases,
 	exportAllFileName,
 	exportCase,
 	exportFileName,
+	MAX_IMAGE_PIXELS,
 	MAX_IMPORT_ALL_BYTES,
 	readExports,
 	storeImport,
 } from "../lib/export.ts";
+import { toAddedImage } from "../lib/images.ts";
 import {
 	type Broadcast,
 	isMarkRequest,
@@ -60,9 +69,10 @@ import {
 	type OpenCaseRequest,
 	type OverlayState,
 } from "../lib/messages.ts";
-import { IdbStore } from "../lib/store.ts";
+import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
+import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
 import { linkFromField } from "./case-link.ts";
@@ -856,7 +866,12 @@ async function refreshCase(): Promise<void> {
 		// once a mark was added (it would not show, as if it was not saved).
 		if (pageFilterEnds(c, s.markPage)) s.markPage = undefined;
 		// What can no longer be told from another mark is let go, and said.
-		const lost = [s.markEdit, s.markDeleteArmed, s.findingDeleteArmed].some(
+		const lost = [
+			s.markEdit,
+			s.markDeleteArmed,
+			s.findingDeleteArmed,
+			s.imageDeleteArmed,
+		].some(
 			(held) =>
 				held !== undefined &&
 				markFor(c, held.markId, held.mark) === "ambiguous",
@@ -867,6 +882,7 @@ async function refreshCase(): Promise<void> {
 		s.markEdit = editAfter(s.markEdit, c);
 		s.markDeleteArmed = heldAfter(s.markDeleteArmed, c);
 		s.findingDeleteArmed = heldAfter(s.findingDeleteArmed, c);
+		s.imageDeleteArmed = heldAfter(s.imageDeleteArmed, c);
 		if (lost) s.caseHint = MARK_CHANGED;
 	});
 	// Just opened, or its first mark is in: its marks go to the tab in front
@@ -876,10 +892,9 @@ async function refreshCase(): Promise<void> {
 		return;
 	const images = imagesWork.start();
 	const urls = new Map<string, string>();
-	for (const path of [
-		...c.shots.map((x) => x.image),
-		...c.marks.map((a) => a.crop),
-	]) {
+	// Its screenshots, the marks' crops and the images added to them, those
+	// held back here too (DEC-058).
+	for (const path of [...caseImages(c), ...heldImagesOf(c)]) {
 		const image = await store.getImage(c.id, path);
 		if (image !== undefined) urls.set(path, URL.createObjectURL(image.blob));
 	}
@@ -915,6 +930,7 @@ function openCase(id: string): void {
 		s.markPage = undefined;
 		s.markDeleteArmed = undefined;
 		s.findingDeleteArmed = undefined;
+		s.imageDeleteArmed = undefined;
 		s.leaving = undefined;
 	});
 	followed = undefined;
@@ -1535,7 +1551,11 @@ async function importWork(
 
 /** Store one case of a file; the drawn marks of the version it replaced go. */
 async function storeOne(parsed: CheckedExport, copy: boolean): Promise<Case> {
-	const c = await storeImport(store, parsed, { copy });
+	// Images added to marks are re-encoded as the dialog does it (DEC-058).
+	const c = await storeImport(store, parsed, {
+		copy,
+		reencode: (image) => toAddedImage(image, MAX_IMAGE_PIXELS),
+	});
 	// Results (and drawn marks) of the version it replaced describe other marks.
 	if (state.loaded?.caseId === c.id) await forgetLoaded({ clearTab: true });
 	announce(c.id);
@@ -2174,6 +2194,54 @@ const actions: Actions = {
 		});
 	},
 
+	addImages(c, a) {
+		void showAddImages(c, a);
+	},
+
+	deleteImage(c, a, imageId) {
+		const armed = state.imageDeleteArmed;
+		const at = Date.now();
+		const click = deleteClick(
+			armed?.markId === a.id && armed.imageId === imageId
+				? armed.at
+				: undefined,
+			at,
+		);
+		if (click === "arm") {
+			update(
+				(s) =>
+					(s.imageDeleteArmed = {
+						markId: a.id,
+						mark: markKey(c, a),
+						imageId,
+						at,
+					}),
+			);
+			setTimeout(() => {
+				update((s) => {
+					if (s.imageDeleteArmed?.at === at) s.imageDeleteArmed = undefined;
+				});
+			}, DELETE_ARMED_MS);
+			return;
+		}
+		// A double click is no second thought, nor a second remove.
+		if (click === "nothing" || deleting.has(imageId)) return;
+		deleting.add(imageId);
+		const now = new Date().toISOString();
+		void changeMark(
+			c,
+			a,
+			(current, id) => withoutImage(current, id, imageId, now),
+			{ keepEdit: true },
+		).finally(() => {
+			deleting.delete(imageId);
+			update((s) => {
+				if (s.imageDeleteArmed?.imageId === imageId)
+					s.imageDeleteArmed = undefined;
+			});
+		});
+	},
+
 	typeVerdict(caseId, text) {
 		update((s) => {
 			if (s.current?.id === caseId && text === (s.current.verdict ?? ""))
@@ -2495,11 +2563,102 @@ const deleting = new Set<string>();
  * The mark's form closes, unless `keepEdit`: a change the form is not about.
  */
 /** Answers why it was not saved, if it was not (the hint says so too). */
+/** The dialog that adds images to a mark, while it is open (DEC-058). */
+let addingImages: AddImagesDialog | undefined;
+
+/**
+ * Open the dialog that adds images to mark `a` (DEC-058); `files`: pictures
+ * pasted into the open mark, offered at once. Nothing is added without Add.
+ */
+async function showAddImages(
+	c: Case,
+	a: Mark,
+	files?: readonly Blob[],
+): Promise<void> {
+	if (addingImages !== undefined) return;
+	const key = markKey(c, a);
+	const mark = markFor(state.current ?? c, a.id, key);
+	if (mark === undefined || mark === "ambiguous") return;
+	// What the mark holds, to refuse the same picture twice.
+	const known = new Set<string>();
+	for (const image of mark.images ?? []) {
+		const stored = await store.getImage(c.id, image.image);
+		if (stored !== undefined) known.add(await sha256Of(stored.blob));
+	}
+	if (addingImages !== undefined) return;
+	const markId = () => {
+		const now = state.current && markFor(state.current, mark.id, key);
+		return now && now !== "ambiguous" ? now.id : mark.id;
+	};
+	addingImages = openAddImages({
+		number: mark.number,
+		screenshot: state.images?.urls.get(mark.crop),
+		have: mark.images?.length ?? 0,
+		known,
+		returnTo: () => {
+			addingImages = undefined;
+			const row = document.querySelector(
+				`li.mark[data-mark="${CSS.escape(markId())}"]`,
+			);
+			return (
+				row?.querySelector<HTMLElement>("[data-action=add-image]") ??
+				row?.querySelector<HTMLElement>(".mark-toggle")
+			);
+		},
+		add: async (images) => {
+			const ids = images.map(() => newId("i"));
+			const put = new Map(
+				images.map((image, i) => [addedImage(ids[i] as string), image]),
+			);
+			const now = new Date().toISOString();
+			const why = await changeMark(
+				c,
+				mark,
+				(current, id) => ({
+					value: withImages(current, id, ids, now),
+					put,
+				}),
+				{ keepEdit: true },
+			);
+			if (why !== undefined) throw new Error(why);
+		},
+	});
+	if (files !== undefined) await addingImages.offer(files, "paste");
+}
+
+/**
+ * A picture pasted into an open mark (focus in it, not in a text field)
+ * opens the dialog with it: a shortcut, nothing is added without Add.
+ */
+document.addEventListener("paste", (event) => {
+	if (addingImages !== undefined || state.current === undefined) return;
+	const at = document.activeElement;
+	if (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement)
+		return;
+	const row = at?.closest<HTMLElement>("li.mark[data-open]");
+	const a = state.current.marks.find((x) => x.id === row?.dataset["mark"]);
+	if (a === undefined) return;
+	const files = filesOf(event.clipboardData);
+	if (files.length === 0) return;
+	event.preventDefault();
+	void showAddImages(state.current, a, files);
+});
+
 async function changeMark(
 	c: Case,
 	a: Mark,
-	/** `id`: the mark's id in the case as it is stored now. */
-	change: (current: Case, id: string) => { value: Case; images?: string[] },
+	/**
+	 * `id`: the mark's id in the case as it is stored now. `images`: files to
+	 * delete with the change; `put`: files to write with it.
+	 */
+	change: (
+		current: Case,
+		id: string,
+	) => {
+		value: Case;
+		images?: string[];
+		put?: ReadonlyMap<string, StoredImage>;
+	},
 	{ keepEdit = false } = {},
 ): Promise<string | undefined> {
 	const hint = caseHintWriter();
@@ -2525,6 +2684,7 @@ async function changeMark(
 			return {
 				value: validateCase(next.value),
 				deleteImages: next.images ?? [],
+				...(next.put === undefined ? {} : { images: next.put }),
 			};
 		});
 		update((s) => {
@@ -2586,6 +2746,27 @@ function answerMark(
 			s.markPage = undefined;
 			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
 		});
+		answer({ ok: true });
+		return false;
+	}
+	// The page's "Add another image…": the dialog opens here, over the
+	// panel, with the mark's row open under it (DEC-058).
+	if (request.type === "mark:add-image") {
+		if ((a.images?.length ?? 0) >= MAX_MARK_IMAGES) {
+			answer({
+				ok: false,
+				error: `Mark ${a.number} holds ${MAX_MARK_IMAGES} images, the most a mark may have.`,
+			});
+			return false;
+		}
+		update((s) => {
+			// Its row shows, whatever the list was filtered by, as for a pick:
+			// the dialog gives the focus back to it.
+			s.markFilter = undefined;
+			s.markPage = undefined;
+			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
+		});
+		void showAddImages(c, a);
 		answer({ ok: true });
 		return false;
 	}

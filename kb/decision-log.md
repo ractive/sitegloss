@@ -3206,3 +3206,99 @@ The end-to-end tests that drew a case of `/v1` on `/v2` now draw it on
   also once the page in front joins the case", the report's steps; the single-page
   app's next route), `test/pages.test.ts`, `test/view.test.ts`, `test/tools.test.ts`.
   The tests of the look-alike are gone.
+
+## DEC-058: Images a person adds to a mark: by id in the case, added in the side panel, always re-encoded (owner)
+
+2026-11-22. The owner: "When a mark is open, I'd like to have an 'add screenshot...'
+button. The dialog that opens needs to support a simple cmd-v to get the image in the
+clipboard, but obviously also have a classic 'Upload...' button and the possibility to
+drag/drop images onto it." For what Sitegloss cannot capture, such as a menu that closes as
+soon as a tool is picked. The owner settled the design's open questions the same day
+(`kb/design/mark-images.md`): the word is "image", the button "Add image…" ("screenshot"
+stays the case's own capture, which adds a page); at most 6 per mark, the longest side
+2048 px, input up to 30 MB; the side panel first; a share link shows them; adding from the
+web app comes later.
+
+- **The format.** `sitegloss/2` gains an optional `marks[].images`, a list of
+  `{ id, image, added: { at, user? } }` (`MarkImage`), absent when there are none, as
+  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 6 per mark, an
+  id unique in the whole case, the path exactly `images/<id>.webp`, and `added` as every
+  stamp. The import requires each file as it does a crop ("The export lacks
+  images/….webp."). The format is not released, so it keeps its name: a reader from before
+  builds its marks from the fields it knows and reads only the files it names, so it drops
+  the images and imports the rest.
+- **By the image's id, not the mark's number.** An image is only added or removed, never
+  changed, so its id (`newId("i")`) is the same here, on the wire and in a file, and needs
+  no mapping in the sync's book. A crop is named after its mark (`crops/m3.webp`) and moves
+  when the sync gives the mark another number; an image named by its own id never moves.
+- **What counts as a change.** `fixedOf` (the drawing the sync compares) leaves images
+  out: an added picture is not another drawing (the lesson of `ends`, DEC-047).
+  `markSignature` counts the images' ids where a mark has any, unlike the design, which
+  left them out: an image added by hand after an AI app's change must end the app's note,
+  or the sync would send the image as the app's doing. A mark without images keeps the
+  signature it had, so no note made before this ends.
+- **The side panel, not the page.** The page's own scripts see `paste` and `drop` on
+  `window` in their capture phase before the overlay's shadow root does, so a picture
+  pasted on the page (maybe of another app's window) would reach the site being marked; its
+  bytes would also cross from the content script to the panel as text, and the panel owns
+  the store (DEC-027). The panel's open mark gets "Add image…"; later the page's popover
+  only asks the panel to open the dialog for that mark. No picture touches the page. The
+  panel reads the clipboard only from a paste into its dialog, so no `clipboardRead`
+  permission and no install warning.
+- **Limits and re-encoding.** At most 6 per mark; input up to 30 MB and 64 million pixels,
+  the import's own limits (`MAX_IMAGE_BYTES`, `MAX_IMAGE_PIXELS`). The pixels are read from
+  the file's header before anything is decoded (`declaredSize`): a small file can declare a
+  picture whose decode alone takes gigabytes and ends the panel. So only formats whose
+  header says the size the decoder will use: PNG, JPEG and WebP, what a screenshot is. No
+  GIF (its decoder grows to the first frame's bounds, which its screen size does not
+  bound), no AVIF (its size sits deep in the file), no SVG. A JPEG with a stray `FF 00` or
+  a marker no JPEG has is refused, so the reader walks the segments as the decoder does.
+  An animated picture (APNG, animated WebP) keeps its first frame, and its preview says so. Every picture is re-encoded in the panel
+  (`toAddedImage`): WebP at the crops' quality 0.85, the longest side at most 2048 px
+  (`ADDED_MAX_SIDE`), turned as its EXIF orientation says. 2048 px stays readable enlarged
+  and mostly fits what an AI app is sent. The canvas writes no EXIF, XMP or GPS, so the
+  re-encoding is what removes a photo's camera, place and time; no file name is kept; and
+  the server takes WebP only.
+- **case.md**: after the mark's crop, `- Images added: 2`, then each image as
+  `![Mark 3, added image 1](images/<id>.webp)`, a link only where the path is the one its
+  id gives.
+- **From a file**: an imported image keeps the file's time, is marked `imported` and names
+  nobody (as the server stores it); the panel says "from an imported file".
+- **The panel**: the open mark's pictures are a grid of equal tiles with the mark's own
+  screenshot first ("Screenshot", no Remove, refused by `withoutImage` by any name), then
+  the added images ("Image 1"…, numbered without the screenshot), then "+ Add another
+  image…". A closed mark says "+2 images". The page's popover only asks the panel to open
+  the dialog (`mark:add-image`).
+- **Sync** (the server's DEC-032): an image goes with a new mark (`mark.create`'s `images`)
+  or as `mark.patch`'s `images.add`, removed by id in `images.remove`; its picture is
+  uploaded first, as a crop's, and the blob route takes `mark:update` too. Merged by id as
+  findings: the server's order, removed here stays away, added here stays, gone there goes.
+  A server mark without `images` is "not told": nothing here is removed, and the shadow
+  keeps what it knew. An added image whose picture does not come is left out of that read
+  and said; nothing here is removed for it.
+- **Never deleted unsent, never past six.** An image this device has not sent (not in the
+  shadow) is never removed by a merge. `Mark.images` holds six at most, everywhere: here, in
+  a file, in an operation. What does not fit once the team's images come back is held back
+  in `Mark.heldImages`, this browser's own like `via` (left out of the file, the Markdown,
+  the AI tools and the wire), its file kept, its tile "Not sent: the mark already holds six
+  images" with its Remove. When a place frees up, here or at the server, the oldest held
+  image moves into `images` and is sent as an ordinary add. So no patch carries an add that
+  cannot fit, and a held image never holds back the mark's other changes (a first answer
+  had it in the patch, refused whole with `limit` at every edit). A refusal for the
+  storage or the role leaves the image out of the patch, said on its tile ("Not sent:" and
+  why, with "Try again"); a role is looked at again at every run. Only an image the server
+  took, or that the person removes, leaves the device.
+- **From a file, again.** The panel re-encodes the images of an imported case as the
+  dialog does, so a file's metadata or animation is not stored or synced. One case's file
+  may have as many entries as the format allows (`MAX_CASE_ENTRIES`).
+- **Keyboard.** A Delete or Remove clicked once redraws the list; the focus stays on the
+  armed control (mark Delete, a finding's Delete, an image's Remove), and moves to the
+  next picture when an image goes.
+- **AI tools**: `get_case` lists a mark's images (path, when, who) and sends them after
+  every crop within the size budget; `get_image` reads `images/<id>.webp`.
+- Tests: `test/case.test.ts` ("images added to a mark"), `test/image-size.test.ts` (the headers), `test/export.test.ts` (round trip,
+  a missing file refused), `test/markdown.test.ts`, `test/add-images.test.ts` (the
+  dialog's rules), `test/view.test.ts` (the grid), `test/cloud-wire.test.ts`,
+  `test/cloud.test.ts` (two devices), `test/tools.test.ts`, `test/review.test.ts`,
+  `test/cloud-server.test.ts` (a real server), `test/e2e/images.test.ts` (full set: a
+  pasted PNG kept as WebP of at most 2048 px).

@@ -529,7 +529,7 @@ describe("a mark's status and actions", () => {
 		]);
 		// A crop is small; a click shows it large, another small again.
 		const crop = row("m1").querySelector(
-			"button.crop",
+			"button.tile",
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("aria-pressed")).toBe("false");
 		crop.click();
@@ -628,6 +628,369 @@ describe("a mark's status and actions", () => {
 			["open", "flex-grow: 1"],
 			["dismissed", "flex-grow: 1"],
 		]);
+	});
+});
+
+describe("a mark's pictures: its screenshot first, then the images added (DEC-058)", () => {
+	const DANA = { id: "u_dana", name: "Dana" };
+	// Its own case each: rows of a case unchanged are kept.
+	const marked = (id: string): Case => {
+		const c = withOneMark(sampleCase(id));
+		const a = c.marks[0] as Mark;
+		c.marks = [
+			{
+				...a,
+				images: [
+					{
+						id: "i_a",
+						image: "images/i_a.webp",
+						added: { at: "2026-11-22T10:00:00Z", user: DANA },
+					},
+					{
+						id: "i_b",
+						image: "images/i_b.webp",
+						added: { at: "2026-11-22T11:00:00Z" },
+					},
+					{
+						id: "i_c",
+						image: "images/i_c.webp",
+						added: { at: "2026-11-20T09:00:00Z", imported: true },
+					},
+				],
+			},
+		];
+		return c;
+	};
+	const stateOf = (c: Case, urls: [string, string][]) =>
+		caseState(c, (s) => {
+			s.images = { caseId: c.id, version: c.updatedAt, urls: new Map(urls) };
+		});
+
+	test("one grid, the screenshot named first and never removed, the added ones counted from 1", () => {
+		const c = marked("c_pictures1");
+		const a = c.marks[0] as Mark;
+		const asked: string[] = [];
+		render(
+			stateOf(c, [
+				[a.crop, "blob:crop"],
+				["images/i_a.webp", "blob:a"],
+				["images/i_b.webp", "blob:b"],
+				["images/i_c.webp", "blob:c"],
+			]),
+			actionsWith({
+				addImages: () => asked.push("add"),
+				deleteImage: (_c, _a, id) => asked.push(`remove ${id}`),
+			}),
+		);
+		const row = window.document.querySelector(
+			`[data-mark="${a.id}"] .pictures`,
+		);
+		const names = [
+			...(row?.querySelectorAll("button.tile[data-action=zoom]") ?? []),
+		].map((b) => b.getAttribute("aria-label"));
+		expect(names).toEqual([
+			`Screenshot of mark ${a.number}, taken by Sitegloss`,
+			`Image 1 of 3 on mark ${a.number}, added by Dana`,
+			`Image 2 of 3 on mark ${a.number}`,
+			`Image 3 of 3 on mark ${a.number}, from an imported file`,
+		]);
+		const captions = [...(row?.querySelectorAll("figcaption") ?? [])].map(
+			(f) => f.firstChild?.textContent,
+		);
+		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2", "Image 3"]);
+		// The screenshot's place has nothing to remove it with, not even a
+		// disabled control: its one control (and focus stop) shows it large.
+		const shot = row?.querySelector('[data-picture="screenshot"]');
+		expect(
+			[...(shot?.querySelectorAll("button, a, input, [tabindex]") ?? [])].map(
+				(e) => e.getAttribute("data-action"),
+			),
+		).toEqual(["zoom"]);
+		expect(shot?.querySelector("button")?.getAttribute("title")).toBe(
+			"Taken by Sitegloss when the mark was made. It stays with the mark.",
+		);
+		(
+			row?.querySelector(
+				`[aria-label="Remove image 2 from mark ${a.number}"]`,
+			) as unknown as HTMLButtonElement | undefined
+		)?.click();
+		(
+			row?.querySelector("[data-action=add-image]") as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		expect(asked).toEqual(["remove i_b", "add"]);
+		// The way to add one is the grid's last tile.
+		expect(row?.lastElementChild?.getAttribute("data-action")).toBe(
+			"add-image",
+		);
+		// The subline counts only what was added.
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .images-count`)
+				?.textContent,
+		).toBe("+3 images");
+	});
+
+	test("a screenshot not here is said in its place; a mark with six offers no more", () => {
+		const c = marked("c_pictures2");
+		const a = c.marks[0] as Mark;
+		const six = Array.from({ length: 6 }, (_, i) => ({
+			id: `i_${i}`,
+			image: `images/i_${i}.webp`,
+			added: { at: "2026-11-22T10:00:00Z" },
+		}));
+		c.marks = [{ ...a, images: six }];
+		render(stateOf(c, []), noActions);
+		const row = window.document.querySelector(
+			`[data-mark="${a.id}"] .pictures`,
+		);
+		expect(row?.querySelector('[data-picture="screenshot"]')?.textContent).toBe(
+			"The screenshot is missing.Screenshot",
+		);
+		expect(row?.querySelector("[data-action=add-image]")).toBeNull();
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .pictures-full`)
+				?.textContent,
+		).toBe("6 of 6 images");
+	});
+
+	test("a Delete or Remove pressed from the keyboard keeps the focus on its armed control, and on the next one when its image goes", () => {
+		const c = marked("c_pictures5");
+		const a = c.marks[0] as Mark;
+		c.marks = [
+			{
+				...a,
+				findings: [
+					{
+						id: "f_1",
+						text: "Padding",
+						app: { id: "x", name: "Claude", host: "claude.ai" },
+						at: "2026-11-10T10:00:00Z",
+					},
+				],
+			},
+		];
+		const urls = new Map([
+			[a.crop, "blob:crop"],
+			["images/i_a.webp", "blob:a"],
+			["images/i_b.webp", "blob:b"],
+			["images/i_c.webp", "blob:c"],
+		]);
+		const draw = (armed: (s: PanelState) => void, of: Case = c) =>
+			render(
+				caseState(of, (s) => {
+					s.images = { caseId: of.id, version: of.updatedAt, urls };
+					armed(s);
+				}),
+				noActions,
+			);
+		const at = (selector: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] ${selector}`,
+			) as unknown as HTMLElement;
+		const focused = () =>
+			window.document.activeElement as unknown as HTMLElement;
+		draw(() => undefined);
+		at(".mark-toggle").click();
+		at('[data-picture="i_b"] [data-action=remove-image]').focus();
+		draw((s) => {
+			s.imageDeleteArmed = { markId: a.id, mark: "", imageId: "i_b", at: 1 };
+		});
+		expect(focused().getAttribute("aria-label")).toBe(
+			`Really remove image 2 from mark ${a.number}?`,
+		);
+		// Removed: the next picture's Remove has the focus.
+		const without = {
+			...c,
+			updatedAt: "2026-11-22T12:00:00Z",
+			marks: c.marks.map((x) => ({
+				...x,
+				images: (x.images ?? []).filter((i) => i.id !== "i_b"),
+			})),
+		};
+		draw(() => undefined, without);
+		expect(
+			focused().closest("[data-picture]")?.getAttribute("data-picture"),
+		).toBe("i_c");
+		at('[data-mark-action="delete"]').focus();
+		draw((s) => {
+			s.markDeleteArmed = { markId: a.id, mark: "", at: 1 };
+		}, without);
+		expect(focused().textContent).toBe("Really delete?");
+		at('[data-finding="f_1"] [data-finding-action="delete"]').focus();
+		draw((s) => {
+			s.findingDeleteArmed = {
+				markId: a.id,
+				mark: "",
+				findingId: "f_1",
+				at: 1,
+			};
+		}, without);
+		expect(focused().getAttribute("data-finding-action")).toBe("delete");
+		expect(focused().hasAttribute("data-armed")).toBe(true);
+	});
+
+	test("a mark deleted from the keyboard leaves the focus on the next mark's head, else the one before", () => {
+		const c = marked("c_pictures7");
+		const a = c.marks[0] as Mark;
+		const second = {
+			...a,
+			id: "m2",
+			number: 2,
+			crop: "crops/m2.webp",
+			images: [],
+		};
+		const both = { ...c, marks: [a, second] };
+		render(caseState(both), noActions);
+		const toggle = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] .mark-toggle`,
+			) as unknown as HTMLElement;
+		const del = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] [data-mark-action="delete"]`,
+			) as unknown as HTMLElement;
+		toggle(a.id).click();
+		del(a.id).focus();
+		render(
+			caseState({
+				...both,
+				marks: [second],
+				updatedAt: "2026-11-22T13:00:00Z",
+			}),
+			noActions,
+		);
+		expect(window.document.activeElement).toBe(toggle("m2") as never);
+		// The last one: the mark before it.
+		const back = { ...both, updatedAt: "2026-11-22T14:00:00Z" };
+		render(caseState(back), noActions);
+		toggle("m2").click();
+		del("m2").focus();
+		render(
+			caseState({ ...back, marks: [a], updatedAt: "2026-11-22T15:00:00Z" }),
+			noActions,
+		);
+		expect(window.document.activeElement).toBe(toggle(a.id) as never);
+	});
+
+	test("an image the team does not have says so on its tile, in words", () => {
+		const c = marked("c_pictures6");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([["images/i_b.webp", "blob:b"]]),
+				};
+				s.cloud.status = {
+					state: "problem",
+					problems: [],
+					undecided: 0,
+					notSent: { [c.id]: { i_b: "The team's storage is full" } },
+				};
+			}),
+			noActions,
+		);
+		const note = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-picture="${id}"] .tile-note`,
+			)?.textContent;
+		expect(note("i_b")).toBe("Not sent: The team's storage is full. Try again");
+		expect(note("i_a")).toBeUndefined();
+	});
+
+	test("an image held back past six is a tile of its own: not sent, why, and its Remove", () => {
+		const c = marked("c_pictures8");
+		const a = c.marks[0] as Mark;
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: "2026-11-22T10:00:00Z" },
+		});
+		c.marks = [
+			{
+				...a,
+				images: ["t1", "t2", "t3", "t4", "t5", "t6"].map(image),
+				heldImages: [image("i_mine")],
+			},
+		];
+		render(caseState(c), noActions);
+		const tile = window.document.querySelector(
+			`[data-mark="${a.id}"] [data-picture="i_mine"]`,
+		);
+		expect(tile?.querySelector("figcaption")?.textContent).toBe("Image 7");
+		expect(tile?.querySelector(".tile-note")?.textContent).toBe(
+			"Not sent: the mark already holds six images. It goes when a place is free.",
+		);
+		expect(
+			tile
+				?.querySelector("[data-action=remove-image]")
+				?.getAttribute("aria-label"),
+		).toBe(`Remove image 7 from mark ${a.number}`);
+		expect(
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-action=add-image]`,
+			),
+		).toBeNull();
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .pictures-full`)
+				?.textContent,
+		).toBe("6 of 6 images; 1 more waits for a place");
+	});
+
+	test("with the page filter on, a mark of that page keeps its pictures", () => {
+		const c = marked("c_pictures4");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([[a.crop, "blob:crop"]]),
+				};
+				s.markPage = {
+					caseId: c.id,
+					choice: { page: new URL(c.page.url).pathname },
+					upTo: 3,
+				};
+			}),
+			noActions,
+		);
+		const row = window.document.querySelector(`[data-mark="${a.id}"]`);
+		expect(row).not.toBeNull();
+		expect(row?.querySelectorAll(".pictures figure").length).toBe(4);
+		expect(row?.querySelector(".images-count")?.textContent).toBe("+3 images");
+	});
+
+	test("a Remove clicked once says so on its tile, in words", () => {
+		const c = marked("c_pictures3");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([["images/i_b.webp", "blob:b"]]),
+				};
+				s.imageDeleteArmed = {
+					markId: a.id,
+					mark: "",
+					imageId: "i_b",
+					at: 0,
+				};
+			}),
+			noActions,
+		);
+		const remove = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-picture="${id}"] [data-action=remove-image]`,
+			);
+		expect(remove("i_b")?.textContent).toBe("Really remove?");
+		expect(remove("i_b")?.getAttribute("aria-label")).toBe(
+			`Really remove image 2 from mark ${a.number}?`,
+		);
+		expect(remove("i_a")?.getAttribute("data-armed")).toBeNull();
 	});
 });
 

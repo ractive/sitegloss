@@ -77,6 +77,7 @@ import {
 	type WireResolution,
 	type WireShot,
 } from "../src/lib/cloud/api.ts";
+import type { NewMarkImage } from "../src/lib/cloud/wire.ts";
 
 export const TEAM = "team_1";
 
@@ -417,6 +418,57 @@ export class FakeServer {
 		row.value = { ...row.value, updatedAt: at, rev };
 	}
 
+	/**
+	 * A mark's images after `add` (the server's rules, DEC-032): an id twice
+	 * in one add is invalid; an id the mark has stays as stored; one another
+	 * mark of the case has is a conflict; a picture not uploaded is
+	 * blob_missing; more than 6 is the limit. In an imported case an image
+	 * with its own time keeps it, marked imported and naming nobody.
+	 */
+	#withImages(
+		caseId: string,
+		markId: string,
+		images: NonNullable<WireMark["images"]>,
+		add: readonly NewMarkImage[],
+		user: UserRef,
+		via: AppRef | undefined,
+		at: string,
+		imports: boolean,
+	): NonNullable<WireMark["images"]> {
+		const ids = add.map((x) => x.id);
+		if (new Set(ids).size !== ids.length)
+			throw new Refusal(
+				"invalid",
+				"The same image id is added twice in one operation.",
+			);
+		const others = new Set(
+			[...this.marks.values()]
+				.filter((m) => m.value.caseId === caseId && m.value.id !== markId)
+				.flatMap((m) => (m.value.images ?? []).map((x) => x.id)),
+		);
+		const next = [...images];
+		for (const x of add) {
+			if (next.some((k) => k.id === x.id)) continue;
+			if (others.has(x.id))
+				throw new Refusal(
+					"conflict",
+					"The image's id is taken by another mark of this case.",
+				);
+			this.#need(x.image, "image");
+			next.push({
+				id: x.id,
+				image: x.image,
+				added:
+					imports && x.at !== undefined
+						? { at: x.at, imported: true }
+						: stampOf(at, user, via),
+			});
+		}
+		if (next.length > 6)
+			throw new Refusal("limit", "A mark holds at most 6 images.");
+		return next;
+	}
+
 	#need(image: ImageRef, what: string): void {
 		if (!this.blobs.has(image.sha256))
 			throw new Refusal(
@@ -683,6 +735,16 @@ export class FakeServer {
 					op.mark.resolution ?? null,
 					imports,
 				);
+				const images = this.#withImages(
+					op.caseId,
+					op.mark.id,
+					[],
+					op.mark.images ?? [],
+					user,
+					op.via,
+					at,
+					imports,
+				);
 				this.marks.set(op.mark.id, {
 					deleted: false,
 					rev,
@@ -718,6 +780,7 @@ export class FakeServer {
 						findings: (op.mark.findings ?? []).map((f) =>
 							this.#stampFinding(user, undefined, f, imports),
 						),
+						images,
 						status: statusOf(resolution),
 						createdBy: user,
 						...(op.via === undefined
@@ -792,6 +855,27 @@ export class FakeServer {
 					if (kept.length > 20)
 						throw new Refusal("limit", "A mark holds at most 20 findings.");
 					v = { ...v, findings: kept };
+				}
+				if (op.images !== undefined) {
+					const gone = new Set(op.images.remove ?? []);
+					if ((op.images.add ?? []).some((x) => gone.has(x.id)))
+						throw new Refusal(
+							"invalid",
+							"An image is added or removed, never both in one operation: an id stays with its picture.",
+						);
+					v = {
+						...v,
+						images: this.#withImages(
+							v.caseId,
+							v.id,
+							(v.images ?? []).filter((x) => !gone.has(x.id)),
+							op.images.add ?? [],
+							user,
+							op.via,
+							at,
+							imports,
+						),
+					};
 				}
 				row.value = { ...v, updatedAt: at, rev };
 				row.rev = rev;

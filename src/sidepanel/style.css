@@ -760,6 +760,116 @@ body:has(#settings:not([hidden])) .ai-allow {
 	white-space: nowrap;
 }
 
+/* --- adding images to a mark: a modal dialog over the panel (add-images.ts, DEC-058) */
+
+.add-images {
+	width: auto;
+	max-width: none;
+	max-height: calc(100% - 2 * var(--s3));
+	margin: var(--s3);
+	padding: var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
+	color: inherit;
+	overflow: auto;
+}
+
+.add-images[open] {
+	display: grid;
+	gap: var(--s3);
+}
+
+.add-images::backdrop {
+	background: var(--scrim, rgb(27 33 48 / 0.4));
+}
+
+.add-images h2 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.add-images p {
+	margin: 0;
+}
+
+/* The screenshot the mark has already, small, beside what it is. */
+.add-images-head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--s3);
+}
+
+.add-images-head img {
+	flex: none;
+	max-width: 96px;
+	max-height: 64px;
+	object-fit: contain;
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+}
+
+/* Where a picture is pasted or dropped; its button is the way without either. */
+.add-images-drop {
+	display: grid;
+	gap: var(--s2);
+	justify-items: start;
+	padding: var(--s3);
+	border: 1px dashed var(--edge);
+	border-radius: var(--r-control);
+	background: var(--wash);
+}
+
+.add-images-drop .hint {
+	color: var(--ink-2);
+	font-size: 12px;
+}
+
+.add-images-list {
+	display: grid;
+	gap: var(--s2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.add-images-list:empty,
+.add-images-status:empty {
+	display: none;
+}
+
+.add-images-list li {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+}
+
+.add-images-list img {
+	flex: none;
+	max-width: 72px;
+	max-height: 48px;
+	object-fit: contain;
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+}
+
+.add-images-list span {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+}
+
+.add-images-status {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.add-images-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--s2);
+}
+
 /* --- an AI app's questions: a modal dialog over the panel (ai.ts, DEC-037) ---- */
 
 /* In the top layer, at the panel's top wherever it is scrolled to. */
@@ -2021,6 +2131,174 @@ button.crop[aria-pressed="true"] img {
 
 button.crop:hover img {
 	border-color: var(--ink);
+}
+
+/*
+ * A mark's pictures as a grid of equal tiles (DEC-058): its own screenshot
+ * first, then the images a person added, then a tile to add another. Each
+ * picture is contained in its tile, never cropped; one shown large takes the
+ * grid's whole width at its own shape, its caption under it.
+ */
+.pictures {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--s3) var(--s2);
+	align-items: start;
+}
+
+@media (max-width: 320px) {
+	.pictures {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.picture {
+	position: relative;
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	margin: 0;
+}
+
+.picture:has(> .tile[aria-pressed="true"]) {
+	grid-column: 1 / -1;
+}
+
+.picture figcaption {
+	overflow: hidden;
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 16px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Every tile the same box, the picture contained in it on the panel's paper. */
+.tile {
+	display: grid;
+	place-items: center;
+	width: 100%;
+	min-height: 0;
+	aspect-ratio: 4 / 3;
+	padding: 2px;
+	overflow: hidden;
+	border: 1px solid var(--rule);
+	border-radius: var(--r-control);
+	background: var(--paper);
+}
+
+button.tile {
+	cursor: zoom-in;
+}
+
+button.tile:hover:not(:disabled) {
+	border-color: var(--edge);
+	background: var(--paper);
+}
+
+.mark .tile img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	border: 0;
+	border-radius: 0;
+}
+
+/* Shown large: the picture at its own shape, as wide as the grid. */
+button.tile[aria-pressed="true"] {
+	aspect-ratio: auto;
+	cursor: zoom-out;
+}
+
+.mark button.tile[aria-pressed="true"] img {
+	width: auto;
+	height: auto;
+	max-width: 100%;
+}
+
+/* A picture whose file is not here: said, in the place it would take. */
+.tile-missing {
+	padding: var(--s1);
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 16px;
+	text-align: center;
+}
+
+/* Remove, at the tile's corner; clicked once it says so in words. */
+.tile-remove {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	min-height: 0;
+	padding: 0 6px;
+	border-color: var(--edge);
+	border-radius: var(--r-pill);
+	background: var(--sheet);
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.tile-remove:hover:not(:disabled) {
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.tile-remove[data-armed] {
+	left: 4px;
+	border-color: var(--danger);
+	border-radius: var(--r-control);
+	background: var(--danger);
+	color: var(--on-danger);
+	font-size: 11px;
+	line-height: 14px;
+}
+
+.tile-remove[data-armed]:hover:not(:disabled) {
+	background: var(--danger);
+	color: var(--on-danger);
+}
+
+/* The way to add one: a dashed tile of the same size; its words wrap inside it. */
+button.tile-add {
+	display: block;
+	align-content: center;
+	padding: 2px var(--s1);
+	border: 1px dashed var(--edge);
+	background: none;
+	color: var(--ink);
+	font-size: 11px;
+	line-height: 14px;
+	text-align: center;
+	cursor: pointer;
+}
+
+button.tile-add:hover:not(:disabled) {
+	border-color: var(--ink);
+	background: var(--wash);
+}
+
+.tile-add .plus {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+/* An image added here that the team does not have: said in words under it. */
+.tile-note {
+	margin: 0;
+	color: var(--warn);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.pictures-box {
+	display: grid;
+	gap: var(--s1);
+}
+
+.pictures-full {
+	color: var(--ink-2);
+	font-size: 12px;
 }
 
 /*

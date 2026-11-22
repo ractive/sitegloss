@@ -25,6 +25,7 @@ import {
 	GROUP_OF,
 	isOfferedOn,
 	MAX_COMMENT,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	MAX_TITLE,
 	MAX_VERDICT,
@@ -100,6 +101,10 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	filterPage(caseId: string, choice: PageChoice | undefined): void;
 	saveComment(c: Case, a: Mark, text: string): void;
 	deleteMark(c: Case, a: Mark): void;
+	/** "Add another image…": the dialog for the mark's added images (DEC-058). */
+	addImages(c: Case, a: Mark): void;
+	/** An added image's Remove: the first click asks, the second removes. */
+	deleteImage(c: Case, a: Mark, imageId: string): void;
 	/** An AI app's finding on a mark: the first click asks, the second deletes. */
 	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
@@ -806,21 +811,31 @@ function shownText(
 const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 	m !== undefined && (m.candidates.length > 0 || m.status === "no-element");
 
-/** Crops shown large (`caseId:markId`); the rest are small. */
+/**
+ * Pictures shown large (`caseId:markId` for the crop, `caseId:markId:imageId`
+ * for an added image); the rest are small.
+ */
 const zoomed = new Set<string>();
 
-/** A mark's crop, small at first: a click shows it large, another small again. */
-function cropView(caseId: string, a: Mark, src: string): HTMLElement {
-	const key = `${caseId}:${a.id}`;
+/**
+ * A picture of a mark as a tile, small at first: a click shows it large
+ * across the row (as the crop was shown before the row), another small again.
+ */
+function pictureTile(
+	key: string,
+	src: string,
+	label: string,
+	title: string,
+): HTMLElement {
 	const button: HTMLButtonElement = h(
 		"button",
 		{
 			type: "button",
-			class: "crop",
+			class: "tile",
 			"data-action": "zoom",
 			"aria-pressed": String(zoomed.has(key)),
-			"aria-label": `Mark ${a.number}, shown large`,
-			title: "Show the crop larger, or small again",
+			"aria-label": label,
+			title,
 			onclick: () => {
 				const large = !zoomed.delete(key);
 				if (large) zoomed.add(key);
@@ -830,6 +845,154 @@ function cropView(caseId: string, a: Mark, src: string): HTMLElement {
 		h("img", { src, alt: "" }),
 	);
 	return button;
+}
+
+/** "22 Nov" in the browser's language. */
+const shortDate = (iso: string) => {
+	const date = new Date(iso);
+	return Number.isNaN(date.getTime())
+		? iso
+		: date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+};
+
+/**
+ * A mark's pictures as a grid of equal tiles (DEC-058, the owner's rule): its
+ * own screenshot first, always, so nobody thinks a mark needs one added; then
+ * the images a person added, oldest first, each with a Remove at its corner;
+ * last a tile to add another, gone once the mark holds the most. Numbers
+ * count the added images only. `ready`: the images were read for this
+ * version of the case, so one without a URL is missing, not on its way.
+ */
+function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
+	const added = a.images ?? [];
+	// Added here, and no place for them on the team's mark (DEC-058).
+	const held = a.heldImages ?? [];
+	const missing = (text: string) =>
+		h("div", { class: "tile tile-missing" }, x.ready ? text : "");
+	const shot = x.urls?.get(a.crop);
+	const grid = h(
+		"div",
+		{ class: "pictures" },
+		h(
+			"figure",
+			{ class: "picture", "data-picture": "screenshot" },
+			shot
+				? pictureTile(
+						`${c.id}:${a.id}`,
+						shot,
+						`Screenshot of mark ${a.number}, taken by Sitegloss`,
+						"Taken by Sitegloss when the mark was made. It stays with the mark.",
+					)
+				: missing("The screenshot is missing."),
+			h("figcaption", {}, "Screenshot"),
+		),
+		...[...added, ...held].map((image, i) => {
+			const n = i + 1;
+			const waiting = i >= added.length;
+			// From a file, nobody is named: who added it is only what the file says.
+			const who = image.added.imported
+				? undefined
+				: byline(image.added.user, image.added.app);
+			const whence = image.added.imported
+				? ", from an imported file"
+				: who
+					? `, added by ${who}`
+					: "";
+			const url = x.urls?.get(image.image);
+			const armed = x.imageArmed === image.id;
+			return h(
+				"figure",
+				{ class: "picture", "data-picture": image.id },
+				url
+					? pictureTile(
+							`${c.id}:${a.id}:${image.id}`,
+							url,
+							waiting
+								? `Image ${n} on mark ${a.number}, not sent: the mark already holds ${MAX_MARK_IMAGES} images`
+								: `Image ${n} of ${added.length} on mark ${a.number}${whence}`,
+							image.added.imported
+								? `Added ${shortDate(image.added.at)}, from an imported file. Click to show it larger, or small again`
+								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
+						)
+					: missing("The image is missing."),
+				h(
+					"button",
+					{
+						type: "button",
+						class: "tile-remove",
+						"data-action": "remove-image",
+						"aria-label": armed
+							? `Really remove image ${n} from mark ${a.number}?`
+							: `Remove image ${n} from mark ${a.number}`,
+						title: armed
+							? "Click again to remove it"
+							: "Remove this image from the mark (click twice)",
+						...(armed ? { "data-armed": true } : {}),
+						onclick: () => x.actions.deleteImage(c, a, image.id),
+					},
+					armed ? "Really remove?" : h("span", { "aria-hidden": "true" }, "×"),
+				),
+				h("figcaption", {}, `Image ${n}`),
+				waiting
+					? h(
+							"p",
+							{ class: "tile-note" },
+							"Not sent: the mark already holds six images. It goes when a place is free.",
+						)
+					: x.notSent?.[image.id] === undefined
+						? null
+						: h(
+								"p",
+								{ class: "tile-note" },
+								`Not sent: ${x.notSent[image.id]?.replace(/[.\s]+$/, "")}. `,
+								// Its refusal may have gone (room in storage, a role).
+								h(
+									"button",
+									{
+										type: "button",
+										class: "link",
+										"data-action": "retry-image",
+										onclick: () => x.actions.cloudSyncNow(),
+									},
+									"Try again",
+								),
+							),
+			);
+		}),
+		added.length < MAX_MARK_IMAGES
+			? h(
+					"button",
+					{
+						type: "button",
+						class: "tile tile-add",
+						"data-action": "add-image",
+						title:
+							"Add a picture of what the screenshot does not show, for example a menu that closes",
+						onclick: () => x.actions.addImages(c, a),
+					},
+					h("span", { class: "plus", "aria-hidden": "true" }, "+ "),
+					"Add another image…",
+				)
+			: null,
+	);
+	return h(
+		"div",
+		{
+			class: "pictures-box",
+			role: "group",
+			"aria-label": `Pictures of mark ${a.number}`,
+		},
+		grid,
+		added.length >= MAX_MARK_IMAGES
+			? h(
+					"p",
+					{ class: "meta pictures-full" },
+					held.length > 0
+						? `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images; ${held.length === 1 ? "1 more waits" : `${held.length} more wait`} for a place`
+						: `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images`,
+				)
+			: null,
+	);
 }
 
 function matchView(
@@ -1754,6 +1917,12 @@ const reopenButton = (c: Case, a: Mark, actions: Actions) =>
 		actions.editMark(c, a, "reopen"),
 	);
 
+/** `, and its 2 added images`; nothing for none. */
+const imagesNote = (a: Mark) => {
+	const n = a.images?.length ?? 0;
+	return n === 0 ? "" : ` and its ${n} added image${n === 1 ? "" : "s"}`;
+};
+
 /** The buttons a mark's status calls for, the strong one first (DEC-023). */
 function markActions(
 	c: Case,
@@ -1795,7 +1964,7 @@ function markActions(
 				"data-mark-action": "delete",
 				title: armed
 					? "Click again to delete this mark"
-					: "Delete this mark and its crop (click twice); its number is not given again",
+					: `Delete this mark and its screenshot${imagesNote(a)} (click twice); its number is not given again`,
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
@@ -2518,6 +2687,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 	if (edit === undefined) focusedForm = undefined;
 	const markArmed = state.markDeleteArmed?.markId;
 	const findingArmed = state.findingDeleteArmed;
+	const imageArmed = state.imageDeleteArmed;
+	// Images added here the team does not have, and why (DEC-058).
+	const notSent = state.cloud.status?.notSent?.[c.id];
 	// A mark's pin was clicked on the page (DEC-027): its row opens, once.
 	const picked =
 		state.picked?.caseId === c.id && state.picked.at !== p.pickedAt
@@ -2538,6 +2710,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 		tabOrigin(state.tab?.url),
 		markArmed ?? null,
 		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
+		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
+		notSent ?? null,
 		ok,
 	]);
 	if (marksKey !== p.marksKey) {
@@ -2558,7 +2732,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const elsewhere =
 				loaded !== undefined && !onPageInFront(c, a, loaded.url);
 			return markItem(c, a, {
-				crop: images?.urls.get(a.crop),
+				urls: images?.urls,
+				ready: images?.version === c.updatedAt,
 				match: elsewhere ? undefined : match,
 				tabUrl: state.tab?.url,
 				elsewhere,
@@ -2566,6 +2741,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 				armed: markArmed === a.id,
 				findingArmed:
 					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
+				imageArmed:
+					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
+				notSent,
 				actions,
 				canReach: ok,
 				changed: () => syncToggleAll(),
@@ -2663,9 +2841,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 							)
 						: null,
 		);
+		const refocus = focusInMarks(p.marks);
 		p.marks.replaceWith(marks);
 		p.marks = marks;
 		if (kept !== undefined && !kept.hidden) kept.focus();
+		refocus?.(marks);
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
 			const row = items.find((li) => li.dataset["mark"] === picked.markId);
@@ -2718,8 +2898,98 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	if (body) body.hidden = !open;
 }
 
+/** A value inside a quoted attribute selector. */
+const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
+
+/**
+ * The button in the marks list that has the focus, as something to find
+ * again once the list is drawn anew: a Delete or Remove clicked once redraws
+ * the list, and the second press from the keyboard must find the armed
+ * control where the first left it (mark Delete, a finding's Delete, an added
+ * image's Remove). A control that went with its finding or image leaves the
+ * focus on the next picture's, the way to add one, or the mark's head.
+ */
+function focusInMarks(
+	list: HTMLElement,
+): ((next: HTMLElement) => void) | undefined {
+	const at = document.activeElement as HTMLElement | null;
+	if (at === null || at.tagName !== "BUTTON" || !list.contains(at))
+		return undefined;
+	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
+	const which = ["data-mark-action", "data-finding-action", "data-action"].find(
+		(name) => at.hasAttribute(name),
+	);
+	if (markId === undefined || which === undefined) return undefined;
+	const value = at.getAttribute(which) as string;
+	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
+	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
+	// The marks around it, for when its row goes (a mark deleted).
+	const marks = [...list.querySelectorAll<HTMLElement>("li.mark")].map(
+		(li) => li.dataset["mark"],
+	);
+	const pictures = [
+		...list.querySelectorAll(
+			`li.mark[data-mark="${quoted(markId)}"] [data-picture]`,
+		),
+	].map((e) => e.getAttribute("data-picture"));
+	return (next) => {
+		const row = next.querySelector<HTMLElement>(
+			`li.mark[data-mark="${quoted(markId)}"]`,
+		);
+		if (row === null) {
+			// Deleted: the next mark's head, else the one before, else the
+			// list's heading.
+			const at = marks.indexOf(markId);
+			const near = [...marks.slice(at + 1), ...marks.slice(0, at).reverse()]
+				.map((id) =>
+					next.querySelector<HTMLElement>(
+						`li.mark[data-mark="${quoted(id as string)}"] .mark-toggle`,
+					),
+				)
+				.find((e) => e !== null);
+			const heading = next.querySelector<HTMLElement>("#marks-heading");
+			if (near) near.focus();
+			else if (heading) {
+				heading.tabIndex = -1;
+				heading.focus();
+			}
+			return;
+		}
+		const within =
+			picture != null
+				? `[data-picture="${quoted(picture)}"] `
+				: finding != null
+					? `[data-finding="${quoted(finding)}"] `
+					: "";
+		const same = row.querySelector<HTMLElement>(
+			`${within}[${which}="${quoted(value)}"]`,
+		);
+		if (same !== null) return same.focus();
+		// Gone with its picture: the next picture's control, else the way to
+		// add one; gone with its finding: the mark's head.
+		const after =
+			picture == null ? [] : pictures.slice(pictures.indexOf(picture) + 1);
+		const fallback =
+			after
+				.map((id) =>
+					row.querySelector<HTMLElement>(
+						`[data-picture="${quoted(id as string)}"] [data-action="remove-image"]`,
+					),
+				)
+				.find((e) => e !== null) ??
+			(picture == null
+				? null
+				: row.querySelector<HTMLElement>("[data-action=add-image]")) ??
+			row.querySelector<HTMLElement>(".mark-toggle");
+		fallback?.focus();
+	};
+}
+
 interface MarkContext {
-	crop: string | undefined;
+	/** The case's images as object URLs, by path; none: not read yet. */
+	urls: ReadonlyMap<string, string> | undefined;
+	/** `urls` were read for this version of the case. */
+	ready: boolean;
 	match: MarkMatch | undefined;
 	/** The tab in front's address: a mark's link offers its host (DEC-050). */
 	tabUrl: string | undefined;
@@ -2729,6 +2999,10 @@ interface MarkContext {
 	armed: boolean;
 	/** The finding of this mark whose Delete was clicked once. */
 	findingArmed: string | undefined;
+	/** The added image of this mark whose Remove was clicked once. */
+	imageArmed: string | undefined;
+	/** The case's added images the team does not have, and why. */
+	notSent: Readonly<Record<string, string>> | undefined;
 	actions: Actions;
 	/** Sitegloss may run on the tab in front: Show can scroll it. */
 	canReach: boolean;
@@ -2796,7 +3070,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const body = h(
 		"div",
 		{ class: "body", id: bodyId },
-		x.crop ? cropView(c.id, a, x.crop) : null,
+		picturesView(c, a, x),
 		historyList(a),
 		findingsList(c, a, x.findingArmed, actions),
 		markPlace(c, a, x.tabUrl, actions),
@@ -2927,6 +3201,15 @@ function markSubline(
 					{ class: "tag findings-count" },
 					`${findings} AI finding${findings === 1 ? "" : "s"}`,
 				)
+			: null,
+		// Only what was added: the screenshot every mark has is not counted.
+		(a.images?.length ?? 0) + (a.heldImages?.length ?? 0) > 0
+			? ((n: number) =>
+					h(
+						"span",
+						{ class: "tag images-count" },
+						`+${n} image${n === 1 ? "" : "s"}`,
+					))((a.images?.length ?? 0) + (a.heldImages?.length ?? 0))
 			: null,
 		talk > 0
 			? h(

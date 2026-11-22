@@ -72,10 +72,11 @@ An entry here is not a decision to build it. When one is taken up, its design mo
 
 Asked for on 22 November 2026: a menu that closes as soon as a Sitegloss tool is picked
 cannot be marked, so the person wants to paste, choose or drop their own picture onto a
-mark. Designed in full, not started: [Images a person adds to a mark](design/mark-images.md).
-Open with the owner: the word ("Add image…" recommended over "Add screenshot…"), whether a
-share link shows added images (recommended yes), adding from the web app (recommended
-later).
+mark. Being built since 22 November 2026, after the design
+[Images a person adds to a mark](design/mark-images.md) and DEC-058. The owner decided the
+open questions the same day: the word is "image" and the button "Add image…", at most 6 per
+mark with the longest side 2048 px, the side panel first, share links show them, adding
+from the web app comes later.
 
 ### A key that freezes the page into a picture, to mark what closes
 

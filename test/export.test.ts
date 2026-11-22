@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Case, Finding, Mark } from "../src/lib/case.ts";
+import type { Op } from "../src/lib/cloud/api.ts";
+import { emptyBook } from "../src/lib/cloud/book.ts";
+import { deriveOps } from "../src/lib/cloud/wire.ts";
 import {
 	caseFolders,
 	exportAllCases,
@@ -7,6 +10,7 @@ import {
 	exportCase,
 	exportFileName,
 	type FileLimits,
+	MAX_CASE_ENTRIES,
 	readExport,
 	readExports,
 	storeImport,
@@ -422,6 +426,58 @@ describe("findings in an export", () => {
 	});
 });
 
+describe("images added to a mark in an export (DEC-058)", () => {
+	test("go out under images/ and come back; a file without one is refused", async () => {
+		const { store, c } = await stored();
+		const added = { id: "i_a", image: "images/i_a.webp", added: { at: "t" } };
+		const withImage: Case = {
+			...c,
+			marks: [
+				mark(1, { images: [added] }),
+				mark(2, { author: "ai", element: null }),
+			],
+		};
+		await putCase(store, withImage);
+		await store.putImage(c.id, added.image, {
+			blob: webp("added"),
+			width: 10,
+			height: 10,
+		});
+		const zip = await exportCase(store, withImage);
+		const target = new MemoryStore();
+		const imported = await importCase(target, zip);
+		// From a file: its time, marked imported, naming nobody (DEC-058).
+		expect(imported.marks[0]?.images).toEqual([
+			{ ...added, added: { at: "t", imported: true } },
+		]);
+		const back = await target.getImage(c.id, added.image);
+		expect(new TextDecoder().decode(await back?.blob.arrayBuffer())).toEndWith(
+			"added",
+		);
+		// In the panel each one is re-encoded as the dialog does it; a crop
+		// or a screenshot never is.
+		const reencoded: string[] = [];
+		const panel = new MemoryStore();
+		await storeImport(panel, await readExport(zip), {
+			reencode: async (blob) => {
+				reencoded.push(await blob.text());
+				return { blob: webp("again"), width: 10, height: 10 };
+			},
+		});
+		expect(reencoded.map((t) => t.slice(30))).toEqual(["added"]);
+		const again = await panel.getImage(c.id, added.image);
+		expect((await again?.blob.text())?.slice(30)).toBe("again");
+		const files = await readZip(zip);
+		files.delete(added.image);
+		await expect(
+			importCase(
+				new MemoryStore(),
+				await writeZip([...files].map(([name, data]) => ({ name, data }))),
+			),
+		).rejects.toThrow("The export lacks images/i_a.webp.");
+	});
+});
+
 describe("import", () => {
 	test("round trip into another store, replacing an older copy", async () => {
 		const { store, c } = await stored();
@@ -625,6 +681,81 @@ describe("import", () => {
 			[c.id, copy.id].sort(),
 		);
 		expect(await store.getImage(copy.id, "crops/m2.webp")).toBeDefined();
+	});
+});
+
+describe("an image held back on this device (DEC-058)", () => {
+	test("is never in the file: the file holds the mark's six, and a copy sends at most six", async () => {
+		const { store, c } = await stored();
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: "t" },
+		});
+		const six = ["t1", "t2", "t3", "t4", "t5", "t6"].map(image);
+		const marked: Case = {
+			...c,
+			marks: [
+				mark(1, { images: six, heldImages: [image("i_held")] }),
+				mark(2, { author: "ai", element: null }),
+			],
+		};
+		await putCase(store, marked);
+		for (const x of [...six, image("i_held")])
+			await store.putImage(c.id, x.image, {
+				blob: webp(x.id),
+				width: 10,
+				height: 10,
+			});
+		const files = await readZip(await exportCase(store, marked));
+		const json = JSON.parse(new TextDecoder().decode(files.get("case.json")));
+		expect(json.marks[0].images).toHaveLength(6);
+		expect(json.marks[0]).not.toHaveProperty("heldImages");
+		expect(files.has("images/i_held.webp")).toBe(false);
+		const copy = await storeImport(
+			new MemoryStore(),
+			await readExport(await exportCase(store, marked)),
+			{ copy: true },
+		);
+		expect(copy.marks[0]?.images).toHaveLength(6);
+		expect(copy.marks[0]?.heldImages).toBeUndefined();
+		const book = emptyBook(copy.id, "synced", "team_1");
+		const create = deriveOps(
+			copy,
+			book,
+			() => ({
+				sha256: "a".repeat(64),
+				width: 1,
+				height: 1,
+				bytes: 1,
+			}),
+			(p) => `${p}_1`,
+		).ops.find(
+			(op) => op.type === "mark.create" && op.mark.number === 1,
+		) as Extract<Op, { type: "mark.create" }>;
+		expect(create.mark.images).toHaveLength(6);
+	});
+});
+
+describe("how many entries one case's file may have (DEC-058)", () => {
+	test("what the format allows is read; one more is refused", async () => {
+		const { store, c } = await stored();
+		const files = [...(await readZip(await exportCase(store, c)))].map(
+			([name, data]) => ({ name, data }),
+		);
+		const filler = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({
+				name: `extra/${i}.txt`,
+				data: new Uint8Array(0),
+			}));
+		const room = MAX_CASE_ENTRIES - files.length;
+		expect(MAX_CASE_ENTRIES).toBeGreaterThan(2500);
+		await expect(
+			readExport(await writeZip([...files, ...filler(room)])),
+		).resolves.toBeDefined();
+		await expect(
+			readExport(await writeZip([...files, ...filler(room + 1)])),
+		).rejects.toThrow(`more than ${MAX_CASE_ENTRIES} entries`);
 	});
 });
 

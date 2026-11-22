@@ -1,7 +1,7 @@
 /**
  * The case format `sitegloss/2` (see kb/design/overview.md): the same JSON in
  * IndexedDB and in an export. Images are referenced by paths relative to the
- * case (`shots/s1.webp`, `crops/m1.webp`).
+ * case (`shots/s1.webp`, `crops/m1.webp`, `images/i_….webp`).
  */
 
 import { storedQuery, withQuery } from "./query.ts";
@@ -52,6 +52,13 @@ export const MAX_FINDINGS_TEXT = 200_000;
 
 /** The most findings a mark may have. */
 export const MAX_FINDINGS = 20;
+
+/**
+ * The most images a mark holds (DEC-058): here, in a file and at the team's
+ * server alike. What was added here and does not fit beside the team's is
+ * held back apart (`Mark.heldImages`), never in `images`.
+ */
+export const MAX_MARK_IMAGES = 6;
 
 /** The most points a freehand mark may have. */
 export const MAX_PEN_POINTS = 5000;
@@ -379,6 +386,19 @@ export interface Mark {
 	reopens?: Reopen[];
 	/** What AI apps found about the mark, oldest first; none: no findings. */
 	findings?: Finding[];
+	/**
+	 * Pictures a person added to the mark (pasted, chosen or dropped), oldest
+	 * first, at most `MAX_MARK_IMAGES`; none: no images (DEC-058).
+	 */
+	images?: MarkImage[];
+	/**
+	 * Images added on this device that did not fit once the team's came back
+	 * (the mark holds six there), oldest first (DEC-058): this browser's
+	 * own, never in a file, the Markdown, an AI app's view or the wire. Not
+	 * sent, and said so; the oldest moves into `images` as soon as a place
+	 * frees up, and is then sent as any added image. Their files are kept.
+	 */
+	heldImages?: MarkImage[];
 	/** Who made it, in a case synced with a team (DEC-039). */
 	createdBy?: UserRef;
 	/**
@@ -405,6 +425,28 @@ export interface Mark {
 	 */
 	ends?: MarkEnds;
 }
+
+/**
+ * A picture a person added to a mark (DEC-058), for what Sitegloss cannot
+ * capture (a menu that closes, another state of the page). It is only added
+ * or removed, never changed, so its id is the same here, on the wire and in a
+ * file; the path follows the id, never the mark's number, and a mark that
+ * takes another number moves no image.
+ */
+export interface MarkImage {
+	/** `i_…`, of the adder's making. */
+	id: string;
+	/** `images/<id>.webp` */
+	image: string;
+	/** When, and in a case synced with a team by whom (the server's record). */
+	added: ImageAdded;
+}
+
+/**
+ * When an image was added, and by whom: a stamp; `imported`: it came in from
+ * a file, which keeps its time and names nobody (the server's rule too).
+ */
+export type ImageAdded = Stamp & { imported?: true };
 
 /** The elements at a mark's two ends, each `null` where there was none. */
 export interface MarkEnds {
@@ -765,19 +807,29 @@ export function newId(prefix: string): string {
 
 export const shotImage = (shotId: string) => `shots/${shotId}.webp`;
 export const cropImage = (markId: string) => `crops/${markId}.webp`;
+/** An image a person added to a mark, by the image's own id (DEC-058). */
+export const addedImage = (imageId: string) => `images/${imageId}.webp`;
 
 /** A mark's id in its case: `m` and its number (`m1`, `m2`…; DEC-051). */
 export const markIdOf = (number: number) => `m${number}`;
 /** A screenshot taken for a save that is not committed yet (save.ts). */
 export const pendingImage = (shotId: string) => `pending/${shotId}.webp`;
 
-/** The paths of all images a case references (its screenshots and crops). */
+/**
+ * The paths of all images a case references: its screenshots, its crops and
+ * the images added to its marks.
+ */
 export function caseImages(c: Case): Set<string> {
 	return new Set([
 		...c.shots.map((s) => s.image),
 		...c.marks.map((a) => a.crop),
+		...c.marks.flatMap((a) => (a.images ?? []).map((x) => x.image)),
 	]);
 }
+
+/** The files of the images held back on marks here (DEC-058): never in a file. */
+export const heldImagesOf = (c: Case): string[] =>
+	c.marks.flatMap((a) => (a.heldImages ?? []).map((x) => x.image));
 
 /**
  * The screenshot's real pixels per CSS pixel. `devicePixelRatio` can differ
@@ -1487,6 +1539,7 @@ export function validateCase(value: unknown): Case {
 	});
 	const numbers = new Set<number>();
 	const ids = new Set<string>();
+	const imageIds = new Set<string>();
 	const marks = arr(o["marks"], "case.marks", MAX_MARKS).map((v, i): Mark => {
 		const p = `case.marks[${i}]`;
 		const a = obj(v, p);
@@ -1541,6 +1594,17 @@ export function validateCase(value: unknown): Case {
 				: { resolution: resolution(a["resolution"], `${p}.resolution`) }),
 			...reopensOf(a["reopens"], `${p}.reopens`),
 			...findingsOf(a["findings"], `${p}.findings`),
+			...imagesOf(a["images"], `${p}.images`, imageIds),
+			// This browser's images held back (DEC-058); a file never has them
+			// (the import leaves them out), the store does.
+			...((): { heldImages?: MarkImage[] } => {
+				const held = imagesOf(
+					a["heldImages"],
+					`${p}.heldImages`,
+					imageIds,
+				).images;
+				return held === undefined ? {} : { heldImages: held };
+			})(),
 			...createdByOf(a["createdBy"], `${p}.createdBy`),
 			...(a["createdVia"] === undefined
 				? {}
@@ -1861,6 +1925,39 @@ function findingsOf(value: unknown, path: string): { findings?: Finding[] } {
 	return findings.length > 0 ? { findings } : {};
 }
 
+/**
+ * A mark's added images (DEC-058); none, or an empty list: no `images` at
+ * all. An id is unique in the whole case (`taken`), and the path is the one
+ * its id gives: nothing else of the zip is ever read for one.
+ */
+function imagesOf(
+	value: unknown,
+	path: string,
+	taken: Set<string>,
+): { images?: MarkImage[] } {
+	if (value === undefined) return {};
+	const images = arr(value, path, MAX_MARK_IMAGES).map((v, i): MarkImage => {
+		const p = `${path}[${i}]`;
+		const x = obj(v, p);
+		const imageId = id(x["id"], `${p}.id`);
+		if (taken.has(imageId)) fail(`${p}.id`, "is used twice");
+		taken.add(imageId);
+		const image = str(x["image"], `${p}.image`);
+		if (image !== addedImage(imageId))
+			fail(`${p}.image`, `must be ${addedImage(imageId)}`);
+		const added = obj(x["added"], `${p}.added`);
+		return {
+			id: imageId,
+			image,
+			added: {
+				...stampOf(added, `${p}.added`),
+				...importedOf(added["imported"], `${p}.added.imported`),
+			},
+		};
+	});
+	return images.length > 0 ? { images } : {};
+}
+
 function highest(value: unknown, marks: readonly Mark[]): number {
 	const n = num(value, "case.lastNumber");
 	if (!Number.isInteger(n) || n > MAX_NUMBER || marks.some((a) => a.number > n))
@@ -2178,8 +2275,8 @@ export function withLink(c: Case, link: string | undefined, now: string): Case {
 }
 
 /**
- * The case without the mark, and the images that go with it: its crop, and its
- * screenshot when no other mark is on it.
+ * The case without the mark, and the images that go with it: its crop, the
+ * images added to it, and its screenshot when no other mark is on it.
  */
 export function withoutMark(
 	c: Case,
@@ -2215,9 +2312,124 @@ export function withoutMark(
 		}),
 		images: [
 			gone.crop,
+			...(gone.images ?? []).map((x) => x.image),
+			...(gone.heldImages ?? []).map((x) => x.image),
 			...(shotUsed || shot === undefined ? [] : [shot.image]),
 		],
 	};
+}
+
+// --- images a person added to a mark (DEC-058) ---------------------------------
+
+const withMarkImages = (a: Mark, images: MarkImage[]): Mark => {
+	const { images: _, ...rest } = a;
+	return images.length > 0 ? { ...rest, images } : rest;
+};
+
+/**
+ * The mark with `images` as its added images and `held` held back
+ * (DEC-058): what does not fit in six is held, and the oldest held image
+ * takes a place that is free. `images` in order, the server's first.
+ */
+export function withHeldImages(
+	a: Mark,
+	images: readonly MarkImage[],
+	held: readonly MarkImage[],
+): Mark {
+	const all = [...images, ...held];
+	const { heldImages: _h, ...rest } = withMarkImages(
+		a,
+		all.slice(0, MAX_MARK_IMAGES),
+	);
+	const back = all.slice(MAX_MARK_IMAGES);
+	return back.length > 0 ? { ...rest, heldImages: back } : rest;
+}
+
+/**
+ * The case with images added to the mark, after its others, each by its id
+ * (`newId("i")`), its file at `addedImage(id)`, added `now`. Refused past
+ * `MAX_MARK_IMAGES` and for an id the case has already.
+ */
+export function withImages(
+	c: Case,
+	markId: string,
+	imageIds: readonly string[],
+	now: string,
+): Case {
+	const taken = new Set(
+		c.marks.flatMap((a) =>
+			[...(a.images ?? []), ...(a.heldImages ?? [])].map((x) => x.id),
+		),
+	);
+	for (const imageId of imageIds) {
+		if (!isSafeId(imageId) || taken.has(imageId))
+			throw new CaseError(`The image id ${imageId} cannot be used.`);
+		taken.add(imageId);
+	}
+	return changed(
+		c,
+		markId,
+		(a) => {
+			const images = a.images ?? [];
+			const free = MAX_MARK_IMAGES - images.length;
+			if (imageIds.length > free)
+				throw new CaseError(
+					free > 0
+						? `Mark ${a.number} holds at most ${MAX_MARK_IMAGES} images; ${free} more ${free === 1 ? "fits" : "fit"}.`
+						: `Mark ${a.number} holds ${MAX_MARK_IMAGES} images, the most a mark may have. Remove one first.`,
+				);
+			return withMarkImages(a, [
+				...images,
+				...imageIds.map((imageId) => ({
+					id: imageId,
+					image: addedImage(imageId),
+					added: { at: now },
+				})),
+			]);
+		},
+		now,
+	);
+}
+
+/**
+ * The case without one of the images added to the mark, and the file that
+ * goes with it. Only an added image's id is taken: the mark's own screenshot
+ * (its crop) is never removed this way.
+ */
+export function withoutImage(
+	c: Case,
+	markId: string,
+	imageId: string,
+	now: string,
+): { value: Case; images: string[] } {
+	const mark = c.marks.find((a) => a.id === markId);
+	// The mark's own screenshot is no added image: it goes only with the mark.
+	if (
+		mark !== undefined &&
+		[mark.id, mark.crop, cropImage(mark.id)].includes(imageId)
+	)
+		throw new CaseError(
+			"The mark's screenshot stays with the mark; only an added image can be removed.",
+		);
+	const gone = [...(mark?.images ?? []), ...(mark?.heldImages ?? [])].find(
+		(x) => x.id === imageId,
+	);
+	const value = changed(
+		c,
+		markId,
+		(a) => {
+			if (gone === undefined)
+				throw new CaseError("The image is no longer on the mark.");
+			// A place freed here: the oldest held image takes it (DEC-058).
+			return withHeldImages(
+				a,
+				(a.images ?? []).filter((x) => x.id !== imageId),
+				(a.heldImages ?? []).filter((x) => x.id !== imageId),
+			);
+		},
+		now,
+	);
+	return { value, images: gone === undefined ? [] : [gone.image] };
 }
 
 // --- findings of AI apps on a mark (DEC-019) ---------------------------------
@@ -2346,8 +2558,11 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
- * What can change of a mark (its comment, author, status, reopens and
- * findings), as a short text: equal while the mark is unchanged (DEC-046).
+ * What can change of a mark (its comment, author, status, reopens, findings
+ * and added images), as a short text: equal while the mark is unchanged
+ * (DEC-046). An image added by hand ends an AI app's note, so it is never
+ * sent as the app's doing; the images' ids count only where there are any,
+ * so a mark without images keeps the text it had before them (DEC-058).
  */
 export function markSignature(a: Mark): string {
 	const text = canonicalJson([
@@ -2356,6 +2571,7 @@ export function markSignature(a: Mark): string {
 		a.resolution ?? null,
 		a.reopens ?? [],
 		a.findings ?? [],
+		...(a.images ? [a.images.map((x) => x.id)] : []),
 	]);
 	// FNV-1a, twice over, as 16 hex digits.
 	let h1 = 0x811c9dc5;

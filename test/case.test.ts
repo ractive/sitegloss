@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+	addedImage,
 	type Case,
 	CaseError,
 	caseCounts,
+	caseImages,
 	cleanLink,
 	cleanTitle,
 	cutText,
@@ -15,11 +17,13 @@ import {
 	MAX_FINDINGS,
 	MAX_FINDINGS_TEXT,
 	MAX_LINK,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	MAX_REOPENS,
 	MAX_TITLE,
 	MAX_URL,
 	type Mark,
+	markSignature,
 	markStatus,
 	newId,
 	nextNumbers,
@@ -32,8 +36,10 @@ import {
 	withComment,
 	withFinding,
 	withFindingText,
+	withImages,
 	withLink,
 	withoutFinding,
+	withoutImage,
 	withoutMark,
 	withReopen,
 	withResolution,
@@ -1103,6 +1109,142 @@ describe("a case's link (DEC-028)", () => {
 		expect(() =>
 			validateCase({ ...sampleCase(), link: "javascript:alert(1)" }),
 		).toThrow("case.link: must be an http or https address");
+	});
+});
+
+describe("images added to a mark (DEC-058)", () => {
+	const NOW = "2026-11-22T20:00:00.000Z";
+	const twoMarks = () => {
+		const c = withMarks();
+		const [first] = c.marks as [Mark];
+		c.marks = [first, { ...first, id: "m2", number: 2, crop: "crops/m2.webp" }];
+		return c;
+	};
+
+	test("are kept by id through the format's check, their files with the case's", () => {
+		const c = withImages(twoMarks(), "m2", ["i_a", "i_b"], NOW);
+		expect(c.marks[1]?.images).toEqual([
+			{ id: "i_a", image: "images/i_a.webp", added: { at: NOW } },
+			{ id: "i_b", image: "images/i_b.webp", added: { at: NOW } },
+		]);
+		expect(c.updatedAt).toBe(NOW);
+		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
+		expect(caseImages(c).has(addedImage("i_b"))).toBe(true);
+		// An empty list is none, as for findings.
+		const none = twoMarks();
+		(none.marks[0] as unknown as Record<string, unknown>)["images"] = [];
+		expect(validateCase(none).marks[0]).not.toHaveProperty("images");
+	});
+
+	test("are refused when malformed, too many or an id twice in the case", () => {
+		const image = (id: string, extra: object = {}) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: NOW },
+			...extra,
+		});
+		const bad = (first: unknown, second: unknown, what: string) => {
+			const c = twoMarks();
+			const marks = c.marks as unknown as Record<string, unknown>[];
+			(marks[0] as Record<string, unknown>)["images"] = first;
+			if (second !== undefined)
+				(marks[1] as Record<string, unknown>)["images"] = second;
+			expect(() => validateCase(c)).toThrow(what);
+		};
+		bad({}, undefined, "images: must be an array");
+		bad(
+			Array.from({ length: MAX_MARK_IMAGES + 1 }, (_, i) => image(`i_${i}`)),
+			undefined,
+			`more than ${MAX_MARK_IMAGES} items`,
+		);
+		bad([image("../x")], undefined, "not a valid id");
+		bad(
+			[image("i_a", { image: "crops/m1.webp" })],
+			undefined,
+			"must be images/i_a.webp",
+		);
+		bad([image("i_a", { added: {} })], undefined, "added.at");
+		bad(
+			[image("i_a")],
+			[image("i_a")],
+			"case.marks[1].images[0].id: is used twice",
+		);
+	});
+
+	test("adding refuses past the limit and an id the case has; removing takes the file", () => {
+		const c = withImages(twoMarks(), "m1", ["i_a", "i_b", "i_c", "i_d"], NOW);
+		expect(() => withImages(c, "m1", ["i_e", "i_f", "i_g"], NOW)).toThrow(
+			"Mark 1 holds at most 6 images; 2 more fit.",
+		);
+		const full = withImages(c, "m1", ["i_e", "i_f"], NOW);
+		expect(() => withImages(full, "m1", ["i_g"], NOW)).toThrow(
+			"Remove one first",
+		);
+		expect(() => withImages(c, "m2", ["i_a"], NOW)).toThrow("cannot be used");
+		expect(() => withImages(c, "m2", ["i_x", "i_x"], NOW)).toThrow(
+			"cannot be used",
+		);
+		const { value, images } = withoutImage(c, "m1", "i_b", NOW);
+		expect(value.marks[0]?.images?.map((x) => x.id)).toEqual([
+			"i_a",
+			"i_c",
+			"i_d",
+		]);
+		expect(images).toEqual(["images/i_b.webp"]);
+		expect(() => withoutImage(value, "m1", "i_b", NOW)).toThrow(
+			"no longer on the mark",
+		);
+		// The mark's own screenshot is no added image, by any name.
+		for (const notAnImage of ["m1", "crops/m1.webp"])
+			expect(() => withoutImage(c, "m1", notAnImage, NOW)).toThrow(
+				"The mark's screenshot stays with the mark; only an added image can be removed.",
+			);
+		const last = withoutImage(
+			withImages(twoMarks(), "m2", ["i_a"], NOW),
+			"m2",
+			"i_a",
+			NOW,
+		);
+		expect(last.value.marks[1]).not.toHaveProperty("images");
+	});
+
+	test("a place freed here gives the oldest held image a place; a held image is removed as any, and goes with its mark", () => {
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: NOW },
+		});
+		const c = twoMarks();
+		c.marks[1] = {
+			...(c.marks[1] as Mark),
+			images: ["t1", "t2", "t3", "t4", "t5", "t6"].map(image),
+			heldImages: [image("h1"), image("h2")],
+		};
+		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
+		expect(() => withImages(c, "m2", ["h1"], NOW)).toThrow("cannot be used");
+		const freed = withoutImage(c, "m2", "t3", NOW).value.marks[1] as Mark;
+		expect(freed.images?.map((x) => x.id)).toEqual([
+			"t1",
+			"t2",
+			"t4",
+			"t5",
+			"t6",
+			"h1",
+		]);
+		expect(freed.heldImages?.map((x) => x.id)).toEqual(["h2"]);
+		const { images } = withoutImage(c, "m2", "h2", NOW);
+		expect(images).toEqual(["images/h2.webp"]);
+		expect(withoutMark(c, "m2", NOW).images).toContain("images/h1.webp");
+	});
+
+	test("a deleted mark takes its images; an added one ends an AI app's note", () => {
+		const c = withImages(twoMarks(), "m2", ["i_a"], NOW);
+		expect(withoutMark(c, "m2", NOW).images).toEqual([
+			"crops/m2.webp",
+			"images/i_a.webp",
+		]);
+		const before = twoMarks().marks[1] as Mark;
+		expect(markSignature(c.marks[1] as Mark)).not.toBe(markSignature(before));
 	});
 });
 

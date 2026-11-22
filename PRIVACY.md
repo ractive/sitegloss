@@ -30,6 +30,10 @@ Sitegloss stores in your browser, on your computer:
   none that can hold an address, no custom properties), the colour behind it, and the
   position and size of up to six neighbouring elements (their tag only);
 - screenshots of the visible part of the tab, with the marks on them;
+- images you add to a mark yourself (pasted, chosen or dropped). Each is re-encoded
+  before it is kept, which removes its metadata (camera, place, time) and its file name.
+  Sitegloss reads the clipboard only when you paste into its side panel, and asks for no
+  clipboard permission; the page being marked never sees these images;
 - its settings, and where it syncs to;
 - if you sign in to sitegloss.dev: your name and e-mail address there, your teams, the
   tokens that keep you signed in, and what the service last had of each case.
@@ -47,7 +51,7 @@ Only in four cases, all started by you:
    Firefox, a subfolder of Downloads). If a cloud service syncs that
    folder, it uploads the files under its own privacy policy.
 3. **An AI app.** If you connect an AI app (for example Claude), it can read your cases
-   and their screenshots, and the address (cut as above), title, element details and
+   and their screenshots and added images, and the address (cut as above), title, element details and
    screenshots of the tab in front. For a mark, it can also read the HTML and CSS of
    the marked element, or of another element it names on that page, without form field
    values.
@@ -85,7 +89,8 @@ Only in four cases, all started by you:
    agent, the marks with their comments, statuses, notes, element details (an arrow's
    two ends too; for the marked element also how it looked: its computed styles, the
    colour behind it and its neighbours' boxes) and AI findings, the case's thread of
-   comments and whether it is closed, and the screenshots and crops. The members of the
+   comments and whether it is closed, and the screenshots, crops and images added to
+   marks. The members of the
    team you choose can see and change them, in the extension and on the website; the
    service keeps them until they are deleted, with who made or changed what, and under
    [its own privacy policy](https://sitegloss.dev/privacy/).
@@ -140,6 +145,8 @@ creditworthiness.
 - A screenshot shows what was on the screen, form fields included. Password fields are
   always blurred, all form fields only with "Blur form fields in screenshots", and
   fields inside embedded frames (a payment form, for example) never.
+- An image you add to a mark shows whatever you captured, other windows or apps too.
+  Check its preview before you add it.
 - Sitegloss does not record what is typed into form fields and editable regions. An
   editor that draws its text as ordinary page content counts as page text, unless
   Sitegloss recognises it.
@@ -172,7 +179,8 @@ creditworthiness.
 
 ## Deleting
 
-Delete a case in the side panel; its screenshots go with it. Removing the extension
+Delete a case in the side panel; its screenshots and added images go with it, and a
+mark's added images go with the mark. Remove image deletes one image. Removing the extension
 deletes everything it stored in the browser. Files it wrote (exports, synced files)
 stay until you delete them. A case your team has at sitegloss.dev is deleted there too
 when you delete it while signed in; what is at the service otherwise stays until it is

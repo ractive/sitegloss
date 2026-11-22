@@ -8,6 +8,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+	addedImage,
 	type Case,
 	isOwnFinding,
 	type Mark,
@@ -17,7 +18,9 @@ import {
 	withChoice,
 	withComment,
 	withFinding,
+	withImages,
 	withLink,
+	withoutImage,
 	withoutMark,
 	withTitle,
 	withVerified,
@@ -27,6 +30,7 @@ import {
 	type Op,
 	SMALL_PAGE,
 	TOO_LARGE,
+	type WireMark,
 } from "../src/lib/cloud/api.ts";
 import {
 	type Account,
@@ -62,6 +66,8 @@ import {
 	startCase,
 	status,
 	sync,
+	tagOf,
+	webp,
 } from "./cloud-helpers.ts";
 
 const TESS = { id: "u_tess", name: "Tess Tester" };
@@ -3014,5 +3020,197 @@ describe("who is asked what", () => {
 		await tess.engine.retry();
 		expect(((await tess.engine.account()) as Account).teamId).toBe(TEAM);
 		expect(status(tess)?.state).toBe("synced");
+	});
+});
+
+describe("images added to a mark (DEC-058)", () => {
+	/** The panel's Add: the case and the pictures in one change. */
+	const addImages = (d: Device, markId: string, tags: string[]) => {
+		const ids = tags.map((t) => `i_${d.name}_${t}`);
+		return d.store.updateCase("c_flow", (current) => ({
+			value: withImages(
+				current as Case,
+				markId,
+				ids,
+				d.clock.now.toISOString(),
+			),
+			images: new Map(
+				ids.map((id, i) => [
+					addedImage(id),
+					{ blob: webp(`image ${tags[i]}`, 640, 400), width: 640, height: 400 },
+				]),
+			),
+		}));
+	};
+	const shown = async (
+		d: Device,
+		which: "images" | "heldImages" = "images",
+	) => {
+		const c = (await d.store.getCase("c_flow")) as Case;
+		const a = c.marks.find((x) => x.number === 2) as Mark;
+		return Promise.all(
+			(a[which] ?? []).map(async (x) => {
+				const file = await d.store.getImage("c_flow", x.image);
+				return `${x.id} by ${x.added.user?.name ?? "nobody"}: ${file ? await tagOf(file.blob) : "MISSING"}`;
+			}),
+		);
+	};
+
+	test("one device's image reaches the other with its picture and who added it; a remove there takes it here", async () => {
+		await shared();
+		await addImages(tess, "m2", ["menu"]);
+		await sync(tess, dana);
+		expect(
+			server
+				.marksOf("c_flow")
+				.find((m) => m.number === 2)
+				?.images?.map((x) => x.id),
+		).toEqual(["i_tess_menu"]);
+		expect(await shown(dana)).toEqual([
+			"i_tess_menu by Tess Tester: image menu",
+		]);
+		const gone = await dana.store.updateCase("c_flow", (current) => {
+			const { value, images } = withoutImage(
+				current as Case,
+				"m2",
+				"i_tess_menu",
+				dana.clock.now.toISOString(),
+			);
+			return { value, deleteImages: images };
+		});
+		expect(gone.marks[1]?.images).toBeUndefined();
+		await sync(dana, tess);
+		expect(await shown(tess)).toEqual([]);
+		expect(keys(tess, "c_flow").some((k) => k.includes("images/"))).toBe(false);
+		expect(status(tess)?.problems).toEqual([]);
+	});
+
+	const filled = async (d: Device, tags: string[]) => {
+		await addImages(d, "m2", tags);
+		await sync(tess, dana);
+	};
+	const notSent = (d: Device) => status(d)?.notSent?.["c_flow"] ?? {};
+	const atServer = () =>
+		server.marksOf("c_flow").find((m) => m.number === 2) as WireMark;
+	const team = [
+		"i_tess_a by Tess Tester: image a",
+		"i_tess_b by Tess Tester: image b",
+		"i_tess_c by Tess Tester: image c",
+		"i_tess_d by Tess Tester: image d",
+		"i_dana_e by Dana Developer: image e",
+		"i_tess_f by Tess Tester: image f",
+	];
+	/** Each device adds one more to five before hearing of the other's: Dana's is the seventh. */
+	const pastSix = async () => {
+		await shared();
+		await addImages(tess, "m2", ["a", "b", "c", "d"]);
+		await filled(dana, ["e"]);
+		await addImages(tess, "m2", ["f"]);
+		await addImages(dana, "m2", ["g"]);
+		await sync(tess, dana);
+	};
+
+	test("two devices adding at once past six: the later's image is held back on its device, its file kept, never sent past six", async () => {
+		await pastSix();
+		expect(await shown(tess)).toEqual(team);
+		expect(await shown(dana)).toEqual(team);
+		expect(await shown(dana, "heldImages")).toEqual([
+			"i_dana_g by nobody: image g",
+		]);
+		expect(atServer().images?.map((x) => x.id)).toHaveLength(6);
+		// Nothing waits that the server would refuse: no problem is left.
+		await sync(dana);
+		expect(status(dana)?.problems).toEqual([]);
+	});
+
+	test("a held image does not hold back the mark's other changes", async () => {
+		await pastSix();
+		const posted: Op[] = [];
+		const ops = dana.api.ops.bind(dana.api);
+		dana.api.ops = async (teamId, list) => {
+			posted.push(...list);
+			return ops(teamId, list);
+		};
+		await change(dana, "c_flow", (c, now) =>
+			withComment(c, "m2", "Seen on Firefox too", now),
+		);
+		await change(dana, "c_flow", (c, now) =>
+			withChoice(c, "m2", "fixed", "", now),
+		);
+		await sync(dana, tess);
+		expect(atServer().comment).toBe("Seen on Firefox too");
+		expect(atServer().resolution?.kind).toBe("fixed");
+		expect(
+			posted.some(
+				(op) => op.type === "mark.patch" && op.images?.add !== undefined,
+			),
+		).toBe(false);
+		expect(status(dana)?.problems).toEqual([]);
+		expect(await shown(dana, "heldImages")).toEqual([
+			"i_dana_g by nobody: image g",
+		]);
+	});
+
+	test("a place frees up at the server: the held image goes as an ordinary add", async () => {
+		await pastSix();
+		await tess.store.updateCase("c_flow", (current) => {
+			const { value, images } = withoutImage(
+				current as Case,
+				"m2",
+				"i_tess_a",
+				tess.clock.now.toISOString(),
+			);
+			return { value, deleteImages: images };
+		});
+		await sync(tess, dana, tess);
+		const now = [...team.slice(1), "i_dana_g by Dana Developer: image g"];
+		expect(await shown(tess)).toEqual(now);
+		expect(await shown(dana)).toEqual(now);
+		expect(await shown(dana, "heldImages")).toEqual([]);
+	});
+
+	test("an image the team's storage refuses stays here, said on it; once the team's mark is full it is held back", async () => {
+		await shared();
+		tess.api.putBlob = async () => {
+			throw new ApiFailure(
+				"refused",
+				"The team's storage is full.",
+				507,
+				"quota",
+			);
+		};
+		await addImages(tess, "m2", ["big"]);
+		await sync(tess);
+		expect(await shown(tess)).toEqual(["i_tess_big by nobody: image big"]);
+		expect(notSent(tess)).toEqual({ i_tess_big: "The team's storage is full" });
+		expect(
+			status(tess)
+				?.problems.map((p) => p.text)
+				.join(" "),
+		).toContain(
+			"An image added to mark 2 was not taken, so the team does not see it: The team's storage is full.",
+		);
+		await filled(dana, ["a", "b", "c", "d", "e", "f"]);
+		expect(await shown(tess, "heldImages")).toEqual([
+			"i_tess_big by nobody: image big",
+		]);
+	});
+
+	test("a role that may not change marks keeps the image here, said on it; once the team's mark is full it is held back", async () => {
+		await shared();
+		tess.api.permissions = tess.api.permissions.filter(
+			(p) => p !== "mark:update",
+		);
+		await signIn(tess);
+		await addImages(tess, "m2", ["mine"]);
+		await sync(tess);
+		expect(notSent(tess)).toEqual({
+			i_tess_mine: "your role in the team does not allow it",
+		});
+		await filled(dana, ["a", "b", "c", "d", "e", "f"]);
+		expect(await shown(tess, "heldImages")).toEqual([
+			"i_tess_mine by nobody: image mine",
+		]);
+		expect(atServer().images).toHaveLength(6);
 	});
 });
