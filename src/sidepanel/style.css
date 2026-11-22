@@ -2055,16 +2055,20 @@ ol.marks {
 	color: var(--ink-2);
 }
 
-/* A mark of another page: its page as a link, cut where the row ends. */
-.mark-sub .elsewhere {
+/* A mark of another page: its page by its title as a link (the link's own
+   colour, not the state's grey; underlined, because here it stands among
+   plain words), cut where the row ends. */
+.mark-sub button.elsewhere {
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: inherit;
-	line-height: inherit;
+	color: var(--link);
+	font: inherit;
 	text-align: start;
+	text-decoration: underline;
+	text-underline-offset: 2px;
 }
 
 .mark[data-colour="lost"] .mark-sub .state {

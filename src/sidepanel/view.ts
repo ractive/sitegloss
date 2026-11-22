@@ -3213,7 +3213,7 @@ function otherPage(
 		"button",
 		{
 			type: "button",
-			class: "link page-link state elsewhere",
+			class: "link state elsewhere",
 			"data-mark-link": to.where,
 			"aria-label": `Mark ${a.number} is on another page: open ${to.name} in this tab and show the mark there`,
 			title: `On another page: ${to.name}\n${to.address}\nOpens in this tab and shows the mark there`,
