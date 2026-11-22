@@ -72,6 +72,7 @@ import {
 import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
+import { viewerPath } from "../viewer/pictures.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
@@ -1747,6 +1748,14 @@ const actions: Actions = {
 			.create({ url })
 			.catch((error: unknown) =>
 				hint(`Could not open the page: ${message(error)}`),
+			);
+	},
+
+	openPicture(c, a, pictureId) {
+		void chrome.tabs
+			.create({ url: chrome.runtime.getURL(viewerPath(c.id, a.id, pictureId)) })
+			.catch((error: unknown) =>
+				caseHintWriter()(`Could not open the picture: ${message(error)}`),
 			);
 	},
 

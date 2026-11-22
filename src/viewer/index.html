@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Sitegloss picture</title>
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+	<body>
+		<!-- A mark's pictures at their size (DEC-060): an extension page, so a picture
+		     never goes through the web page being marked. -->
+		<header class="bar">
+			<p id="caption" class="caption" aria-live="polite">Loading…</p>
+			<div class="tools">
+				<span id="position" class="position"></span>
+				<button id="previous" type="button" aria-keyshortcuts="ArrowLeft" title="The previous picture of this mark (←)">Previous</button>
+				<button id="next" type="button" aria-keyshortcuts="ArrowRight" title="The next picture of this mark (→)">Next</button>
+				<button id="size" type="button" aria-pressed="false" aria-keyshortcuts="F" title="Show the picture at its real size, or fitted to the window (F)">Actual size</button>
+			</div>
+		</header>
+		<main id="stage" class="stage" data-fit="">
+			<img id="picture" alt="" hidden />
+			<p id="problem" class="problem" hidden></p>
+		</main>
+		<script type="module" src="./main.ts"></script>
+	</body>
+</html>

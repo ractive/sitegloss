@@ -110,6 +110,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
+	/** A mark's picture in the viewer, a tab of the extension's own (DEC-060). */
+	openPicture(c: Case, a: Mark, pictureId: string): void;
 	/**
 	 * A mark's link (DEC-050): open where it was made (`made`), or the same
 	 * path and query on the host in front (`here`), in the tab in front, and
@@ -850,6 +852,33 @@ function pictureTile(
 	return button;
 }
 
+/**
+ * On a picture shown large: the same picture at its size, in a tab of the
+ * extension's own (DEC-060), with the mark's other pictures; it never goes
+ * through the web page being marked.
+ */
+function openLarger(
+	c: Case,
+	a: Mark,
+	pictureId: string,
+	what: string,
+	actions: Actions,
+): HTMLButtonElement {
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "small open-larger",
+			"data-action": "open-larger",
+			"aria-label": `Open ${what} larger, in a new tab`,
+			title:
+				"Open it in a new tab, at its size, with the mark's other pictures",
+			onclick: () => actions.openPicture(c, a, pictureId),
+		},
+		"Open larger",
+	);
+}
+
 /** "22 Nov" in the browser's language. */
 const shortDate = (iso: string) => {
 	const date = new Date(iso);
@@ -887,6 +916,15 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 						"Taken by Sitegloss when the mark was made. It stays with the mark.",
 					)
 				: missing("The screenshot is missing."),
+			shot
+				? openLarger(
+						c,
+						a,
+						"screenshot",
+						`the screenshot of mark ${a.number}`,
+						x.actions,
+					)
+				: null,
 			h("figcaption", {}, "Screenshot"),
 		),
 		...[...added, ...held].map((image, i) => {
@@ -918,6 +956,15 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
 						)
 					: missing("The image is missing."),
+				url
+					? openLarger(
+							c,
+							a,
+							image.id,
+							`image ${n} of mark ${a.number}`,
+							x.actions,
+						)
+					: null,
 				h(
 					"button",
 					{

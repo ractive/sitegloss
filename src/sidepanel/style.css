@@ -2903,3 +2903,17 @@ ol.comments {
 	cursor: pointer;
 	font-weight: 600;
 }
+
+/*
+ * "Open larger" on a picture shown large: the viewer, a tab of its own
+ * (DEC-060). Only while the picture is large; small, a click shows it so.
+ */
+.picture .open-larger {
+	display: none;
+	justify-self: start;
+	margin-top: var(--s1);
+}
+
+.picture:has(> .tile[aria-pressed="true"]) .open-larger {
+	display: inline-flex;
+}

@@ -680,6 +680,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			actionsWith({
 				addImages: () => asked.push("add"),
 				deleteImage: (_c, _a, id) => asked.push(`remove ${id}`),
+				openPicture: (_c, _a, id) => asked.push(`open ${id}`),
 			}),
 		);
 		const row = window.document.querySelector(
@@ -699,13 +700,25 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		);
 		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2", "Image 3"]);
 		// The screenshot's place has nothing to remove it with, not even a
-		// disabled control: its one control (and focus stop) shows it large.
+		// disabled control: its controls show it large, and open it larger in
+		// a tab of its own (DEC-060; shown only while it is large).
 		const shot = row?.querySelector('[data-picture="screenshot"]');
 		expect(
 			[...(shot?.querySelectorAll("button, a, input, [tabindex]") ?? [])].map(
 				(e) => e.getAttribute("data-action"),
 			),
-		).toEqual(["zoom"]);
+		).toEqual(["zoom", "open-larger"]);
+		const larger = shot?.querySelector("[data-action=open-larger]");
+		expect(larger?.getAttribute("aria-label")).toBe(
+			`Open the screenshot of mark ${a.number} larger, in a new tab`,
+		);
+		(larger as unknown as HTMLButtonElement | undefined)?.click();
+		(
+			row?.querySelector(
+				'[data-picture="i_b"] [data-action=open-larger]',
+			) as unknown as HTMLButtonElement | undefined
+		)?.click();
+		expect(asked.splice(0)).toEqual(["open screenshot", "open i_b"]);
 		expect(shot?.querySelector("button")?.getAttribute("title")).toBe(
 			"Taken by Sitegloss when the mark was made. It stays with the mark.",
 		);

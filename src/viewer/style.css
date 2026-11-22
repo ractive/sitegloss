@@ -1,0 +1,142 @@
+/* The panel's look (src/sidepanel/style.css), the few tokens a picture needs. */
+:root {
+	color-scheme: light dark;
+	--paper: #f6f4ee;
+	--sheet: #ffffff;
+	--wash: #ebe8e0;
+	--ink: #1b2130;
+	--ink-2: #535c6e;
+	--rule: #dedad0;
+	--edge: #7b8291;
+	--focus: #1a55c2;
+	--font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--paper: #11141a;
+		--sheet: #1a1e27;
+		--wash: #242a37;
+		--ink: #eceef3;
+		--ink-2: #a6aebd;
+		--rule: #2b313d;
+		--edge: #737c8e;
+		--focus: #8fb8ff;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	background: var(--paper);
+	color: var(--ink);
+	font: 14px / 20px var(--font);
+}
+
+[hidden] {
+	display: none !important;
+}
+
+:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+
+.bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px 16px;
+	padding: 8px 16px;
+	border-bottom: 1px solid var(--rule);
+	background: var(--paper);
+}
+
+.caption {
+	margin: 0;
+	min-width: 0;
+	font-weight: 600;
+}
+
+.tools {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.position {
+	color: var(--ink-2);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+button {
+	min-height: 30px;
+	padding: 4px 12px;
+	border: 1px solid var(--edge);
+	border-radius: 6px;
+	background: var(--sheet);
+	color: var(--ink);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+	background: var(--wash);
+}
+
+button:disabled {
+	border-color: var(--rule);
+	color: var(--ink-2);
+	cursor: default;
+}
+
+/* Fitted: the whole picture in the window, never larger than it is. */
+.stage {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 16px;
+}
+
+.stage[data-fit] {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+}
+
+.stage[data-fit] img {
+	min-width: 0;
+	min-height: 0;
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+}
+
+/* Actual size: one pixel of the picture to one of the window, scrolled where larger. */
+.stage:not([data-fit]) img {
+	max-width: none;
+}
+
+.stage img {
+	display: block;
+	border: 1px solid var(--rule);
+	background: var(--sheet);
+}
+
+.problem {
+	color: var(--ink-2);
+}

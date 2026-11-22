@@ -347,6 +347,13 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 			"esm",
 			how,
 		)),
+		// A mark's pictures at their size, in a tab of their own (DEC-060).
+		...(await bundle(
+			"src/viewer/index.html",
+			join(outdir, "viewer"),
+			"esm",
+			how,
+		)),
 		// The sync to Downloads' blob URLs (DEC-025); Firefox's event page
 		// makes them itself.
 		...(firefox
