@@ -405,6 +405,29 @@ describe("every value on one line of case.md shows as written and stays there", 
 	// The page's address: see "addresses and paths" above.
 });
 
+describe("images added to a mark in case.md (DEC-058)", () => {
+	test("follow the crop, each a link only where its path is Sitegloss's", () => {
+		const base = caseWith("x");
+		const a = base.marks[0] as Case["marks"][number];
+		const md = caseMarkdown({
+			...base,
+			marks: [
+				{
+					...a,
+					images: [
+						{ id: "i_a", image: "images/i_a.webp", added: { at: "t" } },
+						{ id: "i_b", image: "javascript:alert(1)", added: { at: "t" } },
+					],
+				},
+			],
+		});
+		expect(md).toContain(
+			"![Mark 1](crops/m1.webp)\n\n- Images added: 2\n\n![Mark 1, added image 1](images/i_a.webp)\n\nMark 1, added image 2: `javascript:alert(1)`\n",
+		);
+		expect(caseMarkdown(base)).not.toContain("Images added");
+	});
+});
+
 describe("an arrow's ends in case.md (DEC-047)", () => {
 	test("says what it links", () => {
 		const base = caseWith("x");

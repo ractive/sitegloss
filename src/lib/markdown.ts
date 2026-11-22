@@ -1,10 +1,11 @@
 /**
  * `case.md`: a case as Markdown, for a developer or an AI app that reads the
- * export without the extension. The images are linked by their paths in the
- * zip.
+ * export without the extension. The images (screenshots, crops and the
+ * images added to marks) are linked by their paths in the zip.
  */
 
 import {
+	addedImage,
 	appLabel,
 	type Case,
 	type CaseComment,
@@ -255,6 +256,20 @@ function markSection(a: Mark, page: string | undefined): string {
 		),
 		"",
 	);
+	// The pictures a person added to the mark (DEC-058), after its crop.
+	if (a.images?.length)
+		lines.push(
+			`- Images added: ${a.images.length}`,
+			"",
+			...a.images.flatMap((x, i) => [
+				image(
+					`Mark ${a.number}, added image ${i + 1}`,
+					x.image,
+					isSafeId(x.id) ? addedImage(x.id) : undefined,
+				),
+				"",
+			]),
+		);
 	if (a.findings?.length)
 		lines.push(
 			`#### AI findings on mark ${a.number} (${a.findings.length})`,

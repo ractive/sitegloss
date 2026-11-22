@@ -132,6 +132,32 @@ export async function cropImages(
 	}
 }
 
+/** The longest side of an image a person adds to a mark (DEC-058). */
+export const ADDED_MAX_SIDE = 2048;
+
+/**
+ * A picture a person adds to a mark (pasted, chosen or dropped), re-encoded:
+ * WebP at the crops' quality, its longest side at most `ADDED_MAX_SIDE`, turned
+ * as its EXIF orientation says. The canvas writes no EXIF, XMP or GPS, so the
+ * re-encoding is what strips its metadata (DEC-058). An animated GIF gives its
+ * first frame. Throws where `createImageBitmap` cannot decode it; the caller
+ * checks the type and the bytes before (the dialog's rules).
+ */
+export async function toAddedImage(image: Blob): Promise<StoredImage> {
+	const bitmap = await createImageBitmap(image, {
+		imageOrientation: "from-image",
+	});
+	try {
+		return await render(
+			bitmap,
+			{ x: 0, y: 0, width: bitmap.width, height: bitmap.height },
+			ADDED_MAX_SIDE,
+		);
+	} finally {
+		bitmap.close();
+	}
+}
+
 /**
  * The whole image, scaled down to at most `maxSide`: for images handed to AI
  * apps (iteration 4's `get_image` and `capture`).

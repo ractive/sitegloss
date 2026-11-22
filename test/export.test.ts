@@ -422,6 +422,42 @@ describe("findings in an export", () => {
 	});
 });
 
+describe("images added to a mark in an export (DEC-058)", () => {
+	test("go out under images/ and come back; a file without one is refused", async () => {
+		const { store, c } = await stored();
+		const added = { id: "i_a", image: "images/i_a.webp", added: { at: "t" } };
+		const withImage: Case = {
+			...c,
+			marks: [
+				mark(1, { images: [added] }),
+				mark(2, { author: "ai", element: null }),
+			],
+		};
+		await putCase(store, withImage);
+		await store.putImage(c.id, added.image, {
+			blob: webp("added"),
+			width: 10,
+			height: 10,
+		});
+		const zip = await exportCase(store, withImage);
+		const target = new MemoryStore();
+		const imported = await importCase(target, zip);
+		expect(imported.marks[0]?.images).toEqual([added]);
+		const back = await target.getImage(c.id, added.image);
+		expect(new TextDecoder().decode(await back?.blob.arrayBuffer())).toEndWith(
+			"added",
+		);
+		const files = await readZip(zip);
+		files.delete(added.image);
+		await expect(
+			importCase(
+				new MemoryStore(),
+				await writeZip([...files].map(([name, data]) => ({ name, data }))),
+			),
+		).rejects.toThrow("The export lacks images/i_a.webp.");
+	});
+});
+
 describe("import", () => {
 	test("round trip into another store, replacing an older copy", async () => {
 		const { store, c } = await stored();

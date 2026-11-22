@@ -1,7 +1,7 @@
 /**
  * The case format `sitegloss/2` (see kb/design/overview.md): the same JSON in
  * IndexedDB and in an export. Images are referenced by paths relative to the
- * case (`shots/s1.webp`, `crops/m1.webp`).
+ * case (`shots/s1.webp`, `crops/m1.webp`, `images/i_….webp`).
  */
 
 import { storedQuery, withQuery } from "./query.ts";
@@ -52,6 +52,9 @@ export const MAX_FINDINGS_TEXT = 200_000;
 
 /** The most findings a mark may have. */
 export const MAX_FINDINGS = 20;
+
+/** The most images a person may add to a mark (DEC-058). */
+export const MAX_MARK_IMAGES = 6;
 
 /** The most points a freehand mark may have. */
 export const MAX_PEN_POINTS = 5000;
@@ -379,6 +382,11 @@ export interface Mark {
 	reopens?: Reopen[];
 	/** What AI apps found about the mark, oldest first; none: no findings. */
 	findings?: Finding[];
+	/**
+	 * Pictures a person added to the mark (pasted, chosen or dropped), oldest
+	 * first, at most `MAX_MARK_IMAGES`; none: no images (DEC-058).
+	 */
+	images?: MarkImage[];
 	/** Who made it, in a case synced with a team (DEC-039). */
 	createdBy?: UserRef;
 	/**
@@ -404,6 +412,22 @@ export interface Mark {
 	 * `element` stays the element the mark is about (an arrow's: its head's).
 	 */
 	ends?: MarkEnds;
+}
+
+/**
+ * A picture a person added to a mark (DEC-058), for what Sitegloss cannot
+ * capture (a menu that closes, another state of the page). It is only added
+ * or removed, never changed, so its id is the same here, on the wire and in a
+ * file; the path follows the id, never the mark's number, and a mark that
+ * takes another number moves no image.
+ */
+export interface MarkImage {
+	/** `i_…`, of the adder's making. */
+	id: string;
+	/** `images/<id>.webp` */
+	image: string;
+	/** When, and in a case synced with a team by whom (the server's record). */
+	added: Stamp;
 }
 
 /** The elements at a mark's two ends, each `null` where there was none. */
@@ -765,17 +789,23 @@ export function newId(prefix: string): string {
 
 export const shotImage = (shotId: string) => `shots/${shotId}.webp`;
 export const cropImage = (markId: string) => `crops/${markId}.webp`;
+/** An image a person added to a mark, by the image's own id (DEC-058). */
+export const addedImage = (imageId: string) => `images/${imageId}.webp`;
 
 /** A mark's id in its case: `m` and its number (`m1`, `m2`…; DEC-051). */
 export const markIdOf = (number: number) => `m${number}`;
 /** A screenshot taken for a save that is not committed yet (save.ts). */
 export const pendingImage = (shotId: string) => `pending/${shotId}.webp`;
 
-/** The paths of all images a case references (its screenshots and crops). */
+/**
+ * The paths of all images a case references: its screenshots, its crops and
+ * the images added to its marks.
+ */
 export function caseImages(c: Case): Set<string> {
 	return new Set([
 		...c.shots.map((s) => s.image),
 		...c.marks.map((a) => a.crop),
+		...c.marks.flatMap((a) => (a.images ?? []).map((x) => x.image)),
 	]);
 }
 
@@ -1487,6 +1517,7 @@ export function validateCase(value: unknown): Case {
 	});
 	const numbers = new Set<number>();
 	const ids = new Set<string>();
+	const imageIds = new Set<string>();
 	const marks = arr(o["marks"], "case.marks", MAX_MARKS).map((v, i): Mark => {
 		const p = `case.marks[${i}]`;
 		const a = obj(v, p);
@@ -1541,6 +1572,7 @@ export function validateCase(value: unknown): Case {
 				: { resolution: resolution(a["resolution"], `${p}.resolution`) }),
 			...reopensOf(a["reopens"], `${p}.reopens`),
 			...findingsOf(a["findings"], `${p}.findings`),
+			...imagesOf(a["images"], `${p}.images`, imageIds),
 			...createdByOf(a["createdBy"], `${p}.createdBy`),
 			...(a["createdVia"] === undefined
 				? {}
@@ -1861,6 +1893,31 @@ function findingsOf(value: unknown, path: string): { findings?: Finding[] } {
 	return findings.length > 0 ? { findings } : {};
 }
 
+/**
+ * A mark's added images (DEC-058); none, or an empty list: no `images` at
+ * all. An id is unique in the whole case (`taken`), and the path is the one
+ * its id gives: nothing else of the zip is ever read for one.
+ */
+function imagesOf(
+	value: unknown,
+	path: string,
+	taken: Set<string>,
+): { images?: MarkImage[] } {
+	if (value === undefined) return {};
+	const images = arr(value, path, MAX_MARK_IMAGES).map((v, i): MarkImage => {
+		const p = `${path}[${i}]`;
+		const x = obj(v, p);
+		const imageId = id(x["id"], `${p}.id`);
+		if (taken.has(imageId)) fail(`${p}.id`, "is used twice");
+		taken.add(imageId);
+		const image = str(x["image"], `${p}.image`);
+		if (image !== addedImage(imageId))
+			fail(`${p}.image`, `must be ${addedImage(imageId)}`);
+		return { id: imageId, image, added: stampOf(x["added"], `${p}.added`) };
+	});
+	return images.length > 0 ? { images } : {};
+}
+
 function highest(value: unknown, marks: readonly Mark[]): number {
 	const n = num(value, "case.lastNumber");
 	if (!Number.isInteger(n) || n > MAX_NUMBER || marks.some((a) => a.number > n))
@@ -2178,8 +2235,8 @@ export function withLink(c: Case, link: string | undefined, now: string): Case {
 }
 
 /**
- * The case without the mark, and the images that go with it: its crop, and its
- * screenshot when no other mark is on it.
+ * The case without the mark, and the images that go with it: its crop, the
+ * images added to it, and its screenshot when no other mark is on it.
  */
 export function withoutMark(
 	c: Case,
@@ -2215,9 +2272,87 @@ export function withoutMark(
 		}),
 		images: [
 			gone.crop,
+			...(gone.images ?? []).map((x) => x.image),
 			...(shotUsed || shot === undefined ? [] : [shot.image]),
 		],
 	};
+}
+
+// --- images a person added to a mark (DEC-058) ---------------------------------
+
+const withMarkImages = (a: Mark, images: MarkImage[]): Mark => {
+	const { images: _, ...rest } = a;
+	return images.length > 0 ? { ...rest, images } : rest;
+};
+
+/**
+ * The case with images added to the mark, after its others, each by its id
+ * (`newId("i")`), its file at `addedImage(id)`, added `now`. Refused past
+ * `MAX_MARK_IMAGES` and for an id the case has already.
+ */
+export function withImages(
+	c: Case,
+	markId: string,
+	imageIds: readonly string[],
+	now: string,
+): Case {
+	const taken = new Set(
+		c.marks.flatMap((a) => (a.images ?? []).map((x) => x.id)),
+	);
+	for (const imageId of imageIds) {
+		if (!isSafeId(imageId) || taken.has(imageId))
+			throw new CaseError(`The image id ${imageId} cannot be used.`);
+		taken.add(imageId);
+	}
+	return changed(
+		c,
+		markId,
+		(a) => {
+			const images = a.images ?? [];
+			const free = MAX_MARK_IMAGES - images.length;
+			if (imageIds.length > free)
+				throw new CaseError(
+					free > 0
+						? `Mark ${a.number} holds at most ${MAX_MARK_IMAGES} images; ${free} more ${free === 1 ? "fits" : "fit"}.`
+						: `Mark ${a.number} holds ${MAX_MARK_IMAGES} images, the most a mark may have. Remove one first.`,
+				);
+			return withMarkImages(a, [
+				...images,
+				...imageIds.map((imageId) => ({
+					id: imageId,
+					image: addedImage(imageId),
+					added: { at: now },
+				})),
+			]);
+		},
+		now,
+	);
+}
+
+/** The case without the mark's image, and the file that goes with it. */
+export function withoutImage(
+	c: Case,
+	markId: string,
+	imageId: string,
+	now: string,
+): { value: Case; images: string[] } {
+	const gone = c.marks
+		.find((a) => a.id === markId)
+		?.images?.find((x) => x.id === imageId);
+	const value = changed(
+		c,
+		markId,
+		(a) => {
+			if (gone === undefined)
+				throw new CaseError("The image is no longer on the mark.");
+			return withMarkImages(
+				a,
+				(a.images ?? []).filter((x) => x.id !== imageId),
+			);
+		},
+		now,
+	);
+	return { value, images: gone === undefined ? [] : [gone.image] };
 }
 
 // --- findings of AI apps on a mark (DEC-019) ---------------------------------
@@ -2346,8 +2481,11 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
- * What can change of a mark (its comment, author, status, reopens and
- * findings), as a short text: equal while the mark is unchanged (DEC-046).
+ * What can change of a mark (its comment, author, status, reopens, findings
+ * and added images), as a short text: equal while the mark is unchanged
+ * (DEC-046). An image added by hand ends an AI app's note, so it is never
+ * sent as the app's doing; the images' ids count only where there are any,
+ * so a mark without images keeps the text it had before them (DEC-058).
  */
 export function markSignature(a: Mark): string {
 	const text = canonicalJson([
@@ -2356,6 +2494,7 @@ export function markSignature(a: Mark): string {
 		a.resolution ?? null,
 		a.reopens ?? [],
 		a.findings ?? [],
+		...(a.images ? [a.images.map((x) => x.id)] : []),
 	]);
 	// FNV-1a, twice over, as 16 hex digits.
 	let h1 = 0x811c9dc5;

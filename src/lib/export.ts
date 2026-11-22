@@ -1,5 +1,5 @@
 /**
- * A case as a zip (`case.json`, `case.md`, `shots/`, `crops/`) and back; and
+ * A case as a zip (`case.json`, `case.md`, `shots/`, `crops/`, `images/`) and back; and
  * all cases as one zip, a folder per case in that layout (DEC-020).
  */
 
@@ -317,7 +317,9 @@ async function readImages(
 			size.height > MAX_IMAGE_SIDE ||
 			size.width * size.height > MAX_IMAGE_PIXELS
 		)
-			throw new CaseError(`${path} is too large for a screenshot.`);
+			throw new CaseError(
+				`${path} is too large for ${path.startsWith("images/") ? "an image" : "a screenshot"}.`,
+			);
 		if (limits.keep)
 			images.set(path, {
 				blob: new Blob([data as Uint8Array<ArrayBuffer>], {
