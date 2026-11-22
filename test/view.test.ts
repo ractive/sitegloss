@@ -2009,6 +2009,87 @@ describe("a case of several pages (DEC-038)", () => {
 	const pages = () =>
 		[...el("case-pages").querySelectorAll("li")].map((li) => li.textContent);
 
+	test("a mark of another page: where its link goes, and how its page is named", () => {
+		const drawn = (c: Case, url: string) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url, title: "", size: undefined };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					url,
+					matches: new Map(
+						[match(1, "found"), match(2, "found"), match(3, "lost")].map(
+							(m) => [m.markId, m],
+						),
+					),
+				};
+			});
+		const link = () =>
+			el("case-view").querySelector<HTMLElement>(
+				'[data-mark="m3"] .mark-sub .state',
+			);
+		// On the mark's own site: the page where it was made.
+		render(drawn(flow("c_made"), CART), noActions);
+		expect(link()?.dataset["markLink"]).toBe("made");
+		expect(link()?.title).toContain(PAY);
+		// A page without a title is named by its path.
+		const untitled = flow("c_untitled");
+		render(
+			drawn(
+				{
+					...untitled,
+					pages: [
+						{ url: CART, title: "Your cart", lang: "en" },
+						{ url: PAY, title: "  ", lang: "en" },
+					],
+				},
+				CART,
+			),
+			noActions,
+		);
+		expect(link()?.textContent).toBe(`On ${new URL(PAY).pathname}`);
+		// A page's title is the page's own text: one line, and cut.
+		const long = flow("c_long");
+		render(
+			drawn(
+				{
+					...long,
+					pages: [
+						{ url: CART, title: "Your cart", lang: "en" },
+						{ url: PAY, title: `Pay\n now ${"x".repeat(200)}`, lang: "en" },
+					],
+				},
+				CART,
+			),
+			noActions,
+		);
+		expect(link()?.textContent).toStartWith("On Pay now x");
+		expect(link()?.textContent?.length).toBeLessThanOrEqual(63);
+		expect(link()?.getAttribute("aria-label")).not.toContain("\n");
+		// A mark of no web page has nowhere to go: the words, and no Show.
+		const file = "file:///tmp/pay.html";
+		const imported = flow("c_file");
+		render(
+			drawn(
+				{
+					...imported,
+					pages: [
+						{ url: CART, title: "Your cart", lang: "en" },
+						{ url: file, title: "Payment", lang: "en" },
+					],
+					shots: [shot("s1", CART, 1280), shot("s2", file, 390)],
+				},
+				CART,
+			),
+			noActions,
+		);
+		expect(link()?.tagName).toBe("SPAN");
+		expect(link()?.textContent).toBe("On another page");
+		expect(
+			el("case-view").querySelector('[data-mark="m3"] button.show'),
+		).toBeNull();
+	});
+
 	test("Home: a case is this page's for any of its pages, on their own site only, and its row says how many it has", () => {
 		const state = initialState();
 		// The same path on localhost: the case is opened by hand there (DEC-050).
@@ -2370,7 +2451,7 @@ describe("a case of several pages (DEC-038)", () => {
 			'[data-mark="m3"] .mark-sub button.elsewhere',
 		);
 		expect(link?.getAttribute("aria-label")).toBe(
-			"Mark 3 is on another page: open Payment in this tab and show the mark there",
+			"On Payment: opens in this tab and shows mark 3 there",
 		);
 		// On localhost the link stays on localhost: the same page there.
 		expect(link?.dataset["markLink"]).toBe("here");

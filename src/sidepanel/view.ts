@@ -3171,6 +3171,9 @@ function markPlace(
 	);
 }
 
+/** The most of a page's title that names it in a mark's row. */
+const PAGE_NAME = 60;
+
 /**
  * Where a mark of another page than the tab shows opens: its page by its
  * title (else its path), the address, and which of the mark's two targets it
@@ -3188,8 +3191,16 @@ function elsewhereTarget(
 	const url = markUrl(c, a);
 	const key = pageKey(url);
 	const page = casePages(c).find((p) => pageKey(p.url) === key);
+	// A page's title is the page's own text: one line, and not longer than a
+	// name should be, before it goes into a label and a tooltip.
+	const title = (page?.title ?? "").replace(/\s+/g, " ").trim();
 	return {
-		name: page?.title?.trim() || shortPath(url, false),
+		name:
+			title === ""
+				? shortPath(url, false)
+				: title.length > PAGE_NAME
+					? `${title.slice(0, PAGE_NAME - 1).trimEnd()}…`
+					: title,
 		address: targets.here ?? targets.made,
 		where: targets.here === undefined ? "made" : "here",
 	};
@@ -3215,7 +3226,8 @@ function otherPage(
 			type: "button",
 			class: "link state elsewhere",
 			"data-mark-link": to.where,
-			"aria-label": `Mark ${a.number} is on another page: open ${to.name} in this tab and show the mark there`,
+			// Starts with the words shown, so the control can be named by them.
+			"aria-label": `On ${to.name}: opens in this tab and shows mark ${a.number} there`,
 			title: `On another page: ${to.name}\n${to.address}\nOpens in this tab and shows the mark there`,
 			onclick: () => actions.openMarkPage(c, a, to.where),
 		},
@@ -3226,7 +3238,11 @@ function otherPage(
 /**
  * "Show" on a mark of another page (owner, 22 November 2026: every mark has
  * it): it opens the mark's page in this tab and shows the mark there, as the
- * page's link in the second row does.
+ * page's link in the second row does. "Every mark" holds while the case is
+ * drawn on the tab: with its marks hidden no mark has Show, here or there.
+ * Never disabled, unlike the page's own Show (`canReach`): opening a page
+ * needs no access to the page in front, and `openMarkPage` asks for the
+ * site's access itself where it needs it.
  */
 function showElsewhere(
 	c: Case,
@@ -3253,8 +3269,9 @@ function showElsewhere(
 
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
- * its AI findings; why it came back, for a reopened one. A mark to verify
- * offers Verified and Reopen… here, so verifying needs no expanding.
+ * its AI findings; why it came back, for a reopened one. A mark of another
+ * page names that page as a link. A mark to verify offers Verify and
+ * Reopen… here, so verifying needs no expanding.
  */
 function markSubline(
 	c: Case,

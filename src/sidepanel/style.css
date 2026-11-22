@@ -2050,7 +2050,8 @@ ol.marks {
 	font-weight: 600;
 }
 
-/* Where the mark is on the tab in front; the pin's fill alone is not enough. */
+/* Where the mark is on the tab in front (or, for a mark of another page, that
+   page as a link); the pin's fill alone is not enough. */
 .mark-sub .state {
 	color: var(--ink-2);
 }
@@ -2059,6 +2060,8 @@ ol.marks {
    colour, not the state's grey; underlined, because here it stands among
    plain words), cut where the row ends. */
 .mark-sub button.elsewhere {
+	/* A word in the row, not a control of its own height: the row keeps its line. */
+	min-height: 0;
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;

@@ -903,7 +903,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		);
 	});
 
-	test("Verified: one click, for a mark to verify", async () => {
+	test("Verify: one click, for a mark to verify", async () => {
 		const c = await loaded();
 		await reviewer.update(settledAs(c, "fixed"));
 		overlay.onPick?.(1);
