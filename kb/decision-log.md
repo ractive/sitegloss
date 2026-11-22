@@ -3172,16 +3172,16 @@ The rule now:
 - **Every other mark is not looked for**, on a page of the case that is not its own
   and on a page that is none of the case's alike: no search, nothing drawn, neither
   found nor lost in any count. The content script reports it `lost` without
-  candidates; the panel says "On another page" for it, with its "Marked on …" link to
-  open its page. A page that joins or leaves the case (a mark added or deleted) judges
+  candidates (`no-element` for a mark drawn on no element); the panel says "On
+  another page" for it, with its "Marked on …" link to open its page. A page that joins or leaves the case (a mark added or deleted) judges
   the marks again, and a single-page app's next route takes the previous route's marks
   off and looks for its own.
 - **The look-alike goes:** `otherPage` on a match, "Also on this page?", the panel's
   "may be here too (dashed)" count, the AI tools' `otherPageNote`. The AI tools say the
   rule in one sentence: a mark is on the page in front when that page has the same path
   and hash route as the mark's page, whatever the host; otherwise it is not looked for
-  (lost, `onThisPage` false), and the mark's page is to be opened. `get_mark_element`
-  on another page answers that the mark is not looked for there and names its page.
+  (`onThisPage` false; lost, or no-element for a mark drawn on no element), and the
+  mark's page is to be opened. `get_mark_element` on another page answers that the mark is not looked for there and names its page.
 - **The floating bar** counts the page in front's marks only ("N of M found", still the
   open ones and those to verify); with none of them it says "no marks on this page".
 - **No mark of the page in front:** the page shows none, and the case view says "This

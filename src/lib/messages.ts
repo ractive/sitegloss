@@ -196,7 +196,8 @@ export interface CandidateInfo {
 
 /**
  * Where a mark's element is on this page. A mark of another page than the
- * one in front is not looked for (DEC-057): `lost`, without candidates.
+ * one in front is not looked for (DEC-057): `lost` without candidates, or
+ * `no-element` for a mark drawn on no element.
  */
 export interface MarkMatch {
 	markId: string;
