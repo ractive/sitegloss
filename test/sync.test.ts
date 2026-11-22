@@ -1286,6 +1286,55 @@ describe("the sync's database, opened when first used", () => {
 			}
 		});
 
+	test.each([
+		["granted", false, [{ type: "sync:run", force: true }]],
+		["denied", true, []],
+	] as const)(
+		"Allow access asks Chrome for the paused folder in the click; %s",
+		async (answer, refused, runs) => {
+			const globals = globalThis as unknown as Record<string, unknown>;
+			const chromeBefore = globals["chrome"];
+			const sent: unknown[] = [];
+			globals["chrome"] = {
+				runtime: {
+					sendMessage: (m: unknown) => {
+						sent.push(m);
+						return Promise.resolve();
+					},
+				},
+			};
+			try {
+				const state = initialState();
+				const kv = referenceKv();
+				const asked: unknown[] = [];
+				const handle = Object.assign(new FakeFolder(), {
+					requestPermission: async (descriptor: unknown) => {
+						asked.push(descriptor);
+						return answer;
+					},
+				});
+				await kv.set({
+					[FOLDER_KEY]: { handle, name: "iCloud", id: "f_1" },
+					status: { folderId: "f_1", state: "paused", reason: "access" },
+				});
+				const panel = startSync((change) => change(state), kv);
+				await panel.refresh();
+				await Bun.sleep(5);
+				sent.length = 0;
+				state.sync.problem = "Could not ask for access";
+				panel.syncAllow();
+				// Asked before anything is awaited: Chrome asks only during a click.
+				expect(asked).toEqual([{ mode: "readwrite" }]);
+				await until(() => state.sync.refused === refused);
+				await Bun.sleep(5);
+				expect(sent).toEqual([...runs]);
+				expect(state.sync.problem === undefined).toBe(!refused);
+			} finally {
+				globals["chrome"] = chromeBefore;
+			}
+		},
+	);
+
 	test("Stop syncing to a folder leaves the permission alone", async () => {
 		const globals = globalThis as unknown as Record<string, unknown>;
 		const chromeBefore = globals["chrome"];
