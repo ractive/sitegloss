@@ -550,9 +550,11 @@ export async function startAi(
 		copy(copyAddress, current?.address, "address", byId("pair-address")),
 	);
 	const copyCode = byId<HTMLButtonElement>("pair-copy-code");
-	copyCode.addEventListener("click", () =>
-		copy(copyCode, current?.code, "code", byId("pair-code")),
-	);
+	copyCode.addEventListener("click", () => {
+		// A used code is not to be typed again (`aria-disabled`, kept focusable).
+		if (current?.codeUsed) return;
+		copy(copyCode, current?.code, "code", byId("pair-code"));
+	});
 
 	byId<HTMLButtonElement>("pair-take-back").addEventListener("click", () =>
 		turnOn({ type: "connect" }),
@@ -875,8 +877,20 @@ export async function startAi(
 		setup.show(view.address);
 		const code = a.code;
 		// As the relay sends it, `XXXX-XXXX`; typed with or without the dash.
-		byId("pair-code").textContent = code ?? CODE_PLACEHOLDER;
-		byId<HTMLButtonElement>("pair-copy-code").disabled = code === undefined;
+		const codeBox = byId("pair-code");
+		codeBox.textContent = code ?? CODE_PLACEHOLDER;
+		// A used code stays, faint, until its app connects: no new code flashes.
+		codeBox.toggleAttribute("data-used", a.codeUsed === true);
+		const copyCodeButton = byId<HTMLButtonElement>("pair-copy-code");
+		copyCodeButton.disabled = code === undefined;
+		// Not `disabled`: the button keeps the keyboard's focus (after a Copy).
+		if (a.codeUsed) copyCodeButton.setAttribute("aria-disabled", "true");
+		else copyCodeButton.removeAttribute("aria-disabled");
+		const note = a.codeUsed
+			? "Code used. Waiting for your AI app…"
+			: "The code changes every 2 minutes and after each use.";
+		const codeNote = byId("pair-code-note");
+		if (codeNote.textContent !== note) codeNote.textContent = note;
 	}
 
 	// --- Questions ---

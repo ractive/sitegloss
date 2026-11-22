@@ -312,12 +312,13 @@ inBothSets("the AI connection without the side panel", () => {
 				await panel.eval<string>(`${byId("ai-call")}.textContent`),
 			).toContain("Last AI call: Screenshot of the page in front");
 			expect(await panel.eval(`${byId("relay")}.value`)).toBe(relay.url);
-			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(false);
 			// The same address: shown with the code at once with no app paired
 			// (the relay lists it), else after "+ Add another AI app".
 			const state = `${byId("ai-state")}.dataset.state`;
 			await panel.waitFor(`["on", "waiting"].includes(${state})`);
 			const paired = (await panel.eval<string>(state)) === "on";
+			// Stop beside the pill while an app is paired, as before the reopening.
+			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(!paired);
 			if (paired) {
 				expect(await panel.eval(`${byId("pairing")}.hidden`)).toBe(true);
 				await panel.eval(`${byId("add-app")}.click()`);

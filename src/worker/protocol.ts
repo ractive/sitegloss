@@ -131,6 +131,8 @@ export interface AiState {
 	/** A panel's pairing view is open. */
 	pairing: boolean;
 	code?: string;
+	/** `code` was typed in, and its AI app has not connected yet: not to be typed again. */
+	codeUsed?: true;
 	/** Another tab or program took Sitegloss's connection over (it connects with Sitegloss's secret). */
 	replaced?: { sibling: boolean };
 	lastCall?: CallView;
