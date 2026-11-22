@@ -113,6 +113,41 @@ What was worked out:
   image on a mark). Order: after images; level 1 first, levels 2 and 3 once it has been
   used.
 
+### What went wrong on the page: errors and failed loads with the case
+
+The owner's idea (22 November 2026): some marks exist because something failed (a style
+sheet that did not load, a JavaScript error). If the extension noted that with the case,
+the developer or the AI app would find the cause faster.
+
+What the extension can and cannot see (from what is known of the browser's APIs; check each
+against the current documentation before building):
+
+- **The console's history: no.** There is no API that reads what the console already
+  holds. A script in the page can listen from the moment it runs: uncaught errors and
+  unhandled promise rejections (`error`, `unhandledrejection`), failed loads of images,
+  scripts and style sheets (the `error` event in the capture phase), and, by wrapping them,
+  `console.error` and `console.warn`. Sitegloss runs on a tab only after a click, so it
+  misses what happened before that, unless the person has granted it all sites and it
+  listens from the page's start; then "reload and record" is possible.
+- **Loads that already happened: partly yes, with no new permission.** The page's own
+  record of its loads (Resource Timing) reaches back to the page's start: the address, the
+  time, and in current Chrome the status where the page is allowed to see it. A style
+  sheet element without a sheet and an image without a size show a failed load after the
+  fact.
+- **The network tab as DevTools has it: only at a price.** The debugger permission gives
+  console and network, but with Chrome's "is being debugged" banner, a permission warning
+  at install and a stricter store review. Observing requests in the background needs
+  access to the site and also starts only when asked.
+- **Cookies: possible, and not to be done.** The cookies permission reads every cookie of
+  a site, session cookies included. They are secrets and have no place in a case.
+
+A small first slice that fits what exists: with each screenshot, a short list "problems on
+this page": uncaught errors and rejections since Sitegloss was opened on the tab, and
+failed or missing loads the page knows of. Addresses go through the same filter as page
+addresses (no parameters that look like secrets), messages are cut and shown to the person
+before the case leaves the browser, the privacy texts say so, and AI apps get the list with
+the case. It touches the case file and the service's API, so it is not a one-evening job.
+
 ### Assign a case to a team member
 
 The larger part of the hand-over: an assignee on the case, an e-mail to that member with
