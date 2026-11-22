@@ -76,6 +76,15 @@ function stubOverlay(document: Document) {
 /** How often the reviewer looks at the page by itself, here. */
 const TICK_MS = 50;
 
+/** Until `ok`, a second at most: a tick may fire late on a busy machine. */
+async function until(ok: () => boolean): Promise<void> {
+	const end = Date.now() + 1000;
+	while (!ok()) {
+		if (Date.now() > end) throw new Error("timed out");
+		await Bun.sleep(5);
+	}
+}
+
 beforeEach(() => {
 	const window = new Window({ url: "https://www.example.com/kk" });
 	doc = window.document as unknown as Document;
@@ -202,13 +211,15 @@ describe("elements replaced after loading", () => {
 		await reviewer.load(caseOf($("button")));
 		const old = $("button");
 		$("main").innerHTML = `<h1>Prämien</h1><button>Berechnen</button>`;
-		await Bun.sleep(TICK_MS * 1.4);
 		expect(old.isConnected).toBe(false);
+		// The outline goes onto the new button by itself.
+		await until(() => reviewer.target("m1")?.element === $("button"));
 		expect(overlay.items.length).toBe(1);
 		$("button").remove();
-		await Bun.sleep(TICK_MS * 1.4);
-		expect(bar()).toContain("0 of 1 found");
-		expect(overlay.items.length).toBe(0);
+		await until(
+			() =>
+				(bar() ?? "").includes("0 of 1 found") && overlay.items.length === 0,
+		);
 	});
 
 	test("an element still on the page is not searched for again", async () => {
@@ -1028,7 +1039,7 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 		await Bun.sleep(TICK_MS * 1.4);
 		expect(overlay.items).toHaveLength(0);
 		doc.body.innerHTML = PAY_PAGE;
-		await Bun.sleep(TICK_MS * 4.6);
+		await until(() => overlay.items.length > 0);
 		expect(overlay.items.map((i) => i.number)).toEqual([2]);
 		expect(overlay.items[0]?.found).toBe(true);
 	});
