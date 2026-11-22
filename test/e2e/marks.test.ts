@@ -30,6 +30,7 @@ import {
 	saveAs,
 	shadow,
 	showToolbar,
+	until,
 	worker,
 } from "./steps.ts";
 
@@ -79,16 +80,20 @@ describe.skipIf(browserBinary === undefined)(
 
 		/**
 		 * Wait until the toolbar's marks are in the case (their screenshots
-		 * taken), or a moment where one cannot be (a test's own failure).
+		 * taken). A mark is a draft from the moment it is drawn, so this fails
+		 * while a comment is still open or a mark waits for "Add mark N".
 		 */
 		const shotsTaken = async (tabId: number) => {
-			await Bun.sleep(300);
 			const end = Date.now() + 8000;
-			while (Date.now() < end) {
+			for (;;) {
 				const s = await sendToTab<{ drafts: number; saving: boolean }>(tabId, {
 					type: "overlay:state",
 				});
 				if (s.drafts === 0 && !s.saving) return;
+				if (Date.now() > end)
+					throw new Error(
+						`the marks were not in the case within 8 s: ${s.drafts} drafts, saving ${s.saving}`,
+					);
 				await Bun.sleep(100);
 			}
 		};
@@ -99,7 +104,6 @@ describe.skipIf(browserBinary === undefined)(
 			await markElement(page, "#near", "near");
 			await shotsTaken(tabId);
 			await markElement(page, "#far", "far");
-			await shotsTaken(tabId);
 			await saveAs(page, "Scroller");
 			const { c } = await saved("Scroller");
 			expect(c.shots).toHaveLength(2);
@@ -172,7 +176,6 @@ describe.skipIf(browserBinary === undefined)(
 				`document.querySelector("#near").style.marginTop = "200px"`,
 			);
 			await sendToTab(tabId, { type: "page:unblur" });
-			await Bun.sleep(1800);
 			await saveAs(page, "Pushed down");
 			const { c } = await saved("Pushed down");
 			const a = c.marks[0] as Mark;
@@ -194,7 +197,6 @@ describe.skipIf(browserBinary === undefined)(
 			await shotsTaken(tabId);
 			await page.click(shadow('[data-action="undo"]'));
 			await markElement(page, "#far", "kept");
-			await shotsTaken(tabId);
 			await saveAs(page, "After undo");
 			const { c } = await saved("After undo");
 			expect(c.marks.map((a) => a.shot)).toEqual(["s1", "s2"]);
@@ -225,7 +227,6 @@ describe.skipIf(browserBinary === undefined)(
 				20_000,
 			);
 			await markElement(page, "#far", "the next one");
-			await shotsTaken(tabId);
 			// A screenshot that failed waits for the user: Add mark 2.
 			await page.click(shadow('[data-action="retry"]'));
 			await saveAs(page, "Failed shot");
@@ -246,7 +247,6 @@ describe.skipIf(browserBinary === undefined)(
 			await page.click(`document.getElementById("plain")`);
 			await page.type("X");
 			await markElement(page, "#other", "after");
-			await shotsTaken(tabId);
 			await saveAs(page, "Typed");
 			expect((await saved("Typed")).c.shots).toHaveLength(2);
 			await close(page);
@@ -387,7 +387,6 @@ describe.skipIf(browserBinary === undefined)(
 			await shotsTaken(tabId);
 			await page.eval(`document.getElementById("menu").remove()`);
 			await markElement(page, "#label", "the label");
-			await shotsTaken(tabId);
 			await saveAs(page, "Menu");
 			const { c } = await saved("Menu");
 			expect(c.marks[0]?.element?.text).toBe("Menu item");
@@ -409,7 +408,6 @@ describe.skipIf(browserBinary === undefined)(
 			await markElement(page, "#other", "second");
 			await markElement(page, "#item", "third");
 			await page.click(shadow('[data-action="undo"]'));
-			await shotsTaken(tabId);
 			await saveAs(page, "Shared");
 			const { c, images } = await saved("Shared");
 			// Added one by one, each mark has a copy of the one capture (DEC-014).
@@ -437,7 +435,6 @@ describe.skipIf(browserBinary === undefined)(
 				// Changed with the toolbar up: the setting must reach it.
 				await sendToTab(tabId, { type: "overlay:settings", blurForms: blur });
 				await markElement(page, "#label", "a mark");
-				await shotsTaken(tabId);
 				await saveAs(page, title);
 				await close(page);
 				// Back to the list: the next toolbar's case opens there.
@@ -464,8 +461,17 @@ describe.skipIf(browserBinary === undefined)(
 			await page.click(shadow('[data-action="tool-element"]'));
 			await page.click(`document.getElementById("label")`);
 			await page.waitFor(shadow(".popover textarea"));
-			await shotsTaken(tabId);
-			await sendToTab(tabId, { type: "page:blur", blurForms: false });
+			// The AI app holds the page: refused while the mark's screenshot
+			// is taken, so asked until it is done.
+			await until(
+				() =>
+					sendToTab<{ ok: boolean }>(tabId, {
+						type: "page:blur",
+						blurForms: false,
+					}),
+				(started) => started.ok,
+				10_000,
+			);
 			await page.type("a mark");
 			await page.click(shadow('[data-action="comment-done"]'));
 			await Bun.sleep(1000);
@@ -514,7 +520,6 @@ describe.skipIf(browserBinary === undefined)(
 			await page.eval("trapFocus()");
 			await showToolbar(h, page, tabId);
 			await markElement(page, "#label", "typed despite the trap");
-			await shotsTaken(tabId);
 			await saveAs(page, "Trap");
 			const { c } = await saved("Trap");
 			expect(c.marks[0]?.comment).toBe("typed despite the trap");
@@ -527,7 +532,6 @@ describe.skipIf(browserBinary === undefined)(
 			await page.eval(`document.getElementById("dialog").showModal()`);
 			await page.waitFor(`${HOST}.parentElement.id === "dialog"`);
 			await markElement(page, "#in-dialog", "in the dialog");
-			await shotsTaken(tabId);
 			await saveAs(page, "Dialog");
 			const { c } = await saved("Dialog");
 			expect(c.marks[0]?.element?.text).toBe("In the dialog");
@@ -546,7 +550,6 @@ describe.skipIf(browserBinary === undefined)(
 			opened.set(page, { h, tabId });
 			await showToolbar(h, page, tabId);
 			await markElement(page, "#label", "on http");
-			await shotsTaken(tabId);
 			await saveAs(page, "Plain http");
 			expect((await saved("Plain http")).c.marks).toHaveLength(1);
 			await close(page);
