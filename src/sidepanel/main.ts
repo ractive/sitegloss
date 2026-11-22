@@ -49,10 +49,12 @@ import {
 	exportAllFileName,
 	exportCase,
 	exportFileName,
+	MAX_IMAGE_PIXELS,
 	MAX_IMPORT_ALL_BYTES,
 	readExports,
 	storeImport,
 } from "../lib/export.ts";
+import { toAddedImage } from "../lib/images.ts";
 import {
 	type Broadcast,
 	isMarkRequest,
@@ -1547,7 +1549,11 @@ async function importWork(
 
 /** Store one case of a file; the drawn marks of the version it replaced go. */
 async function storeOne(parsed: CheckedExport, copy: boolean): Promise<Case> {
-	const c = await storeImport(store, parsed, { copy });
+	// Images added to marks are re-encoded as the dialog does it (DEC-058).
+	const c = await storeImport(store, parsed, {
+		copy,
+		reencode: (image) => toAddedImage(image, MAX_IMAGE_PIXELS),
+	});
 	// Results (and drawn marks) of the version it replaced describe other marks.
 	if (state.loaded?.caseId === c.id) await forgetLoaded({ clearTab: true });
 	announce(c.id);
@@ -2752,7 +2758,10 @@ function answerMark(
 			return false;
 		}
 		update((s) => {
+			// Its row shows, whatever the list was filtered by, as for a pick:
+			// the dialog gives the focus back to it.
 			s.markFilter = undefined;
+			s.markPage = undefined;
 			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
 		});
 		void showAddImages(c, a);
