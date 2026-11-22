@@ -52,6 +52,7 @@ function setup(
 		holdMs?: number;
 		askMs?: number;
 		problemMs?: number;
+		codeWaitMs?: number;
 		grants?: string[];
 	} = {},
 ) {
@@ -590,14 +591,16 @@ describe("the question and the fill", () => {
 	});
 
 	test("no code from the relay: the panel says to type it, naming the AI app, for a while", async () => {
-		const f = setup({ problemMs: 1000 });
+		const f = setup({ problemMs: 300, codeWaitMs: 100 });
 		f.setCode(undefined);
 		f.load(1, PAGE, pairingPage({ host: "claude.ai" }));
 		await turns();
 		const answered = f.question.answer(f.question.question?.id as string, true);
 		expect(answered).toBeUndefined();
-		// takeCode waits 10 s for a code that never comes.
-		await Bun.sleep(10_200);
+		// No code before the wait for one ends.
+		await Bun.sleep(30);
+		expect(f.question.problem).toBeUndefined();
+		await Bun.sleep(220);
 		expect(f.question.problem).toBe(
 			"Sitegloss could not fill in the code for the AI app at claude.ai. Type the code from the AI app card on the relay's page.",
 		);
@@ -610,9 +613,9 @@ describe("the question and the fill", () => {
 				context: { tabId: 1, client: { name: "Claude", host: "claude.ai" } },
 			},
 		]);
-		await Bun.sleep(1100);
+		await Bun.sleep(300);
 		expect(f.question.problem).toBeUndefined();
-	}, 15_000);
+	});
 });
 
 describe("Review 4: which code is filled in, by Sitegloss's clock", () => {
