@@ -830,6 +830,49 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		expect(focused().hasAttribute("data-armed")).toBe(true);
 	});
 
+	test("a mark deleted from the keyboard leaves the focus on the next mark's head, else the one before", () => {
+		const c = marked("c_pictures7");
+		const a = c.marks[0] as Mark;
+		const second = {
+			...a,
+			id: "m2",
+			number: 2,
+			crop: "crops/m2.webp",
+			images: [],
+		};
+		const both = { ...c, marks: [a, second] };
+		render(caseState(both), noActions);
+		const toggle = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] .mark-toggle`,
+			) as unknown as HTMLElement;
+		const del = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] [data-mark-action="delete"]`,
+			) as unknown as HTMLElement;
+		toggle(a.id).click();
+		del(a.id).focus();
+		render(
+			caseState({
+				...both,
+				marks: [second],
+				updatedAt: "2026-11-22T13:00:00Z",
+			}),
+			noActions,
+		);
+		expect(window.document.activeElement).toBe(toggle("m2") as never);
+		// The last one: the mark before it.
+		const back = { ...both, updatedAt: "2026-11-22T14:00:00Z" };
+		render(caseState(back), noActions);
+		toggle("m2").click();
+		del("m2").focus();
+		render(
+			caseState({ ...back, marks: [a], updatedAt: "2026-11-22T15:00:00Z" }),
+			noActions,
+		);
+		expect(window.document.activeElement).toBe(toggle(a.id) as never);
+	});
+
 	test("an image the team does not have says so on its tile, in words", () => {
 		const c = marked("c_pictures6");
 		const a = c.marks[0] as Mark;
@@ -844,7 +887,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 					state: "problem",
 					problems: [],
 					undecided: 0,
-					notSent: { [c.id]: { i_b: "the mark already holds six images" } },
+					notSent: { [c.id]: { i_b: "The team's storage is full" } },
 				};
 			}),
 			noActions,
@@ -853,8 +896,47 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			window.document.querySelector(
 				`[data-mark="${a.id}"] [data-picture="${id}"] .tile-note`,
 			)?.textContent;
-		expect(note("i_b")).toBe("Not sent: the mark already holds six images.");
+		expect(note("i_b")).toBe("Not sent: The team's storage is full. Try again");
 		expect(note("i_a")).toBeUndefined();
+	});
+
+	test("an image held back past six is a tile of its own: not sent, why, and its Remove", () => {
+		const c = marked("c_pictures8");
+		const a = c.marks[0] as Mark;
+		const image = (id: string) => ({
+			id,
+			image: `images/${id}.webp`,
+			added: { at: "2026-11-22T10:00:00Z" },
+		});
+		c.marks = [
+			{
+				...a,
+				images: ["t1", "t2", "t3", "t4", "t5", "t6"].map(image),
+				heldImages: [image("i_mine")],
+			},
+		];
+		render(caseState(c), noActions);
+		const tile = window.document.querySelector(
+			`[data-mark="${a.id}"] [data-picture="i_mine"]`,
+		);
+		expect(tile?.querySelector("figcaption")?.textContent).toBe("Image 7");
+		expect(tile?.querySelector(".tile-note")?.textContent).toBe(
+			"Not sent: the mark already holds six images. It goes when a place is free.",
+		);
+		expect(
+			tile
+				?.querySelector("[data-action=remove-image]")
+				?.getAttribute("aria-label"),
+		).toBe(`Remove image 7 from mark ${a.number}`);
+		expect(
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-action=add-image]`,
+			),
+		).toBeNull();
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .pictures-full`)
+				?.textContent,
+		).toBe("6 of 6 images; 1 more waits for a place");
 	});
 
 	test("with the page filter on, a mark of that page keeps its pictures", () => {

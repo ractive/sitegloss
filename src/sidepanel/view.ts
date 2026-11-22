@@ -865,6 +865,8 @@ const shortDate = (iso: string) => {
  */
 function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const added = a.images ?? [];
+	// Added here, and no place for them on the team's mark (DEC-058).
+	const held = a.heldImages ?? [];
 	const missing = (text: string) =>
 		h("div", { class: "tile tile-missing" }, x.ready ? text : "");
 	const shot = x.urls?.get(a.crop);
@@ -884,8 +886,9 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				: missing("The screenshot is missing."),
 			h("figcaption", {}, "Screenshot"),
 		),
-		...added.map((image, i) => {
+		...[...added, ...held].map((image, i) => {
 			const n = i + 1;
+			const waiting = i >= added.length;
 			// From a file, nobody is named: who added it is only what the file says.
 			const who = image.added.imported
 				? undefined
@@ -904,7 +907,9 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					? pictureTile(
 							`${c.id}:${a.id}:${image.id}`,
 							url,
-							`Image ${n} of ${added.length} on mark ${a.number}${whence}`,
+							waiting
+								? `Image ${n} on mark ${a.number}, not sent: the mark already holds ${MAX_MARK_IMAGES} images`
+								: `Image ${n} of ${added.length} on mark ${a.number}${whence}`,
 							image.added.imported
 								? `Added ${shortDate(image.added.at)}, from an imported file. Click to show it larger, or small again`
 								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
@@ -928,13 +933,30 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					armed ? "Really remove?" : h("span", { "aria-hidden": "true" }, "×"),
 				),
 				h("figcaption", {}, `Image ${n}`),
-				x.notSent?.[image.id] === undefined
-					? null
-					: h(
+				waiting
+					? h(
 							"p",
 							{ class: "tile-note" },
-							`Not sent: ${x.notSent[image.id]?.replace(/[.\s]+$/, "")}.`,
-						),
+							"Not sent: the mark already holds six images. It goes when a place is free.",
+						)
+					: x.notSent?.[image.id] === undefined
+						? null
+						: h(
+								"p",
+								{ class: "tile-note" },
+								`Not sent: ${x.notSent[image.id]?.replace(/[.\s]+$/, "")}. `,
+								// Its refusal may have gone (room in storage, a role).
+								h(
+									"button",
+									{
+										type: "button",
+										class: "link",
+										"data-action": "retry-image",
+										onclick: () => x.actions.cloudSyncNow(),
+									},
+									"Try again",
+								),
+							),
 			);
 		}),
 		added.length < MAX_MARK_IMAGES
@@ -965,8 +987,8 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			? h(
 					"p",
 					{ class: "meta pictures-full" },
-					added.length > MAX_MARK_IMAGES
-						? `${added.length} images; the team's mark holds ${MAX_MARK_IMAGES}`
+					held.length > 0
+						? `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images; ${held.length === 1 ? "1 more waits" : `${held.length} more wait`} for a place`
 						: `${MAX_MARK_IMAGES} of ${MAX_MARK_IMAGES} images`,
 				)
 			: null,
@@ -2901,6 +2923,10 @@ function focusInMarks(
 	const value = at.getAttribute(which) as string;
 	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
 	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
+	// The marks around it, for when its row goes (a mark deleted).
+	const marks = [...list.querySelectorAll<HTMLElement>("li.mark")].map(
+		(li) => li.dataset["mark"],
+	);
 	const pictures = [
 		...list.querySelectorAll(
 			`li.mark[data-mark="${quoted(markId)}"] [data-picture]`,
@@ -2910,7 +2936,25 @@ function focusInMarks(
 		const row = next.querySelector<HTMLElement>(
 			`li.mark[data-mark="${quoted(markId)}"]`,
 		);
-		if (row === null) return;
+		if (row === null) {
+			// Deleted: the next mark's head, else the one before, else the
+			// list's heading.
+			const at = marks.indexOf(markId);
+			const near = [...marks.slice(at + 1), ...marks.slice(0, at).reverse()]
+				.map((id) =>
+					next.querySelector<HTMLElement>(
+						`li.mark[data-mark="${quoted(id as string)}"] .mark-toggle`,
+					),
+				)
+				.find((e) => e !== null);
+			const heading = next.querySelector<HTMLElement>("#marks-heading");
+			if (near) near.focus();
+			else if (heading) {
+				heading.tabIndex = -1;
+				heading.focus();
+			}
+			return;
+		}
 		const within =
 			picture != null
 				? `[data-picture="${quoted(picture)}"] `
@@ -3159,12 +3203,13 @@ function markSubline(
 				)
 			: null,
 		// Only what was added: the screenshot every mark has is not counted.
-		(a.images?.length ?? 0) > 0
-			? h(
-					"span",
-					{ class: "tag images-count" },
-					`+${a.images?.length} image${a.images?.length === 1 ? "" : "s"}`,
-				)
+		(a.images?.length ?? 0) + (a.heldImages?.length ?? 0) > 0
+			? ((n: number) =>
+					h(
+						"span",
+						{ class: "tag images-count" },
+						`+${n} image${n === 1 ? "" : "s"}`,
+					))((a.images?.length ?? 0) + (a.heldImages?.length ?? 0))
 			: null,
 		talk > 0
 			? h(
