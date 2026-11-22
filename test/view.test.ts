@@ -1276,7 +1276,7 @@ describe("Verify (DEC-023)", () => {
 			"Delete mark",
 		]);
 		expect(actionsOf("m2")).toEqual([
-			"Verified",
+			"Verify",
 			"Reopen…",
 			"Change…",
 			"Edit comment",
@@ -1295,15 +1295,15 @@ describe("Verify (DEC-023)", () => {
 			);
 		expect([strong("m1"), strong("m2"), strong("m3")]).toEqual([
 			["Resolve…"],
-			["Verified"],
+			["Verify"],
 			[],
 		]);
-		// To verify: Verified and Reopen… in the collapsed head too.
+		// To verify: Verify and Reopen… in the collapsed head too.
 		expect(
 			[...row("m2").querySelectorAll(".mark-sub button")].map(
 				(b) => b.textContent,
 			),
-		).toEqual(["Verified", "Reopen…"]);
+		).toEqual(["Verify", "Reopen…"]);
 		expect(row("m3").querySelector(".mark-sub button")).toBeNull();
 		expect(
 			row("m2")
@@ -2352,16 +2352,49 @@ describe("a case of several pages (DEC-038)", () => {
 			el("case-view").querySelector(`[data-mark="m${n}"] .mark-sub .state`)
 				?.textContent;
 		const cart = "http://localhost:3000/cart";
+		const opened: [string, string][] = [];
 		render(
 			on(cart, [match(1, "found"), match(2, "found"), match(3, "lost")]),
-			noActions,
+			actionsWith({
+				openMarkPage: (_c, mark, where) => void opened.push([mark.id, where]),
+			}),
 		);
 		expect(el("none-found").hidden).toBe(true);
 		expect(el("case-hint").textContent).toBe(
 			"2 of 2 marks found on localhost:3000/cart. 1 more is on other pages of the case.",
 		);
 		expect(word(1)).toContain("Found here");
-		expect(word(3)).toBe("On another page");
+		// A link to the mark's page, named by its title: not the bare words.
+		expect(word(3)).toBe("On Payment");
+		const link = el("case-view").querySelector<HTMLButtonElement>(
+			'[data-mark="m3"] .mark-sub button.elsewhere',
+		);
+		expect(link?.getAttribute("aria-label")).toBe(
+			"Mark 3 is on another page: open Payment in this tab and show the mark there",
+		);
+		// On localhost the link stays on localhost: the same page there.
+		expect(link?.dataset["markLink"]).toBe("here");
+		expect(link?.title).toContain("localhost:3000/checkout/pay");
+		// Every mark has Show: here it scrolls to the mark, there it opens the page.
+		const showOf = (n: number) =>
+			el("case-view").querySelector<HTMLButtonElement>(
+				`[data-mark="m${n}"] button.show`,
+			);
+		expect(showOf(1)?.dataset["action"]).toBe("show");
+		expect(showOf(3)?.dataset["action"]).toBe("show-elsewhere");
+		expect(showOf(3)?.getAttribute("aria-label")).toBe(
+			"Show mark 3: open Payment in this tab",
+		);
+		showOf(3)?.click();
+		el("case-view")
+			.querySelector<HTMLButtonElement>(
+				'[data-mark="m3"] .mark-sub button.elsewhere',
+			)
+			?.click();
+		expect(opened).toEqual([
+			["m3", "here"],
+			["m3", "here"],
+		]);
 		// Not red, and no "Not found" in its row.
 		const row = el("case-view").querySelector('[data-mark="m3"]');
 		expect(row?.getAttribute("data-colour")).toBeNull();
@@ -2393,9 +2426,9 @@ describe("a case of several pages (DEC-038)", () => {
 			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
 		);
 		expect([word(1), word(2), word(3)]).toEqual([
-			"On another page",
-			"On another page",
-			"On another page",
+			"On Your cart",
+			"On Your cart",
+			"On Payment",
 		]);
 		expect(el("case-hint").hidden).toBe(true);
 		// Started on a page that has no marks (DEC-026), marked elsewhere: on
@@ -2424,7 +2457,7 @@ describe("a case of several pages (DEC-038)", () => {
 			"1 of 1 marks found on localhost:3000/checkout/pay. 2 more are on other pages of the case.",
 		);
 		expect(word(3)).toContain("Found here");
-		expect(word(1)).toBe("On another page");
+		expect(word(1)).toBe("On Your cart");
 	});
 });
 

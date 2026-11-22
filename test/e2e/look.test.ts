@@ -162,7 +162,7 @@ inFullSet("the look", () => {
 		await panel.waitFor(
 			`document.querySelectorAll(".mark[data-open]").length === 3`,
 		);
-		// One mark fixed: its second row has the pill, Verified and Reopen….
+		// One mark fixed: its second row has the pill, Verify and Reopen….
 		const first = `document.querySelector(".mark")`;
 		await panel.eval(
 			`${first}.querySelector('[data-mark-action="resolve"]').click()`,

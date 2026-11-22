@@ -815,7 +815,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		reviewer.clear();
 		await reviewer.load(settledAs(c, "fixed"));
 		overlay.onPick?.(1);
-		expect(commands()).toEqual(["Verified", "Reopen…", "Change…"]);
+		expect(commands()).toEqual(["Verify", "Reopen…", "Change…"]);
 		reviewer.clear();
 		await reviewer.load(settledAs(c, "fixed", { verified: { at: "x" } }));
 		overlay.onPick?.(1);
@@ -987,7 +987,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		// Being typed here while the panel resolves the mark: the text stays.
 		field().value = "Typing";
 		await reviewer.update(settledAs(edited, "fixed"));
-		expect(commands()).toEqual(["Verified", "Reopen…", "Change…"]);
+		expect(commands()).toEqual(["Verify", "Reopen…", "Change…"]);
 		expect(field().value).toBe("Typing");
 		expect(overlay.popover.querySelector(".state")?.textContent).toBe(
 			"Fixed, to verify",

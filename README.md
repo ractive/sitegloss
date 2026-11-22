@@ -133,7 +133,7 @@ user agent. What differs from Chrome and Edge:
    the marks of the page in front are drawn there: a mark is that page's when it was
    made on the same path and hash route, whatever the host, and the home page of any
    host is the home page in front. A mark of another page is not looked for, drawn or
-   counted there; the side panel says "On another page" for it. Each mark says where it was made
+   counted there; the side panel names its page ("On Payment") as a link that opens it and shows the mark. Each mark says where it was made
    with a link that opens that address, query and all, in the tab in front and shows
    the mark once the page has loaded; with the case open on another host, a second link
    opens the same path and query there. While the case is open
@@ -163,7 +163,7 @@ user agent. What differs from Chrome and Edge:
 5. Each mark in the side panel has a status: open, fixed and to verify, verified, won't
    fix or can't reproduce. Resolve… sets it (Fixed, to verify; Fixed and verified; Won't
    fix; Can't reproduce; with an optional note). The tester, where the fix is deployed, then
-   clicks Verified on a fix that holds, or Reopen… with a note on what is still wrong;
+   clicks Verify on a fix that holds, or Reopen… with a note on what is still wrong;
    the claimed fix and its note stay in the mark's history. The status chips under the
    case's bar (Open, To verify, Verified, Dismissed) count the marks and filter the list:
    the developer works through Open, the tester through To verify. On a loaded page a

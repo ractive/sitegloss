@@ -2055,6 +2055,18 @@ ol.marks {
 	color: var(--ink-2);
 }
 
+/* A mark of another page: its page as a link, cut where the row ends. */
+.mark-sub .elsewhere {
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: inherit;
+	line-height: inherit;
+	text-align: start;
+}
+
 .mark[data-colour="lost"] .mark-sub .state {
 	color: var(--danger);
 	font-weight: 600;
