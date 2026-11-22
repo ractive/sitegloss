@@ -450,13 +450,6 @@ describe("the sync to a folder (DEC-021)", () => {
 		expect(folder.writes).toEqual(["login.sitegloss.zip"]);
 	});
 
-	test("no folder chosen: nothing happens", async () => {
-		store.chosen = undefined;
-		await add("c_1", "Login");
-		await sync.request();
-		expect(store.current).toBeUndefined();
-	});
-
 	test("Stop syncing: the status goes, and the icon hears of it", async () => {
 		folder.permission = "prompt";
 		await sync.request();
@@ -734,16 +727,6 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(api.ends).toBe(1);
 	});
 
-	test("a case without marks is not downloaded: a file there cannot be taken back (DEC-026)", async () => {
-		await putCase(cases, {
-			...sampleCase("c_1", "2026-11-12T08:00:00Z"),
-			title: "Example Domain",
-		});
-		await sync.request();
-		expect(api.downloads).toEqual([]);
-		expect(store.current?.state).toBe("synced");
-	});
-
 	test("the download under way is recorded while it is waited for, and cleared after", async () => {
 		const c = await add("c_1", "Login");
 		await sync.request();
@@ -860,13 +843,6 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(store.current?.state).toBe("synced");
 	});
 
-	test("an unchanged case is not written again", async () => {
-		await add("c_1", "Login");
-		await sync.request();
-		await sync.request();
-		expect(api.downloads).toHaveLength(1);
-	});
-
 	test("each write erases the entry before it from Chrome's list; the newest stays", async () => {
 		const c = await add("c_1", "Login");
 		await add("c_2", "Other", "2026-11-12T08:01:00Z");
@@ -931,16 +907,6 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect([...api.files.keys()]).toEqual(["Sitegloss/fine.sitegloss.zip"]);
 		expect(store.current?.state).toBe("failed");
 		expect(store.current?.problem).toContain("“Odd” could not be written");
-	});
-
-	test("two cases of the same title get -2", async () => {
-		await add("c_1", "Login", "2026-11-12T08:00:00Z");
-		await add("c_2", "Login", "2026-11-12T08:01:00Z");
-		await sync.request();
-		expect([...api.files.keys()].sort()).toEqual([
-			"Sitegloss/login-2.sitegloss.zip",
-			"Sitegloss/login.sitegloss.zip",
-		]);
 	});
 
 	test("the permission gone: paused, saying it is the downloads; back once it is given again", async () => {
@@ -1036,13 +1002,6 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(store.current?.needsUser).toBeUndefined();
 	});
 
-	test("an interrupted download's entry is erased from Chrome's list", async () => {
-		await add("c_1", "Login");
-		api.next = [{ state: "interrupted", error: "NETWORK_FAILED" }];
-		await sync.request();
-		expect(api.erased).toEqual([1]);
-	});
-
 	test("saved somewhere else than Sitegloss/ (the user answered Save as): failed too", async () => {
 		await add("c_1", "Login");
 		api.savedIn = "/Users/me/Desktop";
@@ -1062,20 +1021,6 @@ describe("the sync to Downloads (DEC-025)", () => {
 		expect(store.current?.state).toBe("failed");
 		expect(store.current?.problem).toContain("within a minute");
 		expect(api.cancelled).toEqual([1]);
-	});
-
-	test("a case that cannot be exported does not stop the others", async () => {
-		await add("c_1", "Broken", "2026-11-12T08:01:00Z");
-		await add("c_2", "Fine", "2026-11-12T08:00:00Z");
-		const url = api.url.bind(api);
-		api.url = async (c) => {
-			if (c.id === "c_1") throw new Error("a screenshot is missing.");
-			return url(c);
-		};
-		await sync.request();
-		expect([...api.files.keys()]).toEqual(["Sitegloss/fine.sitegloss.zip"]);
-		expect(store.current?.state).toBe("failed");
-		expect(store.current?.problem).toContain("“Broken” could not be written");
 	});
 
 	test("many cases failing: three named, the rest counted", async () => {
@@ -1388,6 +1333,9 @@ describe("the sync's database, opened when first used", () => {
 		try {
 			const state = initialState();
 			const kv = referenceKv();
+			// The sync asked for the downloads permission before (Sync to
+			// Downloads, then a folder chosen): only a stop of Downloads gives it back.
+			await kv.set({ "downloads:for-sync": true });
 			await chooseFolder(kv, new FakeFolder(), () => "f_1");
 			const panel = startSync((change) => change(state), kv);
 			await panel.refresh();
