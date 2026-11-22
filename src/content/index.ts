@@ -133,21 +133,20 @@ function inspect(
 	if (target === undefined) return null;
 	const { match } = target;
 	const n = match.number;
+	// A mark is looked for on its own page only (DEC-057).
+	if (!reviewer.isOwn(request.markId))
+		return {
+			ok: false,
+			reason: "other-page",
+			error: `Mark ${n} is on another page than the one in front, and is not looked for here.`,
+			match,
+		};
 	if (match.status === "no-element") {
 		if (request.selector === undefined)
 			return {
 				ok: false,
 				reason: "no-element",
 				error: `Mark ${n} was not drawn on an element.`,
-				match,
-			};
-		// Without an element to start from, a selector could name anything
-		// of any page; only the mark's own page is searched (DEC-038).
-		if (!reviewer.isOwn(request.markId))
-			return {
-				ok: false,
-				reason: "other-page",
-				error: `Mark ${n} was not drawn on an element, and the tab in front does not show the mark's page, so the selector is not looked for here.`,
 				match,
 			};
 	} else if (target.element === undefined)

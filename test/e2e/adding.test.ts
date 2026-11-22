@@ -256,7 +256,7 @@ inBothSets("adding marks to a case", () => {
 
 			await page.click(shadow('[data-action="undo"]'));
 			await page.waitFor(
-				`${status} === "Mark 2 taken out of “Taken back”"`,
+				`${status} === "Mark 2 deleted from “Taken back”"`,
 				20_000,
 			);
 			await drawnAre(page, { drafts: [], saved: ["1"] });

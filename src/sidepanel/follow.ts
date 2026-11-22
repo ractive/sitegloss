@@ -5,12 +5,7 @@
  * page. Pure: main.ts carries the steps out.
  */
 
-import {
-	type Case,
-	onPageInFront,
-	pageInFront,
-	samePage,
-} from "../lib/case.ts";
+import { type Case, onPageInFront, samePage } from "../lib/case.ts";
 import type { MarkMatch } from "../lib/messages.ts";
 import { shortUrl } from "./dom.ts";
 import type { Loaded } from "./state.ts";
@@ -128,8 +123,6 @@ export const isFound = (m: MarkMatch): boolean =>
  */
 export const isUnsure = (m: MarkMatch): boolean =>
 	m.status === "no-element" ||
-	// Found on a page that is not the mark's own: maybe only a look-alike.
-	m.otherPage === true ||
 	(m.status !== "lost" &&
 		!(m.status !== "ambiguous" && m.candidates[m.current]?.found === true));
 
@@ -154,33 +147,43 @@ export function dashDrawn(
 }
 
 /**
- * What a draw on the page at `url` says, mark by mark (DEC-038 and its
- * review): `own`, the marks of that page, which are what the page is judged
- * by; `also`, marks of other pages whose element was found here all the same
- * (a header every page has, or a look-alike: never sure, never counted as
- * found); `elsewhere`, marks of other pages that are not here, which nobody
- * expected. On a page that is none of the case's, every mark is looked for
- * and counted, as in a case of one page. A page is the case's by its path,
- * whatever the host (`pageInFront`, DEC-050).
+ * What a draw on the page at `url` says, mark by mark (DEC-057): `own`, the
+ * marks of that page (the same path and hash route, whatever the host:
+ * `onPageInFront`), which alone were looked for and are what the page is
+ * judged by; `elsewhere`, how many are marks of other pages, not looked for.
+ * On a page that is none of the case's, every mark is elsewhere.
  */
 export function findsOn(
 	c: Case,
 	matches: readonly MarkMatch[],
 	url: string,
-): { own: MarkMatch[]; also: number; elsewhere: number } {
-	if (pageInFront(c, url) === undefined)
-		return { own: [...matches], also: 0, elsewhere: 0 };
+): { own: MarkMatch[]; elsewhere: number } {
 	const pageOf = new Map(c.marks.map((a) => [a.id, a]));
 	const own: MarkMatch[] = [];
-	let also = 0;
 	let elsewhere = 0;
 	for (const m of matches) {
 		const a = pageOf.get(m.markId);
 		if (a === undefined || onPageInFront(c, a, url)) own.push(m);
-		else if (isFound(m)) also++;
 		else elsewhere++;
 	}
-	return { own, also, elsewhere };
+	return { own, elsewhere };
+}
+
+/**
+ * How many of the page's own marks with an element a draw found, of how
+ * many: what a search again could still find. The marks of other pages are
+ * not looked for (DEC-057), and a mark drawn on no element has nothing to
+ * find; neither is a miss.
+ */
+export function ownFound(
+	c: Case,
+	matches: readonly MarkMatch[],
+	url: string,
+): { found: number; total: number } {
+	const own = findsOn(c, matches, url).own.filter(
+		(m) => m.status !== "no-element",
+	);
+	return { found: own.filter(isFound).length, total: own.length };
 }
 
 /** The matches of the marks whose page is the page at `url` (`findsOn`). */
@@ -193,16 +196,17 @@ export function matchesHere(
 }
 
 /**
- * The search found none of the marks the page at `url` should have: of its
- * own marks, or, on a page that is none of the case's, of all of them. A
- * mark of another page found here does not make up for them.
+ * The page at `url` shows none of the case's marks: the case has none of
+ * that page's (DEC-057), or the search found none of its marks that
+ * recorded an element.
  */
 export function noneHere(
 	c: Case,
 	matches: readonly MarkMatch[],
 	url: string,
 ): boolean {
-	return noneFound(findsOn(c, matches, url).own);
+	const { own } = findsOn(c, matches, url);
+	return (own.length === 0 && matches.length > 0) || noneFound(own);
 }
 
 /**
@@ -228,30 +232,25 @@ export function movedOn(
 
 /**
  * What a draw found, in the case's This-tab block; `page` is the page's short
- * address, `matches` the page's own marks (`findsOn`), `also` and `elsewhere`
- * the other pages' marks that are and are not here. The page shows the rest:
- * a mark's colour is its status, and only the dash needs a word, where one
- * was drawn (`dashed`, see `dashDrawn`).
+ * address, `matches` the page's own marks (`findsOn`), `elsewhere` how many
+ * are on other pages. The page shows the rest: a mark's colour is its
+ * status, and only the dash needs a word, where one was drawn (`dashed`, see
+ * `dashDrawn`).
  */
 export function foundText(
 	matches: readonly MarkMatch[],
 	page: string,
 	dashed: boolean,
 	elsewhere = 0,
-	also = 0,
 ): string {
-	const maybe =
-		also === 0
-			? ""
-			: ` ${also} of the case's other pages may be here too (dashed).`;
 	const found = matches.filter(isFound).length;
 	const said = `${found} of ${matches.length} marks found on ${page}.`;
-	// The marks of the case's other pages, not expected here (DEC-038).
+	// The marks of the case's other pages, not looked for here (DEC-057).
 	const rest =
 		elsewhere === 0
 			? ""
 			: ` ${elsewhere} more ${elsewhere === 1 ? "is" : "are"} on other pages of the case.`;
-	return `${said}${dashed ? " Dashed: unsure." : ""}${maybe}${rest}`;
+	return `${said}${dashed ? " Dashed: unsure." : ""}${rest}`;
 }
 
 /**
@@ -266,15 +265,15 @@ export function foundLine(
 	loaded: Pick<Loaded, "matches" | "url" | "settling">,
 ): string | undefined {
 	const all = [...loaded.matches.values()];
-	const { own, also, elsewhere } = findsOn(c, all, loaded.url);
-	if (all.length === 0 || (noneHere(c, all, loaded.url) && !loaded.settling))
+	const { own, elsewhere } = findsOn(c, all, loaded.url);
+	// No mark of this page: the case view says where they are.
+	if (own.length === 0 || (noneHere(c, all, loaded.url) && !loaded.settling))
 		return undefined;
 	return foundText(
 		own,
 		shortUrl(loaded.url),
 		dashDrawn(c, own, loaded.url),
 		elsewhere,
-		also,
 	);
 }
 

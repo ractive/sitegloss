@@ -499,11 +499,10 @@ describe("two sites' home pages in one case (DEC-050)", () => {
 		}
 	});
 
-	test("the AI tools' onThisPage says the same, and otherPageNote for the other site's mark", () => {
+	test("the AI tools' onThisPage says the same", () => {
 		const c = twoHomes();
 		const [shop, pay] = c.marks as [Mark, Mark];
 		expect(pageView(c, shop, PAY).onThisPage).toBe(false);
-		expect(pageView(c, shop, PAY)).toHaveProperty("otherPageNote");
 		expect(pageView(c, pay, PAY).onThisPage).toBe(true);
 		expect(pageView(c, shop, HOME).onThisPage).toBe(true);
 		expect(pageView(c, pay, HOME).onThisPage).toBe(false);

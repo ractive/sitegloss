@@ -182,6 +182,8 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 .popover button:hover { background: #eef0f4; }
 .popover button.primary { background: ${L.amber}; border-color: ${L.amberEdge}; }
 .popover button.primary:hover { background: ${L.amberHover}; }
+/* The key that presses it, quieter by weight only: the label's colour keeps its contrast. */
+.popover button .keys { margin-inline-start: 6px; font-weight: 400; }
 .popover .label { display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 8px; }
 .popover .label .state { margin-inline-start: auto; font-weight: 400; color: ${L.popoverMuted}; }
 /* The mark's commands, as the panel has them (DEC-027). */
@@ -301,6 +303,38 @@ export function icon(doc: Document, name: IconName): SVGSVGElement {
 	});
 	for (const d of ICONS[name]) el.append(svg(doc, "path", { d }));
 	return el;
+}
+
+/** What tells the keyboard's platform: Chrome's client hint, else the old field. */
+export interface Platform {
+	platform?: string;
+	userAgentData?: { platform?: string };
+}
+
+/** Whether the command key is ⌘ (macOS) rather than Ctrl. */
+export function isMac(nav: Platform): boolean {
+	return /mac/i.test(nav.userAgentData?.platform || nav.platform || "");
+}
+
+/**
+ * Show on a dialog's button that Cmd+Enter (Ctrl+Enter elsewhere) in its
+ * text field presses it: the keys after its label, quieter, and outside its
+ * accessible name, which stays its label.
+ */
+export function withSaveKey(
+	button: HTMLButtonElement,
+	mac = isMac(navigator as Platform),
+): HTMLButtonElement {
+	const keys = button.ownerDocument.createElement("span");
+	keys.className = "keys";
+	keys.setAttribute("aria-hidden", "true");
+	keys.textContent = mac ? "⌘↵" : "Ctrl+↵";
+	button.append(keys);
+	button.setAttribute(
+		"aria-keyshortcuts",
+		mac ? "Meta+Enter" : "Control+Enter",
+	);
+	return button;
 }
 
 /**
