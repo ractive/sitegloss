@@ -1,10 +1,11 @@
 /**
  * A picture's size as its file declares it, read from the header without
  * decoding anything (DEC-058): a small file can declare a huge picture, and
- * a decode allocates the whole of it. PNG, JPEG, GIF and WebP; whether it is
- * animated where the header says so cheaply (PNG `acTL`, WebP's animation
- * flag, a GIF with more than one frame). Anything that cannot be read is
- * `undefined`, and is not taken.
+ * a decode allocates the whole of it. PNG, JPEG and WebP, what a screenshot
+ * is; whether it is animated where the header says so (PNG `acTL`, WebP's
+ * animation flag). No GIF: its decoder grows to the first frame's bounds,
+ * which the header's screen size does not bound. Anything that cannot be
+ * read is `undefined`, and is not taken.
  */
 
 export interface DeclaredSize {
@@ -94,6 +95,9 @@ function jpegSize(data: Uint8Array): DeclaredSize | undefined {
 			at += 2;
 			continue;
 		}
+		// No marker (`FF 00` is stuffed data) or none a JPEG has: a decoder
+		// would scan on where this reader skips, and read another size.
+		if (marker < 0xc0) return undefined;
 		if (marker === 0xd9 || marker === 0xda) return undefined;
 		const length = view.getUint16(at + 2);
 		if (length < 2) return undefined;
@@ -110,35 +114,6 @@ function jpegSize(data: Uint8Array): DeclaredSize | undefined {
 	return undefined;
 }
 
-function gifSize(data: Uint8Array): DeclaredSize | undefined {
-	const head = String.fromCharCode(...data.subarray(0, 6));
-	if ((head !== "GIF87a" && head !== "GIF89a") || data.length < 13)
-		return undefined;
-	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-	const width = view.getUint16(6, true);
-	const height = view.getUint16(8, true);
-	const table = (flags: number) =>
-		flags & 0x80 ? 3 * 2 ** ((flags & 7) + 1) : 0;
-	/** Past a run of sub-blocks, at the byte after its terminator. */
-	const skip = (from: number) => {
-		let at = from;
-		while (at < data.length && data[at] !== 0) at += (data[at] as number) + 1;
-		return at + 1;
-	};
-	// Frames, counted up to two: the second makes it animated.
-	let frames = 0;
-	let at = 13 + table(data[10] as number);
-	while (at < data.length && frames < 2) {
-		const block = data[at];
-		if (block === 0x2c) {
-			frames++;
-			at = skip(at + 10 + table(data[at + 9] as number) + 1);
-		} else if (block === 0x21) at = skip(at + 2);
-		else break;
-	}
-	return { width, height, animated: frames > 1 };
-}
-
 /** The picture's declared size and whether it is animated, by its type; none: not readable. */
 export function declaredSize(
 	data: Uint8Array,
@@ -149,8 +124,6 @@ export function declaredSize(
 			return pngSize(data);
 		case "image/jpeg":
 			return jpegSize(data);
-		case "image/gif":
-			return gifSize(data);
 		case "image/webp": {
 			const size = webpSize(data);
 			if (size === undefined) return undefined;

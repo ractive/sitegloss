@@ -18,18 +18,18 @@ import { h } from "./dom.ts";
 
 /**
  * What the browser decodes and Sitegloss takes: formats whose size can be
- * read from the header before anything is decoded (`declaredSize`). No SVG
- * (it can run script), no AVIF (its size sits deep in the file).
+ * read from the header before anything is decoded (`declaredSize`): what a
+ * screenshot is. No SVG (it can run script), no AVIF (its size sits deep in
+ * the file), no GIF (its decoder can grow past the size its header says).
  */
 export const ACCEPTED_TYPES = [
 	"image/png",
 	"image/jpeg",
 	"image/webp",
-	"image/gif",
 ] as const;
 
 export const NOT_READABLE =
-	"This file is not an image Sitegloss can read: PNG, JPEG, WebP or GIF.";
+	"This file is not an image Sitegloss can read: PNG, JPEG or WebP.";
 export const NO_IMAGE_PASTED =
 	"The clipboard holds no image. Copy a screenshot first.";
 export const TOO_MANY_BYTES = `This image is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`;

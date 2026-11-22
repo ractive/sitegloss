@@ -51,6 +51,7 @@ describe("which pictures the dialog takes (DEC-058)", () => {
 		["a PNG", file("a"), undefined],
 		["an SVG", new Blob(["<svg/>"], { type: "image/svg+xml" }), NOT_READABLE],
 		["an AVIF", file("a", { type: "image/avif" }), NOT_READABLE],
+		["a GIF", file("a", { type: "image/gif" }), NOT_READABLE],
 		["a file with no type", file("a", { type: "" }), NOT_READABLE],
 		[
 			"a file over 30 MB",

@@ -9,46 +9,24 @@ const bytes = (...parts: (number[] | string)[]) =>
 		),
 	);
 const be16 = (n: number) => [n >> 8, n & 255];
-const le16 = (n: number) => [n & 255, n >> 8];
 const le24 = (n: number) => [n & 255, (n >> 8) & 255, (n >> 16) & 255];
+/** A JPEG frame header (SOF0) declaring `width`×`height`. */
+const sof = (width: number, height: number) => [
+	0xff,
+	0xc0,
+	...be16(11),
+	8,
+	...be16(height),
+	...be16(width),
+	1,
+	1,
+	0x11,
+	0,
+];
 
 /** A JPEG: SOI, an APP1 to skip, then SOF0 declaring `width`×`height`. */
 const jpeg = (width: number, height: number) =>
-	bytes([0xff, 0xd8], [0xff, 0xe1, ...be16(8)], "Exif\0\0", [
-		0xff,
-		0xc0,
-		...be16(11),
-		8,
-		...be16(height),
-		...be16(width),
-		1,
-		1,
-		0x11,
-		0,
-	]);
-
-/** A GIF of `frames` frames, each an image descriptor with one empty sub-block run. */
-const gif = (width: number, height: number, frames: number) =>
-	bytes(
-		"GIF89a",
-		[...le16(width), ...le16(height), 0, 0, 0],
-		[0x21, 0xf9, 4, 0, 0, 0, 0, 0],
-		...Array.from({ length: frames }, () => [
-			0x2c,
-			0,
-			0,
-			0,
-			0,
-			...le16(width),
-			...le16(height),
-			0,
-			2,
-			1,
-			0,
-			0,
-		]),
-		[0x3b],
-	);
+	bytes([0xff, 0xd8], [0xff, 0xe1, ...be16(8)], "Exif\0\0", sof(width, height));
 
 /** A WebP with a VP8X header declaring `width`×`height`, `animated` by its flag. */
 const webp = (width: number, height: number, animated = false) =>
@@ -87,14 +65,6 @@ describe("the size a picture declares, read before any decode (DEC-058)", () => 
 			"image/jpeg",
 			[65_535, 65_535, false],
 		],
-		["a GIF of one frame", gif(320, 200, 1), "image/gif", [320, 200, false]],
-		["an animated GIF", gif(320, 200, 3), "image/gif", [320, 200, true]],
-		[
-			"a GIF declaring 65535 × 65535",
-			gif(65_535, 65_535, 1),
-			"image/gif",
-			[65_535, 65_535, false],
-		],
 		["a WebP", webp(1440, 900), "image/webp", [1440, 900, false]],
 		[
 			"an animated WebP",
@@ -124,8 +94,18 @@ describe("the size a picture declares, read before any decode (DEC-058)", () => 
 			bytes([0xff, 0xd8, 0xff, 0xda, 0, 2]),
 			"image/jpeg",
 		],
-		["a GIF header only", bytes("GIF89a"), "image/gif"],
+		[
+			"a JPEG with FF 00 where a marker belongs",
+			bytes([0xff, 0xd8, 0xff, 0x00, 0, 8, 1, 2, 3, 4], sof(1, 1)),
+			"image/jpeg",
+		],
+		[
+			"a JPEG with a marker below those a JPEG has",
+			bytes([0xff, 0xd8, 0xff, 0x4f, 0, 2], sof(1, 1)),
+			"image/jpeg",
+		],
 		["a PNG called an AVIF", pngHeader(10, 10), "image/avif"],
+		["any GIF", bytes("GIF89a", [1, 0, 1, 0, 0, 0, 0]), "image/gif"],
 	])("%s: not readable", (_name, data, type) => {
 		expect(declaredSize(data, type)).toBeUndefined();
 	});
