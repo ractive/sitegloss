@@ -3221,7 +3221,8 @@ web app comes later.
 
 - **The format.** `sitegloss/2` gains an optional `marks[].images`, a list of
   `{ id, image, added: { at, user? } }` (`MarkImage`), absent when there are none, as
-  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 6 per mark, an
+  `findings`; the zip gains `images/<id>.webp`. `validateCase` takes at most 12 per mark
+  (the team's six, and as many added here that could not be sent beside them), an
   id unique in the whole case, the path exactly `images/<id>.webp`, and `added` as every
   stamp. The import requires each file as it does a crop ("The export lacks
   images/….webp."). The format is not released, so it keeps its name: a reader from before
@@ -3246,8 +3247,12 @@ web app comes later.
   panel reads the clipboard only from a paste into its dialog, so no `clipboardRead`
   permission and no install warning.
 - **Limits and re-encoding.** At most 6 per mark; input up to 30 MB and 64 million pixels,
-  the import's own limits (`MAX_IMAGE_BYTES`, `MAX_IMAGE_PIXELS`); PNG, JPEG, WebP, GIF
-  (its first frame) and AVIF, no SVG. Every picture is re-encoded in the panel
+  the import's own limits (`MAX_IMAGE_BYTES`, `MAX_IMAGE_PIXELS`). The pixels are read from
+  the file's header before anything is decoded (`declaredSize`): a small file can declare a
+  picture whose decode alone takes gigabytes and ends the panel. So only formats whose
+  header says the size cheaply: PNG, JPEG, WebP and GIF; no AVIF (its size sits deep in
+  the file), no SVG. An animated picture (APNG, animated WebP or GIF) keeps its first
+  frame, and its preview says so. Every picture is re-encoded in the panel
   (`toAddedImage`): WebP at the crops' quality 0.85, the longest side at most 2048 px
   (`ADDED_MAX_SIDE`), turned as its EXIF orientation says. 2048 px stays readable enlarged
   and mostly fits what an AI app is sent. The canvas writes no EXIF, XMP or GPS, so the
@@ -3269,13 +3274,23 @@ web app comes later.
   findings: the server's order, removed here stays away, added here stays, gone there goes.
   A server mark without `images` is "not told": nothing here is removed, and the shadow
   keeps what it knew. An added image whose picture does not come is left out of that read
-  and said; nothing here is removed for it. **The price**: two devices adding to one mark
-  at once past six: the later add is refused (`limit`), and once the server's six come
-  back, the image only that device had is dropped there. Rare, and said only by the
-  refusal at that run.
+  and said; nothing here is removed for it.
+- **Never deleted unsent.** An image this device has not sent (not in the shadow) is never
+  removed by a merge: past the team's six it stays here, the mark holding up to 12, and
+  its tile says "Not sent:" and why: "the mark already holds six images" (the server's
+  `limit`), the storage's refusal, or "your role in the team does not allow it". It goes
+  by itself once the team's mark has room (a refused add is tried again when that mark's
+  images change), or once the role allows it, and the person may remove it. Only an image
+  the server took, or that the person removes, leaves the device.
+- **From a file, again.** The panel re-encodes the images of an imported case as the
+  dialog does, so a file's metadata or animation is not stored or synced. One case's file
+  may have as many entries as the format allows (`MAX_CASE_ENTRIES`).
+- **Keyboard.** A Delete or Remove clicked once redraws the list; the focus stays on the
+  armed control (mark Delete, a finding's Delete, an image's Remove), and moves to the
+  next picture when an image goes.
 - **AI tools**: `get_case` lists a mark's images (path, when, who) and sends them after
   every crop within the size budget; `get_image` reads `images/<id>.webp`.
-- Tests: `test/case.test.ts` ("images added to a mark"), `test/export.test.ts` (round trip,
+- Tests: `test/case.test.ts` ("images added to a mark"), `test/image-size.test.ts` (the headers), `test/export.test.ts` (round trip,
   a missing file refused), `test/markdown.test.ts`, `test/add-images.test.ts` (the
   dialog's rules), `test/view.test.ts` (the grid), `test/cloud-wire.test.ts`,
   `test/cloud.test.ts` (two devices), `test/tools.test.ts`, `test/review.test.ts`,

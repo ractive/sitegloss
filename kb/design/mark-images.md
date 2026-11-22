@@ -152,14 +152,14 @@ the `Lightbox`'s `media`.
   or another state of the page." Then one area: "Paste an image (⌘V), drop one here, or
   choose a file", with "To capture a menu that closes: ⌘⇧⌃4 on a Mac, Windows+Shift+S on
   Windows, then paste." "Choose files…" (`<input type=file multiple accept="image/png,
-  image/jpeg,image/webp,image/gif,image/avif">`; not "Upload…": nothing uploads unless the
+  image/jpeg,image/webp,image/gif">`; not "Upload…": nothing uploads unless the
   case syncs). `paste` reads `clipboardData.items` of kind file: no `clipboardRead`
   permission, no install warning. Each picture is re-encoded at once (section 5) and
   previewed with its size ("1440 × 900") and "Remove"; the previews are numbered after the
   mark's images ("Image 3", "Image 4" when it holds two); footer "Add 2 images" and
   "Cancel"; several at once, up to the free places.
 - **Errors**, in a `role="status"` line: "The clipboard holds no image. Copy a screenshot
-  first." · "This file is not an image Sitegloss can read: PNG, JPEG, WebP, GIF or AVIF." ·
+  first." · "This file is not an image Sitegloss can read: PNG, JPEG, WebP or GIF." ·
   "This image is larger than 30 MB." · "This image has more than 64 million pixels." ·
   "Mark 3 holds at most 6 images; 2 more fit." · "This image is on the mark already." (same
   SHA-256). A failed save says the store's sentence and the dialog stays.
@@ -172,9 +172,10 @@ the `Lightbox`'s `media`.
 
 ## 5. Limits and re-encoding
 
-- Accepted: what `createImageBitmap` decodes, offered as PNG, JPEG, WebP, GIF (first frame,
-  said in the preview), AVIF; no SVG. At most 30 MB and 64 MP (`MAX_IMAGE_BYTES`,
-  `MAX_IMAGE_PIXELS` of `export.ts`), checked before encoding. At most 6 per mark; no case
+- Accepted: PNG, JPEG, WebP and GIF, whose headers say their size (`declaredSize`, read
+  before any decode); an animated one keeps its first frame, said in the preview. No AVIF
+  (its size sits deep in the file), no SVG. At most 30 MB and 64 MP (`MAX_IMAGE_BYTES`,
+  `MAX_IMAGE_PIXELS` of `export.ts`), checked before decoding. At most 6 per mark; no case
   limit beyond the team quota and the import's 150 MB.
 - Always re-encoded in the panel: `toAddedImage(blob)` in `src/lib/images.ts` through
   `render`, WebP 0.85 like crops, longest side `ADDED_MAX_SIDE = 2048`, `imageOrientation:
