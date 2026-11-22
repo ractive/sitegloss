@@ -37,6 +37,7 @@ import {
 	withTitle,
 } from "../../src/lib/case.ts";
 import { exportCase } from "../../src/lib/export.ts";
+import { readZip, writeZip } from "../../src/lib/zip.ts";
 import { START_QUIET_MS } from "../../src/worker/cloud.ts";
 import {
 	addMark,
@@ -58,6 +59,21 @@ const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
 const text = (name: string) => `(${id(name)}?.textContent ?? "")`;
 const row = (title: string) =>
 	`[...document.querySelectorAll("[data-case]")].find((b) => b.textContent.includes(${JSON.stringify(title)}))`;
+
+/** An export of this build as 0.3.x wrote it: `sitegloss/1`, the marks under `annotations`. */
+async function asFormat1(zip: Uint8Array): Promise<Uint8Array> {
+	const files = await readZip(zip);
+	const {
+		format: _format,
+		marks,
+		...rest
+	} = JSON.parse(
+		new TextDecoder().decode(files.get("case.json") as Uint8Array),
+	);
+	const old = { format: "sitegloss/1", ...rest, annotations: marks };
+	files.set("case.json", new TextEncoder().encode(JSON.stringify(old)));
+	return writeZip([...files].map(([name, data]) => ({ name, data })));
+}
 
 /** The unpacked development build (the fixed key) of `commit`, as the owner loads one. */
 async function buildAt(commit: string, scratch: string): Promise<string> {
@@ -198,6 +214,22 @@ const READ_CLOUD = `new Promise((resolve, reject) => {
 	};
 })`;
 
+/** The extension's cases as stored, read in one of its pages: format and keys of each. */
+const READ_CASES = `new Promise((resolve, reject) => {
+	const open = indexedDB.open("sitegloss");
+	open.onerror = () => reject(open.error);
+	open.onsuccess = () => {
+		const db = open.result;
+		const all = db.transaction("cases").objectStore("cases").getAll();
+		all.onsuccess = () => {
+			const out = { version: db.version, cases: all.result.map((c) => ({ title: c.title, format: c.format, keys: Object.keys(c), marks: (c.marks ?? []).length })) };
+			db.close();
+			resolve(out);
+		};
+		all.onerror = () => reject(all.error);
+	};
+})`;
+
 describe.skipIf(
 	SERVER === undefined || DATA === undefined || browserBinary === undefined,
 )(
@@ -310,12 +342,15 @@ describe.skipIf(
 			await change(offline, fileCase, (c, now) => withTitle(c, fromFile, now));
 			await addMark(offline, fileCase, "Logo blurred", { element: true });
 			await addMark(offline, fileCase, "Footer overlaps", { element: true });
+			// The file as 0.3.x writes it (sitegloss/1, DEC-051): 0.3.0 reads no other.
 			const zip = join(scratch, "case.sitegloss.zip");
 			writeFileSync(
 				zip,
-				await exportCase(
-					offline.store,
-					(await offline.store.getCase(fileCase)) as Case,
+				await asFormat1(
+					await exportCase(
+						offline.store,
+						(await offline.store.getCase(fileCase)) as Case,
+					),
 				),
 			);
 
@@ -422,6 +457,28 @@ describe.skipIf(
 				60_000,
 			);
 			await synced(panel);
+			// The cases as stored: every one brought to sitegloss/2 by the
+			// store's upgrade (DEC-051), its marks under their new key.
+			const stored = await panel.eval<{
+				version: number;
+				cases: {
+					title: string;
+					format: string;
+					keys: string[];
+					marks: number;
+				}[];
+			}>(READ_CASES);
+			expect(stored.version).toBe(2);
+			expect(stored.cases.length).toBeGreaterThanOrEqual(2);
+			for (const c of stored.cases) {
+				expect(c.format).toBe("sitegloss/2");
+				expect(c.keys).not.toContain("annotations");
+			}
+			for (const [title, count] of [
+				[fromTeam, 5],
+				[fromFile, 2],
+			] as const)
+				expect(stored.cases.find((c) => c.title === title)?.marks).toBe(count);
 			// Some time for anything that would still go.
 			await Bun.sleep(5000);
 			const after = serverCounts();

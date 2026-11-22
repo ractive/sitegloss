@@ -22,7 +22,7 @@ import {
 } from "../src/lib/case.ts";
 import { CloudSync } from "../src/lib/cloud/engine.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
-import { MemoryStore, upgradeStoredCase } from "../src/lib/store.ts";
+import { MemoryStore } from "../src/lib/store.ts";
 import { readZip } from "../src/lib/zip.ts";
 import type { FakeApi } from "./cloud-fake.ts";
 import { FakeServer } from "./cloud-fake.ts";
@@ -44,6 +44,7 @@ import {
 import { CloudSync as CloudSync030 } from "./compat/v0.3.0/src/lib/cloud/engine.ts";
 import { memoryKv as memoryKv030 } from "./compat/v0.3.0/src/lib/kv.ts";
 import { MemoryStore as MemoryStore030 } from "./compat/v0.3.0/src/lib/store.ts";
+import { openedByThisBuild } from "./upgrade-030.ts";
 
 const TESS = { id: "u_tess", name: "Tess Tester" };
 const DANA = { id: "u_dana", name: "Dana Developer" };
@@ -73,16 +74,6 @@ function device030(api: FakeApi) {
 		onStatus: (status) => statuses.push(status),
 	});
 	return { store, kv, api, engine, statuses, clock };
-}
-
-/**
- * 0.3.0's database as this build's store opens it: its upgrade to version 2
- * (DEC-051) brings every case to `sitegloss/2` before anything reads one.
- */
-function openedByThisBuild(store: MemoryStore030): MemoryStore030 {
-	for (const [id, c] of store.cases)
-		store.cases.set(id, upgradeStoredCase(c) as Case030);
-	return store;
 }
 
 let server: FakeServer;

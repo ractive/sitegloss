@@ -64,6 +64,7 @@ import {
 import { CloudSync as CloudSync030 } from "./compat/v0.3.0/src/lib/cloud/engine.ts";
 import { memoryKv as memoryKv030 } from "./compat/v0.3.0/src/lib/kv.ts";
 import { MemoryStore as MemoryStore030 } from "./compat/v0.3.0/src/lib/store.ts";
+import { openedByThisBuild } from "./upgrade-030.ts";
 
 const serverTest = BASE === undefined ? describe.skip : describe;
 
@@ -678,8 +679,9 @@ serverTest("a browser's 0.3.0 data, opened by this build", () => {
 			},
 		};
 		const statuses: { state: string; problems: unknown[] }[] = [];
+		// The extension reloaded as this build: its store's upgrade first (DEC-051).
 		const engine = new CloudSync({
-			store: old.store as never,
+			store: openedByThisBuild(old.store) as never,
 			kv: old.kv as never,
 			api: () => api,
 			onStatus: (s) => statuses.push(s),
