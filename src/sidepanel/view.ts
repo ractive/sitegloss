@@ -16,6 +16,7 @@ import {
 	appLabel,
 	byline,
 	type Case,
+	type CasePage,
 	caseCounts,
 	casePages,
 	cleanTitle,
@@ -58,6 +59,7 @@ import {
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
+import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
 import {
@@ -95,6 +97,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	reopenMark(c: Case, a: Mark, note: string): void;
 	/** A status chip: show only those marks; `undefined`: all of them. */
 	filterMarks(caseId: string, group: StatusGroup | undefined): void;
+	/** The page filter: this page, one page of the case; `undefined`: all pages. */
+	filterPage(caseId: string, choice: PageChoice | undefined): void;
 	saveComment(c: Case, a: Mark, text: string): void;
 	deleteMark(c: Case, a: Mark): void;
 	/** "Add another image…": the dialog for the mark's added images (DEC-058). */
@@ -1700,6 +1704,8 @@ function statusBlock(
 	c: Case,
 	filter: StatusGroup | undefined,
 	actions: Actions,
+	/** The page the list is filtered by: the counts are its marks'. */
+	page?: CasePage,
 ): HTMLElement | null {
 	if (c.marks.length === 0) return null;
 	const n = caseCounts(c);
@@ -1736,7 +1742,9 @@ function statusBlock(
 					"p",
 					{ class: "meta all-done" },
 					h("span", { class: "sign", "aria-hidden": "true" }, "✓"),
-					" All marks are verified or dismissed.",
+					page === undefined
+						? " All marks are verified or dismissed."
+						: ` All marks on ${pageLabel(page)} are verified or dismissed.`,
 				)
 			: null,
 	);
@@ -2157,6 +2165,141 @@ function reopenForm(
 	);
 }
 
+/** A page as the page filter names it: its title, else its address. */
+const pageLabel = (page: CasePage) => page.title.trim() || shortUrl(page.url);
+
+/**
+ * A page's mark count in the case's list of pages: it sets the list's page
+ * filter to that page, and another click sets it back to all pages. Its name
+ * starts with what it shows and stays; `aria-pressed` says whether it is on.
+ * A page without marks has its count as plain text: nothing to show.
+ */
+function pageCount(
+	c: Case,
+	page: CasePage,
+	marks: number,
+	byPage: PageFilter,
+	actions: Actions,
+): HTMLElement {
+	const count = [
+		h("span", { class: "page-count" }, String(marks)),
+		h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+	];
+	if (marks === 0) return h("span", { class: "page-count-box" }, ...count);
+	const on = byPage.page?.url === page.url;
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "page-count-box page-count-button",
+			"aria-pressed": String(on),
+			"aria-label": `${marks} mark${marks === 1 ? "" : "s"} on ${pageLabel(page)}: show only these`,
+			onclick: () =>
+				actions.filterPage(c.id, on ? undefined : { page: pageKey(page.url) }),
+		},
+		...count,
+	);
+}
+
+/**
+ * The list's page filter, beside the status chips, for a case of several
+ * pages: "All pages" and "This page" as chips (this page while the tab shows
+ * one of the case's), and any page of the case from a menu, in the order of
+ * the case's pages, each with its mark count.
+ */
+function pageChooser(
+	c: Case,
+	byPage: PageFilter,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement | null {
+	const pages = casePages(c);
+	if (pages.length < 2 || c.marks.length === 0) return null;
+	const counts = marksByPage(c);
+	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
+	const front = tabUrl ? pageInFront(c, tabUrl) : undefined;
+	const here = byPage.choice === "here";
+	const picked = byPage.choice !== undefined && !here ? byPage.page : undefined;
+	const chip = (
+		label: string,
+		count: number | undefined,
+		pressed: boolean,
+		choice: PageChoice | undefined,
+		extra: Record<string, string>,
+	) =>
+		h(
+			"button",
+			{
+				type: "button",
+				class: "chip",
+				"aria-pressed": String(pressed),
+				onclick: () => actions.filterPage(c.id, choice),
+				...extra,
+			},
+			label,
+			count === undefined ? null : h("span", { class: "count" }, ` ${count}`),
+		);
+	const hosts = new Set(
+		pages.filter((pg) => isWebPage(pg.url)).map((pg) => hostOf(pg.url)),
+	);
+	const select = h(
+		"select",
+		{
+			id: "marks-page",
+			"aria-label": "Show the marks of one page",
+			onchange: (e: Event) => {
+				const value = (e.target as HTMLSelectElement).value;
+				actions.filterPage(c.id, value === "" ? undefined : { page: value });
+			},
+		},
+		h("option", { value: "" }, picked ? "All pages" : "Other page…"),
+		...pages.map((pg) => {
+			const n = marksOn(pg.url);
+			const path = isWebPage(pg.url)
+				? shortPath(pg.url, hosts.size > 1)
+				: pg.url;
+			const title = pg.title.trim();
+			// A page without marks would show nothing.
+			return h(
+				"option",
+				{ value: pageKey(pg.url), ...(n === 0 ? { disabled: true } : {}) },
+				`${title ? `${title} (${path})` : path}: ${n} mark${n === 1 ? "" : "s"}`,
+			);
+		}),
+	);
+	select.value = picked ? pageKey(picked.url) : "";
+	if (picked) select.setAttribute("data-on", "");
+	return h(
+		"div",
+		{
+			class: "chips page-filter",
+			role: "group",
+			"aria-label": "Show marks by page",
+		},
+		chip("All pages", undefined, byPage.choice === undefined, undefined, {
+			"data-page-filter": "all",
+		}),
+		front !== undefined || here
+			? chip(
+					"This page",
+					// Counted as the list of pages counts it, once.
+					front === undefined ? 0 : marksOn(front.url),
+					here,
+					here ? undefined : "here",
+					{
+						"data-page-filter": "here",
+						title: front
+							? `Only the marks of ${pageLabel(front)}, the page in front; it follows the tab`
+							: byPage.unread
+								? "Sitegloss cannot read which page the tab in front shows"
+								: "The tab in front shows none of this case's pages",
+					},
+				)
+			: null,
+		select,
+	);
+}
+
 /**
  * The pages of a case that has several (DEC-038): each with its marks
  * counted, and a link that opens it; the one the tab in front shows says so.
@@ -2170,6 +2313,7 @@ function renderPages(
 	c: Case,
 	pages: ReturnType<typeof casePages>,
 	tabUrl: string | undefined,
+	byPage: PageFilter,
 	actions: Actions,
 ): void {
 	// The page whose marks are drawn on the tab in front, whatever its host (DEC-050).
@@ -2180,6 +2324,7 @@ function renderPages(
 	const key = JSON.stringify([
 		pages.map((page) => [page.url, page.title, marksOn(page.url)]),
 		here?.url ?? null,
+		byPage.page?.url ?? null,
 	]);
 	if (key === p.pagesKey) return;
 	p.pagesKey = key;
@@ -2188,6 +2333,18 @@ function renderPages(
 	const hosts = new Set(
 		pages.filter((page) => isWebPage(page.url)).map((page) => hostOf(page.url)),
 	);
+	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
+	// the title it was on), in the same row.
+	const at = document.activeElement as HTMLElement | null;
+	const focused =
+		at !== null && p.pages.contains(at)
+			? {
+					page: at.closest<HTMLElement>("li")?.dataset["page"],
+					control: at.classList.contains("page-count-button")
+						? ".page-count-button"
+						: ".page-name",
+				}
+			: undefined;
 	p.pages.replaceChildren(
 		...pages.map((page) => {
 			const marks = marksOn(page.url);
@@ -2204,9 +2361,14 @@ function renderPages(
 				? `${whole}\nOpens in a new tab; the case's marks are drawn there`
 				: whole;
 			const nameClass = `page-name${title ? "" : " cut-start"}`;
+			const filtered = byPage.page?.url === page.url;
 			return h(
 				"li",
-				{ "data-page": page.url, ...(front ? { "data-here": true } : {}) },
+				{
+					"data-page": page.url,
+					...(front ? { "data-here": true } : {}),
+					...(filtered ? { "data-filter": true } : {}),
+				},
 				web
 					? h(
 							"button",
@@ -2220,14 +2382,19 @@ function renderPages(
 							name,
 						)
 					: h("span", { class: nameClass, title: tooltip }, name),
-				h("span", { class: "page-count" }, String(marks)),
-				h("span", { class: "page-unit" }, ` mark${marks === 1 ? "" : "s"}`),
+				// The count sets the list's page filter; the title opens the page.
+				pageCount(p.current, page, marks, byPage, actions),
 				title
 					? h("span", { class: "page-address cut-start" }, address())
 					: null,
 			);
 		}),
 	);
+	if (focused?.page !== undefined)
+		[...p.pages.children]
+			.find((li) => (li as HTMLElement).dataset["page"] === focused.page)
+			?.querySelector<HTMLElement>(focused.control)
+			?.focus();
 }
 
 function renderCase(state: PanelState, actions: Actions): void {
@@ -2272,7 +2439,14 @@ function renderCase(state: PanelState, actions: Actions): void {
 		: web
 			? ""
 			: c.page.url;
-	renderPages(p, c, several ? pages : [], state.tab?.url, actions);
+	renderPages(
+		p,
+		c,
+		several ? pages : [],
+		state.tab?.url,
+		pageFilter(c, state.markPage, state.tab?.url),
+		actions,
+	);
 	// The window the marks of the page in front were made in (DEC-038).
 	const madeAt = viewportAt(c, state.tab?.url);
 	p.madeAt.textContent = sizeOf(madeAt);
@@ -2419,27 +2593,61 @@ function renderCase(state: PanelState, actions: Actions): void {
 
 	// A filter ends once none of its marks are left (nothing to show), or a
 	// mark was added (it would not show, as if it was not saved).
+	// The page filter first: the status chips count what it leaves.
+	const byPage = pageFilter(c, state.markPage, state.tab?.url);
+	const onPage: Case = { ...c, marks: c.marks.filter(byPage.shows) };
 	const f = state.markFilter;
 	const filter =
 		f?.caseId === c.id &&
-		caseCounts(c)[f.group] > 0 &&
+		caseCounts(onPage)[f.group] > 0 &&
 		c.marks.every((a) => a.number <= f.upTo)
 			? f.group
 			: undefined;
+	const pageKeyNow = JSON.stringify([
+		byPage.choice ?? null,
+		byPage.page?.url ?? null,
+	]);
 	// The status block: under the marks' heading, where its chips filter the
 	// list (the owner; DEC-023 had it in the header).
-	const statusKey = JSON.stringify([filter ?? null, caseCounts(c)]);
+	const front = state.tab?.url ? pageInFront(c, state.tab.url) : undefined;
+	// Keyed on what it shows, not on every change of the case: an open menu
+	// survives a save or a sync.
+	const pageCounts = marksByPage(c);
+	const statusKey = JSON.stringify([
+		filter ?? null,
+		caseCounts(onPage),
+		pageKeyNow,
+		front?.url ?? null,
+		byPage.unread ?? false,
+		casePages(c).map((pg) => [
+			pg.url,
+			pg.title,
+			pageCounts.get(pageKey(pg.url)) ?? 0,
+		]),
+	]);
 	if (statusKey !== p.statusKey) {
 		p.statusKey = statusKey;
 		// The chip that was clicked is drawn anew: the focus stays on it.
 		const at = document.activeElement as HTMLElement | null;
-		const group =
-			at !== null && p.status.contains(at) ? at.dataset["group"] : undefined;
-		const block = statusBlock(c, filter, actions);
-		p.status.replaceChildren(...(block === null ? [] : [block]));
-		p.status.hidden = block === null;
-		if (group !== undefined)
-			block?.querySelector<HTMLElement>(`[data-group="${group}"]`)?.focus();
+		const inside = at !== null && p.status.contains(at);
+		const refocus = !inside
+			? undefined
+			: at.dataset["group"] !== undefined
+				? `[data-group="${at.dataset["group"]}"]`
+				: at.dataset["pageFilter"] !== undefined
+					? `[data-page-filter="${at.dataset["pageFilter"]}"]`
+					: at.id === "marks-page"
+						? "#marks-page"
+						: undefined;
+		const block = statusBlock(onPage, filter, actions, byPage.page);
+		// Beside the status chips, the page filter: the two combine.
+		const chooser = pageChooser(c, byPage, state.tab?.url, actions);
+		p.status.replaceChildren(
+			...[block, chooser].filter((e): e is HTMLElement => e !== null),
+		);
+		p.status.hidden = block === null && chooser === null;
+		if (refocus !== undefined)
+			p.status.querySelector<HTMLElement>(refocus)?.focus();
 	}
 
 	const images = state.images?.caseId === c.id ? state.images : undefined;
@@ -2458,6 +2666,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const marksKey = JSON.stringify([
 		picked?.at ?? null,
 		filter ?? null,
+		pageKeyNow,
+		state.tab?.url ? (pageInFront(c, state.tab.url)?.url ?? null) : null,
 		c.updatedAt,
 		images?.version,
 		loaded ? [loaded.url, ...loaded.matches.values()] : null,
@@ -2471,11 +2681,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 		ok,
 	]);
 	if (marksKey !== p.marksKey) {
-		const sorted = [...c.marks]
+		const sorted = [...onPage.marks]
 			.sort((x, y) => x.number - y.number)
 			.filter(
 				(a) => filter === undefined || GROUP_OF[markStatus(a)] === filter,
 			);
+		const narrowed = filter !== undefined || byPage.choice !== undefined;
+		const showAll = () => {
+			actions.filterMarks(c.id, undefined);
+			actions.filterPage(c.id, undefined);
+		};
 		// A mark of another page than the one drawn on is not looked for
 		// there: "on another page", whatever the page (DEC-057).
 		const items = sorted.map((a) => {
@@ -2542,7 +2757,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 				h("div", { class: "marks-tools" }, toggleAll, p.loadButton),
 			),
 			p.status,
-			filter === undefined
+			!narrowed || c.marks.length === 0
 				? null
 				: h(
 						"p",
@@ -2554,7 +2769,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 								type: "button",
 								class: "link",
 								"data-action": "show-all",
-								onclick: () => actions.filterMarks(c.id, undefined),
+								onclick: showAll,
 							},
 							"Show all",
 						),
@@ -2563,13 +2778,33 @@ function renderCase(state: PanelState, actions: Actions): void {
 			items.length > 0 ? h("div", { class: "row" }, p.addMarksEnd) : null,
 			items.length > 0
 				? null
-				: filter === undefined
+				: c.marks.length === 0
 					? h(
 							"p",
 							{ class: "empty" },
 							"No marks yet. Click Add marks and draw on the page.",
 						)
-					: null,
+					: byPage.choice !== undefined
+						? h(
+								"p",
+								{ class: "empty", id: "marks-none-on-page" },
+								byPage.unread
+									? "Sitegloss cannot read which page the tab in front shows (see the notice about this tab). "
+									: byPage.page === undefined
+										? "The tab in front shows none of this case's pages. "
+										: "No marks on this page. ",
+								h(
+									"button",
+									{
+										type: "button",
+										class: "link",
+										"data-action": "all-pages",
+										onclick: showAll,
+									},
+									"Show all pages",
+								),
+							)
+						: null,
 		);
 		p.marks.replaceWith(marks);
 		p.marks = marks;

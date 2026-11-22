@@ -1363,22 +1363,59 @@ ul.cases .title {
 	font: 12px / 19px var(--font-mono);
 }
 
+/*
+ * The count and its word: one control, which sets the list's page filter
+ * (plain text for a page without marks). Room for three digits, the word
+ * after them: a button is no subgrid.
+ */
+.case-pages .page-count-box {
+	grid-row: 1;
+	grid-column: 3 / 5;
+	display: grid;
+	grid-template-columns: 3ch auto;
+	justify-content: start;
+	color: var(--ink-2);
+}
+
+.case-pages .page-count-button {
+	min-height: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--r-pill);
+	background: none;
+	color: var(--link);
+	font: inherit;
+}
+
+.case-pages .page-count-button:hover:not(:disabled) {
+	background: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* The page the list is filtered by: its count on a wash, apart from the bar. */
+.case-pages .page-count-button[aria-pressed="true"],
+.case-pages .page-count-button[aria-pressed="true"]:hover:not(:disabled) {
+	background: var(--wash);
+	box-shadow: 0 0 0 3px var(--wash);
+	color: var(--ink);
+	font-weight: 700;
+}
+
 .case-pages .page-count,
 .case-pages .page-unit {
-	grid-row: 1;
-	color: var(--ink-2);
 	white-space: nowrap;
 }
 
 .case-pages .page-count {
-	grid-column: 3;
+	grid-column: 1;
 	text-align: end;
 	font-variant-numeric: tabular-nums;
 }
 
 .case-pages .page-unit {
-	grid-column: 4;
-	padding-inline-start: 0.25em;
+	grid-column: 2;
+	white-space: pre;
 }
 
 /* Whether the case is the team's, and "Share with team" (DEC-039). */
@@ -1477,8 +1514,37 @@ ul.cases .title {
 
 /* Under the marks' heading: the chips filter the list below. */
 .marks > .case-status {
+	display: grid;
+	gap: var(--s2);
 	padding: var(--s3) var(--s4);
 	border-bottom: 1px solid var(--rule);
+}
+
+/*
+ * The page filter, under the status chips: two chips for the usual choices,
+ * a menu for any page, as tall as a chip and taking the rest of the row.
+ */
+.page-filter {
+	align-items: center;
+}
+
+.page-filter select {
+	flex: 1 1 9em;
+	min-width: 0;
+	max-width: 100%;
+	min-height: 24px;
+	padding: 0 var(--s2);
+	border: 1.5px solid transparent;
+	border-radius: var(--r-pill);
+	background: var(--wash);
+	color: var(--ink-2);
+	font: 600 12px / 16px var(--font);
+	text-overflow: ellipsis;
+}
+
+.page-filter select[data-on] {
+	border-color: var(--edge);
+	color: var(--ink);
 }
 
 .chips {
@@ -1708,6 +1774,11 @@ ul.cases .progress {
 }
 
 .marks > .empty {
+	padding: var(--s3) var(--s4);
+}
+
+/* "Add marks" under the last mark: inside the section's padding, as the rest. */
+.marks > .row {
 	padding: var(--s3) var(--s4);
 }
 
