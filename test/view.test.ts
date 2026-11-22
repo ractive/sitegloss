@@ -1153,11 +1153,15 @@ describe("Verify (DEC-023)", () => {
 		const item = window.document.querySelector(
 			`[data-case="${c.id}"]`,
 		) as unknown as HTMLElement;
-		expect(item.textContent).toContain(
-			"4 marks (1 open, 1 to verify, 1 verified, 1 dismissed)",
+		// One sentence for a screen reader; the bar and the words for the eye.
+		expect(item.getAttribute("aria-label")).toContain(
+			"4 marks, 1 open, 1 to verify, 1 verified, 1 dismissed",
+		);
+		expect(item.querySelector(".card-counts")?.textContent).toBe(
+			"● 1 open◐ 1 to verify✓ 1 verified– 1 dismissed",
 		);
 		expect(
-			[...item.querySelectorAll(".progress > span")].map((s) =>
+			[...item.querySelectorAll(".progress.bar > span")].map((s) =>
 				s.getAttribute("data-kind"),
 			),
 		).toEqual(["open", "toVerify", "verified", "dismissed"]);
@@ -1669,7 +1673,10 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		expect(row?.textContent).toContain("shop.example/cart and 1 more page");
+		expect(row?.textContent).toContain("shop.example/cart · 2 pages");
+		expect(row?.getAttribute("aria-label")).toContain(
+			"on shop.example/cart and 1 more page",
+		);
 		expect(
 			window.document.querySelector(
 				'ul.cases[data-group="other"] [data-case="c_other"]',
@@ -2745,7 +2752,7 @@ describe("what stays between renders", () => {
 describe("the summary for the developer", () => {
 	const value = () => el<HTMLTextAreaElement>("verdict").value;
 
-	test("is labelled so, says what it is for, and shows in the case list", () => {
+	test("is labelled so and says what it is for; the case list leaves it to the case", () => {
 		const c = { ...sampleCase("c_s"), verdict: "Darker button" };
 		render(caseState(c), noActions);
 		expect(
@@ -2758,9 +2765,10 @@ describe("the summary for the developer", () => {
 		const home = initialState();
 		home.cases = [c];
 		render(home, noActions);
+		// Cards of one height: the summary is read in the case.
 		expect(
 			window.document.querySelector('[data-case="c_s"]')?.textContent,
-		).toContain("Summary for the developer: Darker button");
+		).not.toContain("Darker button");
 	});
 
 	test("a draft stays while the case changes, and comes back after leaving", () => {
