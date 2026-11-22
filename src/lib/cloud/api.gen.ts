@@ -225,6 +225,7 @@ export interface components {
 			open: number;
 			toVerify: number;
 			verified: number;
+			/** @description The dismissed marks: won't fix or can't reproduce. The field keeps its first name; it says nothing about whether the case is closed (that is the case's `closed`). */
 			closed: number;
 		};
 		CaseDetail: {
