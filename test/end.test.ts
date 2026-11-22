@@ -509,8 +509,14 @@ describe("which screenshot a mark gets", () => {
 	};
 	const alert = (overlay: InstanceType<typeof Overlay>) =>
 		overlay.toolbar.querySelector('[data-role="alert"]')?.textContent ?? "";
-	const retry = (overlay: InstanceType<typeof Overlay>) =>
-		overlay.toolbar.querySelector<HTMLButtonElement>('[data-action="retry"]');
+	/** Add mark N, which must be there. */
+	const retry = (overlay: InstanceType<typeof Overlay>) => {
+		const button = overlay.toolbar.querySelector<HTMLButtonElement>(
+			'[data-action="retry"]',
+		);
+		expect(button).not.toBeNull();
+		return button as HTMLButtonElement;
+	};
 
 	test.each([
 		["nothing changed: they share one screenshot", 1, (): void => undefined],
@@ -569,7 +575,7 @@ describe("which screenshot a mark gets", () => {
 		note(overlay, a);
 		await settle(a, () => alert(overlay).includes("no picture"));
 		note(overlay, a);
-		retry(overlay)?.click();
+		retry(overlay).click();
 		await added(a, 3);
 		// Mark 5 took its own; it is not mark 3's of the top of the page.
 		expect(shotOf(5)).not.toBe(shotOf(3));
@@ -586,8 +592,8 @@ describe("which screenshot a mark gets", () => {
 		note(overlay, a);
 		await settle(a, () => alert(overlay).startsWith("Mark 3 was not added"));
 		const button = retry(overlay);
-		button?.click();
-		button?.click();
+		button.click();
+		button.click();
 		await added(a, 1);
 		await Bun.sleep(50);
 		expect(saves().map((r) => r.marks[0]?.number)).toEqual([3]);
@@ -603,7 +609,7 @@ describe("which screenshot a mark gets", () => {
 		activity.end("ai-capture");
 		try {
 			await settle(a, () => alert(overlay).includes("another page"));
-			retry(overlay)?.click();
+			retry(overlay).click();
 			await Bun.sleep(50);
 			await settle(a, () => alert(overlay).includes("another page"));
 			expect(a.state().drafts).toBe(1);

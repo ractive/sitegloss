@@ -2093,7 +2093,29 @@ describe("through a relay", () => {
 		);
 		try {
 			const listed = await client.listTools();
-			expect(listed.tools).toHaveLength(tools.size);
+			// The fixed tools an AI app is offered: the contract with it.
+			expect(listed.tools.map((t) => t.name).sort()).toEqual([
+				"add_comment",
+				"add_finding",
+				"add_mark",
+				"capture",
+				"delete_case",
+				"delete_comment",
+				"delete_finding",
+				"edit_comment",
+				"edit_finding",
+				"get_case",
+				"get_image",
+				"get_mark_element",
+				"highlight",
+				"list_cases",
+				"list_comments",
+				"load_case",
+				"open_case",
+				"set_case_status",
+				"set_mark_status",
+				"set_summary",
+			]);
 			const cases = await client.callTool({
 				name: "list_cases",
 				arguments: {},

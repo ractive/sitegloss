@@ -3024,7 +3024,7 @@ describe("the AI app", () => {
 		expect(pill()).toEqual([
 			"AI connecting…",
 			"waiting",
-			expect.stringContaining("Connecting…"),
+			expect.stringContaining("Click for the AI app card"),
 		]);
 		// Healthy in each of these: nothing is said under the bar.
 		expect(el("ai-problem").hidden).toBe(true);
