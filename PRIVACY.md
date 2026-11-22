@@ -70,8 +70,8 @@ Only in four cases, all started by you:
    pairing code into that page's field and click Connect. It reads nothing else there,
    and the code goes only into that field. "Stop filling in the code" turns it off and
    gives the site back. If version 0.3.0 had that site from its "Allow on that site",
-   the first start of this version gives it back once (unless Sitegloss may run on all
-   sites); turning the feature on asks for it again.
+   the first start of version 0.3.1 or later gives it back once (unless Sitegloss may
+   run on all sites); turning the feature on asks for it again.
 
    In Firefox, the browser first asks, at the click that turns AI access on, for its own
    data collection consent for website content and browsing activity. Without it AI
@@ -185,4 +185,4 @@ at most 30 days.
 Jean-Pierre Bergamin, <https://ractive.ch>, james@ractive.ch.
 Source code: <https://github.com/ractive/sitegloss>.
 
-Last changed: 21 November 2026.
+Last changed: 22 November 2026.
