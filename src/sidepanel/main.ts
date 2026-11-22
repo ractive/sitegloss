@@ -13,11 +13,8 @@ import {
 import {
 	type Case,
 	casePages,
-	cleanLink,
 	cleanTitle,
-	linkProblem,
 	MARK_CHANGED,
-	MAX_LINK,
 	type Mark,
 	markFor,
 	markKey,
@@ -68,6 +65,7 @@ import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
+import { linkFromField } from "./case-link.ts";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { DELETE_ARMED_MS, deleteClick } from "./delete.ts";
@@ -1321,10 +1319,6 @@ async function renameCase(caseId: string, text: string): Promise<void> {
 	}
 }
 
-/** Under the link's field for a text that is no link (DEC-028). */
-const NOT_A_LINK = "A link starts with https:// or http://";
-const LINK_TOO_LONG = `A link has at most ${MAX_LINK} characters.`;
-
 /**
  * The case's link (DEC-028): stored at once, as every change is; an empty
  * field removes it. Text that is no http or https address keeps the form
@@ -1357,18 +1351,15 @@ async function changeThread(
 }
 
 async function linkCase(caseId: string, text: string): Promise<void> {
-	const link = text.trim() === "" ? undefined : cleanLink(text);
-	if (link === undefined && text.trim() !== "") {
+	const field = linkFromField(text);
+	if ("error" in field) {
 		update((s) => {
 			if (s.linking?.caseId === caseId)
-				s.linking = {
-					caseId,
-					text: s.linking.text,
-					error: linkProblem(text) === "long" ? LINK_TOO_LONG : NOT_A_LINK,
-				};
+				s.linking = { caseId, text: s.linking.text, error: field.error };
 		});
 		return;
 	}
+	const { link } = field;
 	if (state.current?.id === caseId && state.current.link === link) {
 		update((s) => (s.linking = undefined));
 		return;
