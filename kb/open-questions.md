@@ -104,4 +104,4 @@ timestamp: 2026-11-04T17:00:00+01:00
     (h) Settled in DEC-045: the account stays on Home, as its own section "Team"
     after the cases; the copy to a folder is "Copy to a folder", under Files, and
     "sync" means only the team's.
-11. **tab-mcp client** (settled): 0.19.0 renamed `newAddress()` to `disconnectAll()` (DEC-049) and 0.20.0 is in use (DEC-052); nothing is open.
+11. **tab-mcp client** (settled): 0.19.0 renamed `newAddress()` to `disconnectAll()` (DEC-049) and 0.21.0 is in use (DEC-056); nothing is open.
