@@ -13,6 +13,7 @@ import {
 	DATA_COLLECTION,
 	dataConsent,
 	FIREFOX,
+	FIREFOX_KEEPALIVE_MS,
 	fromBackground,
 	notificationOptions,
 	openSidebar,
@@ -163,4 +164,9 @@ describe("a message from the background only (DEC-050)", () => {
 		expect(fromBackground({ ...worker, id: "other" }, runtime)).toBe(false);
 		expect(fromBackground({ id: "ext" }, runtime)).toBe(false);
 	});
+});
+
+test("Firefox's keepalive comes well within the 30 s after which it stops an idle event page", () => {
+	// The end-to-end test runs a test build, whose Firefox stops one after 3 s.
+	expect(FIREFOX_KEEPALIVE_MS).toBeLessThanOrEqual(20_000);
 });

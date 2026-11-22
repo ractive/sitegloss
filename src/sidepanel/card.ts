@@ -93,8 +93,15 @@ export function stillPaired(grantId: string, a: AiState): boolean {
 	return a.state === "connected" && a.grants.some((g) => g.grantId === grantId);
 }
 
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /** A confirming click this soon after the first one (a double click) counts as nothing. */
-export const CONFIRM_DELAY_MS = 750;
+export const CONFIRM_DELAY_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 100
+		: 750;
 
 /** Whether a second click, `now`, confirms a first one at `armedAt`. */
 export function confirms(armedAt: number, now: number): boolean {
@@ -102,7 +109,10 @@ export function confirms(armedAt: number, now: number): boolean {
 }
 
 /** How long the panel must be visible and focused, with a question shown, before a yes counts. */
-export const ALLOW_DELAY_MS = 750;
+export const ALLOW_DELAY_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 100
+		: 750;
 
 /**
  * Whether a yes to a question shown at `shownAt` counts at `now`: the panel

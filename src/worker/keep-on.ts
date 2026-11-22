@@ -9,8 +9,15 @@
 import type { DisconnectReason, TabMcp } from "@ractive-ch/tab-mcp-client";
 import { Latest } from "../lib/latest.ts";
 
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /** The waits between tries to connect, in ms; the last one repeats. */
-const KEEP_ON_DELAYS_MS = [5000, 10_000, 20_000, 40_000, 60_000];
+const KEEP_ON_DELAYS_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? [200, 400, 800, 1600, 3000]
+		: [5000, 10_000, 20_000, 40_000, 60_000];
 
 /**
  * Why a session ended, in the user's words, for every reason nobody here

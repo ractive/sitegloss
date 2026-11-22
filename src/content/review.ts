@@ -82,10 +82,17 @@ const askPanel: AskPanel = async (request) => {
 	}
 };
 
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /** How long "Really delete?" waits for its second click. */
 export const DELETE_ARMED_MS = 4000;
 /** A double click is no second thought. */
-const DELETE_CLICK_GAP_MS = 400;
+const DELETE_CLICK_GAP_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 100
+		: 400;
 
 /** How long one tick looks again for the marks a route did not have. */
 const STALE_BUDGET_MS = 25;

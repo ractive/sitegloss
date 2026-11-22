@@ -348,7 +348,7 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 		);
 	}, 120_000);
 
-	test("AI access: a read tool, a question answered in the panel, still connected after 30 s idle", async () => {
+	test("AI access: a read tool, a question answered in the panel, still connected after a while idle", async () => {
 		relay = startTestRelay();
 		const url = relay.url;
 		await h.rdp.run(["--tab", h.panel, "navigate", h.panelUrl]);
@@ -425,13 +425,14 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 				verdict: "From Firefox",
 			});
 
-			// Firefox stops an event page after 30 s without extension events,
-			// its WebSocket with it, unless something keeps it.
+			// Firefox stops an event page that had no extension events for a
+			// while (30 s; 3 s in this profile), its WebSocket with it, unless
+			// something keeps it.
 			const started = await h.rdp.eval<number>(
 				h.panel,
 				"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
 			);
-			await Bun.sleep(35_000);
+			await Bun.sleep(8000);
 			expect(
 				await h.rdp.eval<number>(
 					h.panel,

@@ -82,6 +82,10 @@ export function userJs(downloads: string): string {
 		"browser.sessionstore.resume_from_crash": false,
 		"browser.shell.checkDefaultBrowser": false,
 		"datareporting.policy.dataSubmissionEnabled": false,
+		// An idle event page stops after 3 s, not 30 s (Firefox's
+		// ext-backgroundPage.js reads it, at least 100 ms): the test build's
+		// keepalive (FIREFOX_KEEPALIVE_MS) is shorter than that.
+		"extensions.background.idle.timeout": 3000,
 		"toolkit.telemetry.reportingpolicy.firstRun": false,
 	};
 	return `${Object.entries(prefs)

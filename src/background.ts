@@ -26,6 +26,7 @@ import { PAIRING_PORT, pagePort } from "@ractive-ch/tab-mcp-client/extension";
 import {
 	BROWSER,
 	FIREFOX,
+	FIREFOX_KEEPALIVE_MS,
 	openPanel,
 	PANEL,
 	signInRedirect,
@@ -65,6 +66,7 @@ import {
 	type SyncTarget,
 } from "./lib/sync.ts";
 import { injectOnClick } from "./lib/tabs.ts";
+import { testWait } from "./lib/test-waits.ts";
 import { AddLedger } from "./lib/undo.ts";
 import { badge } from "./worker/badge.ts";
 import { Cloud } from "./worker/cloud.ts";
@@ -153,8 +155,11 @@ const sync = new Sync({
 	store: kvSyncStore(syncKv),
 	downloads: downloadsTarget(chromeDownloads(syncKv, store)),
 	// Saves in a row are one download per case, not one each (a burst of
-	// Chrome's download bubble).
-	quietMs: 2000,
+	// Chrome's download bubble). Short in the test build (DEC-053).
+	quietMs:
+		typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+			? 200
+			: 2000,
 	// The define itself, so other builds drop the test's folder.
 	...(typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
 		? { folder: testFolder }
@@ -271,7 +276,7 @@ function capture(tabId: number, windowId: number): Promise<string> {
 					timer = setTimeout(
 						() =>
 							reject(new Error(`${BROWSER} did not deliver the screenshot.`)),
-						CAPTURE_TIMEOUT_MS,
+						testWait("captureMs", CAPTURE_TIMEOUT_MS),
 					);
 				}),
 			]).finally(() => clearTimeout(timer));
@@ -569,13 +574,9 @@ Object.assign(globalThis, {
 	siteglossNotificationDismissed: notificationDismissed,
 });
 
-/**
- * Firefox stops an idle event page after 30 s, its WebSocket to the relay
- * with it; Chrome keeps a worker whose WebSocket carries messages. A call
- * to an extension API resets Firefox's idle timer, so while AI access is on
- * the event page makes one this often (as tab-mcp does).
- */
-const FIREFOX_KEEPALIVE_MS = 20_000;
+// Firefox stops an idle event page, its WebSocket to the relay with it:
+// while AI access is on, an extension API call every FIREFOX_KEEPALIVE_MS
+// keeps it (src/lib/browser.ts).
 if (FIREFOX)
 	setInterval(
 		() =>

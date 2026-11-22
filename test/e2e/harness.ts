@@ -23,6 +23,21 @@ import { StepTimeout, step } from "./trace.ts";
 
 export const browserBinary = findBrowser();
 
+/**
+ * The test build's guards against a click that comes too soon (a double
+ * click's second, a yes the moment a question shows, a notification's
+ * button) are 100 ms there (DEC-053): a test waits this long to be past one.
+ */
+export const PAST_GUARD_MS = 150;
+
+/**
+ * The step of the panel's searches again a test can set for itself, in the
+ * panel's page: `globalThis.siteglossTestWaits = { searchAgainMs }`
+ * (src/lib/test-waits.ts). The searches run at 0, 1 and 3 steps, so four
+ * steps are past the last one.
+ */
+export const SEARCH_AGAIN_MS = 150;
+
 if (browserBinary === undefined && process.env["CI"])
 	throw new Error(
 		"Chrome for Testing is needed for the end-to-end tests in CI",

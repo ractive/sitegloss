@@ -18,6 +18,20 @@ declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 export const FIREFOX: boolean =
 	typeof SITEGLOSS_FIREFOX !== "undefined" && SITEGLOSS_FIREFOX;
 
+/**
+ * Firefox stops an idle event page after 30 s, its WebSocket to the relay
+ * with it; Chrome keeps a worker whose WebSocket carries messages. A call
+ * to an extension API resets Firefox's idle timer, so while AI access is on
+ * the event page makes one this often (as tab-mcp does). The test build's
+ * Firefox stops an idle event page after 3 s (its profile's
+ * `extensions.background.idle.timeout`), and its keepalive is short to
+ * match (DEC-053).
+ */
+export const FIREFOX_KEEPALIVE_MS: number =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 1000
+		: 20_000;
+
 /** The browser's name, in the texts the user reads. */
 export const BROWSER: string = FIREFOX ? "Firefox" : "Chrome";
 

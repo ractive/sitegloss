@@ -144,8 +144,15 @@ const frame = () =>
 		sleep(250),
 	]);
 
+// The test build's guards and delays below are short (DEC-053): its clicks
+// and pages come fast, and its tests need not sit them out.
+declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
+
 /** How long the page must stand still before a mark's screenshot is taken again. */
-const STILL_MS = 800;
+const STILL_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 150
+		: 800;
 /** How long one wait for a still page lasts at most. */
 const STILL_WAIT_MS = 5000;
 /** How often a mark's screenshot the page moved away from is taken again by itself. */
