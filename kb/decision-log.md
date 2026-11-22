@@ -3417,8 +3417,11 @@ settled: what follows is what was built, and why, to be judged.
   no marks found here, the size, adding) is under the head, where the marks start, so the head
   does not move with the tab.
 - **Verify closes its mark**; the focus goes to the next mark waiting to be verified (after
-  it, else before it), else to the closed row's head. Reopen… does not close it. Round 2's
-  hold keeps the row in place.
+  it, else before it) where it is on screen, else to the closed row's head: a focus out of
+  sight would scroll the list away. Reopen… does not close it. Round 2's hold keeps the row
+  in place, and now lends room below the list while it holds (taken back at the person's
+  next own scroll or press): a row that closes near the list's end no longer lets the
+  browser scroll the page back by itself.
 - **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
   own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
   bottom keeps the comments about the case as a whole (and one about a deleted mark).

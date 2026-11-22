@@ -3073,12 +3073,20 @@ function renderCase(state: PanelState, actions: Actions): void {
 					}),
 				);
 				const to = afterVerify(order, v.markId);
-				if (to)
-					marks
-						.querySelector<HTMLElement>(
-							`li.mark[data-mark="${quoted(to.markId)}"] .mark-toggle`,
-						)
-						?.focus();
+				const head = (id: string) =>
+					marks.querySelector<HTMLElement>(
+						`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
+					);
+				// The next mark to verify where it is on screen; one out of
+				// sight would scroll the list away from the row just verified
+				// (nothing jumps): then the closed row's head.
+				const next = to ? head(to.markId) : null;
+				const r = next?.getBoundingClientRect();
+				const seen =
+					r !== undefined &&
+					r.top >= 0 &&
+					r.bottom <= document.documentElement.clientHeight;
+				(seen ? next : head(v.markId))?.focus({ preventScroll: true });
 			}
 		}
 		if (picked !== undefined) {

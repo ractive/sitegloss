@@ -73,6 +73,18 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 	const hold = (on: boolean) => {
 		html.style.overflowAnchor = on ? "none" : "";
 	};
+	/**
+	 * Room lent below the list while held: a row that closes (Verify) or goes
+	 * near the list's end would make the page shorter, and the browser would
+	 * scroll it back by itself. Taken back at the person's next own scroll
+	 * or press, not when the hold ends: then it would move what it kept.
+	 */
+	let lent = false;
+	const lend = (on: boolean) => {
+		if (on === lent) return;
+		lent = on;
+		root.style.marginBottom = on ? `${html.clientHeight}px` : "";
+	};
 	const elementOf = (key: string) =>
 		key.startsWith("chip:")
 			? root.querySelector<HTMLElement>(key.slice(5))
@@ -124,6 +136,7 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 				keys = markAnchorKeys(order, row.dataset["mark"] ?? "");
 				element = row;
 			} else return;
+			lend(true);
 			expected = win.scrollY;
 			hold(true);
 			held = {
@@ -147,9 +160,14 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 		},
 		{ passive: true },
 	);
+	/** The person's own scroll or press: no longer held, and the room goes back. */
+	const theirs = () => {
+		release();
+		lend(false);
+	};
 	// A press comes before its click: it ends the hold of the click before.
 	for (const type of ["wheel", "touchstart", "pointerdown"] as const)
-		doc.addEventListener(type, release, { passive: true, capture: true });
+		doc.addEventListener(type, theirs, { passive: true, capture: true });
 	doc.addEventListener("keydown", (e) => {
 		if (
 			[
@@ -164,7 +182,7 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 			].includes(e.key) ||
 			(e.key === " " && !(e.target as HTMLElement | null)?.closest("button"))
 		)
-			release();
+			theirs();
 	});
 	return release;
 }
