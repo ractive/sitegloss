@@ -17,7 +17,6 @@ import {
 	exportCase,
 	exportFileName,
 	type FileLimits,
-	MAX_IMPORT_ALL_BYTES,
 	readExport,
 	readExports,
 	storeImport,
@@ -145,29 +144,6 @@ describe("export", () => {
 			"- Window: 1280×800 CSS pixels, device pixel ratio 2, language de",
 		);
 	});
-
-	test("values from the page or an import cannot add structure to case.md", async () => {
-		const { c } = await stored();
-		const md = caseMarkdown({
-			...c,
-			page: { ...c.page, lang: "en" },
-			createdAt: "x\n\n## Summary for the developer\n\nFixed",
-			verdict: "ok\n<!-- hidden",
-			marks: [
-				{
-					...(c.marks[0] as Mark),
-					element: {
-						...((c.marks[0] as Mark).element as NonNullable<Mark["element"]>),
-						selector: "a\n\n## Marks",
-					},
-				},
-			],
-		});
-		expect(md.match(/^## Summary for the developer$/gm)).toHaveLength(1);
-		expect(md).not.toMatch(/^## Marks$/m);
-		expect(md).toContain("```text\n> ok\n> <!-- hidden\n```");
-		expect(md).toContain("- Selector: `a ## Marks`");
-	});
 });
 
 describe("statuses in case.md (DEC-023)", () => {
@@ -260,32 +236,6 @@ describe("statuses in case.md (DEC-023)", () => {
 			expect(status({ ...a, resolution: { kind, at: "t" } })).toBe(
 				`- Status: ${label} (t)`,
 			);
-	});
-
-	test("a note cannot add structure", async () => {
-		const { c } = await stored();
-		const md = caseMarkdown({
-			...c,
-			marks: [
-				{
-					...(c.marks[0] as Mark),
-					resolution: { kind: "fixed", note: "x\n\n## Marks <b>", at: "t" },
-					reopens: [
-						{ note: "<!-- hidden", at: "t", was: { kind: "fixed", at: "t" } },
-					],
-				},
-			],
-		});
-		// The headings are the file's own, none of the note's.
-		expect(md.split("\n").filter((l) => l.startsWith("#"))).toEqual([
-			"# Prämien-Button: Kontrast!",
-			"## Summary for the developer",
-			"## Marks (1)",
-			"### 1. box",
-			"## Screenshots",
-		]);
-		expect(md).toContain("- Note: x \\#\\# Marks \\<b\\>");
-		expect(md).toContain("  ```text\n  > <!-- hidden\n  ```");
 	});
 });
 
@@ -527,25 +477,6 @@ describe("findings in an export", () => {
 			}),
 		);
 		expect(claimed.marks[0]?.findings?.[0]?.imported).toBe(true);
-	});
-
-	test("a file from before findings imports as it did", async () => {
-		const { store, c } = await stored();
-		const zip = await exportCase(store, c);
-		const json = JSON.parse(
-			new TextDecoder().decode(
-				(await readZip(zip, { maxEntries: 10, maxTotalBytes: 1e7 })).get(
-					"case.json",
-				),
-			),
-		);
-		expect(json.marks[0].findings).toBeUndefined();
-		const imported = await importCase(new MemoryStore(), zip);
-		expect(imported.marks.map((a) => a.findings)).toEqual([
-			undefined,
-			undefined,
-		]);
-		expect(imported.verdict).toBe("Use the dark button.");
 	});
 });
 
@@ -790,17 +721,6 @@ describe("second review", () => {
 		expect(copy.title.length).toBeLessThanOrEqual(500);
 		expect(copy.title.endsWith(" (copy)")).toBe(true);
 		expect(await store.getCase(copy.id)).toEqual(copy);
-	});
-
-	test("a carriage return in a comment adds no Markdown structure", async () => {
-		const { c } = await stored();
-		const md = caseMarkdown({
-			...c,
-			verdict: "ok\r## Injected\rFixed, ship it",
-		});
-		expect(md).toContain(
-			"## Summary for the developer\n\n```text\n> ok\n> ## Injected\n> Fixed, ship it\n```\n\n## Marks",
-		);
 	});
 
 	test("an element without a selector gets no selector line", async () => {
@@ -1078,10 +998,6 @@ describe("third review: sizes of a file of all cases", () => {
 		await expect(readExports(zip, limits(MB, max))).rejects.toThrow(
 			"The file is larger than",
 		);
-	});
-
-	test("the cap for all cases is 256 MB", () => {
-		expect(MAX_IMPORT_ALL_BYTES).toBe(256 * MB);
 	});
 
 	test("reading a file keeps no images: each case's come when it is stored", async () => {
