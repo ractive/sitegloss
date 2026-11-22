@@ -22,6 +22,7 @@ import {
 	startCase,
 } from "../../cloud-helpers.ts";
 import { PASSWORD, real, SERVER } from "../../cloud-real.ts";
+import { E2E_FULL } from "../mode.ts";
 import {
 	backgroundLog,
 	type FirefoxHarness,
@@ -43,7 +44,7 @@ const text = (name: string) => `(${id(name)}?.textContent ?? "")`;
 const row = (title: string) =>
 	`[...document.querySelectorAll("[data-case]")].find((b) => b.querySelector(".title")?.textContent === ${JSON.stringify(title)})`;
 
-describe.skipIf(SERVER === undefined || !firefoxReady)(
+describe.skipIf(SERVER === undefined || !firefoxReady || !E2E_FULL)(
 	"Firefox: the account and the sync with a team, against a real server",
 	() => {
 		const base = SERVER as string;

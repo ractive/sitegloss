@@ -5,7 +5,7 @@
  * on the page has its casing, and the toolbar's rows are the ones meant.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import {
 	CASING_EXTRA,
@@ -18,6 +18,7 @@ import type { Page } from "./browser.ts";
 import {
 	browserBinary,
 	type Harness,
+	inFullSet,
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
@@ -32,7 +33,7 @@ const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
  */
 const WIDTHS = [345, 360, 420];
 
-describe.skipIf(browserBinary === undefined)("the look", () => {
+inFullSet("the look", () => {
 	let h: Harness;
 	let panel: Page;
 	let page: Page;

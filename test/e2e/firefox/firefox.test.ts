@@ -23,6 +23,7 @@ import {
 import { MAX_SIDE } from "../../../src/lib/images.ts";
 import { cropRectFor } from "../../../src/lib/save.ts";
 import { readZip } from "../../../src/lib/zip.ts";
+import { E2E_FULL } from "../mode.ts";
 import {
 	backgroundLog,
 	clickButton,
@@ -128,7 +129,7 @@ async function stopStarted(
 	await started?.stop();
 }
 
-describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
+describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 	let h: FirefoxHarness;
 	let starting: Promise<FirefoxHarness> | undefined;
 	let relay: TestRelay | undefined;
@@ -460,42 +461,45 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 	});
 });
 
-describe.skipIf(!firefoxReady)("Firefox: the store package", () => {
-	let h: FirefoxHarness;
-	let starting: Promise<FirefoxHarness> | undefined;
+describe.skipIf(!firefoxReady || !E2E_FULL)(
+	"Firefox: the store package",
+	() => {
+		let h: FirefoxHarness;
+		let starting: Promise<FirefoxHarness> | undefined;
 
-	beforeAll(async () => {
-		starting = startFirefox("store");
-		h = await starting;
-	}, START_TIMEOUT_MS);
+		beforeAll(async () => {
+			starting = startFirefox("store");
+			h = await starting;
+		}, START_TIMEOUT_MS);
 
-	afterAll(async () => {
-		await stopStarted(starting);
-	}, STOP_TIMEOUT_MS);
+		afterAll(async () => {
+			await stopStarted(starting);
+		}, STOP_TIMEOUT_MS);
 
-	test("installs with no manifest warning; its panel's page in a tab is no panel", async () => {
-		expect(h.warnings).toEqual([]);
-		expect(await h.rdp.eval<string>(h.panel, PANEL_TEXT)).toContain(
-			"Open the sidebar from the Sitegloss icon for AI access",
-		);
-		expect(
-			await h.rdp.eval<boolean>(
-				h.panel,
-				"document.getElementById('connect').disabled",
-			),
-		).toBe(true);
-		// The event page closes a port from it at once, and tells it nothing.
-		expect(
-			await h.rdp.eval<string>(
-				h.panel,
-				`new Promise((resolve) => {
+		test("installs with no manifest warning; its panel's page in a tab is no panel", async () => {
+			expect(h.warnings).toEqual([]);
+			expect(await h.rdp.eval<string>(h.panel, PANEL_TEXT)).toContain(
+				"Open the sidebar from the Sitegloss icon for AI access",
+			);
+			expect(
+				await h.rdp.eval<boolean>(
+					h.panel,
+					"document.getElementById('connect').disabled",
+				),
+			).toBe(true);
+			// The event page closes a port from it at once, and tells it nothing.
+			expect(
+				await h.rdp.eval<string>(
+					h.panel,
+					`new Promise((resolve) => {
 					const port = chrome.runtime.connect({ name: "ai" });
 					let told = false;
 					port.onMessage.addListener(() => { told = true; });
 					port.onDisconnect.addListener(() => resolve(told ? "told" : "closed"));
 					setTimeout(() => resolve("still open"), 5000);
 				})`,
-			),
-		).toBe("closed");
-	}, 60_000);
-});
+				),
+			).toBe("closed");
+		}, 60_000);
+	},
+);

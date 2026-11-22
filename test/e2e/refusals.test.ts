@@ -4,9 +4,14 @@
  * asking.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	startHarness,
+} from "./harness.ts";
 import { testWaits, worker } from "./steps.ts";
 
 interface Capture {
@@ -15,7 +20,7 @@ interface Capture {
 	width?: number;
 }
 
-describe.skipIf(browserBinary === undefined)("the worker refuses", () => {
+inFullSet("the worker refuses", () => {
 	let h: Harness;
 	let serviceWorker: Page;
 	let a: { page: Page; tabId: number };

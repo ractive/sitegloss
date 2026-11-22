@@ -3,8 +3,13 @@
  * and with a closed shadow root: happy-dom has neither.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	startHarness,
+} from "./harness.ts";
 import { comment, READ_DB, saveAs, shadow, showToolbar } from "./steps.ts";
 
 interface Stored {
@@ -19,7 +24,7 @@ interface Stored {
 	}[];
 }
 
-describe.skipIf(browserBinary === undefined)("web components", () => {
+inFullSet("web components", () => {
 	let h: Harness;
 
 	beforeAll(async () => {

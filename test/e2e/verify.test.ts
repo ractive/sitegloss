@@ -6,14 +6,19 @@
  * in get_case. An AI app's "verified" asks first and shows who set it.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
 import { sampleCase } from "../fixtures.ts";
 import { answerInPanel, connectAi, mcpClient, openSidePanel } from "./ai.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inFullSet,
+	startHarness,
+} from "./harness.ts";
 import {
 	type Db,
 	exportOpenCase,
@@ -62,7 +67,7 @@ async function reopen(panel: Page, id: string, note: string): Promise<void> {
 	await panel.waitFor(`!${row(id)}.querySelector("[data-form=reopen]")`);
 }
 
-describe.skipIf(browserBinary === undefined)("Verify", () => {
+inFullSet("Verify", () => {
 	let h: Harness;
 	const readDb = () => h.control.eval<Db>(READ_DB);
 	/** The cases as stored, whole. */
@@ -203,7 +208,7 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 	}, 90_000);
 });
 
-describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
+inFullSet("Verify with an AI app", () => {
 	let h: Harness;
 	let panel: Page;
 	let page: Page;

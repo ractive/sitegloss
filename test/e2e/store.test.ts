@@ -5,16 +5,21 @@
  * the same cases `memoryKv` passes in `worker.test.ts`.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
 import { StoreBlockedError } from "../../src/lib/store.ts";
 import { sampleCase } from "../fixtures.ts";
 import { kvContract } from "../kv-contract.ts";
 import { storeContract } from "../store-contract.ts";
 import type { Page } from "./browser.ts";
-import { browserBinary, type Harness, startHarness } from "./harness.ts";
+import {
+	browserBinary,
+	type Harness,
+	inBothSets,
+	startHarness,
+} from "./harness.ts";
 
-describe.skipIf(browserBinary === undefined)("IdbStore and openKv", () => {
+inBothSets("IdbStore and openKv", () => {
 	let h: Harness;
 	let page: Page;
 	const bundles: string[] = [];

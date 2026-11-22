@@ -7,7 +7,7 @@
  * it; Disconnect forgets it.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import {
 	MemoryTokenStore,
@@ -32,6 +32,7 @@ import type { Page } from "./browser.ts";
 import {
 	browserBinary,
 	type Harness,
+	inFullSet,
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
@@ -60,7 +61,7 @@ const QUESTION = `document.querySelector("[data-question]")`;
 const QUIET_OVER = `!document.body.hasAttribute("data-quiet")`;
 const GRANT = `document.querySelector("#pair-grants li[data-grant]")`;
 
-describe.skipIf(browserBinary === undefined)(
+inFullSet(
 	"Always allow, per tool or for all, until the AI app is disconnected",
 	() => {
 		let h: Harness;

@@ -5,7 +5,7 @@
  * function of the panel's page to make a page slow or a permission answer.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
 import { exportCase } from "../../src/lib/export.ts";
@@ -22,10 +22,12 @@ import type { Page } from "./browser.ts";
 import {
 	browserBinary,
 	type Harness,
+	inBothSets,
 	PAST_GUARD_MS,
 	SEARCH_AGAIN_MS,
 	startHarness,
 } from "./harness.ts";
+import { fullDescribe, fullTest } from "./mode.ts";
 import {
 	type Db,
 	markElement,
@@ -55,11 +57,16 @@ async function until(
 	}
 }
 
-/** A test with room for a slow machine: one that times out runs on into the next. */
+/**
+ * A test with room for a slow machine: one that times out runs on into the
+ * next. Of the full set; `smokeTest` is the one of both.
+ */
 const slowTest = (name: string, run: () => Promise<void>) =>
+	fullTest(name, run, 60_000);
+const smokeTest = (name: string, run: () => Promise<void>) =>
 	test(name, run, 60_000);
 
-describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
+inBothSets("the side panel's page", () => {
 	let h: Harness;
 
 	beforeAll(async () => {
@@ -616,7 +623,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		},
 	);
 
-	slowTest(
+	smokeTest(
 		"opening a case draws its marks on the tab in front, and they follow to the next tab",
 		async () => {
 			await fresh();
@@ -1006,7 +1013,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		},
 	);
 
-	describe("loads close together", () => {
+	fullDescribe("loads close together", () => {
 		const hint = `${id("case-hint")}.textContent`;
 		const REPLACED = "Loading was replaced";
 
@@ -1210,7 +1217,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		);
 	});
 
-	describe("one toolbar per open case (DEC-023)", () => {
+	fullDescribe("one toolbar per open case (DEC-023)", () => {
 		const back = id("back");
 		/** A saved case of one mark, the panel in it and its marks on the page in front. */
 		async function inCaseWithMarks(title: string) {
@@ -1719,7 +1726,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		);
 	});
 
-	describe("with a relay", () => {
+	fullDescribe("with a relay", () => {
 		const status = `${id("ai-status")}.textContent`;
 		let side: Page | undefined;
 

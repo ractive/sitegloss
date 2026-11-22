@@ -4,14 +4,7 @@
  * after each step. And what a worker that starts again cleans up.
  */
 
-import {
-	afterAll,
-	beforeAll,
-	beforeEach,
-	describe,
-	expect,
-	test,
-} from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,9 +13,11 @@ import { sampleCase } from "../fixtures.ts";
 import {
 	browserBinary,
 	type Harness,
+	inBothSets,
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
+import { fullTest } from "./mode.ts";
 import {
 	type Db,
 	download,
@@ -57,164 +52,160 @@ const write = (body: string) => `new Promise((resolve, reject) => {
 const putImage = (key: string, storedAt?: number) =>
 	`tx.objectStore("images").put({ blob: new Blob(["x"], { type: "image/webp" }), width: 1, height: 1${storedAt === undefined ? "" : `, storedAt: ${storedAt}`} }, ${JSON.stringify(key)})`;
 
-describe.skipIf(browserBinary === undefined)(
-	"a case's way out and back",
-	() => {
-		let h: Harness;
-		let folder: string;
+inBothSets("a case's way out and back", () => {
+	let h: Harness;
+	let folder: string;
 
-		const readDb = () => h.control.eval<Db>(READ_DB);
+	const readDb = () => h.control.eval<Db>(READ_DB);
 
-		beforeAll(async () => {
-			h = await startHarness(browserBinary as string);
-			folder = mkdtempSync(join(tmpdir(), "sitegloss-export-"));
-		}, 60_000);
+	beforeAll(async () => {
+		h = await startHarness(browserBinary as string);
+		folder = mkdtempSync(join(tmpdir(), "sitegloss-export-"));
+	}, 60_000);
 
-		afterAll(async () => {
-			await h?.stop();
-			rmSync(folder, { recursive: true, force: true });
-		});
+	afterAll(async () => {
+		await h?.stop();
+		rmSync(folder, { recursive: true, force: true });
+	});
 
-		// No page of a test before, the control page (a panel too) on Home.
-		beforeEach(() => resetPanel(h));
+	// No page of a test before, the control page (a panel too) on Home.
+	beforeEach(() => resetPanel(h));
 
-		test("exported, imported with Keep both and with Replace, then deleted", async () => {
-			const { page, tabId } = await h.open("v1");
-			await showToolbar(h, page, tabId);
-			await markElement(page, "[data-truth=submit]", "Too pale");
-			await markElement(page, "[data-truth=tip]", "Say how much");
-			await saveAs(page, "Round trip");
-			await page.send("Page.close");
+	test("exported, imported with Keep both and with Replace, then deleted", async () => {
+		const { page, tabId } = await h.open("v1");
+		await showToolbar(h, page, tabId);
+		await markElement(page, "[data-truth=submit]", "Too pale");
+		await markElement(page, "[data-truth=tip]", "Say how much");
+		await saveAs(page, "Round trip");
+		await page.send("Page.close");
 
-			const saved = (await readDb()).cases[0];
-			if (saved === undefined) throw new Error("not saved");
-			const paths = imagesOf(await readDb(), saved.id);
-			expect(paths).toContain("crops/m1.webp");
-			expect(paths).toContain("crops/m2.webp");
-			expect(paths).toContain("shots/s1.webp");
+		const saved = (await readDb()).cases[0];
+		if (saved === undefined) throw new Error("not saved");
+		const paths = imagesOf(await readDb(), saved.id);
+		expect(paths).toContain("crops/m1.webp");
+		expect(paths).toContain("crops/m2.webp");
+		expect(paths).toContain("shots/s1.webp");
 
-			// Export: the file holds the case and the stored images, byte for byte.
-			const panel = await panelHome(h);
-			await openCase(panel, "Round trip");
-			const file = await exportOpenCase(h, panel);
-			// Where it went (DEC-020: the test build has "downloads"): the name
-			// Sitegloss gave it, in Chrome's downloads folder, with Copy and Show
-			// in folder.
-			expect(realpathSync(file)).toBe(
-				realpathSync(join(h.browser.downloads, "round-trip.sitegloss.zip")),
-			);
-			const shown = file;
-			// The system's clipboard and file manager stay out of the test.
-			await panel.eval(`(() => {
+		// Export: the file holds the case and the stored images, byte for byte.
+		const panel = await panelHome(h);
+		await openCase(panel, "Round trip");
+		const file = await exportOpenCase(h, panel);
+		// Where it went (DEC-020: the test build has "downloads"): the name
+		// Sitegloss gave it, in Chrome's downloads folder, with Copy and Show
+		// in folder.
+		expect(realpathSync(file)).toBe(
+			realpathSync(join(h.browser.downloads, "round-trip.sitegloss.zip")),
+		);
+		const shown = file;
+		// The system's clipboard and file manager stay out of the test.
+		await panel.eval(`(() => {
 				window.copied = [];
 				window.shown = [];
 				navigator.clipboard.writeText = (text) => (window.copied.push(text), Promise.resolve());
 				chrome.downloads.show = (id) => window.shown.push(id);
 			})()`);
-			await panel.click(
-				`document.querySelector('#export-saved [data-action="copy-path"]')`,
+		await panel.click(
+			`document.querySelector('#export-saved [data-action="copy-path"]')`,
+		);
+		await panel.waitFor(
+			`document.querySelector('#export-saved [data-action="copy-path"]').textContent === "Copied"`,
+		);
+		expect(await panel.eval<string[]>("window.copied")).toEqual([shown]);
+		await panel.click(
+			`document.querySelector('#export-saved [data-action="show-file"]')`,
+		);
+		const [downloadId] = await panel.eval<number[]>("window.shown");
+		const [item] = await panel.eval<{ filename: string }[]>(
+			`chrome.downloads.search({ id: ${downloadId} })`,
+		);
+		expect(item?.filename).toBe(shown);
+		const zip = await readZip(
+			new Uint8Array(await Bun.file(file).arrayBuffer()),
+		);
+		expect([...zip.keys()].sort()).toEqual(
+			["case.json", "case.md", ...paths].sort(),
+		);
+		const exported = JSON.parse(new TextDecoder().decode(zip.get("case.json")));
+		expect(exported.id).toBe(saved.id);
+		const bytes = (path: string) =>
+			Buffer.from(zip.get(path) ?? []).toString("base64");
+		for (const path of paths)
+			expect((await imageBytes(h.control, "Round trip", path)).base64).toBe(
+				bytes(path),
 			);
-			await panel.waitFor(
-				`document.querySelector('#export-saved [data-action="copy-path"]').textContent === "Copied"`,
-			);
-			expect(await panel.eval<string[]>("window.copied")).toEqual([shown]);
-			await panel.click(
-				`document.querySelector('#export-saved [data-action="show-file"]')`,
-			);
-			const [downloadId] = await panel.eval<number[]>("window.shown");
-			const [item] = await panel.eval<{ filename: string }[]>(
-				`chrome.downloads.search({ id: ${downloadId} })`,
-			);
-			expect(item?.filename).toBe(shown);
-			const zip = await readZip(
-				new Uint8Array(await Bun.file(file).arrayBuffer()),
-			);
-			expect([...zip.keys()].sort()).toEqual(
-				["case.json", "case.md", ...paths].sort(),
-			);
-			const exported = JSON.parse(
-				new TextDecoder().decode(zip.get("case.json")),
-			);
-			expect(exported.id).toBe(saved.id);
-			const bytes = (path: string) =>
-				Buffer.from(zip.get(path) ?? []).toString("base64");
-			for (const path of paths)
-				expect((await imageBytes(h.control, "Round trip", path)).base64).toBe(
-					bytes(path),
-				);
 
-			// The case is here already, so the panel asks. Keep both: a copy with its images.
-			await panelHome(h);
-			await importFile(panel, file);
-			await panel.waitFor(
-				`document.querySelector('[data-action="import-copy"]')`,
-			);
+		// The case is here already, so the panel asks. Keep both: a copy with its images.
+		await panelHome(h);
+		await importFile(panel, file);
+		await panel.waitFor(
+			`document.querySelector('[data-action="import-copy"]')`,
+		);
+		expect(
+			await panel.eval<boolean>(
+				`document.getElementById("import-prompt").hidden`,
+			),
+		).toBe(false);
+		await panel.click(`document.querySelector('[data-action="import-copy"]')`);
+		const both = await until(readDb, (db) => db.cases.length === 2);
+		const copy = both.cases.find((c) => c.id !== saved.id);
+		if (copy === undefined) throw new Error("no copy");
+		expect(copy.title).toBe("Round trip (copy)");
+		expect(copy.marks.map((a) => a.comment)).toEqual([
+			"Too pale",
+			"Say how much",
+		]);
+		expect(imagesOf(both, copy.id)).toEqual(paths);
+		expect(imagesOf(both, saved.id)).toEqual(paths);
+		for (const path of paths)
 			expect(
-				await panel.eval<boolean>(
-					`document.getElementById("import-prompt").hidden`,
-				),
-			).toBe(false);
-			await panel.click(
-				`document.querySelector('[data-action="import-copy"]')`,
-			);
-			const both = await until(readDb, (db) => db.cases.length === 2);
-			const copy = both.cases.find((c) => c.id !== saved.id);
-			if (copy === undefined) throw new Error("no copy");
-			expect(copy.title).toBe("Round trip (copy)");
-			expect(copy.marks.map((a) => a.comment)).toEqual([
-				"Too pale",
-				"Say how much",
-			]);
-			expect(imagesOf(both, copy.id)).toEqual(paths);
-			expect(imagesOf(both, saved.id)).toEqual(paths);
-			for (const path of paths)
-				expect(
-					(await imageBytes(h.control, "Round trip (copy)", path)).base64,
-				).toBe(bytes(path));
+				(await imageBytes(h.control, "Round trip (copy)", path)).base64,
+			).toBe(bytes(path));
 
-			// Replace: everything the case became since the export is gone.
-			await h.control.eval(
-				write(`
+		// Replace: everything the case became since the export is gone.
+		await h.control.eval(
+			write(`
 				tx.objectStore("cases").put({ ...${JSON.stringify(saved)}, title: "Changed since" });
 				${putImage(`${saved.id}/crops/m9.webp`)};
 				${putImage(`${saved.id}/shots/s1.webp`)};
 			`),
+		);
+		await panelHome(h);
+		await importFile(panel, file);
+		await panel.waitFor(
+			`document.querySelector('[data-action="import-replace"]')`,
+		);
+		await panel.click(
+			`document.querySelector('[data-action="import-replace"]')`,
+		);
+		const replaced = await until(readDb, (db) =>
+			db.cases.some((c) => c.title === "Round trip"),
+		);
+		expect(replaced.cases).toHaveLength(2);
+		expect(imagesOf(replaced, saved.id)).toEqual(paths);
+		for (const path of paths)
+			expect((await imageBytes(h.control, "Round trip", path)).base64).toBe(
+				bytes(path),
 			);
-			await panelHome(h);
-			await importFile(panel, file);
-			await panel.waitFor(
-				`document.querySelector('[data-action="import-replace"]')`,
-			);
-			await panel.click(
-				`document.querySelector('[data-action="import-replace"]')`,
-			);
-			const replaced = await until(readDb, (db) =>
-				db.cases.some((c) => c.title === "Round trip"),
-			);
-			expect(replaced.cases).toHaveLength(2);
-			expect(imagesOf(replaced, saved.id)).toEqual(paths);
-			for (const path of paths)
-				expect((await imageBytes(h.control, "Round trip", path)).base64).toBe(
-					bytes(path),
-				);
-			expect(imagesOf(replaced, copy.id)).toEqual(paths);
+		expect(imagesOf(replaced, copy.id)).toEqual(paths);
 
-			// Delete: its screenshots go with it, and the copy's stay.
-			await panel.waitFor(`document.getElementById("delete-case")`);
-			await panel.click(`document.getElementById("delete-case")`);
-			await panel.waitFor(
-				`document.getElementById("delete-case")?.textContent === "Really delete?"`,
-			);
-			await Bun.sleep(PAST_GUARD_MS); // a confirming click this soon counts as a double-click
-			await panel.click(`document.getElementById("delete-case")`);
-			const left = await until(readDb, (db) => db.cases.length === 1);
-			expect(left.cases[0]?.id).toBe(copy.id);
-			expect(imagesOf(left, saved.id)).toEqual([]);
-			expect(imagesOf(left, copy.id)).toEqual(paths);
-			expect(left.images).toHaveLength(paths.length);
-		}, 60_000);
+		// Delete: its screenshots go with it, and the copy's stay.
+		await panel.waitFor(`document.getElementById("delete-case")`);
+		await panel.click(`document.getElementById("delete-case")`);
+		await panel.waitFor(
+			`document.getElementById("delete-case")?.textContent === "Really delete?"`,
+		);
+		await Bun.sleep(PAST_GUARD_MS); // a confirming click this soon counts as a double-click
+		await panel.click(`document.getElementById("delete-case")`);
+		const left = await until(readDb, (db) => db.cases.length === 1);
+		expect(left.cases[0]?.id).toBe(copy.id);
+		expect(imagesOf(left, saved.id)).toEqual([]);
+		expect(imagesOf(left, copy.id)).toEqual(paths);
+		expect(left.images).toHaveLength(paths.length);
+	}, 60_000);
 
-		test("without the downloads permission, Export saves the file as before and shows no path", async () => {
+	fullTest(
+		"without the downloads permission, Export saves the file as before and shows no path",
+		async () => {
 			const panel = await panelHome(h);
 			await openCase(panel, "Round trip (copy)");
 			// The buttons say what they do (DEC-020).
@@ -252,9 +243,13 @@ describe.skipIf(browserBinary === undefined)(
 					`document.getElementById("export-saved").hidden && !document.getElementById("case-hint").textContent.startsWith("Could not")`,
 				),
 			).toBe(true);
-		}, 30_000);
+		},
+		30_000,
+	);
 
-		test("Export all cases: one file, imported again case by case", async () => {
+	fullTest(
+		"Export all cases: one file, imported again case by case",
+		async () => {
 			await h.control.eval(
 				write(`
 				tx.objectStore("cases").put(${JSON.stringify(sampleCase("c_all1"))});
@@ -353,9 +348,13 @@ describe.skipIf(browserBinary === undefined)(
 				),
 			).toEqual([false, false]);
 			expect(ids(await readDb())).toEqual(ids(before));
-		}, 60_000);
+		},
+		60_000,
+	);
 
-		test("a worker that starts again sweeps abandoned screenshots, and nothing else", async () => {
+	fullTest(
+		"a worker that starts again sweeps abandoned screenshots, and nothing else",
+		async () => {
 			const old = "c_gone/pending/p_old.webp";
 			const undated = "c_gone/pending/p_undated.webp";
 			const recent = "c_gone/pending/p_recent.webp";
@@ -377,6 +376,7 @@ describe.skipIf(browserBinary === undefined)(
 			expect(keys(swept)).not.toContain(undated);
 			expect(keys(swept)).toContain(recent);
 			expect(keys(swept)).toContain(finished);
-		}, 30_000);
-	},
-);
+		},
+		30_000,
+	);
+});

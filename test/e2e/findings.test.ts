@@ -6,7 +6,7 @@
  * neither edit nor delete it is tools.test.ts's.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
@@ -16,6 +16,7 @@ import type { Page } from "./browser.ts";
 import {
 	browserBinary,
 	type Harness,
+	inFullSet,
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
@@ -64,7 +65,7 @@ const QUESTION = `document.querySelector("[data-question]")`;
 const FINDING = `document.querySelector('[data-mark="m1"] [data-finding]')`;
 const DELETE = `${FINDING}?.querySelector('[data-finding-action="delete"]')`;
 
-describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
+inFullSet("AI findings on a mark", () => {
 	let h: Harness;
 	let panel: Page;
 	let claude: Client;
