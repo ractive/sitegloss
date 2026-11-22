@@ -3077,6 +3077,47 @@ while it was open.
 - Tests: `test/contrast.test.ts` (the open stroke and pin 4.71:1), the rest renamed in
   place. No new test.
 
+## DEC-055: The audit's judgment calls on the tests: race tests on a faked browser go or move down, pinned sentences become fragments (owner)
+
+2026-11-22. After DEC-053 the owner settled the audit's open questions: "do them". The
+rule for each end-to-end test that replaced a `chrome.*` function to stage a race, or
+that proved a decision a unit test can hold: it goes when it proved one fix once and a
+user would not notice its behaviour breaking; it moves down when it is the only guard of
+something that matters and a small piece pulled out of the code gives it a seam. No
+broad restructuring of `src/sidepanel/main.ts`, and no new harness.
+
+- **Seams pulled out**, each behaving as before and called where the code was:
+  `markChange` (`src/sidepanel/mark-change.ts`, what a command in the page's popover does
+  to the case), `linkFromField` (`src/sidepanel/case-link.ts`, the case link's field),
+  `Reviewer.clearFor` (`src/content/review.ts`, which case a `case:clear` takes off).
+  The marks' screenshot rules were testable already: `end.test.ts` drives `MarkAdder`
+  with a fake worker.
+- **What moved down**: the popover's commands, a clear for another case, the link field,
+  which screenshot a mark gets (shared, after a typed value, after an undo or a failed
+  capture, a mark from another route, Add mark N twice, an add held by an AI app,
+  leaving with a mark not in the case), the sync's banner, Allow access and Use
+  Downloads instead, who verified a mark, and a comment form surviving a finding's
+  delete.
+- **What went with no test left**: the wiring in `main.ts` that the races went through
+  (a follow overtaken by a newer one, a stale draw's error, a busy page asked again, the
+  tab New case was clicked for, an import ending while another case is open, the import
+  marker kept through a save), and the worker's one line that hands the sync's status to
+  the icon. A break there is found by a person, not a test.
+- **Kept against the audit**, each the only test of what it asserts: the panel asking the
+  page again after a draw's answer; a case opened again while its searches again wait;
+  deleting a finding keeping an open comment form (`main.ts`'s `keepEdit`: every unit
+  test passes without it); an AI app's mark taking the visible copy (real sizes); the
+  real pen and arrow drags; a second pairing page; the marks' casing in a real shadow
+  root.
+- **Unit tests**: repeated tests are tables; a sentence a test pinned whole is one
+  fragment that still identifies it, except where the text is the behaviour (a count, a
+  name, a plural, a status, a security sentence). The ~10 MB round trip of a case at its
+  history caps and the redirect test on real sockets went. **The price**: a wording
+  regression no longer fails a unit test.
+- Tests: `test/mark-change.test.ts`, `test/case-link.test.ts`, `test/end.test.ts`
+  ("which screenshot a mark gets"), `test/review.test.ts` ("a clear for another case…"),
+  `test/sync.test.ts` ("Allow access asks Chrome for the paused folder…").
+
 ## DEC-056: tab-mcp client 0.21.0 changes nothing for Sitegloss (owner)
 
 2026-11-22. The owner approved the bump of `@ractive-ch/tab-mcp-client` from 0.20.0 to
