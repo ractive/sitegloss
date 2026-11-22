@@ -924,15 +924,19 @@ main {
 	display: block;
 }
 
-/* Sections on paper: space, and a rule between them. */
+/*
+ * Sections on paper: space, and a rule between them in the edge colour, not
+ * the separators' faint one, so a section's end is plain beside the rules
+ * inside it (the case list's rows).
+ */
 #home > section,
 #settings > section {
-	padding: var(--s4) var(--s4) 20px;
+	padding: 20px var(--s4) var(--s5);
 }
 
 #home > section + section,
 #settings > section + section {
-	border-top: 1px solid var(--rule);
+	border-top: 1px solid var(--edge);
 }
 
 /* --- home: this page ---------------------------------------------------------- */
