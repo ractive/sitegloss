@@ -68,7 +68,7 @@ Read against both main checkouts, 2026-11-22. Code word: **image** (`MarkImage`,
   the first sweep a day on, as crops (DEC-011). No index on a JSON value; revisit only if
   DEC-027's measurement says so.
 - **Web app** (`case-view.tsx`): the rule of section 4, one row with the crop first, then the
-  added images, each a button "Image 1 of 2 of mark 3, added by Dana" opening the existing
+  added images, each a button "Image 1 of 2 on mark 3, added by Dana" opening the existing
   `Lightbox` (the crop first, then the images, as `media`). Read only.
 - **Share** (`server/shares.ts`): `publicCase` copies `images` with `publicStamp`;
   `imageOfShare` also accepts a live mark's image of that case. Its download follows (Q3).
@@ -132,8 +132,8 @@ the `Lightbox`'s `media`.
      place says so in words, "The screenshot is not here yet." or "The screenshot is
      missing.", instead of leaving the row to start with an added image.
   2. **The added images**, oldest first, each a thumbnail button that opens large the same way,
-     `aria-label="Image 1 of 2 of mark 3, added by Dana"` (no name in a case that never
-     synced: "added here"), tooltip "Added by Dana, 22 Nov", and beside it "Remove image 1"
+     `aria-label="Image 1 of 2 on mark 3, added by Dana"` (no name in a case that never
+     synced), tooltip "Added by Dana, 22 Nov", and beside it "Remove image 1"
      with Delete's two clicks. **Numbering counts only the added images**: the screenshot is
      named "Screenshot", never "image 1", so the numbers agree with the limit ("at most 6
      images"), the closed mark's "+2 images", case.md's "added image 1" and the dialog.
