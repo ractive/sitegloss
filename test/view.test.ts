@@ -2427,7 +2427,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			"Really delete for the team?",
 		);
 		expect(armed("c_team", cloud, true).title).toContain(
-			"everyone in “Pedal & Pine web”",
+			"Click again to delete this case and its screenshots, here and for everyone in “Pedal & Pine web”",
 		);
 		// A case on this device only is deleted as ever.
 		expect(
@@ -4230,8 +4230,12 @@ describe("the sync (DEC-021, DEC-025)", () => {
 			expect(b.hidden).toBe(false);
 			expect(b.getAttribute("role")).toBe("status");
 			expect(b.dataset["sync"]).toBe("paused");
-			expect(b.querySelector("p")?.textContent).toContain("“iCloud cases”");
-			expect(b.querySelector("strong")?.textContent).toContain("paused");
+			expect(b.querySelector("p")?.textContent).toContain(
+				"needs your OK to write to “iCloud cases”",
+			);
+			expect(b.querySelector("strong")?.textContent).toBe(
+				"The copy to a folder is paused.",
+			);
 			expect(labels(b)).toEqual(["Allow access", "Use Downloads instead"]);
 			(b.querySelector('[data-action="sync-allow"]') as HTMLElement).click();
 		}
@@ -4308,6 +4312,9 @@ describe("the sync (DEC-021, DEC-025)", () => {
 		);
 		expect(labels(box)).toContain("Try again");
 		expect(banner().dataset["sync"]).toBe("failed");
+		expect(banner().querySelector("strong")?.textContent).toBe(
+			"The copy to a folder failed.",
+		);
 		expect(banner().querySelector("p")?.textContent).toContain(
 			"The folder “Sitegloss” is no longer there.",
 		);

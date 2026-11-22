@@ -585,6 +585,12 @@ describe("tools", () => {
 				message,
 			);
 			expect(tab.captured).toEqual([]);
+			// The refusal does not stick: the page free again, the case loads.
+			for (const key of Object.keys(page))
+				(tab as unknown as Record<string, unknown>)[key] = undefined;
+			expect(
+				json(await call("load_case", { caseId: "c_1" })).marks,
+			).toHaveLength(2);
 		},
 	);
 
@@ -1044,13 +1050,17 @@ describe("tools", () => {
 						...(note === undefined ? {} : { note }),
 					})
 				).join("\n");
-			expect(await asks("fixed")).toContain("This will change nothing");
-			expect(await asks("verified")).toContain("This will change nothing");
+			expect(await asks("fixed")).toContain(
+				"change nothing: Mark 2 is verified already; to add something",
+			);
+			expect(await asks("verified")).toContain(
+				"change nothing: Mark 2 is verified already.",
+			);
 			expect(await asks("wontfix")).toContain(
-				"will refuse this whatever you answer",
+				"refuse this whatever you answer: Mark 2 is verified: reopen it first",
 			);
 			expect(await asks("verified", "a note")).toContain(
-				"verified takes no note",
+				"refuse this whatever you answer: verified takes no note",
 			);
 			// A call that changes the mark gets neither line.
 			const reopen = await asks("open", "Not fixed after all");
