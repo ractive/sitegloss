@@ -67,7 +67,7 @@ Read against both main checkouts, 2026-11-22. Code word: **image** (`MarkImage`,
   json_each(marks.images)` of the team's live marks. Removed images and a deleted mark's go at
   the first sweep a day on, as crops (DEC-011). No index on a JSON value; revisit only if
   DEC-027's measurement says so.
-- **Web app** (`case-view.tsx`): the rule of section 4, one row with the crop first, then the
+- **Web app** (`case-view.tsx`): the rule of section 4, equal tiles with the crop first, then the
   added images, each a button "Image 1 of 2 on mark 3, added by Dana" opening the existing
   `Lightbox` (the crop first, then the images, as `media`). Read only.
 - **Share** (`server/shares.ts`): `publicCase` copies `images` with `publicStamp`;
@@ -109,37 +109,41 @@ Read against both main checkouts, 2026-11-22. Code word: **image** (`MarkImage`,
 **The rule, for the panel and later the web app (owner, 22 November 2026):** "it must be clear
 that every mark already has a screenshot attached to it. Maybe this default screenshot should
 be visible as the first image already, so that people don't think that they need to upload a
-screenshot by themselves for every mark." So a mark's pictures are one row, and its own crop
-is always the first of them; what a person adds comes after it and reads as extra. The web
-app follows the same rule when it shows images (S3): the crop first in one row, and first in
+screenshot by themselves for every mark." So a mark's pictures are one grid of equal tiles, and its own
+crop is always the first of them; what a person adds comes after it and reads as extra. The web
+app follows the same rule when it shows images (S3): the crop first among the tiles, and first in
 the `Lightbox`'s `media`.
 
-- **The side panel first.** The open mark (`markItem`, `src/sidepanel/view.ts`) gets the row,
-  and the way to add a picture sits at its end. Not the page's popover first: (1) the
+- **The side panel first.** The open mark (`markItem`, `src/sidepanel/view.ts`) gets the
+  grid, and the way to add a picture is its last tile. Not the page's popover first: (1) the
   page's own scripts see `paste` and `drop` in their capture phase on `window` before the
   overlay's shadow root, so the picture (maybe another app's window) would go to the site
   being marked; (2) its bytes would cross from content script to panel as text; (3) DEC-027:
   the page asks, the panel changes and owns the store; (4) the owner's dropdown is on the page,
   the panel beside it. Later the popover gets "Add image…" that only asks the panel to open
   the dialog for that mark (E5); no picture ever touches the page.
-- **The row on the open mark**, in this order:
+- **The pictures on the open mark**: a grid of equal tiles, three columns (two under 320 px),
+  each tile the same 4:3 box with its picture contained in it on the panel's paper, never
+  cropped, captions on one line under the tiles. A click on a tile shows its picture large
+  across the grid at its own shape, caption under it, as the crop was shown before; another
+  click small again. In this order:
   1. **The screenshot**: the mark's crop, captioned "Screenshot", `aria-label="Screenshot of
-     mark 3, taken by Sitegloss"`, tooltip "Taken by Sitegloss when the mark was made". A click
-     shows it large and small again, as `cropView` does today (a button, `aria-pressed`). No
-     Remove: it goes only with the mark. Every mark has one in the format (`crop` is
-     required, an AI app's `add_mark` cuts one around the element as a person's mark does);
-     where its file is not here (a teammate's mark whose crop did not come down), the first
-     place says so in words, "The screenshot is not here yet." or "The screenshot is
-     missing.", instead of leaving the row to start with an added image.
-  2. **The added images**, oldest first, each a thumbnail button that opens large the same way,
-     `aria-label="Image 1 of 2 on mark 3, added by Dana"` (no name in a case that never
-     synced), tooltip "Added by Dana, 22 Nov", and beside it "Remove image 1"
-     with Delete's two clicks. **Numbering counts only the added images**: the screenshot is
-     named "Screenshot", never "image 1", so the numbers agree with the limit ("at most 6
-     images"), the closed mark's "+2 images", case.md's "added image 1" and the dialog.
-  3. **"Add another image…"**, last in the row, worded as an extra. It is the one place to add
-     (not also in `markActions`): the row and the actions show on the open mark only. Hidden
-     when the mark holds 6.
+     mark 3, taken by Sitegloss"`, tooltip "Taken by Sitegloss when the mark was made. It
+     stays with the mark." No Remove, and no other control in its tile: it goes only with the
+     mark, and `withoutImage` refuses the mark's id or its crop's path. Every mark has one in
+     the format (`crop` is required, an AI app's `add_mark` cuts one around the element as a
+     person's mark does); where its file is not here, its tile says "The screenshot is
+     missing." instead of the grid starting with an added image.
+  2. **The added images**, oldest first, captioned "Image 1"…, `aria-label="Image 1 of 2 on
+     mark 3, added by Dana"` (no name in a case that never synced), tooltip "Added by Dana,
+     22 Nov". A small button at the tile's corner, "Remove image 1 from mark 3", with
+     Delete's two clicks; clicked once it reads "Really remove?" on the tile. **Numbering
+     counts only the added images**: the screenshot is named "Screenshot", never "image 1",
+     so the numbers agree with the limit ("at most 6 images"), the closed mark's "+2 images",
+     case.md's "added image 1" and the dialog.
+  3. **"+ Add another image…"**, the grid's last tile, dashed, the same size. It is the one
+     place to add (not also in `markActions`): the grid and the actions show on the open mark
+     only. Gone when the mark holds 6; a line under the grid says "6 of 6 images".
 - **A closed mark**: the head's subline counts only what was added, "+2 images" ("+1 image");
   nothing for none. Never "3 images". "Delete mark"'s tooltip names the added images.
 - **Dialog** (new `src/sidepanel/add-images.ts`, a `<dialog>` with `showModal` as `ai.ts`):

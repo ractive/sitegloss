@@ -2063,69 +2063,163 @@ button.crop:hover img {
 }
 
 /*
- * A mark's pictures in one row (DEC-058): its own screenshot first, then the
- * images a person added, then the way to add another. One shown large takes
- * the row's whole width.
+ * A mark's pictures as a grid of equal tiles (DEC-058): its own screenshot
+ * first, then the images a person added, then a tile to add another. Each
+ * picture is contained in its tile, never cropped; one shown large takes the
+ * grid's whole width at its own shape, its caption under it.
  */
 .pictures {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: flex-start;
-	gap: var(--s2) var(--s3);
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--s3) var(--s2);
+	align-items: start;
+}
+
+@media (max-width: 320px) {
+	.pictures {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
 }
 
 .picture {
+	position: relative;
 	display: grid;
 	gap: 4px;
-	justify-items: start;
-	max-width: 100%;
+	min-width: 0;
 	margin: 0;
 }
 
-.picture:has(> button.crop[aria-pressed="true"]) {
-	flex-basis: 100%;
-}
-
-/* Small, side by side: a thumbnail keeps its shape within 120 × 72. */
-.picture > button.crop:not([aria-pressed="true"]) img {
-	width: auto;
-	height: auto;
-	max-width: 120px;
-	max-height: 72px;
+.picture:has(> .tile[aria-pressed="true"]) {
+	grid-column: 1 / -1;
 }
 
 .picture figcaption {
-	display: flex;
-	align-items: center;
-	gap: var(--s2);
+	overflow: hidden;
 	color: var(--ink-2);
 	font-size: 12px;
 	line-height: 16px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.picture figcaption button {
+/* Every tile the same box, the picture contained in it on the panel's paper. */
+.tile {
+	display: grid;
+	place-items: center;
+	width: 100%;
 	min-height: 0;
-	padding: 1px 6px;
-	font-size: 12px;
+	aspect-ratio: 4 / 3;
+	padding: 2px;
+	overflow: hidden;
+	border: 1px solid var(--rule);
+	border-radius: var(--r-control);
+	background: var(--paper);
+}
+
+button.tile {
+	cursor: zoom-in;
+}
+
+button.tile:hover:not(:disabled) {
+	border-color: var(--edge);
+	background: var(--paper);
+}
+
+.mark .tile img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	border: 0;
+	border-radius: 0;
+}
+
+/* Shown large: the picture at its own shape, as wide as the grid. */
+button.tile[aria-pressed="true"] {
+	aspect-ratio: auto;
+	cursor: zoom-out;
+}
+
+.mark button.tile[aria-pressed="true"] img {
+	width: auto;
+	height: auto;
+	max-width: 100%;
 }
 
 /* A picture whose file is not here: said, in the place it would take. */
-.picture-missing {
-	display: grid;
-	place-items: center;
-	min-width: 88px;
-	min-height: 56px;
-	margin: 0;
-	padding: var(--s1) var(--s2);
-	border: 1px dashed var(--edge);
-	border-radius: var(--r-control);
+.tile-missing {
+	padding: var(--s1);
 	color: var(--ink-2);
 	font-size: 12px;
+	line-height: 16px;
 	text-align: center;
 }
 
-.pictures .add-image {
-	align-self: center;
+/* Remove, at the tile's corner; clicked once it says so in words. */
+.tile-remove {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	min-height: 0;
+	padding: 0 6px;
+	border-color: var(--edge);
+	border-radius: var(--r-pill);
+	background: var(--sheet);
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.tile-remove:hover:not(:disabled) {
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.tile-remove[data-armed] {
+	left: 4px;
+	border-color: var(--danger);
+	border-radius: var(--r-control);
+	background: var(--danger);
+	color: var(--on-danger);
+	font-size: 11px;
+	line-height: 14px;
+}
+
+.tile-remove[data-armed]:hover:not(:disabled) {
+	background: var(--danger);
+	color: var(--on-danger);
+}
+
+/* The way to add one: a dashed tile of the same size; its words wrap inside it. */
+button.tile-add {
+	display: block;
+	align-content: center;
+	padding: 2px var(--s1);
+	border: 1px dashed var(--edge);
+	background: none;
+	color: var(--ink);
+	font-size: 11px;
+	line-height: 14px;
+	text-align: center;
+	cursor: pointer;
+}
+
+button.tile-add:hover:not(:disabled) {
+	border-color: var(--ink);
+	background: var(--wash);
+}
+
+.tile-add .plus {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+.pictures-box {
+	display: grid;
+	gap: var(--s1);
+}
+
+.pictures-full {
+	color: var(--ink-2);
+	font-size: 12px;
 }
 
 /*

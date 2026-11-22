@@ -55,7 +55,7 @@ inFullSet("images added to a mark", () => {
 		);
 		await panel.eval(`document.querySelector(".mark-toggle").click()`);
 		await panel.waitFor(
-			`document.querySelector('.mark[data-open] [data-picture="screenshot"] button.crop')`,
+			`document.querySelector('.mark[data-open] [data-picture="screenshot"] button.tile[data-action=zoom]')`,
 		);
 		await panel.click(`document.querySelector('[data-action="add-image"]')`);
 		await panel.waitFor(`document.querySelector("dialog.add-images[open]")`);
@@ -85,7 +85,7 @@ inFullSet("images added to a mark", () => {
 		);
 		expect(
 			await panel.eval<string[]>(
-				`[...document.querySelectorAll(".mark[data-open] .pictures button.crop")].map((b) => b.getAttribute("aria-label"))`,
+				`[...document.querySelectorAll(".mark[data-open] .pictures button.tile[data-action=zoom]")].map((b) => b.getAttribute("aria-label"))`,
 			),
 		).toEqual([
 			"Screenshot of mark 1, taken by Sitegloss",

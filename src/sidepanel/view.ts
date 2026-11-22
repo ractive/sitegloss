@@ -813,8 +813,11 @@ const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
  */
 const zoomed = new Set<string>();
 
-/** A picture of a mark, small at first: a click shows it large, another small again. */
-function pictureButton(
+/**
+ * A picture of a mark as a tile, small at first: a click shows it large
+ * across the row (as the crop was shown before the row), another small again.
+ */
+function pictureTile(
 	key: string,
 	src: string,
 	label: string,
@@ -824,7 +827,7 @@ function pictureButton(
 		"button",
 		{
 			type: "button",
-			class: "crop",
+			class: "tile",
 			"data-action": "zoom",
 			"aria-pressed": String(zoomed.has(key)),
 			"aria-label": label,
@@ -849,30 +852,26 @@ const shortDate = (iso: string) => {
 };
 
 /**
- * A mark's pictures in one row (DEC-058, the owner's rule): its own
- * screenshot first, always, so nobody thinks a mark needs one added; then
- * the images a person added, oldest first, each with its Remove; last the
- * way to add another. Numbers count the added images only. `ready`: the
- * images were read for this version of the case, so one without a URL is
- * missing, not on its way.
+ * A mark's pictures as a grid of equal tiles (DEC-058, the owner's rule): its
+ * own screenshot first, always, so nobody thinks a mark needs one added; then
+ * the images a person added, oldest first, each with a Remove at its corner;
+ * last a tile to add another, gone once the mark holds the most. Numbers
+ * count the added images only. `ready`: the images were read for this
+ * version of the case, so one without a URL is missing, not on its way.
  */
 function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const added = a.images ?? [];
 	const missing = (text: string) =>
-		x.ready ? h("p", { class: "picture-missing" }, text) : null;
+		h("div", { class: "tile tile-missing" }, x.ready ? text : "");
 	const shot = x.urls?.get(a.crop);
-	return h(
+	const grid = h(
 		"div",
-		{
-			class: "pictures",
-			role: "group",
-			"aria-label": `Pictures of mark ${a.number}`,
-		},
+		{ class: "pictures" },
 		h(
 			"figure",
 			{ class: "picture", "data-picture": "screenshot" },
 			shot
-				? pictureButton(
+				? pictureTile(
 						`${c.id}:${a.id}`,
 						shot,
 						`Screenshot of mark ${a.number}, taken by Sitegloss`,
@@ -890,7 +889,7 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				"figure",
 				{ class: "picture", "data-picture": image.id },
 				url
-					? pictureButton(
+					? pictureTile(
 							`${c.id}:${a.id}:${image.id}`,
 							url,
 							`Image ${n} of ${added.length} on mark ${a.number}${who ? `, added by ${who}` : ""}`,
@@ -898,27 +897,23 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 						)
 					: missing("The image is missing."),
 				h(
-					"figcaption",
-					{},
-					`Image ${n}`,
-					h(
-						"button",
-						{
-							type: "button",
-							class: "small danger",
-							"data-action": "remove-image",
-							"aria-label": armed
-								? `Really remove image ${n}?`
-								: `Remove image ${n}`,
-							title: armed
-								? `Click again to remove image ${n}`
-								: `Remove image ${n} from the mark (click twice)`,
-							...(armed ? { "data-armed": true } : {}),
-							onclick: () => x.actions.deleteImage(c, a, image.id),
-						},
-						armed ? "Really remove?" : "Remove",
-					),
+					"button",
+					{
+						type: "button",
+						class: "tile-remove",
+						"data-action": "remove-image",
+						"aria-label": armed
+							? `Really remove image ${n} from mark ${a.number}?`
+							: `Remove image ${n} from mark ${a.number}`,
+						title: armed
+							? "Click again to remove it"
+							: "Remove this image from the mark (click twice)",
+						...(armed ? { "data-armed": true } : {}),
+						onclick: () => x.actions.deleteImage(c, a, image.id),
+					},
+					armed ? "Really remove?" : h("span", { "aria-hidden": "true" }, "×"),
 				),
+				h("figcaption", {}, `Image ${n}`),
 			);
 		}),
 		added.length < MAX_MARK_IMAGES
@@ -926,13 +921,30 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					"button",
 					{
 						type: "button",
-						class: "small add-image",
+						class: "tile tile-add",
 						"data-action": "add-image",
 						title:
 							"Add a picture of what the screenshot does not show, for example a menu that closes",
 						onclick: () => x.actions.addImages(c, a),
 					},
+					h("span", { class: "plus", "aria-hidden": "true" }, "+ "),
 					"Add another image…",
+				)
+			: null,
+	);
+	return h(
+		"div",
+		{
+			class: "pictures-box",
+			role: "group",
+			"aria-label": `Pictures of mark ${a.number}`,
+		},
+		grid,
+		added.length >= MAX_MARK_IMAGES
+			? h(
+					"p",
+					{ class: "meta pictures-full" },
+					`${added.length} of ${MAX_MARK_IMAGES} images`,
 				)
 			: null,
 	);

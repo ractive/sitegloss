@@ -528,7 +528,7 @@ describe("a mark's status and actions", () => {
 		]);
 		// A crop is small; a click shows it large, another small again.
 		const crop = row("m1").querySelector(
-			"button.crop",
+			"button.tile",
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("aria-pressed")).toBe("false");
 		crop.click();
@@ -660,7 +660,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			s.images = { caseId: c.id, version: c.updatedAt, urls: new Map(urls) };
 		});
 
-	test("one row, the screenshot named first and never removed, the added ones counted from 1", () => {
+	test("one grid, the screenshot named first and never removed, the added ones counted from 1", () => {
 		const c = marked("c_pictures1");
 		const a = c.marks[0] as Mark;
 		const asked: string[] = [];
@@ -678,9 +678,9 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		const row = window.document.querySelector(
 			`[data-mark="${a.id}"] .pictures`,
 		);
-		const names = [...(row?.querySelectorAll("button.crop") ?? [])].map((b) =>
-			b.getAttribute("aria-label"),
-		);
+		const names = [
+			...(row?.querySelectorAll("button.tile[data-action=zoom]") ?? []),
+		].map((b) => b.getAttribute("aria-label"));
 		expect(names).toEqual([
 			`Screenshot of mark ${a.number}, taken by Sitegloss`,
 			`Image 1 of 2 on mark ${a.number}, added by Dana`,
@@ -702,9 +702,9 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			"Taken by Sitegloss when the mark was made. It stays with the mark.",
 		);
 		(
-			row?.querySelector('[aria-label="Remove image 2"]') as unknown as
-				| HTMLButtonElement
-				| undefined
+			row?.querySelector(
+				`[aria-label="Remove image 2 from mark ${a.number}"]`,
+			) as unknown as HTMLButtonElement | undefined
 		)?.click();
 		(
 			row?.querySelector("[data-action=add-image]") as unknown as
@@ -712,7 +712,10 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 				| undefined
 		)?.click();
 		expect(asked).toEqual(["remove i_b", "add"]);
-		expect(row?.lastElementChild?.textContent).toBe("Add another image…");
+		// The way to add one is the grid's last tile.
+		expect(row?.lastElementChild?.getAttribute("data-action")).toBe(
+			"add-image",
+		);
 		// The subline counts only what was added.
 		expect(
 			window.document.querySelector(`[data-mark="${a.id}"] .images-count`)
@@ -737,6 +740,40 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			"The screenshot is missing.Screenshot",
 		);
 		expect(row?.querySelector("[data-action=add-image]")).toBeNull();
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .pictures-full`)
+				?.textContent,
+		).toBe("6 of 6 images");
+	});
+
+	test("a Remove clicked once says so on its tile, in words", () => {
+		const c = marked("c_pictures3");
+		const a = c.marks[0] as Mark;
+		render(
+			caseState(c, (s) => {
+				s.images = {
+					caseId: c.id,
+					version: c.updatedAt,
+					urls: new Map([["images/i_b.webp", "blob:b"]]),
+				};
+				s.imageDeleteArmed = {
+					markId: a.id,
+					mark: "",
+					imageId: "i_b",
+					at: 0,
+				};
+			}),
+			noActions,
+		);
+		const remove = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${a.id}"] [data-picture="${id}"] [data-action=remove-image]`,
+			);
+		expect(remove("i_b")?.textContent).toBe("Really remove?");
+		expect(remove("i_b")?.getAttribute("aria-label")).toBe(
+			`Really remove image 2 from mark ${a.number}?`,
+		);
+		expect(remove("i_a")?.getAttribute("data-armed")).toBeNull();
 	});
 });
 
