@@ -2483,7 +2483,7 @@ async function changeMark(
 			const now = markFor(current, a.id, key);
 			if (now === undefined)
 				throw new Error(
-					"This mark is no longer in the case as it was: it was changed or removed meanwhile. Nothing was saved.",
+					"This mark is no longer in the case as it was: it was changed or deleted meanwhile. Nothing was saved.",
 				);
 			// Not to be told from another mark: not applied to the first found.
 			if (now === "ambiguous") throw new Error(MARK_CHANGED);

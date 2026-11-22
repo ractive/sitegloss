@@ -679,7 +679,7 @@ export class MarkAdder {
 		const remove = doc.createElement("button");
 		remove.type = "button";
 		remove.dataset["action"] = "comment-remove";
-		remove.textContent = "Remove mark";
+		remove.textContent = "Delete mark";
 		remove.addEventListener("click", () => {
 			this.#forget(draft);
 			this.#closeComment();
@@ -997,8 +997,8 @@ export class MarkAdder {
 		if (last !== undefined)
 			undo.title =
 				target !== undefined && !this.#drafts.includes(last)
-					? `Take mark ${last.number} out of “${target.title}”`
-					: `Remove mark ${last.number}`;
+					? `Delete mark ${last.number} from “${target.title}”`
+					: `Delete mark ${last.number}`;
 		const middle: Element[] = [undo];
 		const failed = [...this.#failed.keys()];
 		if (target !== undefined && failed.length > 0) {
@@ -1035,7 +1035,7 @@ export class MarkAdder {
 		close.title =
 			this.#leftOut === undefined
 				? "Stop adding marks"
-				: "Discard the marks that are not in the case, and stop";
+				: "Delete the marks that are not in the case, and stop";
 		close.disabled = this.#finishing;
 		this.#mount(
 			[brand, ...tools, sep(), ...middle, sep()],
@@ -1455,7 +1455,7 @@ export class MarkAdder {
 		const was = draft.queuedFor;
 		if (was === undefined || was.caseId === target.caseId)
 			return this.#failed.get(draft) ?? "";
-		return `it was for “${was.title}”, and the toolbar adds to “${target.title}” now. “Add mark ${draft.number}” puts it there; Undo removes it.`;
+		return `it was for “${was.title}”, and the toolbar adds to “${target.title}” now. “Add mark ${draft.number}” puts it there; Undo deletes it.`;
 	}
 
 	/** "Add mark N": the marks that could not be added try again, for this case. */
@@ -1662,7 +1662,7 @@ export class MarkAdder {
 			}
 			const target = this.#target;
 			if (target === undefined || !this.#added.includes(draft)) return;
-			this.#message = `Taking mark ${draft.number} out of “${target.title}”…`;
+			this.#message = `Deleting mark ${draft.number} from “${target.title}”…`;
 			this.#renderToolbar();
 			const result = await ask<UndoResult>({
 				type: "case:undo-add",
@@ -1679,7 +1679,7 @@ export class MarkAdder {
 			this.#advance(target.caseId, result.next);
 			const title = this.#titleOf(target);
 			this.#message = result.removed
-				? `Mark ${draft.number} taken out of “${title}”`
+				? `Mark ${draft.number} deleted from “${title}”`
 				: `Mark ${draft.number} was deleted from “${title}” already`;
 		} catch (error) {
 			// It stays in the case, and Undo no longer offers it.

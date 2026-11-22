@@ -293,7 +293,7 @@ test("a case loaded onto the page leaves Undo its marks, whatever copy it is", a
 	// loaded marks draw the case's own, and Undo still reaches mark 3.
 	a.caseLoaded(target.caseId);
 	expect(undo()?.disabled).toBe(false);
-	expect(undo()?.title).toBe("Take mark 3 out of “Open case”");
+	expect(undo()?.title).toBe("Delete mark 3 from “Open case”");
 });
 
 test("All cases during another case's add: a show for that case waiting for it is dropped", async () => {
@@ -468,7 +468,7 @@ test("a re-render keeps the toolbar's buttons: a click pressed before it still l
 	note(overlay, a);
 	expect(button("undo")).toBe(undo);
 	expect(undo?.disabled).toBe(false);
-	expect(undo?.title).toBe("Remove mark 3");
+	expect(undo?.title).toBe("Delete mark 3");
 	// Nothing of this test's left running into the next.
 	await settle(a, () => !a.state().saving && a.state().drafts === 0);
 	// The order holds, the status and the alert where they were.
