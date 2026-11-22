@@ -404,24 +404,74 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		expect<string | undefined>(bar.dataset["fit"]).toBe("rows");
 	});
 
-	test("the review bar's place under a toolbar at the top follows the toolbar's height", () => {
+	test("the review bar steps aside while marks are added, and is the pill while the marks are hidden (DEC-061)", () => {
+		overlay.setReviewing(true);
+		expect(overlay.reviewBar.hidden).toBe(false);
 		overlay.setAddingMarks(true);
-		withRoomFrom("");
-		const bar = overlay.toolbar;
-		let height = 40;
-		Object.defineProperty(bar, "offsetHeight", {
-			configurable: true,
-			get: () => height,
-		});
-		overlay.fitToolbar();
-		const under = () => overlay.layer.style.getPropertyValue("--under-toolbar");
-		// One row: where it was, 16 + 40 + 8.
-		expect(under()).toBe("64px");
-		// The status on a row of its own: the bar starts below that row too.
-		height = 63;
-		overlay.fitToolbar();
-		expect(under()).toBe("87px");
+		expect(overlay.reviewBar.hidden).toBe(true);
 		overlay.setAddingMarks(false);
+		expect(overlay.reviewBar.hidden).toBe(false);
+		// Hidden marks: nothing drawn, the bar (the pill) stays.
+		overlay.setReviewing(false);
+		overlay.setMarksHidden(true);
+		expect(overlay.layer.hidden).toBe(false);
+		expect(overlay.reviewBar.hidden).toBe(false);
+		overlay.setMarksHidden(false);
+		expect(overlay.reviewBar.hidden).toBe(true);
+	});
+
+	test("the bar's place: kept inside the window, read back only as two numbers, moved by keys and a double click (DEC-061)", () => {
+		// 8 px from every edge, whatever was kept; a small window keeps it top right.
+		expect(o.clampBar({ right: -40, top: 900 }, 300, 40, 1280, 800)).toEqual({
+			right: 8,
+			top: 752,
+		});
+		expect(o.clampBar({ right: 1200, top: 20 }, 300, 40, 1280, 800)).toEqual({
+			right: 972,
+			top: 20,
+		});
+		expect(o.clampBar({ right: 100, top: 100 }, 300, 40, 200, 30)).toEqual({
+			right: 8,
+			top: 8,
+		});
+		expect(o.storedBarPlace({ right: 40, top: 60 })).toEqual({
+			right: 40,
+			top: 60,
+		});
+		expect(o.storedBarPlace({ right: "40", top: 60 })).toBeUndefined();
+		expect(o.storedBarPlace(undefined)).toBeUndefined();
+		const moved: unknown[] = [];
+		overlay.onBarMoved = (p) => void moved.push(p);
+		overlay.setReviewing(true);
+		const grip = document.createElement("button");
+		grip.className = "grip";
+		overlay.reviewBar.append(grip);
+		overlay.setBarPlace({ right: 100, top: 100 });
+		grip.dispatchEvent(
+			new window.KeyboardEvent("keydown", {
+				key: "ArrowLeft",
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		grip.dispatchEvent(
+			new window.KeyboardEvent("keydown", {
+				key: "ArrowDown",
+				shiftKey: true,
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(overlay.barPlace).toEqual({
+			right: 100 + o.BAR_STEP,
+			top: 100 + 4 * o.BAR_STEP,
+		});
+		overlay.reviewBar.dispatchEvent(
+			new window.MouseEvent("dblclick", { bubbles: true }) as unknown as Event,
+		);
+		expect(overlay.barPlace).toEqual(o.BAR_HOME);
+		expect(moved).toHaveLength(3);
+		grip.remove();
+		overlay.onBarMoved = undefined;
+		overlay.setReviewing(false);
 	});
 
 	test("a wider page lays it out again", () => {

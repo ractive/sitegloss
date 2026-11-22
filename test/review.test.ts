@@ -45,6 +45,10 @@ function stubOverlay(document: Document) {
 		setReviewing(on: boolean) {
 			this.reviewing = on;
 		},
+		marksHidden: false,
+		setMarksHidden(on: boolean) {
+			this.marksHidden = on;
+		},
 		renderReview(items: readonly Item[]) {
 			this.items = items;
 		},
@@ -182,6 +186,51 @@ describe("elements replaced after loading", () => {
 		expect(
 			overlay.reviewBar.querySelectorAll('[data-role="review-status"]'),
 		).toHaveLength(1);
+	});
+
+	test("Hide marks keeps the case and leaves the pill that shows them again; Add marks on the bar adds to the case (DEC-061)", async () => {
+		doc.body.innerHTML = PAGE;
+		const c = caseOf($("button"));
+		await reviewer.load(c);
+		const said: boolean[] = [];
+		const added: string[] = [];
+		reviewer.onHiddenChange = (hidden) => void said.push(hidden);
+		reviewer.onAddMarks = (x) => void added.push(x.id);
+		(
+			overlay.reviewBar.querySelector(
+				'[data-action="review-add"]',
+			) as HTMLButtonElement
+		).click();
+		expect(added).toEqual([c.id]);
+		(
+			overlay.reviewBar.querySelector(
+				'[data-action="review-hide"]',
+			) as HTMLButtonElement
+		).click();
+		// Nothing drawn, the case kept, the pill named for it.
+		expect(reviewer.hidden).toBe(true);
+		expect(reviewer.caseId).toBe(c.id);
+		expect(overlay.reviewing).toBe(false);
+		expect(overlay.marksHidden).toBe(true);
+		expect(overlay.items).toHaveLength(0);
+		const pill = overlay.reviewBar.querySelector('[data-action="review-show"]');
+		expect(pill?.getAttribute("aria-label")).toBe(
+			`Show the marks of “${c.title}”`,
+		);
+		expect(
+			overlay.reviewBar.querySelector('[data-action="review-hide"]'),
+		).toBeNull();
+		(pill as HTMLButtonElement).click();
+		expect(said).toEqual([true, false]);
+		expect(reviewer.hidden).toBe(false);
+		expect(overlay.reviewing).toBe(true);
+		expect(overlay.items).toHaveLength(1);
+		// An AI app showing a mark brings hidden marks back too.
+		reviewer.hide();
+		expect(reviewer.show("m1")?.status).toBe("found");
+		expect(reviewer.hidden).toBe(false);
+		reviewer.onHiddenChange = undefined;
+		reviewer.onAddMarks = undefined;
 	});
 
 	test("a clear while the case is loading stops the load: nothing is drawn after it", async () => {

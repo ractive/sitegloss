@@ -278,6 +278,14 @@ function takeOff(d: Drawn): void {
 		.catch(() => undefined);
 }
 
+/** Hide the case's marks on a tab: its bar becomes the pill (DEC-061). */
+function hideOn(d: Drawn): void {
+	if (sameDrawn(drawn, d)) drawn = undefined;
+	void chrome.tabs
+		.sendMessage(d.tabId, { type: "case:hide", caseId: d.caseId })
+		.catch(() => undefined);
+}
+
 /**
  * A tab Sitegloss may not run on yet, with the open case to draw there once
  * the icon's click (or "Allow on all sites") lets it in.
@@ -1711,7 +1719,10 @@ const actions: Actions = {
 				s.overlay = rest;
 			}
 		});
-		for (const tabId of tabs) takeOff({ tabId, caseId: c.id });
+		// Hidden, not taken off (DEC-061): the page keeps the case, its bar
+		// becomes the pill that shows the marks again, and a toolbar adding
+		// to the case ends (hidden marks and adding do not go together).
+		for (const tabId of tabs) hideOn({ tabId, caseId: c.id });
 	},
 
 	allowAllSites() {
@@ -2946,6 +2957,25 @@ function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
 			news.state.loadedCase !== state.loaded.caseId
 		)
 			void forgetLoaded();
+		// The page's pill showed the open case's marks again: shown, as the
+		// panel's Show marks would, and drawn by the panel from now on.
+		if (
+			from !== undefined &&
+			hiddenOn.has(from) &&
+			state.view.kind === "case" &&
+			news.state.loadedCase === state.view.id
+		) {
+			hiddenOn.delete(from);
+			void follow();
+		}
+		// The page's bar started adding to the open case: the panel's toolbar.
+		if (
+			from !== undefined &&
+			state.view.kind === "case" &&
+			news.state.visible &&
+			news.state.target?.caseId === state.view.id
+		)
+			toolbarOn.add(from);
 		// Only the tab the panel shows matters.
 		if (from !== undefined && from === state.tab?.id) {
 			update((s) => {

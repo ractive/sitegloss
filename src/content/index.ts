@@ -3,7 +3,7 @@
  * into the same page is a no-op: the first one keeps answering.
  */
 
-import { LANGUAGE } from "../lib/case.ts";
+import { LANGUAGE, nextNumbers } from "../lib/case.ts";
 import { cssSelector, describeElement } from "../lib/element.ts";
 import {
 	insideInput,
@@ -15,6 +15,7 @@ import {
 } from "../lib/inspect.ts";
 import { withLook } from "../lib/look.ts";
 import type {
+	BarPlaceAnswer,
 	BlurResult,
 	Broadcast,
 	ContentRequest,
@@ -22,11 +23,13 @@ import type {
 	InspectResult,
 	LoadReplacedAnswer,
 	Released,
+	WorkerRequest,
 } from "../lib/messages.ts";
 import { PageActivity } from "./activity.ts";
 import { MarkAdder, pageInfo } from "./adding.ts";
 import { PageBlur } from "./blur.ts";
-import { HOST_ID, Overlay } from "./overlay.ts";
+import { HOST_ID, Overlay, storedBarPlace } from "./overlay.ts";
+
 import { LoadReplaced, Reviewer } from "./review.ts";
 
 declare global {
@@ -196,8 +199,38 @@ function start(): void {
 	const state = () => {
 		const s = adder.state();
 		const loaded = reviewer.caseId;
-		return loaded === undefined ? s : { ...s, loadedCase: loaded };
+		if (loaded === undefined) return s;
+		// Hidden marks are no marks drawn; the panel learns which case waits.
+		return reviewer.hidden
+			? { ...s, hiddenCase: loaded }
+			: { ...s, loadedCase: loaded };
 	};
+	// One switch on the page and in the panel (DEC-061): adding marks shows
+	// them, hiding them ends the adding.
+	reviewer.onAddMarks = (c) => {
+		reviewer.reveal();
+		adder.show({
+			target: { caseId: c.id, title: c.title, nextMark: nextNumbers(c).mark },
+		});
+	};
+	reviewer.onHiddenChange = (hidden) => {
+		const c = reviewer.loaded;
+		if (hidden && c !== undefined && adder.state().target?.caseId === c.id)
+			void adder.end(c.id);
+	};
+	// The bar is where the person left it, in every tab of this profile.
+	// The worker keeps it: this profile's storage is not a page's to reach.
+	overlay.onBarMoved = (place) =>
+		void chrome.runtime
+			.sendMessage({ type: "bar:place", place } satisfies WorkerRequest)
+			.catch(() => undefined);
+	void chrome.runtime
+		.sendMessage({ type: "bar:place" } satisfies WorkerRequest)
+		.then((answer: { ok?: boolean } & BarPlaceAnswer) => {
+			const place = storedBarPlace(answer?.place);
+			if (place !== undefined) overlay.setBarPlace(place);
+		})
+		.catch(() => undefined);
 	overlay.onChange = () => {
 		const message: Broadcast = { type: "overlay:changed", state: state() };
 		// Nobody may be listening (side panel closed): that is fine.
@@ -208,6 +241,9 @@ function start(): void {
 			if (sender.id !== chrome.runtime.id) return false;
 			switch (message.type) {
 				case "overlay:show":
+					// Adding to the case whose marks are hidden shows them.
+					if (reviewer.hidden && reviewer.caseId === message.target.caseId)
+						reviewer.reveal();
 					adder.show({
 						target: message.target,
 						...(message.blurForms !== undefined
@@ -303,6 +339,13 @@ function start(): void {
 					break;
 				case "case:clear":
 					reviewer.clearFor(message.caseId);
+					sendResponse(state());
+					break;
+				case "case:hide":
+					if (reviewer.caseId === message.caseId) {
+						reviewer.hide();
+						reviewer.onHiddenChange?.(true);
+					}
 					sendResponse(state());
 					break;
 				case "element:mark":

@@ -89,6 +89,8 @@ export type ContentRequest =
 	| { type: "case:matches"; caseId: string }
 	/** Remove the marks (`OverlayState`): only that case's, where it is named. */
 	| { type: "case:clear"; caseId?: string }
+	/** Hide the case's marks and keep it: the page's bar becomes the pill that shows them again (DEC-061). */
+	| { type: "case:hide"; caseId: string }
 	/**
 	 * Scroll to the element `selector` and mark it with `number` for a
 	 * screenshot (`DescribedElement`); the overlay's own bars and the user's
@@ -243,6 +245,8 @@ export interface OverlayState {
 	target?: MarkTarget;
 	/** The case whose marks are drawn. */
 	loadedCase?: string;
+	/** The case whose marks are hidden on the page, its pill showing (DEC-061). */
+	hiddenCase?: string;
 }
 
 /** What the content script asks the service worker. */
@@ -255,7 +259,13 @@ export type WorkerRequest =
 	/** The toolbar's Undo: take out the mark it just added (`UndoResult`, save.ts `undoAdd`). */
 	| { type: "case:undo-add"; caseId: string; markId: string }
 	/** Remove the pending screenshots of a save that was given up. */
-	| { type: "images:discard"; caseId: string; shotIds: string[] };
+	| { type: "images:discard"; caseId: string; shotIds: string[] }
+	/**
+	 * The page's bar's place (DEC-061), kept by the worker in this profile's
+	 * storage (a content script may not reach it): with `place` it is kept,
+	 * without it the kept one is answered (`BarPlaceAnswer`).
+	 */
+	| { type: "bar:place"; place?: { right: number; top: number } };
 
 /**
  * The one-off messages the service worker answers. Nothing about the AI
@@ -263,7 +273,18 @@ export type WorkerRequest =
  */
 export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	WorkerRequest["type"]
->(["capture", "case:save", "case:number", "case:undo-add", "images:discard"]);
+>([
+	"capture",
+	"case:save",
+	"case:number",
+	"case:undo-add",
+	"images:discard",
+	"bar:place",
+]);
+
+export interface BarPlaceAnswer {
+	place?: { right: number; top: number };
+}
 
 export function isWorkerRequest(message: unknown): message is WorkerRequest {
 	return (

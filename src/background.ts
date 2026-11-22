@@ -23,6 +23,7 @@
  */
 
 import { PAIRING_PORT, pagePort } from "@ractive-ch/tab-mcp-client/extension";
+import { BAR_PLACE_KEY, storedBarPlace } from "./lib/bar-place.ts";
 import {
 	BROWSER,
 	FIREFOX,
@@ -41,6 +42,7 @@ import {
 } from "./lib/images.ts";
 import { kvWhenOpen, openKv } from "./lib/kv.ts";
 import {
+	type BarPlaceAnswer,
 	type Broadcast,
 	type CaptureResult,
 	type ContentRequest,
@@ -400,6 +402,18 @@ async function handle(
 				request.shotIds.filter(isSafeId).map(pendingImage),
 			);
 			return {};
+		case "bar:place": {
+			// Two numbers, or nothing: a page cannot put anything else here.
+			if (request.place !== undefined) {
+				const place = storedBarPlace(request.place);
+				if (place !== undefined)
+					await chrome.storage.local.set({ [BAR_PLACE_KEY]: place });
+				return {};
+			}
+			const kept = await chrome.storage.local.get(BAR_PLACE_KEY);
+			const place = storedBarPlace(kept[BAR_PLACE_KEY]);
+			return (place === undefined ? {} : { place }) satisfies BarPlaceAnswer;
+		}
 	}
 }
 
