@@ -2,7 +2,7 @@
 type: iteration
 title: "Iteration 17: one coherent flow for tester, developer and tester again; a new look; Verify; sync without missed prompts"
 status: completed
-description: "Overnight plan of 2026-11-12/13 (the owner): a Fable UX review of the whole extension from the three roles, then a reworked flow (annotating only inside an open case; All cases closes it), a new visual design with real contrast, a Verify step for the tester, and folder sync that does not depend on a missed Allow click (a Downloads subfolder as default, any folder as an option)."
+description: "Overnight plan of 2026-11-12/13 (the owner): a Fable UX review of the whole extension from the three roles, then a reworked flow (marking only inside an open case; All cases closes it), a new visual design with real contrast, a Verify step for the tester, and folder sync that does not depend on a missed Allow click (a Downloads subfolder as default, any folder as an option)."
 timestamp: 2026-11-13T00:30:00+01:00
 tags: [iteration, ui, ux, design, sync, verify]
 ---
@@ -17,7 +17,7 @@ night, unless marked as a proposal.
 "The goal is to have a tested, user friendly experience to annotate a page and then
 fixing it." Check it from three roles:
 
-1. **A tester** (QA, PM, PO) who wants something changed on a page: annotates, writes
+1. **A tester** (QA, PM, PO) who wants something changed on a page: marks, writes
    comments, hands the case over (file, sync folder, or an AI app through tab-mcp).
 2. **A developer** who fixes or changes the things: opens the case on their build
    (localhost, dev), sees each mark found on it, fixes, sets statuses / AI findings.
@@ -56,7 +56,7 @@ fixing it." Check it from three roles:
   the button continues the case opened before. The owner: "I'd expect that you open a
   case, you can annotate and add marks, stop annotating etc. When you go back to
   '← All cases', the current case should be 'closed' and the annotations be removed and
-  you shouldn't be able to 'Continue annotating'." So: annotating only inside an open
+  you shouldn't be able to 'Continue annotating'." So: marking only inside an open
   case (or "Annotate this page" starting a new one); All cases closes the case, takes
   the toolbar and its marks off the page.
 - **The Allow button for sync was missed** (see Sync above).
@@ -108,7 +108,7 @@ Merge PR 42 first; iteration 17 builds on it.
    ways) in `kb/decision-log.md`, each with the owner's words above.
 3. **Build in PRs**, each reviewed (`/review-pr`, claude reviewer in a background
    general-purpose agent, read-only, JSON findings), fixed, CI green, merged:
-   - a. Flow: annotating only in an open case; All cases closes it (toolbar and marks
+   - a. Flow: marking only in an open case; All cases closes it (toolbar and marks
      off the page); no "Continue annotating" on the home view; larger All cases.
    - b. Verify: the new mark state(s), the panel's Verified / Reopen with comment, the
      case's counts and bar, the AI tools and `case.md` export, import of older cases.

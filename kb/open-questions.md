@@ -49,7 +49,7 @@ timestamp: 2026-11-04T17:00:00+01:00
    made there.
 8. **Left from the code review** ([the review](research/code-review-2026-11.md)).
    Medium: CR-02, a content script orphaned by an update puts its toolbar back and its
-   listeners stay (needs one teardown for every listener in `annotator.ts`,
+   listeners stay (needs one teardown for every listener in `adding.ts`,
    `overlay.ts`, `review.ts`). Low: CR-04, CR-05, CR-06, CR-10, CR-11, CR-12, CR-14,
    CR-15, and the six unverified ones (P-01 to P-06). Its architecture section names
    the cause of most of the bugs the reviews found that night: the page's adding queue

@@ -246,7 +246,7 @@ The tools:
 | `highlight` | Scrolls to one mark's element (or another candidate) |
 | `get_mark_element` | A mark's element on the tab in front, read from the live page: trimmed HTML, box and window size, computed styles, matching CSS rules, ancestors and children, beside the styles recorded when the mark was made; a CSS selector reads one of its ancestors or an element inside it instead (for a mark without an element, an element of the mark's page) |
 | `capture` | A screenshot of the tab in front |
-| `add_annotation` | Adds a mark on an element (by CSS selector); asks first |
+| `add_mark` | Adds a mark on an element (by CSS selector); asks first |
 | `set_summary` | Records the summary for the developer: what should change overall, as agreed; asks first |
 | `set_mark_status` | Sets a mark fixed, verified (a fixed one, when you say so), won't fix or can't reproduce, or reopens it with a note; asks first |
 | `add_finding` | Adds a finding of the AI app to a mark, apart from your comment; asks first |

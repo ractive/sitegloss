@@ -132,7 +132,7 @@ Only in four cases, all started by you:
    an AI app (website content and browsing activity); taking it back signs you out.
 
 Sitegloss itself sends nothing else. It does not sell data, use it for advertising or
-for anything but annotating pages and reviewing the annotations, or use it to determine
+for anything but marking pages and reviewing the marks, or use it to determine
 creditworthiness.
 
 ## Limits

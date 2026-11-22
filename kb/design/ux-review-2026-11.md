@@ -3,7 +3,7 @@ type: design
 title: "UX review, November 2026: one flow for tester, developer and tester again"
 description: >-
   Review of the whole extension from three roles (tester, developer, tester again) on
-  feat/auto-show, and the design iteration 17 builds from: annotating only inside an open
+  feat/auto-show, and the design iteration 17 builds from: marking only inside an open
   case, the Verify step and its stored format, sync to Downloads or a folder with an Allow
   access that cannot be missed, design tokens with computed contrast for light and dark,
   and the changes and tests for the four PRs (flow, Verify, sync, look).
@@ -38,14 +38,14 @@ access). 40 views were captured and looked at. Not seen, and written from the co
 
 ## Today, per role
 
-### Tester: annotate, save, hand over
+### Tester: mark, save, hand over
 
 | Step | What happens | Problem |
 |---|---|---|
 | Open the panel | Home: "This page", "Annotate this page", Cases, AI app, Options | Three amber fills on one screen (the header's "Turn on", "Annotate this page", "Turn on AI access"): no single primary. The AI card and Options take half of the first screen once a case exists. |
-| Annotate, comment | Toolbar at the bottom; comment popover with "Remove mark" / "Done" | Works. Borders of the popover's field and buttons (`#c8cdd8`) are 1.59:1 on white. |
+| Mark, comment | Toolbar at the bottom; comment popover with "Remove mark" / "Done" | Works. Borders of the popover's field and buttons (`#c8cdd8`) are 1.59:1 on white. |
 | "Save case…" | Title field, "Save case" / "Keep drawing". Afterwards the toolbar says `Saved “…”`, its buttons change to "New case" and "Done" | The toolbar now adds to the saved case, but the panel stays on Home with "Stop annotating"; nothing says a case is open. |
-| "Done" on the toolbar | Home shows **"Continue annotating"** | Continues a case that is not open (the owner's finding). The label comes from the page: `Annotator.hide()` keeps `#target`. |
+| "Done" on the toolbar | Home shows **"Continue annotating"** | Continues a case that is not open (the owner's finding). The label comes from the page: `MarkAdder.hide()` keeps `#target`. |
 | "← All cases" while the toolbar is up | The case's marks leave the page; **the toolbar stays** with `Adding to “…”`; Home says "Stop annotating" | Measured: a mark drawn then went into the closed case (3 → 4 marks). |
 | Hand over by file | "Export" is a small button between "Add marks" and "Delete" | Not findable as the hand-over step; next to a destructive action. "Saved as …" stays under the buttons and shows again when the case is opened later. |
 | Hand over by sync | "Sync to a folder…" under the list, below Import/Export | Paused state ("Sync paused: allow access again", "Allow access") is only on Home, under the case list (361 px down with one case, lower with each case), not in a case, nothing on the icon. The owner missed it. |
@@ -83,13 +83,13 @@ access). 40 views were captured and looked at. Not seen, and written from the co
 | Closing the side panel | Leaves the marks and the toolbar on the page. Opening the panel again opens the case the tab in front shows. | Yes as before, but without the orphaned marks: the panel adopts what the page shows, once, at its start. |
 | "← All cases" and marks an AI app loaded | Takes the open case's marks off the tab in front whoever drew them (changes DEC-022, which left an AI app's marks). | The owner: "the current case should be 'closed' and the annotations be removed". Marks of another case stay. |
 | The toolbar's "New case" button | Goes. A new case starts with "← All cases", then "Annotate this page". | It creates a toolbar without an open case, and the toolbar already wraps to two rows at 900 px. |
-| The AI pill inside a case | Opens a Settings view (AI app + Options); the case stays open. | Closing the case there would now also end annotating and clear the page. |
+| The AI pill inside a case | Opens a Settings view (AI app + Options); the case stays open. | Closing the case there would now also end marking and clear the page. |
 | Role switch (tester / developer) | None. One panel; each mark offers the action its status calls for; status chips filter the list. | No accounts, and one person is often both. |
 | Verify as a stored value | Additive fields on `resolution`, no new `kind`. | An older build refuses an unknown `kind` and with it the whole file; unknown fields it drops. |
 | "Verified" from an open mark | Allowed in the panel ("Fixed and verified"), not for an AI app. | A tester whose copy never got the developer's statuses verifies in one step. |
 | Reopen's comment | Required in the panel; optional for an AI app's `set_mark_status`. | The owner: "Reopen (with a comment)". Existing tool calls keep working. |
 | Colour on the page | Colour = status, dash = match confidence, white casing under every stroke. | Green must mean verified, not found; a casing keeps any stroke visible on any page. |
-| Primary colour | Amber stays, once per view, for annotating. Card actions use the ink "strong" button. | Amber is the icon's and the toolbar's; three ambers per screen made none primary. |
+| Primary colour | Amber stays, once per view, for marking. Card actions use the ink "strong" button. | Amber is the icon's and the toolbar's; three ambers per screen made none primary. |
 | Sync from the worker | Through an offscreen document (blob URL), `offscreen` permission. | A service worker has no `URL.createObjectURL`; a data URL fails for cases over about 1.5 MB. |
 
 ## Flow and information architecture
@@ -657,7 +657,7 @@ of `kb/design/overview.md` and the README.
 
 ### a. Flow
 
-- `messages.ts`, `content/index.ts`, `annotator.ts`: `overlay:end` (finish, then clear
+- `messages.ts`, `content/index.ts`, `adding.ts`: `overlay:end` (finish, then clear
   `#target`; `discard`); "New case" and `#newCase` go; the new-case status texts.
 - `main.ts`: `closeCase()` ends the toolbar and clears the case's marks on the tab in
   front; the two-step leave; `toggleAnnotate` never passes a target (`continued` goes);
@@ -670,7 +670,7 @@ of `kb/design/overview.md` and the README.
 Tests:
 
 - Unit (`view.test.ts`): Home's button and hint for each overlay state, never "Continue
-  annotating". Unit: `overlay:end` on an `Annotator`: target cleared; a failed mark
+  annotating". Unit: `overlay:end` on a `MarkAdder`: target cleared; a failed mark
   keeps the toolbar; `discard` drops it.
 - e2e (`panel.test.ts`, `adding.test.ts`): Add marks, then "← All cases": no toolbar,
   no marks, "Annotate this page", and a mark drawn afterwards is a draft of a new case;
