@@ -42,6 +42,7 @@ import {
 	matchesHere,
 	movedOn,
 	noneHere,
+	ownFound,
 } from "../src/sidepanel/follow.ts";
 import { newCase } from "../src/sidepanel/fresh.ts";
 import { putCase, sampleCase } from "./fixtures.ts";
@@ -674,6 +675,16 @@ describe("what a draw found, judged for the page in front", () => {
 		expect(foundLine(c, loaded("http://localhost:3000/cart", all))).toContain(
 			"1 more is on other pages",
 		);
+		// What a search again could still find: neither the other page's mark
+		// nor one drawn on no element is a miss.
+		expect(ownFound(c, all, "http://localhost:3000/cart")).toEqual({
+			found: 1,
+			total: 1,
+		});
+		expect(ownFound(c, all, "http://localhost:3000/account")).toEqual({
+			found: 0,
+			total: 0,
+		});
 	});
 
 	test("none found is said of the page's own marks", () => {

@@ -169,6 +169,23 @@ export function findsOn(
 	return { own, elsewhere };
 }
 
+/**
+ * How many of the page's own marks with an element a draw found, of how
+ * many: what a search again could still find. The marks of other pages are
+ * not looked for (DEC-057), and a mark drawn on no element has nothing to
+ * find; neither is a miss.
+ */
+export function ownFound(
+	c: Case,
+	matches: readonly MarkMatch[],
+	url: string,
+): { found: number; total: number } {
+	const own = findsOn(c, matches, url).own.filter(
+		(m) => m.status !== "no-element",
+	);
+	return { found: own.filter(isFound).length, total: own.length };
+}
+
 /** The matches of the marks whose page is the page at `url` (`findsOn`). */
 export function matchesHere(
 	c: Case,

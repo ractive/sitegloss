@@ -79,9 +79,9 @@ import {
 import {
 	type Drawn,
 	followStep,
-	isFound,
 	movedOn,
 	newsLetsIn,
+	ownFound,
 } from "./follow.ts";
 import { isUntouched, mayHold, newCase, type TabAnswer } from "./fresh.ts";
 import { CaseHints } from "./hints.ts";
@@ -370,8 +370,9 @@ async function loadInto(
 			hint(undefined);
 			return undefined;
 		}
-		const found = result.matches.filter(isFound).length;
-		const settling = again && found < result.matches.length;
+		// The page's own marks: another page's are not looked for (DEC-057).
+		const { found, total } = ownFound(c, result.matches, result.url);
+		const settling = again && found < total;
 		update((s) => {
 			s.loaded = {
 				caseId: c.id,
@@ -384,7 +385,7 @@ async function loadInto(
 		// What it found, worded from `loaded` as it is now (`foundLine`).
 		hint({ kind: "found" });
 		void showPending();
-		return { found, total: result.matches.length };
+		return { found, total };
 	} catch (error) {
 		if (work.current()) hint(describeError(error));
 		return undefined;
