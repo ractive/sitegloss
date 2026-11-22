@@ -184,10 +184,17 @@ export class Reviewer {
 	/** The mark whose popover is open (DEC-027). */
 	#open: OpenMark | undefined;
 	readonly #ask: AskPanel;
+	/** How often the page is looked at without a scroll: 500 ms, unless a unit test gives its own. */
+	readonly #tickMs: number;
 
-	constructor(overlay: Overlay, ask: AskPanel = askPanel) {
+	constructor(
+		overlay: Overlay,
+		ask: AskPanel = askPanel,
+		options: { tickMs?: number } = {},
+	) {
 		this.overlay = overlay;
 		this.#ask = ask;
+		this.#tickMs = options.tickMs ?? 500;
 		overlay.onPick = (number) => this.pick(number);
 		const doc = overlay.doc;
 		// Capture phase: scrolling inside a container moves elements too.
@@ -287,7 +294,7 @@ export class Reviewer {
 			// The marks the last route did not have, a few a tick.
 			else this.#lookAgain(STALE_BUDGET_MS);
 			this.#schedule();
-		}, 500);
+		}, this.#tickMs);
 		this.#renderBar();
 		this.#render();
 		clearTextCache();

@@ -73,6 +73,9 @@ function stubOverlay(document: Document) {
 	};
 }
 
+/** How often the reviewer looks at the page by itself, here. */
+const TICK_MS = 50;
+
 beforeEach(() => {
 	const window = new Window({ url: "https://www.example.com/kk" });
 	doc = window.document as unknown as Document;
@@ -93,10 +96,14 @@ beforeEach(() => {
 	overlay = stubOverlay(doc);
 	asked = [];
 	answer = { ok: true };
-	reviewer = new Reviewer(overlay as unknown as Overlay, async (request) => {
-		asked.push(request);
-		return answer;
-	});
+	reviewer = new Reviewer(
+		overlay as unknown as Overlay,
+		async (request) => {
+			asked.push(request);
+			return answer;
+		},
+		{ tickMs: TICK_MS },
+	);
 });
 
 afterEach(() => {
@@ -193,11 +200,11 @@ describe("elements replaced after loading", () => {
 		await reviewer.load(caseOf($("button")));
 		const old = $("button");
 		$("main").innerHTML = `<h1>Prämien</h1><button>Berechnen</button>`;
-		await Bun.sleep(700);
+		await Bun.sleep(TICK_MS * 1.4);
 		expect(old.isConnected).toBe(false);
 		expect(overlay.items.length).toBe(1);
 		$("button").remove();
-		await Bun.sleep(700);
+		await Bun.sleep(TICK_MS * 1.4);
 		expect(bar()).toContain("0 of 1 found");
 		expect(overlay.items.length).toBe(0);
 	});
@@ -1031,13 +1038,13 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 		await reviewer.load(c);
 		// The address first, the route's content only after a second.
 		go("/kk/pay", `<main><p>Lädt…</p></main>`);
-		await Bun.sleep(700);
+		await Bun.sleep(TICK_MS * 1.4);
 		expect(overlay.items).toHaveLength(0);
 		doc.body.innerHTML = PAY_PAGE;
-		await Bun.sleep(2300);
+		await Bun.sleep(TICK_MS * 4.6);
 		expect(overlay.items.map((i) => i.number)).toEqual([2]);
 		expect(overlay.items[0]?.found).toBe(true);
-	}, 10_000);
+	});
 
 	test("a look-alike of another page's mark is drawn unsure, and is not a find of this page", async () => {
 		const c = flow();
