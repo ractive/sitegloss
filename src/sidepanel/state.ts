@@ -194,6 +194,10 @@ export interface PanelState {
 	findingDeleteArmed:
 		| { markId: string; mark: string; findingId: string; at: number }
 		| undefined;
+	/** An added image's Remove, clicked once: the second click removes it (DEC-058). */
+	imageDeleteArmed:
+		| { markId: string; mark: string; imageId: string; at: number }
+		| undefined;
 	/**
 	 * Next to "Save summary": "Saved", or why not. The summary for the
 	 * developer is stored as `verdict` (DEC-019).
@@ -319,6 +323,7 @@ export const initialState = (): PanelState => ({
 	picked: undefined,
 	markDeleteArmed: undefined,
 	findingDeleteArmed: undefined,
+	imageDeleteArmed: undefined,
 	verdictStatus: undefined,
 	verdictDrafts: new Map(),
 	allSites: false,

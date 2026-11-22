@@ -760,6 +760,116 @@ body:has(#settings:not([hidden])) .ai-allow {
 	white-space: nowrap;
 }
 
+/* --- adding images to a mark: a modal dialog over the panel (add-images.ts, DEC-058) */
+
+.add-images {
+	width: auto;
+	max-width: none;
+	max-height: calc(100% - 2 * var(--s3));
+	margin: var(--s3);
+	padding: var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
+	color: inherit;
+	overflow: auto;
+}
+
+.add-images[open] {
+	display: grid;
+	gap: var(--s3);
+}
+
+.add-images::backdrop {
+	background: var(--scrim, rgb(27 33 48 / 0.4));
+}
+
+.add-images h2 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.add-images p {
+	margin: 0;
+}
+
+/* The screenshot the mark has already, small, beside what it is. */
+.add-images-head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--s3);
+}
+
+.add-images-head img {
+	flex: none;
+	max-width: 96px;
+	max-height: 64px;
+	object-fit: contain;
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+}
+
+/* Where a picture is pasted or dropped; its button is the way without either. */
+.add-images-drop {
+	display: grid;
+	gap: var(--s2);
+	justify-items: start;
+	padding: var(--s3);
+	border: 1px dashed var(--edge);
+	border-radius: var(--r-control);
+	background: var(--wash);
+}
+
+.add-images-drop .hint {
+	color: var(--ink-2);
+	font-size: 12px;
+}
+
+.add-images-list {
+	display: grid;
+	gap: var(--s2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.add-images-list:empty,
+.add-images-status:empty {
+	display: none;
+}
+
+.add-images-list li {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+}
+
+.add-images-list img {
+	flex: none;
+	max-width: 72px;
+	max-height: 48px;
+	object-fit: contain;
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+}
+
+.add-images-list span {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+}
+
+.add-images-status {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.add-images-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--s2);
+}
+
 /* --- an AI app's questions: a modal dialog over the panel (ai.ts, DEC-037) ---- */
 
 /* In the top layer, at the panel's top wherever it is scrolled to. */
@@ -1950,6 +2060,72 @@ button.crop[aria-pressed="true"] img {
 
 button.crop:hover img {
 	border-color: var(--ink);
+}
+
+/*
+ * A mark's pictures in one row (DEC-058): its own screenshot first, then the
+ * images a person added, then the way to add another. One shown large takes
+ * the row's whole width.
+ */
+.pictures {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--s2) var(--s3);
+}
+
+.picture {
+	display: grid;
+	gap: 4px;
+	justify-items: start;
+	max-width: 100%;
+	margin: 0;
+}
+
+.picture:has(> button.crop[aria-pressed="true"]) {
+	flex-basis: 100%;
+}
+
+/* Small, side by side: a thumbnail keeps its shape within 120 × 72. */
+.picture > button.crop:not([aria-pressed="true"]) img {
+	width: auto;
+	height: auto;
+	max-width: 120px;
+	max-height: 72px;
+}
+
+.picture figcaption {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.picture figcaption button {
+	min-height: 0;
+	padding: 1px 6px;
+	font-size: 12px;
+}
+
+/* A picture whose file is not here: said, in the place it would take. */
+.picture-missing {
+	display: grid;
+	place-items: center;
+	min-width: 88px;
+	min-height: 56px;
+	margin: 0;
+	padding: var(--s1) var(--s2);
+	border: 1px dashed var(--edge);
+	border-radius: var(--r-control);
+	color: var(--ink-2);
+	font-size: 12px;
+	text-align: center;
+}
+
+.pictures .add-image {
+	align-self: center;
 }
 
 /*

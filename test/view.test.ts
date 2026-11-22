@@ -630,6 +630,110 @@ describe("a mark's status and actions", () => {
 	});
 });
 
+describe("a mark's pictures: its screenshot first, then the images added (DEC-058)", () => {
+	const DANA = { id: "u_dana", name: "Dana" };
+	// Its own case each: rows of a case unchanged are kept.
+	const marked = (id: string): Case => {
+		const c = withOneMark(sampleCase(id));
+		const a = c.marks[0] as Mark;
+		c.marks = [
+			{
+				...a,
+				images: [
+					{
+						id: "i_a",
+						image: "images/i_a.webp",
+						added: { at: "2026-11-22T10:00:00Z", user: DANA },
+					},
+					{
+						id: "i_b",
+						image: "images/i_b.webp",
+						added: { at: "2026-11-22T11:00:00Z" },
+					},
+				],
+			},
+		];
+		return c;
+	};
+	const stateOf = (c: Case, urls: [string, string][]) =>
+		caseState(c, (s) => {
+			s.images = { caseId: c.id, version: c.updatedAt, urls: new Map(urls) };
+		});
+
+	test("one row, the screenshot named first and never removed, the added ones counted from 1", () => {
+		const c = marked("c_pictures1");
+		const a = c.marks[0] as Mark;
+		const asked: string[] = [];
+		render(
+			stateOf(c, [
+				[a.crop, "blob:crop"],
+				["images/i_a.webp", "blob:a"],
+				["images/i_b.webp", "blob:b"],
+			]),
+			actionsWith({
+				addImages: () => asked.push("add"),
+				deleteImage: (_c, _a, id) => asked.push(`remove ${id}`),
+			}),
+		);
+		const row = window.document.querySelector(
+			`[data-mark="${a.id}"] .pictures`,
+		);
+		const names = [...(row?.querySelectorAll("button.crop") ?? [])].map((b) =>
+			b.getAttribute("aria-label"),
+		);
+		expect(names).toEqual([
+			`Screenshot of mark ${a.number}, taken by Sitegloss`,
+			`Image 1 of 2 on mark ${a.number}, added by Dana`,
+			`Image 2 of 2 on mark ${a.number}`,
+		]);
+		const captions = [...(row?.querySelectorAll("figcaption") ?? [])].map(
+			(f) => f.firstChild?.textContent,
+		);
+		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2"]);
+		expect(
+			row?.querySelector(
+				'[data-picture="screenshot"] [data-action=remove-image]',
+			),
+		).toBeNull();
+		(
+			row?.querySelector('[aria-label="Remove image 2"]') as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		(
+			row?.querySelector("[data-action=add-image]") as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		expect(asked).toEqual(["remove i_b", "add"]);
+		expect(row?.lastElementChild?.textContent).toBe("Add another image…");
+		// The subline counts only what was added.
+		expect(
+			window.document.querySelector(`[data-mark="${a.id}"] .images-count`)
+				?.textContent,
+		).toBe("+2 images");
+	});
+
+	test("a screenshot not here is said in its place; a mark with six offers no more", () => {
+		const c = marked("c_pictures2");
+		const a = c.marks[0] as Mark;
+		const six = Array.from({ length: 6 }, (_, i) => ({
+			id: `i_${i}`,
+			image: `images/i_${i}.webp`,
+			added: { at: "2026-11-22T10:00:00Z" },
+		}));
+		c.marks = [{ ...a, images: six }];
+		render(stateOf(c, []), noActions);
+		const row = window.document.querySelector(
+			`[data-mark="${a.id}"] .pictures`,
+		);
+		expect(row?.querySelector('[data-picture="screenshot"]')?.textContent).toBe(
+			"The screenshot is missing.Screenshot",
+		);
+		expect(row?.querySelector("[data-action=add-image]")).toBeNull();
+	});
+});
+
 describe("Verify (DEC-023)", () => {
 	const CLAUDE = {
 		id: "https://claude.ai/oauth",

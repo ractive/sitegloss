@@ -24,6 +24,7 @@ import {
 	GROUP_OF,
 	isOfferedOn,
 	MAX_COMMENT,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	MAX_TITLE,
 	MAX_VERDICT,
@@ -96,6 +97,10 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	filterMarks(caseId: string, group: StatusGroup | undefined): void;
 	saveComment(c: Case, a: Mark, text: string): void;
 	deleteMark(c: Case, a: Mark): void;
+	/** "Add another image…": the dialog for the mark's added images (DEC-058). */
+	addImages(c: Case, a: Mark): void;
+	/** An added image's Remove: the first click asks, the second removes. */
+	deleteImage(c: Case, a: Mark, imageId: string): void;
 	/** An AI app's finding on a mark: the first click asks, the second deletes. */
 	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
@@ -802,12 +807,19 @@ function shownText(
 const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 	m !== undefined && (m.candidates.length > 0 || m.status === "no-element");
 
-/** Crops shown large (`caseId:markId`); the rest are small. */
+/**
+ * Pictures shown large (`caseId:markId` for the crop, `caseId:markId:imageId`
+ * for an added image); the rest are small.
+ */
 const zoomed = new Set<string>();
 
-/** A mark's crop, small at first: a click shows it large, another small again. */
-function cropView(caseId: string, a: Mark, src: string): HTMLElement {
-	const key = `${caseId}:${a.id}`;
+/** A picture of a mark, small at first: a click shows it large, another small again. */
+function pictureButton(
+	key: string,
+	src: string,
+	label: string,
+	title: string,
+): HTMLElement {
 	const button: HTMLButtonElement = h(
 		"button",
 		{
@@ -815,8 +827,8 @@ function cropView(caseId: string, a: Mark, src: string): HTMLElement {
 			class: "crop",
 			"data-action": "zoom",
 			"aria-pressed": String(zoomed.has(key)),
-			"aria-label": `Mark ${a.number}, shown large`,
-			title: "Show the crop larger, or small again",
+			"aria-label": label,
+			title,
 			onclick: () => {
 				const large = !zoomed.delete(key);
 				if (large) zoomed.add(key);
@@ -826,6 +838,104 @@ function cropView(caseId: string, a: Mark, src: string): HTMLElement {
 		h("img", { src, alt: "" }),
 	);
 	return button;
+}
+
+/** "22 Nov" in the browser's language. */
+const shortDate = (iso: string) => {
+	const date = new Date(iso);
+	return Number.isNaN(date.getTime())
+		? iso
+		: date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+};
+
+/**
+ * A mark's pictures in one row (DEC-058, the owner's rule): its own
+ * screenshot first, always, so nobody thinks a mark needs one added; then
+ * the images a person added, oldest first, each with its Remove; last the
+ * way to add another. Numbers count the added images only. `ready`: the
+ * images were read for this version of the case, so one without a URL is
+ * missing, not on its way.
+ */
+function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
+	const added = a.images ?? [];
+	const missing = (text: string) =>
+		x.ready ? h("p", { class: "picture-missing" }, text) : null;
+	const shot = x.urls?.get(a.crop);
+	return h(
+		"div",
+		{
+			class: "pictures",
+			role: "group",
+			"aria-label": `Pictures of mark ${a.number}`,
+		},
+		h(
+			"figure",
+			{ class: "picture", "data-picture": "screenshot" },
+			shot
+				? pictureButton(
+						`${c.id}:${a.id}`,
+						shot,
+						`Screenshot of mark ${a.number}, taken by Sitegloss`,
+						"Taken by Sitegloss when the mark was made. Click to show it larger, or small again",
+					)
+				: missing("The screenshot is missing."),
+			h("figcaption", {}, "Screenshot"),
+		),
+		...added.map((image, i) => {
+			const n = i + 1;
+			const who = byline(image.added.user, image.added.app);
+			const url = x.urls?.get(image.image);
+			const armed = x.imageArmed === image.id;
+			return h(
+				"figure",
+				{ class: "picture", "data-picture": image.id },
+				url
+					? pictureButton(
+							`${c.id}:${a.id}:${image.id}`,
+							url,
+							`Image ${n} of ${added.length} on mark ${a.number}${who ? `, added by ${who}` : ""}`,
+							`Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
+						)
+					: missing("The image is missing."),
+				h(
+					"figcaption",
+					{},
+					`Image ${n}`,
+					h(
+						"button",
+						{
+							type: "button",
+							class: "small danger",
+							"data-action": "remove-image",
+							"aria-label": armed
+								? `Really remove image ${n}?`
+								: `Remove image ${n}`,
+							title: armed
+								? `Click again to remove image ${n}`
+								: `Remove image ${n} from the mark (click twice)`,
+							...(armed ? { "data-armed": true } : {}),
+							onclick: () => x.actions.deleteImage(c, a, image.id),
+						},
+						armed ? "Really remove?" : "Remove",
+					),
+				),
+			);
+		}),
+		added.length < MAX_MARK_IMAGES
+			? h(
+					"button",
+					{
+						type: "button",
+						class: "small add-image",
+						"data-action": "add-image",
+						title:
+							"Add a picture of what the screenshot does not show, for example a menu that closes",
+						onclick: () => x.actions.addImages(c, a),
+					},
+					"Add another image…",
+				)
+			: null,
+	);
 }
 
 function matchView(
@@ -1746,6 +1856,12 @@ const reopenButton = (c: Case, a: Mark, actions: Actions) =>
 		actions.editMark(c, a, "reopen"),
 	);
 
+/** `, and its 2 added images`; nothing for none. */
+const imagesNote = (a: Mark) => {
+	const n = a.images?.length ?? 0;
+	return n === 0 ? "" : ` and its ${n} added image${n === 1 ? "" : "s"}`;
+};
+
 /** The buttons a mark's status calls for, the strong one first (DEC-023). */
 function markActions(
 	c: Case,
@@ -1787,7 +1903,7 @@ function markActions(
 				"data-mark-action": "delete",
 				title: armed
 					? "Click again to delete this mark"
-					: "Delete this mark and its crop (click twice); its number is not given again",
+					: `Delete this mark and its screenshot${imagesNote(a)} (click twice); its number is not given again`,
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
@@ -2310,6 +2426,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	if (edit === undefined) focusedForm = undefined;
 	const markArmed = state.markDeleteArmed?.markId;
 	const findingArmed = state.findingDeleteArmed;
+	const imageArmed = state.imageDeleteArmed;
 	// A mark's pin was clicked on the page (DEC-027): its row opens, once.
 	const picked =
 		state.picked?.caseId === c.id && state.picked.at !== p.pickedAt
@@ -2328,6 +2445,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		tabOrigin(state.tab?.url),
 		markArmed ?? null,
 		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
+		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
 		ok,
 	]);
 	if (marksKey !== p.marksKey) {
@@ -2343,7 +2461,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const elsewhere =
 				loaded !== undefined && !onPageInFront(c, a, loaded.url);
 			return markItem(c, a, {
-				crop: images?.urls.get(a.crop),
+				urls: images?.urls,
+				ready: images?.version === c.updatedAt,
 				match: elsewhere ? undefined : match,
 				tabUrl: state.tab?.url,
 				elsewhere,
@@ -2351,6 +2470,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 				armed: markArmed === a.id,
 				findingArmed:
 					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
+				imageArmed:
+					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
 				actions,
 				canReach: ok,
 				changed: () => syncToggleAll(),
@@ -2484,7 +2605,10 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 }
 
 interface MarkContext {
-	crop: string | undefined;
+	/** The case's images as object URLs, by path; none: not read yet. */
+	urls: ReadonlyMap<string, string> | undefined;
+	/** `urls` were read for this version of the case. */
+	ready: boolean;
 	match: MarkMatch | undefined;
 	/** The tab in front's address: a mark's link offers its host (DEC-050). */
 	tabUrl: string | undefined;
@@ -2494,6 +2618,8 @@ interface MarkContext {
 	armed: boolean;
 	/** The finding of this mark whose Delete was clicked once. */
 	findingArmed: string | undefined;
+	/** The added image of this mark whose Remove was clicked once. */
+	imageArmed: string | undefined;
 	actions: Actions;
 	/** Sitegloss may run on the tab in front: Show can scroll it. */
 	canReach: boolean;
@@ -2561,7 +2687,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const body = h(
 		"div",
 		{ class: "body", id: bodyId },
-		x.crop ? cropView(c.id, a, x.crop) : null,
+		picturesView(c, a, x),
 		historyList(a),
 		findingsList(c, a, x.findingArmed, actions),
 		markPlace(c, a, x.tabUrl, actions),
@@ -2691,6 +2817,14 @@ function markSubline(
 					"span",
 					{ class: "tag findings-count" },
 					`${findings} AI finding${findings === 1 ? "" : "s"}`,
+				)
+			: null,
+		// Only what was added: the screenshot every mark has is not counted.
+		(a.images?.length ?? 0) > 0
+			? h(
+					"span",
+					{ class: "tag images-count" },
+					`+${a.images?.length} image${a.images?.length === 1 ? "" : "s"}`,
 				)
 			: null,
 		talk > 0
