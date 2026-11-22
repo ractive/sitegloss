@@ -295,6 +295,10 @@ export async function checkOutdir(outdir: string): Promise<void> {
 }
 
 export async function build(options: BuildOptions = {}): Promise<BuildResult> {
+	// A store package never carries the test build's host access and short
+	// guards (DEC-053).
+	if (options.store && options.test)
+		throw new Error("a store package is never a test build: --store or --test");
 	const firefox = options.firefox === true;
 	const outdir = resolve(
 		options.outdir ??
@@ -428,6 +432,10 @@ if (import.meta.main) {
 		},
 	});
 	// Firefox installs no unsigned zip for good: only the store's is of use.
+	if (values.store && values.test) {
+		console.error("a store package is never a test build: --store or --test");
+		process.exit(2);
+	}
 	if (values.firefox && values.zip && !values.store) {
 		console.error("--firefox --zip packs only the store package: add --store");
 		process.exit(2);

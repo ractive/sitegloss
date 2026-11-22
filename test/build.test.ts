@@ -291,6 +291,10 @@ describe("build", () => {
 	});
 
 	test("a package has no test switch left for a page to answer", async () => {
+		// Nor can one be built as a test build.
+		await expect(
+			build({ outdir: tempDir(), store: true, test: true }),
+		).rejects.toThrow("a store package is never a test build");
 		const outdir = mkdtempSync(join(tmpdir(), "sitegloss-flag-"));
 		try {
 			await build({ outdir, store: true });
@@ -365,6 +369,7 @@ describe("build", () => {
 		for (const file of names.filter((n) => n.endsWith(".js"))) {
 			const text = await Bun.file(join(outdir, file)).text();
 			expect(text).not.toContain("siteglossUseFolder");
+			expect(text).not.toContain("siteglossTestWaits");
 			// The panel's page in a tab is no panel there (`window.ts`).
 			if (file.startsWith("sidepanel/"))
 				expect(text).not.toContain("location.search");
