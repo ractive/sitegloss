@@ -195,6 +195,26 @@ describe("elements replaced after loading", () => {
 		expect(reviewer.loadingCaseId).toBeUndefined();
 	});
 
+	test("a clear for another case leaves the case drawn; one for it, or for none, clears it, also while it loads", async () => {
+		doc.body.innerHTML = PAGE;
+		const c = caseOf($("button"));
+		await reviewer.load(c);
+		reviewer.clearFor("c_other");
+		expect(reviewer.caseId).toBe(c.id);
+		expect(overlay.items.length).toBe(1);
+		reviewer.clearFor(c.id);
+		expect(reviewer.caseId).toBeUndefined();
+		await reviewer.load(c);
+		reviewer.clearFor(undefined);
+		expect(reviewer.caseId).toBeUndefined();
+		const loading = reviewer.load(c);
+		reviewer.clearFor("c_other");
+		expect(reviewer.loadingCaseId).toBe(c.id);
+		reviewer.clearFor(c.id);
+		await expect(loading).rejects.toBeInstanceOf(LoadReplaced);
+		expect(overlay.items).toEqual([]);
+	});
+
 	test("gone for good: showing says so", async () => {
 		doc.body.innerHTML = PAGE;
 		await reviewer.load(caseOf($("button")));

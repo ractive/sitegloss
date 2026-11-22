@@ -303,15 +303,7 @@ function start(): void {
 					);
 					break;
 				case "case:clear":
-					// An AI app may have loaded another case meanwhile: that one stays.
-					// A load of the case still under way stops too, or it would draw
-					// the marks after the clear ("← All cases" during a draw).
-					if (
-						message.caseId === undefined ||
-						message.caseId === reviewer.caseId ||
-						message.caseId === reviewer.loadingCaseId
-					)
-						reviewer.clear();
+					reviewer.clearFor(message.caseId);
 					sendResponse(state());
 					break;
 				case "element:mark":

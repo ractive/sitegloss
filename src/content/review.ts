@@ -1056,6 +1056,21 @@ export class Reviewer {
 		this.overlay.closePopover();
 	}
 
+	/**
+	 * `case:clear` for `caseId` (none: whatever is drawn). Another case, an AI
+	 * app's loaded meanwhile, stays; a load of the case still under way stops
+	 * too, or it would draw the marks after the clear ("← All cases" during a
+	 * draw).
+	 */
+	clearFor(caseId: string | undefined): void {
+		if (
+			caseId === undefined ||
+			caseId === this.caseId ||
+			caseId === this.loadingCaseId
+		)
+			this.clear();
+	}
+
 	clear(): void {
 		this.#closeMark();
 		this.#generation++;
