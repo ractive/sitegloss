@@ -229,11 +229,23 @@ export function noneFoundText(c: Case, url: string | undefined): string {
 		c.marks.some((a) => onPageInFront(c, a, url))
 	)
 		return "None of this case's marks were found on this page.";
-	// Its pages, the first few by name (DEC-038).
-	const pages = casePages(c).map((p) => shortUrl(p.url));
+	// The pages its marks are on, the first few by name (DEC-038): not the
+	// page in front, nor a page without marks (the first page of a case
+	// marked elsewhere).
+	const counts = marksByPage(c);
+	const front = url ? pageInFront(c, url) : undefined;
+	const pages = casePages(c)
+		.filter(
+			(p) =>
+				(counts.get(pageKey(p.url)) ?? 0) > 0 &&
+				(front === undefined || pageKey(p.url) !== pageKey(front.url)),
+		)
+		.map((p) => shortUrl(p.url));
+	const here = "This case has no marks on this page.";
+	if (pages.length === 0) return here;
 	const named = pages.slice(0, 3).join(", ");
 	const more = pages.length > 3 ? ` and ${pages.length - 3} more` : "";
-	return `This case has no marks on this page. They are on ${named}${more}.`;
+	return `${here} They are on ${named}${more}.`;
 }
 
 /** `shop.example/cart and 2 more pages`: a case's pages in the list. */

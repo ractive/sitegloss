@@ -20,6 +20,7 @@ const before = { document: globals["document"] };
 let render: (state: PanelState, actions: Actions) => void;
 let ago: (iso: string, now?: number) => string;
 let webAppNote: (state: PanelState) => string | undefined;
+let noneFoundText: (c: Case, url: string | undefined) => string;
 let ASKING_DOWNLOADS: string;
 let IMPORT_BUSY: string;
 let EXPORT_ALL_BUSY: string;
@@ -41,8 +42,14 @@ beforeAll(async () => {
 		).text(),
 	);
 	globals["document"] = window.document;
-	({ render, ASKING_DOWNLOADS, IMPORT_BUSY, EXPORT_ALL_BUSY, webAppNote } =
-		await import("../src/sidepanel/view.ts"));
+	({
+		render,
+		ASKING_DOWNLOADS,
+		IMPORT_BUSY,
+		EXPORT_ALL_BUSY,
+		webAppNote,
+		noneFoundText,
+	} = await import("../src/sidepanel/view.ts"));
 	({ ago } = await import("../src/sidepanel/cloud-view.ts"));
 });
 
@@ -1419,9 +1426,11 @@ describe("none of the case's marks found (DEC-022)", () => {
 		const warning = el("none-found");
 		expect(warning.hidden).toBe(false);
 		expect(warning.querySelector("svg.notice-icon")).not.toBeNull();
+		// The case has no marks at all here: no page to name.
 		expect(warning.textContent).toContain(
-			"This case has no marks on this page. They are on www.example.com/kk.",
+			"This case has no marks on this page.",
 		);
+		expect(warning.textContent).not.toContain("They are on");
 		const open = warning.querySelector(
 			'[data-action="open-case-page"]',
 		) as unknown as HTMLButtonElement;
@@ -1782,6 +1791,17 @@ describe("a case of several pages (DEC-038)", () => {
 			"On another page",
 		]);
 		expect(el("case-hint").hidden).toBe(true);
+		// Started on a page that has no marks (DEC-026), marked elsewhere: on
+		// that page, only the pages with marks are named, not the one in front.
+		const START = "https://shop.example/start";
+		const started: Case = {
+			...c,
+			page: { ...c.page, url: START },
+			pages: [{ url: START, title: "Start", lang: "en" }, ...(c.pages ?? [])],
+		};
+		expect(noneFoundText(started, "http://localhost:3000/start")).toBe(
+			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
+		);
 
 		// The tab went on within the page (a single-page app): what the panel
 		// has is about the page before until it is read again, and then says
