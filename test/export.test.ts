@@ -166,10 +166,26 @@ describe("statuses in case.md (DEC-023)", () => {
 			marks: [
 				a,
 				{ ...b, resolution: { kind: "fixed", at: "2026-11-14T09:00:00Z" } },
+				{
+					...b,
+					id: "m3",
+					number: 3,
+					resolution: {
+						kind: "fixed",
+						at: "2026-11-14T09:00:00Z",
+						verified: { at: "2026-11-15T09:00:00Z" },
+					},
+				},
+				{
+					...b,
+					id: "m4",
+					number: 4,
+					resolution: { kind: "wontfix", at: "2026-11-14T09:00:00Z" },
+				},
 			],
 		});
 		expect(md).toContain(
-			"- Created: 2026-11-04T10:00:00Z, updated: 2026-11-04T10:00:00Z\n- Marks: 1 open, 1 fixed (to verify)\n",
+			"- Created: 2026-11-04T10:00:00Z, updated: 2026-11-04T10:00:00Z\n- Marks: 1 open, 1 fixed (to verify), 1 verified, 1 dismissed\n",
 		);
 		expect(caseMarkdown({ ...c, marks: [] })).toContain("- Marks: none");
 	});
