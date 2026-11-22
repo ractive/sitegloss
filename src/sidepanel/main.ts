@@ -492,9 +492,12 @@ async function readLoaded(c: Case, tabId: number): Promise<void> {
 	void showPending();
 }
 
-/** A page busy with a mark is asked again this often, this many times (20 s). */
+/**
+ * A page busy with a mark is asked again this often (more often in the test
+ * build), for 20 s in every build.
+ */
 const BUSY_WAIT_MS = TEST_BUILD ? 50 : 500;
-const BUSY_TRIES = 40;
+const BUSY_TRIES = Math.ceil(20_000 / BUSY_WAIT_MS);
 
 /**
  * Loads the case onto a page that has just loaded. What a script draws after
