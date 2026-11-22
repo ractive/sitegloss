@@ -313,7 +313,7 @@ inBothSets("marking and saving", () => {
 			// "← All cases" ends the toolbar too, as its Done would.
 			await toAllCases("Drawn marks");
 
-			const v2 = await h.open("v2");
+			const v2 = await h.open(h.nextBuild);
 			await v2.page.eval(
 				`document.querySelector("[data-truth=tip]").style.cssText = "margin: 150px 0 0 80px; width: 400px"`,
 			);
@@ -321,7 +321,7 @@ inBothSets("marking and saving", () => {
 			await h.control.goto(
 				`chrome-extension://${h.extensionId}/sidepanel/index.html`,
 			);
-			// Another page than the case's: opening the case draws its marks all the same.
+			// The page in another environment, a build ahead: opening the case draws its marks.
 			const row = `[...document.querySelectorAll("[data-case]")].find((e) => e.textContent.includes("Drawn marks"))`;
 			await h.control.waitFor(row);
 			await h.control.eval(`${row}.click()`);
@@ -812,7 +812,7 @@ inFullSet("loading in another environment", () => {
 			await saveAs(v1.page, "Reload test");
 			await v1.page.send("Page.close");
 
-			const v2 = await h.open("v2");
+			const v2 = await h.open(h.nextBuild);
 			await v2.page.eval(`document.querySelector("footer").remove()`);
 			await v2.page.activate();
 			await h.control.eval(
@@ -923,7 +923,7 @@ inBothSets("an AI app through a relay", () => {
 		await markElement(v1.page, "[data-truth=tip]", "Say how much");
 		await saveAs(v1.page, "AI test");
 		await v1.page.send("Page.close");
-		const v2 = await h.open("v2");
+		const v2 = await h.open(h.nextBuild);
 		await v2.page.activate();
 		await h.control.eval(
 			`chrome.scripting.executeScript({ target: { tabId: ${v2.tabId} }, files: ["content.js"] })`,
@@ -970,7 +970,7 @@ inBothSets("an AI app through a relay", () => {
 				url: string;
 				marks: { status: string }[];
 			};
-			expect(loaded.url).toContain("/v2");
+			expect(loaded.url).toBe(h.nextBuild);
 			expect(loaded.marks.map((m) => m.status)).toEqual(["found", "found"]);
 
 			const shot = await client.callTool({ name: "capture", arguments: {} });

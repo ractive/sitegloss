@@ -20,6 +20,7 @@ const before = { document: globals["document"] };
 let render: (state: PanelState, actions: Actions) => void;
 let ago: (iso: string, now?: number) => string;
 let webAppNote: (state: PanelState) => string | undefined;
+let noneFoundText: (c: Case, url: string | undefined) => string;
 let ASKING_DOWNLOADS: string;
 let IMPORT_BUSY: string;
 let EXPORT_ALL_BUSY: string;
@@ -41,8 +42,14 @@ beforeAll(async () => {
 		).text(),
 	);
 	globals["document"] = window.document;
-	({ render, ASKING_DOWNLOADS, IMPORT_BUSY, EXPORT_ALL_BUSY, webAppNote } =
-		await import("../src/sidepanel/view.ts"));
+	({
+		render,
+		ASKING_DOWNLOADS,
+		IMPORT_BUSY,
+		EXPORT_ALL_BUSY,
+		webAppNote,
+		noneFoundText,
+	} = await import("../src/sidepanel/view.ts"));
 	({ ago } = await import("../src/sidepanel/cloud-view.ts"));
 });
 
@@ -346,7 +353,7 @@ describe("a mark's status and actions", () => {
 			finding(id).querySelector(
 				'[data-finding-action="delete"]',
 			) as unknown as HTMLButtonElement;
-		expect(button("f_1").textContent).toBe("Delete");
+		expect(button("f_1").textContent).toBe("Delete finding");
 		expect(button("f_2").textContent).toBe("Really delete?");
 		button("f_1").click();
 		expect(deleted).toEqual(["m1:f_1"]);
@@ -427,7 +434,7 @@ describe("a mark's status and actions", () => {
 			row(markId).querySelector(
 				'[data-finding="f_1"] [data-finding-action="delete"]',
 			) as unknown as HTMLButtonElement;
-		expect(button("m1").textContent).toBe("Delete");
+		expect(button("m1").textContent).toBe("Delete finding");
 		expect(button("m1").hasAttribute("data-armed")).toBe(false);
 		expect(button("m2").textContent).toBe("Really delete?");
 		expect(button("m2").hasAttribute("data-armed")).toBe(true);
@@ -442,7 +449,7 @@ describe("a mark's status and actions", () => {
 			noActions,
 		);
 		expect(action("m1", "delete").textContent).toBe("Really delete?");
-		expect(action("m2", "delete").textContent).toBe("Delete");
+		expect(action("m2", "delete").textContent).toBe("Delete mark");
 	});
 
 	test("Show sits in a mark's head, where the page can show the mark", () => {
@@ -899,20 +906,24 @@ describe("Verify (DEC-023)", () => {
 			"Verified",
 			"Won't fix",
 		]);
-		expect(actionsOf("m1")).toEqual(["Resolve…", "Edit comment", "Delete"]);
+		expect(actionsOf("m1")).toEqual([
+			"Resolve…",
+			"Edit comment",
+			"Delete mark",
+		]);
 		expect(actionsOf("m2")).toEqual([
 			"Verified",
 			"Reopen…",
 			"Change…",
 			"Edit comment",
-			"Delete",
+			"Delete mark",
 		]);
 		for (const id of ["m3", "m4"])
 			expect(actionsOf(id)).toEqual([
 				"Reopen…",
 				"Change…",
 				"Edit comment",
-				"Delete",
+				"Delete mark",
 			]);
 		const strong = (id: string) =>
 			[...row(id).querySelectorAll(".mark-actions .strong")].map(
@@ -1415,10 +1426,11 @@ describe("none of the case's marks found (DEC-022)", () => {
 		const warning = el("none-found");
 		expect(warning.hidden).toBe(false);
 		expect(warning.querySelector("svg.notice-icon")).not.toBeNull();
+		// The case has no marks at all here: no page to name.
 		expect(warning.textContent).toContain(
-			"None of this case's marks were found",
+			"This case has no marks on this page.",
 		);
-		expect(warning.textContent).toContain("www.example.com/kk");
+		expect(warning.textContent).not.toContain("They are on");
 		const open = warning.querySelector(
 			'[data-action="open-case-page"]',
 		) as unknown as HTMLButtonElement;
@@ -1788,7 +1800,8 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		expect(el("none-found").textContent).not.toContain("other pages");
 
-		// A page that is none of the case's: it names the case's pages.
+		// A page that is none of the case's: no mark is its, and the case's
+		// pages are named; every mark is on another page.
 		render(
 			on("http://localhost:3000/account", [
 				match(1, "lost"),
@@ -1798,27 +1811,24 @@ describe("a case of several pages (DEC-038)", () => {
 			noActions,
 		);
 		expect(el("none-found").textContent).toContain(
-			"It is probably for other pages: shop.example/cart, shop.example/checkout/pay.",
+			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
 		);
-
-		// The payment page's mark found on the cart all the same (a
-		// look-alike, or a header both have): unsure, and not counted.
-		render(
-			on(cart, [
-				match(1, "found"),
-				match(2, "found"),
-				{ ...match(3, "found"), otherPage: true },
-			]),
-			noActions,
-		);
-		expect(word(3)).toBe("Also on this page?");
-		expect(
-			el("case-view")
-				.querySelector('[data-mark="m3"]')
-				?.getAttribute("data-colour"),
-		).toBe("unsure");
-		expect(el("case-hint").textContent).toBe(
-			"2 of 2 marks found on localhost:3000/cart. 1 of the case's other pages may be here too (dashed).",
+		expect([word(1), word(2), word(3)]).toEqual([
+			"On another page",
+			"On another page",
+			"On another page",
+		]);
+		expect(el("case-hint").hidden).toBe(true);
+		// Started on a page that has no marks (DEC-026), marked elsewhere: on
+		// that page, only the pages with marks are named, not the one in front.
+		const START = "https://shop.example/start";
+		const started: Case = {
+			...c,
+			page: { ...c.page, url: START },
+			pages: [{ url: START, title: "Start", lang: "en" }, ...(c.pages ?? [])],
+		};
+		expect(noneFoundText(started, "http://localhost:3000/start")).toBe(
+			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
 		);
 
 		// The tab went on within the page (a single-page app): what the panel
@@ -2598,10 +2608,10 @@ describe("the thread and closing (DEC-046)", () => {
 			expect.stringMatching(/^Tess Tester · /),
 			expect.stringMatching(/^Dana Developer via Claude · .* · on mark 1$/),
 		]);
-		// Tess's own has Edit and Delete; Dana's has none.
+		// Tess's own has Edit and Delete comment; Dana's has none.
 		expect(
-			items[0]?.querySelector('[data-action="comment-delete"]'),
-		).not.toBeNull();
+			items[0]?.querySelector('[data-action="comment-delete"]')?.textContent,
+		).toBe("Delete comment");
 		expect(
 			items[1]?.querySelector('[data-action="comment-delete"]'),
 		).toBeNull();
@@ -2673,7 +2683,7 @@ describe("what stays between renders", () => {
 		expect(el("case-hint").textContent).toBe("3 of 5 marks found");
 		expect(el("case-hint").hidden).toBe(false);
 		render(caseState(c), noActions);
-		expect(el("delete-case").textContent).toBe("Delete");
+		expect(el("delete-case").textContent).toBe("Delete case");
 		expect(el("delete-case").hasAttribute("data-armed")).toBe(false);
 		expect(el("case-hint").hidden).toBe(true);
 	});
@@ -3663,6 +3673,19 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		expect(window.document.querySelectorAll("#case-view .primary").length).toBe(
 			1,
 		);
+		// Under the last mark the same button again, where the list has marks.
+		render(
+			caseState(withOneMark(sampleCase("c_row_end")), (s) => (s.tab = tab)),
+			noActions,
+		);
+		const end = el<HTMLButtonElement>("add-marks-end");
+		expect([
+			end.previousElementSibling === null &&
+				end.parentElement?.previousElementSibling?.matches("ol.marks"),
+			end.textContent,
+			end.title,
+			end.disabled,
+		]).toEqual([true, "Add marks", el("add-marks").title, false]);
 	});
 
 	test("adding: Done adding, and the line says where the marks go", () => {

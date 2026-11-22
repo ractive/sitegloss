@@ -1,9 +1,12 @@
 /**
- * Loading a case onto the page in front: each mark's element is looked
- * for by its details (match.ts) and its mark drawn again on that element, moved
- * and scaled with it: solid when found, dashed when only probable or tied; its
- * colour is its status (DEC-024). A mark without an element goes where it was. An element that a
- * re-render replaced afterwards is looked for again.
+ * Loading a case onto the page in front: each mark of that page (the same
+ * path and hash route as the page it was made on, whatever the host,
+ * DEC-057) has its element looked for by its details (match.ts) and its mark
+ * drawn again on that element, moved and scaled with it: solid when found,
+ * dashed when only probable or tied; its colour is its status (DEC-024). A
+ * mark without an element goes where it was. The marks of other pages are
+ * not looked for, drawn or counted. An element that a re-render replaced
+ * afterwards is looked for again.
  */
 
 import { PANEL } from "../lib/browser.ts";
@@ -15,7 +18,6 @@ import {
 } from "../lib/candidates.ts";
 import {
 	type Case,
-	caseCounts,
 	MARK_CHANGED,
 	MAX_COMMENT,
 	MAX_REOPEN_NOTE,
@@ -25,7 +27,6 @@ import {
 	markKey,
 	markStatus,
 	onPageInFront,
-	pageInFront,
 	pageKey,
 	RESOLUTION_LABEL,
 	RESOLVE_CHOICES,
@@ -56,10 +57,17 @@ import {
 	type ReviewItem,
 	reviewColour,
 	ring,
+	withSaveKey,
 } from "./overlay.ts";
 
 interface Entry {
 	mark: Mark;
+	/**
+	 * The mark is one of the page in front's (`onPageInFront`), and was looked
+	 * for here. A mark of another page is not (DEC-057): lost, without
+	 * candidates.
+	 */
+	here: boolean;
 	/** The best elements worth showing, best first. */
 	candidates: Candidate[];
 	match: MarkMatch;
@@ -341,8 +349,9 @@ export class Reviewer {
 		for (const e of this.#entries) {
 			const mark = byId.get(e.mark.id);
 			if (mark === undefined) continue;
-			// A replaced copy (an import) may give the id to another mark.
-			if (sameMark(mark, e.mark)) {
+			// A replaced copy (an import) may give the id to another mark; a
+			// page that joined or left the case may make it the page's own.
+			if (sameMark(mark, e.mark) && this.#own(mark, c) === e.here) {
 				const next = { ...e, mark };
 				// Still to be looked for again, as the entry it replaces was.
 				if (this.#stale.delete(e)) this.#stale.add(next);
@@ -382,17 +391,22 @@ export class Reviewer {
 
 	/**
 	 * The address changed within the page to another page (`pageKey`): the
-	 * marks that were not found are looked for again (the next route of a
-	 * single-page app has the next page's marks, finding 1 of DEC-038's
-	 * review), and which mark is on its own page is judged anew.
+	 * marks of the previous route go at once, and those of the next route are
+	 * looked for (a single-page app, DEC-057).
 	 */
 	#checkPage(): void {
 		const page = pageKey(location.href);
 		if (page === this.#page || this.#case === undefined) return;
 		this.#page = page;
 		for (const entry of this.#entries) {
-			if (entry.match.status === "lost") this.#stale.add(entry);
-			else this.#judgePage(entry);
+			if (this.#own(entry.mark)) this.#stale.add(entry);
+			else if (entry.here) {
+				this.#stale.delete(entry);
+				Object.assign(entry, this.#elsewhere(entry.mark));
+				// Its popover goes with it, what was typed kept as on any close.
+				if (entry.mark.id === this.#open?.markId) this.overlay.dismissPopover();
+				if (entry.mark.id === this.#focused) this.#focused = undefined;
+			}
 		}
 		// A route's content often comes after its address.
 		this.#late = { looks: 2, ticks: 3 };
@@ -415,11 +429,8 @@ export class Reviewer {
 		const search = this.#search();
 		for (const entry of [...this.#stale]) {
 			this.#stale.delete(entry);
-			if (this.#entries.includes(entry)) {
-				const fresh = this.#find(search, entry.mark);
-				entry.candidates = fresh.candidates;
-				entry.match = fresh.match;
-			}
+			if (this.#entries.includes(entry))
+				Object.assign(entry, this.#find(search, entry.mark));
 			if (performance.now() >= until) break;
 		}
 		clearTextCache();
@@ -462,35 +473,15 @@ export class Reviewer {
 	}
 
 	/**
-	 * Say of a found mark whether it is on another page of the case than its
-	 * own (DEC-038): on the cart, a find of the payment page's mark may be a
-	 * look-alike. On a page that is none of the case's nothing is said: the
-	 * user loaded the case there, and every mark is looked for as on its own
-	 * page (the page in another version, under another path).
+	 * A mark of the page in front is looked for; one of another page is not
+	 * (DEC-057), and a mark without an element is drawn only on its own page.
 	 */
-	#judgePage(entry: Entry, c: Case | undefined = this.#case): void {
-		const { otherPage: _was, ...match } = entry.match;
-		const found = match.status !== "lost" && match.status !== "no-element";
-		entry.match =
-			found &&
-			c !== undefined &&
-			pageInFront(c, location.href) !== undefined &&
-			!this.#own(entry.mark, c)
-				? { ...match, otherPage: true }
-				: match;
-	}
-
 	#find(
 		search: PageSearch,
 		mark: Mark,
 		c: Case | undefined = this.#case,
 	): Entry {
-		const entry = this.#findOnPage(search, mark);
-		this.#judgePage(entry, c);
-		return entry;
-	}
-
-	#findOnPage(search: PageSearch, mark: Mark): Entry {
+		const here = this.#own(mark, c);
 		const base = {
 			markId: mark.id,
 			number: mark.number,
@@ -500,13 +491,16 @@ export class Reviewer {
 		if (stored === null)
 			return {
 				mark,
+				here,
 				candidates: [],
 				match: { ...base, status: "no-element", score: 0, candidates: [] },
 			};
+		if (!here) return this.#elsewhere(mark);
 		const found = findCandidates(search, stored);
 		const { status, candidates, truncated } = found;
 		return {
 			mark,
+			here,
 			candidates,
 			match: {
 				...base,
@@ -514,6 +508,23 @@ export class Reviewer {
 				score: found.score,
 				candidates: candidates.map((k) => this.#info(k, search.context)),
 				...(truncated ? { truncated: true } : {}),
+			},
+		};
+	}
+
+	/** A mark of another page than the one in front: not looked for here. */
+	#elsewhere(mark: Mark): Entry {
+		return {
+			mark,
+			here: false,
+			candidates: [],
+			match: {
+				markId: mark.id,
+				number: mark.number,
+				current: 0,
+				status: mark.element === null ? "no-element" : "lost",
+				score: 0,
+				candidates: [],
 			},
 		};
 	}
@@ -536,11 +547,10 @@ export class Reviewer {
 	}
 
 	#findAgain(entry: Entry): void {
-		const fresh = this.#find(this.#search(), entry.mark);
-		entry.candidates = fresh.candidates;
-		entry.match = fresh.match;
+		Object.assign(entry, this.#find(this.#search(), entry.mark));
 		clearTextCache();
 		this.#renderBar();
+		this.#render();
 	}
 
 	#info(candidate: Candidate, context: DescribeContext): CandidateInfo {
@@ -810,7 +820,9 @@ export class Reviewer {
 					note: note.value,
 				});
 			};
-			const done = button("Reopen", "mark-reopen-done", reopen, true);
+			const done = withSaveKey(
+				button("Reopen", "mark-reopen-done", reopen, true),
+			);
 			done.disabled = true;
 			note.addEventListener("input", () => {
 				if (!open.busy) done.disabled = note.value.trim() === "";
@@ -896,7 +908,9 @@ export class Reviewer {
 				row(
 					"row",
 					remove,
-					button("Done", "mark-done", () => void this.#done(), true),
+					withSaveKey(
+						button("Done", "mark-done", () => void this.#done(), true),
+					),
 				),
 			];
 			focus = field;
@@ -1124,10 +1138,8 @@ export class Reviewer {
 				: mark.shape,
 			rect,
 			// The shown candidate itself decides the colour.
-			// And only on the mark's own page: elsewhere it may be a look-alike.
 			found:
 				entry.match.status !== "ambiguous" &&
-				entry.match.otherPage !== true &&
 				entry.candidates[entry.match.current]?.found === true,
 			focused: mark.id === this.#focused,
 			status: markStatus(mark),
@@ -1190,29 +1202,31 @@ export class Reviewer {
 
 	#renderBar(): void {
 		const doc = this.overlay.doc;
-		// Verified and dismissed marks are drawn, faded, but no longer counted;
-		// open ones and those to verify are what to look at.
-		const active = this.#entries.filter((e) => {
+		// Only the page in front's marks count (DEC-057). Verified and
+		// dismissed marks are drawn, faded, but no longer counted; open ones
+		// and those to verify are what to look at.
+		const own = this.#entries.filter((e) => e.here);
+		const active = own.filter((e) => {
 			const status = markStatus(e.mark);
 			return status === "open" || status === "fixed";
 		});
-		// Not one found on a page that is not its own: maybe a look-alike.
 		const found = active.filter(
-			(e) =>
-				e.match.status !== "lost" &&
-				e.match.status !== "no-element" &&
-				e.match.otherPage !== true,
+			(e) => e.match.status !== "lost" && e.match.status !== "no-element",
 		).length;
-		const toVerify = this.#case ? caseCounts(this.#case).toVerify : 0;
+		const toVerify = active.filter(
+			(e) => markStatus(e.mark) === "fixed",
+		).length;
 		const title = doc.createElement("span");
 		title.className = "title";
 		title.textContent = this.#case?.title ?? "";
 		const count = doc.createElement("span");
 		count.className = "count";
 		count.textContent =
-			active.length === 0 && this.#entries.length > 0
-				? "all verified or dismissed"
-				: `${found} of ${active.length} found${toVerify > 0 ? ` · ${toVerify} to verify` : ""}`;
+			this.#entries.length > 0 && own.length === 0
+				? "no marks on this page"
+				: active.length === 0 && own.length > 0
+					? "all verified or dismissed"
+					: `${found} of ${active.length} found${toVerify > 0 ? ` · ${toVerify} to verify` : ""}`;
 		const sep = doc.createElement("span");
 		sep.className = "sep";
 		sep.setAttribute("aria-hidden", "true");

@@ -9,6 +9,10 @@
 * [operations](operations/index.md)
 * [research](research/index.md)
 
+## backlog
+
+* [Backlog: what waits until after the release](backlog.md) - Features that were discussed and put aside on purpose, with what was worked out about each, so nothing has to be thought through twice. The owner's order is release first, then polish, then new features.
+
 ## decision-log
 
 * [Decision log](decision-log.md) - Decisions for Sitegloss with their reasons, newest last. Owner decisions are marked as such and are not reopened.

@@ -174,8 +174,8 @@ export type InspectResult =
 			ok: false;
 			/**
 			 * `lost` and `no-element`: the mark has no element on this page;
-			 * `other-page`: a selector for a mark without an element, and the tab
-			 * does not show the case's page.
+			 * `other-page`: the tab does not show the mark's page, where alone
+			 * it is looked for (DEC-057).
 			 */
 			reason: "busy" | "lost" | "no-element" | "other-page" | "selector";
 			error: string;
@@ -194,7 +194,11 @@ export interface CandidateInfo {
 	found: boolean;
 }
 
-/** Where a mark's element is on this page. */
+/**
+ * Where a mark's element is on this page. A mark of another page than the
+ * one in front is not looked for (DEC-057): `lost` without candidates, or
+ * `no-element` for a mark drawn on no element.
+ */
 export interface MarkMatch {
 	markId: string;
 	number: number;
@@ -207,13 +211,6 @@ export interface MarkMatch {
 	candidates: CandidateInfo[];
 	/** Only part of the page was searched (very many elements, or out of time). */
 	truncated?: boolean;
-	/**
-	 * The element was found on another page of the case than the mark's own
-	 * (DEC-038): a header every page has, or something that only looks like
-	 * it. Never sure: drawn dashed, and not counted among the page's marks
-	 * found.
-	 */
-	otherPage?: true;
 }
 
 /** A load stopped by a clear or by another case's load: nothing to say. */

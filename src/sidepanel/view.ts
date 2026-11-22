@@ -55,7 +55,7 @@ import {
 	teamOf,
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
-import { foundLine, isFound, noneHere } from "./follow.ts";
+import { foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
@@ -217,18 +217,35 @@ export function access(state: PanelState): "yes" | "ask" | "never" {
 	return state.allSites ? "never" : "ask";
 }
 
-/** "None of this case's marks were found on this page…" (DEC-022). */
+/**
+ * The page in front shows none of the case's marks (DEC-022): none was
+ * found, or the case has none of this page, and then where they are
+ * (DEC-057).
+ */
 export function noneFoundText(c: Case, url: string | undefined): string {
-	const here = "None of this case's marks were found on this page.";
-	if (url !== undefined && url !== "" && pageInFront(c, url) !== undefined)
-		return here;
-	// Its pages, the first few by name (DEC-038).
-	const pages = casePages(c).map((p) => shortUrl(p.url));
+	if (
+		url !== undefined &&
+		url !== "" &&
+		c.marks.some((a) => onPageInFront(c, a, url))
+	)
+		return "None of this case's marks were found on this page.";
+	// The pages its marks are on, the first few by name (DEC-038): not the
+	// page in front, nor a page without marks (the first page of a case
+	// marked elsewhere).
+	const counts = marksByPage(c);
+	const front = url ? pageInFront(c, url) : undefined;
+	const pages = casePages(c)
+		.filter(
+			(p) =>
+				(counts.get(pageKey(p.url)) ?? 0) > 0 &&
+				(front === undefined || pageKey(p.url) !== pageKey(front.url)),
+		)
+		.map((p) => shortUrl(p.url));
+	const here = "This case has no marks on this page.";
+	if (pages.length === 0) return here;
 	const named = pages.slice(0, 3).join(", ");
 	const more = pages.length > 3 ? ` and ${pages.length - 3} more` : "";
-	return pages.length === 1
-		? `${here} It is probably for another page: ${named}.`
-		: `${here} It is probably for other pages: ${named}${more}.`;
+	return `${here} They are on ${named}${more}.`;
 }
 
 /** `shop.example/cart and 2 more pages`: a case's pages in the list. */
@@ -730,18 +747,13 @@ function renderHome(state: PanelState, actions: Actions): void {
 /** The colour of the mark on the page: the shown candidate decides (review.ts). */
 function colourOf(m: MarkMatch): "found" | "unsure" | "lost" {
 	if (m.status === "lost") return "lost";
-	// On a page that is not the mark's own it may be a look-alike (DEC-038).
-	const sure =
-		m.status !== "ambiguous" &&
-		m.otherPage !== true &&
-		m.candidates[m.current]?.found;
+	const sure = m.status !== "ambiguous" && m.candidates[m.current]?.found;
 	return sure ? "found" : "unsure";
 }
 
 /** Where the mark is on the tab in front, in words: the number's colour says it too, but not to everyone. */
 function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
-	if (m.otherPage === true && m.status !== "lost") return "Also on this page?";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
 }
 
@@ -757,9 +769,6 @@ const PILL: Record<MarkStatus, string | undefined> = {
 function matchText(m: MarkMatch): string {
 	if (m.current > 0)
 		return `Candidate ${m.current + 1} of ${m.candidates.length} (${percent(m.score)})`;
-	// Found, but on a page that is not the mark's own (DEC-038).
-	if (m.otherPage === true && (m.status === "found" || m.status === "probable"))
-		return `Also on this page? (${percent(m.score)})`;
 	switch (m.status) {
 		case "found":
 			return `Found here (${percent(m.score)})`;
@@ -916,6 +925,8 @@ interface CaseParts {
 	loadedHere: boolean;
 	/** "Add marks", or "Done adding" while the toolbar adds to the case. */
 	addMarks: HTMLButtonElement;
+	/** The same under the last mark of the list, where it has marks. */
+	addMarksEnd: HTMLButtonElement;
 	adding: boolean;
 	/** "← All cases" is finishing the marks, or could not (DEC-023). */
 	leaving: HTMLElement;
@@ -1250,6 +1261,18 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				type: "button",
 				id: "add-marks",
 				class: "primary",
+				onclick: () =>
+					created.adding
+						? actions.doneAdding(created.current)
+						: actions.addMarks(created.current),
+			},
+			"Add marks",
+		),
+		addMarksEnd: h(
+			"button",
+			{
+				type: "button",
+				id: "add-marks-end",
 				onclick: () =>
 					created.adding
 						? actions.doneAdding(created.current)
@@ -1768,7 +1791,7 @@ function markActions(
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
-			armed ? "Really delete?" : "Delete",
+			armed ? "Really delete?" : "Delete mark",
 		),
 	);
 }
@@ -2146,11 +2169,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 		: p.adding
 			? "Stop adding marks: the toolbar goes once each mark is in the case"
 			: "Each mark you draw on the page goes into this case when its comment is done";
+	// The same button at the end of a long list of marks; not amber, which
+	// is the view's one button that starts drawing (DEC-024).
+	p.addMarksEnd.disabled = p.addMarks.disabled;
+	p.addMarksEnd.textContent = p.addMarks.textContent;
+	p.addMarksEnd.title = p.addMarks.title;
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
 	setHint(p.webApp, webAppNote(state));
-	// The search is over and found none of the marks this page should have:
-	// the case is probably for another page (judged per page, DEC-038).
+	// The case has no mark of this page (DEC-057), or the search is over and
+	// found none of those it has.
 	const none =
 		here !== undefined &&
 		!here.settling &&
@@ -2218,7 +2246,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	holdDelete(armed && sync.mayDelete ? p.deleteButton : undefined);
 	p.deleteButton.disabled = !sync.mayDelete;
 	p.deleteButton.textContent = !armed
-		? "Delete"
+		? "Delete case"
 		: sync.kind === "synced"
 			? "Really delete for the team?"
 			: "Really delete?";
@@ -2308,19 +2336,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 			.filter(
 				(a) => filter === undefined || GROUP_OF[markStatus(a)] === filter,
 			);
-		// The page drawn on is one of the case's: a mark of another of its
-		// pages that is not here is "on another page", not lost (DEC-038).
-		const onCasePage =
-			several &&
-			loaded !== undefined &&
-			pageInFront(c, loaded.url) !== undefined;
+		// A mark of another page than the one drawn on is not looked for
+		// there: "on another page", whatever the page (DEC-057).
 		const items = sorted.map((a) => {
 			const match = loaded?.matches.get(a.id);
 			const elsewhere =
-				onCasePage &&
-				match !== undefined &&
-				!isFound(match) &&
-				!onPageInFront(c, a, loaded?.url ?? "");
+				loaded !== undefined && !onPageInFront(c, a, loaded.url);
 			return markItem(c, a, {
 				crop: images?.urls.get(a.crop),
 				match: elsewhere ? undefined : match,
@@ -2395,8 +2416,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 							"Show all",
 						),
 					),
+			items.length > 0 ? h("ol", { class: "marks" }, ...items) : null,
+			items.length > 0 ? h("div", { class: "row" }, p.addMarksEnd) : null,
 			items.length > 0
-				? h("ol", { class: "marks" }, ...items)
+				? null
 				: filter === undefined
 					? h(
 							"p",
@@ -2745,7 +2768,7 @@ function findingsList(
 								...(armed === f.id ? { "data-armed": true } : {}),
 								onclick: () => actions.deleteFinding(c, a, f.id),
 							},
-							armed === f.id ? "Really delete?" : "Delete",
+							armed === f.id ? "Really delete?" : "Delete finding",
 						),
 					),
 				),

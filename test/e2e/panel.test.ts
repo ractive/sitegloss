@@ -453,7 +453,7 @@ inBothSets("the side panel's page", () => {
 	);
 
 	slowTest(
-		"the page goes on within itself (a hash, a single-page app's next route): the marks stay, nothing is drawn again, and the panel's numbers are about the page it shows now",
+		"the page goes on within itself (a hash, a single-page app's next route): nothing is drawn again, and the panel speaks of the page it shows now",
 		async () => {
 			await fresh();
 			const a = await markedCase("Route change");
@@ -475,19 +475,17 @@ inBothSets("the side panel's page", () => {
 			);
 			const before = await h.control.eval<number>(`globalThis.loads`);
 			// The address changes within the page, as a router does it: no
-			// load, the case stays drawn, and the page is another one now.
+			// load, the case stays on the page, and the page is another one
+			// now, with none of the case's marks (DEC-057).
 			await a.page.eval(`location.hash = "#/elsewhere"`);
 			await a.page.eval(
 				`history.pushState({}, "", location.pathname.replace("v1", "v2"))`,
 			);
 			await h.control.waitFor(
-				`/marks found on [^ ]+\\/v2\\.$/.test(${id("case-hint")}.textContent)`,
+				`${id("none-found")}.textContent.includes("This case has no marks on this page.")`,
 			);
 			expect(await h.control.eval<number>(`globalThis.loads`)).toBe(before);
 			expect(await pageCase(a.tabId)).toBe(a.caseId);
-			expect(await h.control.eval(`${id("load-case")}.textContent`)).toBe(
-				"Hide marks",
-			);
 			// A real load of the page draws them again.
 			await a.page.goto(`${h.base}/v1`);
 			await until(
@@ -503,12 +501,12 @@ inBothSets("the side panel's page", () => {
 		async () => {
 			await fresh();
 			const a = await markedCase("Follows the tab");
-			const b = await h.open("v2");
+			const b = await h.open(h.nextBuild);
 			await b.page.activate();
 			await openPanel();
 			await testWaits(h.control, { searchAgainMs: SEARCH_AGAIN_MS });
 			await openCase(a.caseId);
-			// No click: the case is for v1, and v2 is in front.
+			// No click: v1 in another environment is in front.
 			await until(
 				async () => (await pageCase(b.tabId)) === a.caseId,
 				"the marks on the tab in front",
@@ -636,7 +634,7 @@ inBothSets("the side panel's page", () => {
 	);
 
 	slowTest(
-		"a page where none of the marks is: the panel says the case is probably for another page",
+		"a page with none of the case's marks: the panel says where they are",
 		async () => {
 			await fresh();
 			const { page, tabId } = await h.open("v1");
@@ -654,12 +652,12 @@ inBothSets("the side panel's page", () => {
 			await openPanel();
 			await testWaits(h.control, { searchAgainMs: SEARCH_AGAIN_MS });
 			await openCase(saved?.id as string);
-			// After the searches again, not before.
+			// None of the case's marks is this page's (DEC-057).
 			await h.control.waitFor(`!${id("none-found")}.hidden`, 10_000);
 			expect(
 				await h.control.eval<string>(`${id("none-found")}.textContent`),
 			).toContain(
-				`None of this case's marks were found on this page. It is probably for another page: ${new URL(h.base).host}/v1.`,
+				`This case has no marks on this page. They are on ${new URL(h.base).host}/v1.`,
 			);
 			expect(await h.control.eval(`${id("case-hint")}.hidden`)).toBe(true);
 			// Its button opens the case's page, where the mark is found.
