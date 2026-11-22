@@ -3089,10 +3089,13 @@ broad restructuring of `src/sidepanel/main.ts`, and no new harness.
 - **Seams pulled out**, each behaving as before and called where the code was:
   `markChange` (`src/sidepanel/mark-change.ts`, what a command in the page's popover does
   to the case), `linkFromField` (`src/sidepanel/case-link.ts`, the case link's field),
-  `Reviewer.clearFor` (`src/content/review.ts`, which case a `case:clear` takes off).
+  `Reviewer.clearFor` (`src/content/review.ts`, which case a `case:clear` takes off),
+  `panelAsker` (the same file: a mark request no panel answers is "no panel shows the
+  case").
   The marks' screenshot rules were testable already: `end.test.ts` drives `MarkAdder`
   with a fake worker.
-- **What moved down**: the popover's commands, a clear for another case, the link field,
+- **What moved down**: the popover's commands and what it says with no panel, a clear
+  for another case, the link field,
   which screenshot a mark gets (shared, after a typed value, after an undo or a failed
   capture, a mark from another route, Add mark N twice, an add held by an AI app,
   leaving with a mark not in the case), the sync's banner, Allow access and Use
@@ -3112,8 +3115,11 @@ broad restructuring of `src/sidepanel/main.ts`, and no new harness.
 - **Unit tests**: repeated tests are tables; a sentence a test pinned whole is one
   fragment that still identifies it, except where the text is the behaviour (a count, a
   name, a plural, a status, a security sentence). The ~10 MB round trip of a case at its
-  history caps and the redirect test on real sockets went. **The price**: a wording
-  regression no longer fails a unit test.
+  history caps and the redirect test on real sockets went: every call site still passes
+  `redirect: "error"`, but that Bun's fetch honours it is no longer shown. A review of
+  the folds found guards they had lost (a contract case of the fake server, a bound, a
+  fragment that was the test's own input, a list held by construction); each is back.
+  **The price**: a wording regression no longer fails a unit test.
 - Tests: `test/mark-change.test.ts`, `test/case-link.test.ts`, `test/end.test.ts`
   ("which screenshot a mark gets"), `test/review.test.ts` ("a clear for another case…"),
   `test/sync.test.ts` ("Allow access asks Chrome for the paused folder…").
