@@ -237,6 +237,27 @@ describe("the sync to a folder (DEC-021)", () => {
 		expect(folder.writes).toEqual(["login.sitegloss.zip"]);
 	});
 
+	test("a file written by 0.3.1 or older (sitegloss/1) is written again once, in sitegloss/2 (DEC-051)", async () => {
+		const c = await add("c_1", "Login");
+		await sync.request();
+		// What 0.3.1 kept for the file it wrote: a version without the format.
+		const before = store.records.get("f_1");
+		if (before === undefined) throw new Error("no record");
+		before.byCase["c_1"] = {
+			version: `${c.updatedAt}|${c.importedAt ?? ""}`,
+			file: "login.sitegloss.zip",
+		};
+		store.records.set("f_1", before);
+		folder.writes = [];
+		await sync.request();
+		expect(folder.writes).toEqual(["login.sitegloss.zip"]);
+		const file = folder.files.get("login.sitegloss.zip") as Uint8Array;
+		expect((await readExport(file)).case.format).toBe("sitegloss/2");
+		folder.writes = [];
+		await sync.request();
+		expect(folder.writes).toEqual([]);
+	});
+
 	test("a case without marks gets no file; one written before is kept up to date (DEC-026)", async () => {
 		const empty = await putCase(cases, {
 			...sampleCase("c_1", "2026-11-12T08:00:00Z"),
