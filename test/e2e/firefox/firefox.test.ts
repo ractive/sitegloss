@@ -358,6 +358,17 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 			"document.documentElement.dataset.aiState === 'disconnected'",
 			"the panel",
 		);
+		// The control: with AI access off nothing keeps the event page, and
+		// this profile stops it after 3 s idle (its user.js). Else the wait
+		// below would prove nothing about the keepalive.
+		const timeOrigin = () =>
+			h.rdp.eval<number>(
+				h.panel,
+				"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
+			);
+		const idleBefore = await timeOrigin();
+		await Bun.sleep(5000);
+		expect(await timeOrigin()).not.toBe(idleBefore);
 		await h.rdp.eval(
 			h.panel,
 			`(() => {
@@ -429,17 +440,9 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 			// Firefox stops an event page that had no extension events for a
 			// while (30 s; 3 s in this profile), its WebSocket with it, unless
 			// something keeps it.
-			const started = await h.rdp.eval<number>(
-				h.panel,
-				"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
-			);
+			const started = await timeOrigin();
 			await Bun.sleep(8000);
-			expect(
-				await h.rdp.eval<number>(
-					h.panel,
-					"browser.runtime.getBackgroundPage().then((bg) => bg.performance.timeOrigin)",
-				),
-			).toBe(started);
+			expect(await timeOrigin()).toBe(started);
 			expect(
 				await h.rdp.eval<string>(
 					h.panel,
