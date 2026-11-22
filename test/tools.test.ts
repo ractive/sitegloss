@@ -525,7 +525,6 @@ describe("tools", () => {
 		// The mark's page, and that the tab in front shows it (DEC-038).
 		expect(shown.page).toBe("https://www.example.com/kk");
 		expect(shown.onThisPage).toBe(true);
-		expect(shown.otherPageNote).toBeUndefined();
 		expect(tab.sent.map((r) => r.type)).toEqual([
 			"overlay:state",
 			"case:load",
@@ -536,7 +535,6 @@ describe("tools", () => {
 		tab.url = "http://localhost:3000/elsewhere";
 		const none = json(await call("highlight", { caseId: "c_1", mark: 1 }));
 		expect(none.onThisPage).toBe(false);
-		expect(none.otherPageNote).toBeUndefined();
 		tab.url = "http://localhost:3000/kk";
 		await expect(call("highlight", { caseId: "c_1", mark: 5 })).rejects.toThrow(
 			"no mark 5",
@@ -1305,45 +1303,6 @@ describe("tools", () => {
 		expect(read.markPage).toBe("https://www.example.com/kk");
 		expect(read.page).toEqual({ width: 1280, height: 2000 });
 		expect(read.onThisPage).toBe(true);
-		expect(read.otherPageNote).toBeUndefined();
-		// Read on another page of the case: said with the element, not left
-		// to compare.
-		const c = (await store.getCase("c_1")) as Case;
-		const [s1] = c.shots;
-		const [m1, m2] = c.marks;
-		if (s1 === undefined || m1 === undefined || m2 === undefined)
-			throw new Error("the seeded case has two marks");
-		await putCase(store, {
-			...c,
-			shots: [
-				s1,
-				{
-					...s1,
-					id: "s2",
-					image: "shots/s2.webp",
-					url: "https://www.example.com/checkout/pay",
-				},
-			],
-			marks: [m1, { ...m2, shot: "s2" }],
-		});
-		tab.inspected = {
-			...(inspectedButton(undefined) as Extract<InspectResult, { ok: true }>),
-			url: "http://localhost:3000/checkout/pay",
-		};
-		const other = json(
-			await call("get_mark_element", { caseId: "c_1", mark: 1 }),
-		);
-		expect(other.markPage).toBe("https://www.example.com/kk");
-		expect(other.onThisPage).toBe(false);
-		expect(other.otherPageNote).toContain(
-			"another page of the case than the mark's (https://www.example.com/kk)",
-		);
-		// Mark 2 is that page's own.
-		expect(
-			json(await call("get_mark_element", { caseId: "c_1", mark: 2 }))
-				.onThisPage,
-		).toBe(true);
-		tab.inspected = undefined;
 		expect(read.url).toBe("http://localhost:3000/kk");
 		expect(read.mark).toBe(1);
 		expect(read.match).toEqual({ status: "found", score: 0.91 });
@@ -1390,14 +1349,18 @@ describe("tools", () => {
 		).rejects.toThrow(
 			"The tab in front shows the mark's page (https://www.example.com/kk)",
 		);
-		// On another page: the mark's page is named.
-		tab.url = "http://localhost:3000/kk/step-2";
-		const lost = call("get_mark_element", { caseId: "c_1", mark: 1 });
-		await expect(lost).rejects.toThrow("open that page");
+		// On another page it is not looked for, and the mark's page is named.
+		tab.inspected = {
+			ok: false,
+			reason: "other-page",
+			error:
+				"Mark 1 is on another page than the one in front, and is not looked for here.",
+		};
 		await expect(
 			call("get_mark_element", { caseId: "c_1", mark: 1 }),
-		).rejects.toThrow("https://www.example.com/kk");
-		tab.url = "http://localhost:3000/kk";
+		).rejects.toThrow(
+			"The mark is on https://www.example.com/kk: open that page",
+		);
 		tab.inspected = {
 			ok: false,
 			reason: "busy",
@@ -1518,12 +1481,12 @@ describe("tools", () => {
 			ok: false,
 			reason: "other-page",
 			error:
-				"Mark 2 was not drawn on an element, and the tab in front does not show the mark's page, so the selector is not looked for here.",
+				"Mark 2 is on another page than the one in front, and is not looked for here.",
 			match: { ...foundMatch, markId: "m2", number: 2 },
 		};
 		await expect(
 			call("get_mark_element", { caseId: "c_1", mark: 2, selector: "form" }),
-		).rejects.toThrow(`Open ${pay} in the user's tab in front`);
+		).rejects.toThrow(`The mark is on ${pay}: open that page`);
 		const asked = tab.sent.findLast((r) => r.type === "element:inspect");
 		expect(asked?.type === "element:inspect" && asked.casePage).toBe(
 			`${pay}?token=secret`,

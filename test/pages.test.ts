@@ -39,7 +39,6 @@ import { shortUrl } from "../src/sidepanel/dom.ts";
 import {
 	findsOn,
 	foundLine,
-	isUnsure,
 	matchesHere,
 	movedOn,
 	noneHere,
@@ -677,23 +676,6 @@ describe("what a draw found, judged for the page in front", () => {
 		);
 	});
 
-	test("a mark of another page found here all the same (a shared header, or a look-alike) is never sure and never counted", () => {
-		const c = flow();
-		const other: MarkMatch = { ...match(3, "found"), otherPage: true };
-		const all = [match(1, "found"), match(2, "no-element"), other];
-		const url = "http://localhost:3000/cart";
-		expect(matchesHere(c, all, url).map((m) => m.number)).toEqual([1, 2]);
-		expect(findsOn(c, all, url)).toMatchObject({ also: 1, elsewhere: 0 });
-		expect(isUnsure(other)).toBe(true);
-		expect(foundLine(c, loaded(url, all))).toContain(
-			"1 of the case's other pages may be here too",
-		);
-		// The page's own mark lost, only the other page's look-alike there:
-		// none of this page's marks was found, whatever else is drawn.
-		const only = [match(1, "lost"), match(2, "no-element"), other];
-		expect(noneHere(c, only, url)).toBe(true);
-	});
-
 	test("none found is said of the page's own marks", () => {
 		const c = flow();
 		// On the payment page its mark is lost: none found there.
@@ -709,18 +691,14 @@ describe("what a draw found, judged for the page in front", () => {
 		).toContain("2 more are on other pages");
 	});
 
-	test("on a page that is none of the case's, every mark is looked for and counted, as in a case of one page", () => {
+	test("on a page that is none of the case's, no mark is the page's: nothing is counted", () => {
 		const c = flow();
 		const url = "http://localhost:3000/account";
 		const all = [match(1, "lost"), match(2, "no-element"), match(3, "lost")];
-		expect(matchesHere(c, all, url)).toHaveLength(3);
+		expect(findsOn(c, all, url)).toEqual({ own: [], elsewhere: 3 });
 		expect(noneHere(c, all, url)).toBe(true);
-		// The case loaded on another version of its page: what is found counts.
-		const found = [match(1, "found"), match(2, "no-element"), match(3, "lost")];
-		expect(noneHere(c, found, url)).toBe(false);
-		expect(foundLine(c, loaded(url, found))).toBe(
-			"1 of 3 marks found on localhost:3000/account.",
-		);
+		// The case view says where the marks are instead.
+		expect(foundLine(c, loaded(url, all))).toBeUndefined();
 	});
 
 	test("the tab went on to another page with the case drawn on it: what was found is read again", () => {

@@ -69,11 +69,18 @@ export interface Harness {
 	browser: Browser;
 	/** `http://127.0.0.1:<port>` serving `test/e2e/pages/`. */
 	base: string;
+	/**
+	 * `http://localhost:<port>/v1`: the same page in another environment,
+	 * with the next build (`v2.html`). A mark is drawn only on its own page,
+	 * the same path whatever the host (DEC-057).
+	 */
+	nextBuild: string;
 	extensionId: string;
 	manifest: BuildResult["manifest"];
 	/** An extension page for calling `chrome.*` (the side panel's document, in a tab). */
 	control: Page;
 	/** Open a test page in a new tab and return it with its tab id. */
+	/** A page of `base` (`v1`), or a whole address (`nextBuild`). */
 	open(path: string): Promise<{ page: Page; tabId: number }>;
 	stop(): Promise<void>;
 }
@@ -112,6 +119,8 @@ function servePages(): ReturnType<typeof Bun.serve> {
 		async fetch(req) {
 			const address = new URL(req.url);
 			let path = address.pathname.replace(/^\/+/, "") || "v1";
+			// Another environment of the same site, a build ahead.
+			if (address.hostname === "localhost" && path === "v1") path = "v2";
 			// `?wait=<ms>`: a page that takes that long to come (a slow site);
 			// `slow/<page>`: 1.5 s, also at a case's address, which has no query.
 			const wait = path.startsWith("slow/")
@@ -182,12 +191,13 @@ async function start(binary: string, launch: Launch): Promise<Harness> {
 		const harness: Harness = {
 			browser: launched,
 			base,
+			nextBuild: `http://localhost:${server.port}/v1`,
 			extensionId,
 			manifest: built.manifest,
 			control,
 			open: (path) =>
 				step(`open ${path}`, async () => {
-					const url = `${base}/${path}`;
+					const url = /^https?:/.test(path) ? path : `${base}/${path}`;
 					const page = await launched.newPage(url);
 					const tabId = await launch.tabIdOf(control, page, url);
 					opened.set(page, { h: harness, tabId });

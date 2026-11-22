@@ -1416,9 +1416,8 @@ describe("none of the case's marks found (DEC-022)", () => {
 		expect(warning.hidden).toBe(false);
 		expect(warning.querySelector("svg.notice-icon")).not.toBeNull();
 		expect(warning.textContent).toContain(
-			"None of this case's marks were found",
+			"This case has no marks on this page. They are on www.example.com/kk.",
 		);
-		expect(warning.textContent).toContain("www.example.com/kk");
 		const open = warning.querySelector(
 			'[data-action="open-case-page"]',
 		) as unknown as HTMLButtonElement;
@@ -1760,7 +1759,8 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		expect(el("none-found").textContent).not.toContain("other pages");
 
-		// A page that is none of the case's: it names the case's pages.
+		// A page that is none of the case's: no mark is its, and the case's
+		// pages are named; every mark is on another page.
 		render(
 			on("http://localhost:3000/account", [
 				match(1, "lost"),
@@ -1770,28 +1770,14 @@ describe("a case of several pages (DEC-038)", () => {
 			noActions,
 		);
 		expect(el("none-found").textContent).toContain(
-			"It is probably for other pages: shop.example/cart, shop.example/checkout/pay.",
+			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
 		);
-
-		// The payment page's mark found on the cart all the same (a
-		// look-alike, or a header both have): unsure, and not counted.
-		render(
-			on(cart, [
-				match(1, "found"),
-				match(2, "found"),
-				{ ...match(3, "found"), otherPage: true },
-			]),
-			noActions,
-		);
-		expect(word(3)).toBe("Also on this page?");
-		expect(
-			el("case-view")
-				.querySelector('[data-mark="m3"]')
-				?.getAttribute("data-colour"),
-		).toBe("unsure");
-		expect(el("case-hint").textContent).toBe(
-			"2 of 2 marks found on localhost:3000/cart. 1 of the case's other pages may be here too (dashed).",
-		);
+		expect([word(1), word(2), word(3)]).toEqual([
+			"On another page",
+			"On another page",
+			"On another page",
+		]);
+		expect(el("case-hint").hidden).toBe(true);
 
 		// The tab went on within the page (a single-page app): what the panel
 		// has is about the page before until it is read again, and then says

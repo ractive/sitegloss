@@ -67,14 +67,17 @@ is what a case is about, and finding the element again is a best-effort extra:
   code, and the input of the matching below. A mark's own element also keeps how it
   looked when the mark was made: computed styles, the colour behind it, its neighbours'
   boxes (DEC-048), for contrast and alignment questions; matching never reads them.
-- Opening a case in the side panel draws its marks on the tab in front, whatever page
-  that is, and highlights each mark's element where it can be found ("found",
-  "probable", "ambiguous" with candidates, or "not found"). While the case is open the
-  marks follow the tab in front (another tab, a reload, a navigation); "← All cases"
-  takes them off, whoever drew them (DEC-023), and a Hide holds on its tab, also
-  through a reload (DEC-022). When none is found the case
-  says it is probably for another page. The side panel always shows the marked
-  screenshots, so a case makes sense even when nothing is found.
+- Opening a case in the side panel draws the marks of the page in front on the tab in
+  front: a mark is that page's when it was made on the same path and hash route,
+  whatever the host (DEC-057). Each one's element is highlighted where it can be found
+  ("found", "probable", "ambiguous" with candidates, or "not found"); a mark of another
+  page is not looked for, drawn or counted, and the panel says "On another page" for
+  it. While the case is open the marks follow the tab in front (another tab, a reload,
+  a navigation, a single-page app's next route); "← All cases" takes them off,
+  whoever drew them (DEC-023), and a Hide holds on its tab, also through a reload
+  (DEC-022). When the case has no mark of the page in front, it says where its marks
+  are. The side panel always shows the marked screenshots, so a case makes sense even
+  when nothing is found.
 
 ## Parts
 

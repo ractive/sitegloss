@@ -130,20 +130,20 @@ user agent. What differs from Chrome and Edge:
 4. Home lists a case under "This page" on the very page, of the same site, that one of
    its screenshots was taken on; nothing opens by itself. On the same page in another
    environment (say `localhost:3000`), click the case in the side panel's list:
-   its marks are drawn on the tab in front, whatever page that is; those of the page
-   with the same path and hash route count as that page's, whatever the host, and the
-   home page of any host is the home page in front. Each mark says where it was made
+   the marks of the page in front are drawn there: a mark is that page's when it was
+   made on the same path and hash route, whatever the host, and the home page of any
+   host is the home page in front. A mark of another page is not looked for, drawn or
+   counted there; the side panel says "On another page" for it. Each mark says where it was made
    with a link that opens that address, query and all, in the tab in front and shows
    the mark once the page has loaded; with the case open on another host, a second link
    opens the same path and query there. While the case is open
    they follow the tab in front: another tab, a reload or a navigation draws them there
    and takes them off the tab before; "← All cases" takes them off the page.
    "Hide marks" takes them off, and they stay off on that tab, also through a reload,
-   until "Show marks" or the case is opened again. When none of the case's marks is
-   found, the case says it is probably for another page and offers to open the case's
-   page. In a case of several pages the marks of the other pages count as "on another
-   page", not as lost, and Home lists the case under "This page" on each of its pages
-   on the site they were marked on. On a tab Sitegloss may not run on yet (after reloading the extension, say),
+   until "Show marks" or the case is opened again. When the case has no mark of the page
+   in front, the case says where its marks are and offers to open the case's page; when
+   none of the page's own marks is found, it says so. Home lists a case of several
+   pages under "This page" on each of its pages on the site they were marked on. On a tab Sitegloss may not run on yet (after reloading the extension, say),
    Chrome hides the address, and the side panel says so with a warning: click the
    Sitegloss icon there (or press Alt+Shift+O) and the marks are drawn, or press "Allow
    on all sites" in that notice; until then what needs the page is off. The case's
