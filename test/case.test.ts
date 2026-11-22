@@ -1194,6 +1194,11 @@ describe("images added to a mark (DEC-058)", () => {
 		expect(() => withoutImage(value, "m1", "i_b", NOW)).toThrow(
 			"no longer on the mark",
 		);
+		// The mark's own screenshot is no added image, by any name.
+		for (const notAnImage of ["m1", "crops/m1.webp"])
+			expect(() => withoutImage(c, "m1", notAnImage, NOW)).toThrow(
+				"The mark's screenshot stays with the mark; only an added image can be removed.",
+			);
 		const last = withoutImage(
 			withImages(twoMarks(), "m2", ["i_a"], NOW),
 			"m2",

@@ -690,11 +690,17 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			(f) => f.firstChild?.textContent,
 		);
 		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2"]);
+		// The screenshot's place has nothing to remove it with, not even a
+		// disabled control: its one control (and focus stop) shows it large.
+		const shot = row?.querySelector('[data-picture="screenshot"]');
 		expect(
-			row?.querySelector(
-				'[data-picture="screenshot"] [data-action=remove-image]',
+			[...(shot?.querySelectorAll("button, a, input, [tabindex]") ?? [])].map(
+				(e) => e.getAttribute("data-action"),
 			),
-		).toBeNull();
+		).toEqual(["zoom"]);
+		expect(shot?.querySelector("button")?.getAttribute("title")).toBe(
+			"Taken by Sitegloss when the mark was made. It stays with the mark.",
+		);
 		(
 			row?.querySelector('[aria-label="Remove image 2"]') as unknown as
 				| HTMLButtonElement

@@ -2329,16 +2329,27 @@ export function withImages(
 	);
 }
 
-/** The case without the mark's image, and the file that goes with it. */
+/**
+ * The case without one of the images added to the mark, and the file that
+ * goes with it. Only an added image's id is taken: the mark's own screenshot
+ * (its crop) is never removed this way.
+ */
 export function withoutImage(
 	c: Case,
 	markId: string,
 	imageId: string,
 	now: string,
 ): { value: Case; images: string[] } {
-	const gone = c.marks
-		.find((a) => a.id === markId)
-		?.images?.find((x) => x.id === imageId);
+	const mark = c.marks.find((a) => a.id === markId);
+	// The mark's own screenshot is no added image: it goes only with the mark.
+	if (
+		mark !== undefined &&
+		[mark.id, mark.crop, cropImage(mark.id)].includes(imageId)
+	)
+		throw new CaseError(
+			"The mark's screenshot stays with the mark; only an added image can be removed.",
+		);
+	const gone = mark?.images?.find((x) => x.id === imageId);
 	const value = changed(
 		c,
 		markId,

@@ -876,7 +876,7 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 						`${c.id}:${a.id}`,
 						shot,
 						`Screenshot of mark ${a.number}, taken by Sitegloss`,
-						"Taken by Sitegloss when the mark was made. Click to show it larger, or small again",
+						"Taken by Sitegloss when the mark was made. It stays with the mark.",
 					)
 				: missing("The screenshot is missing."),
 			h("figcaption", {}, "Screenshot"),
