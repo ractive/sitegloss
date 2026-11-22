@@ -2836,19 +2836,29 @@ describe("the AI app", () => {
 		s.ai = { ...s.ai, ...change };
 	};
 
-	test("its connection, and how to stop it, show in the case view too", () => {
+	test("its connection shows in the case view too, and Stop while an app is connected", () => {
 		const c = sampleCase("c_ai");
+		const on = { active: true, connected: true };
 		render(
-			caseState(c, ai({ status: "Connected: Claude", active: true })),
+			caseState(c, ai({ ...on, status: "Connected: Claude", apps: 1 })),
 			noActions,
 		);
 		expect(el("home").hidden).toBe(true);
 		// What the user sees of it: the pill's label, beside Stop.
 		expect(el("ai-label").closest("[hidden], .visually-hidden")).toBeNull();
-		expect(el("ai-label").textContent).toBe("AI connecting…");
+		expect(el("ai-label").textContent).toBe("AI on · 1 app");
 		// The whole sentence is the pill's name, for a screen reader.
 		expect(el("ai-status").textContent).toBe("Connected: Claude");
 		expect(el("stop-ai").closest("[hidden]")).toBeNull();
+		// No app that could act: the pill leads to the switch, no Stop beside it.
+		const waiting = "Waiting for an AI app to pair";
+		render(caseState(c, ai({ ...on, status: waiting })), noActions);
+		expect(el("stop-ai").hidden).toBe(true);
+		render(
+			caseState(c, ai({ active: true, status: "Connecting…" })),
+			noActions,
+		);
+		expect(el("stop-ai").hidden).toBe(true);
 		render(caseState(c, ai({ status: "Not connected" })), noActions);
 		expect(el("stop-ai").hidden).toBe(true);
 	});

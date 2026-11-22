@@ -2845,7 +2845,9 @@ function renderAi({ ai }: PanelState): void {
 	aiProblem.hidden = ai.problem === undefined;
 	aiProblemText.textContent =
 		ai.problem === undefined ? "" : sentence(ai.status);
-	stopAi.hidden = !ai.active;
+	// The one-click stop for an app that may be acting now: with no app
+	// connected, the pill leads to the switch, which is enough.
+	stopAi.hidden = !(ai.active && ai.connected && ai.apps > 0);
 	keepOn.checked = ai.keepOn;
 	setHint(aiCall, ai.lastCall && callText(ai.lastCall));
 }
