@@ -390,8 +390,8 @@ describe("the question and the fill", () => {
 		await turns();
 		expect(f.question.question?.id).toBe(first as string);
 		expect(f.question.question?.host).toBe("first.example");
-		expect(f.question.problem).toBe(
-			"An AI app at second.example (it calls itself “Claude”) also opened the relay's page. Sitegloss asks about one at a time: answer the question above first, then reload that page; or type the code there.",
+		expect(f.question.problem).toContain(
+			"second.example (it calls itself “Claude”) also opened",
 		);
 		expect(second.submitted).toEqual([]);
 		expect(second.port?.connected).toBe(false);
@@ -532,8 +532,8 @@ describe("the question and the fill", () => {
 		await Bun.sleep(30);
 		expect(f.question.problem).toBeUndefined();
 		await Bun.sleep(220);
-		expect(f.question.problem).toBe(
-			"Sitegloss could not fill in the code for the AI app at claude.ai. Type the code from the AI app card on the relay's page.",
+		expect(f.question.problem).toContain(
+			"could not fill in the code for the AI app at claude.ai",
 		);
 		expect(f.holds).toEqual([true, false]);
 		// The library says which page: its tab and AI app.

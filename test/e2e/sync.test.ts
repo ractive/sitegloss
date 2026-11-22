@@ -3,13 +3,10 @@
  * case to `Sitegloss/` in the profile's downloads folder (the test build has
  * `downloads`, so Chrome asks nothing), and the worker writes it again after
  * an AI app's change with no extension page open, through its offscreen
- * document. Chrome's folder picker cannot be answered over the DevTools
- * Protocol, so the test build hands the side panel a folder of the
- * extension's private file system (`siteglossUseFolder`) instead; that folder
- * never needs Chrome's OK, so `test:access` in the sync's database makes the
- * test build's worker see one that does. Paused, the banner sits above Home
- * and the case and the icon shows "!"; Allow access (a stubbed
- * `requestPermission`) clears both, and "Use Downloads instead" switches.
+ * document. A folder paused for Chrome's OK, its banner, the icon's "!",
+ * Allow access and Use Downloads instead are unit tests (sync.test.ts,
+ * view.test.ts, icon.test.ts): Chrome's folder picker and its prompt cannot
+ * be answered here, so a browser added nothing to them.
  */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
@@ -37,7 +34,6 @@ import { fullTest } from "./mode.ts";
 import {
 	type Db,
 	markElement,
-	openCase,
 	READ_DB,
 	saveAs,
 	shadow,
@@ -45,36 +41,7 @@ import {
 	until,
 } from "./steps.ts";
 
-const FOLDER = "synced";
 const FILE = "synced-case.sitegloss.zip";
-
-/** The folder of the private file system, as the panel gets it. */
-const FOLDER_HANDLE = `navigator.storage.getDirectory().then((root) => root.getDirectoryHandle(${JSON.stringify(FOLDER)}, { create: true }))`;
-
-/** The names of the files in that folder, read in an extension page. */
-const FOLDER_FILES = `${FOLDER_HANDLE}.then(async (dir) => {
-	const names = [];
-	for await (const [name, entry] of dir.entries())
-		if (entry.kind === "file") names.push(name);
-	return names.sort();
-})`;
-
-/** Set `key` in the sync's database to `value` (`undefined` removes it). */
-const SYNC_KV = (
-	key: string,
-	value?: string,
-) => `new Promise((resolve, reject) => {
-	const open = indexedDB.open("sitegloss-sync", 1);
-	open.onupgradeneeded = () => open.result.createObjectStore("settings");
-	open.onerror = () => reject(open.error);
-	open.onsuccess = () => {
-		const tx = open.result.transaction("settings", "readwrite");
-		const store = tx.objectStore("settings");
-		${value === undefined ? `store.delete(${JSON.stringify(key)})` : `store.put(${JSON.stringify(value)}, ${JSON.stringify(key)})`};
-		tx.oncomplete = () => { open.result.close(); resolve(true); };
-		tx.onerror = () => reject(tx.error);
-	};
-})`;
 
 /** `key` in the sync's database (`null` when it is not there). */
 const SYNC_GET = (key: string) => `new Promise((resolve, reject) => {
@@ -94,11 +61,6 @@ const SYNC_STATE = `${SYNC}.querySelector(".sync-state")?.textContent`;
 const BANNER = `document.getElementById("sync-banner")`;
 const IN_SYNC = (action: string) =>
 	`${SYNC}.querySelector('[data-action="${action}"]')`;
-const IN_BANNER = (action: string) =>
-	`${BANNER}.querySelector('[data-action="${action}"]')`;
-
-/** The worker asked to run, as the panel asks after a change of its own. */
-const RUN = `chrome.runtime.sendMessage({ type: "sync:run" })`;
 
 inBothSets("the sync", () => {
 	let h: Harness;
@@ -122,7 +84,6 @@ inBothSets("the sync", () => {
 		}
 	};
 	const badge = () => h.control.eval<string>("chrome.action.getBadgeText({})");
-	const title = () => h.control.eval<string>("chrome.action.getTitle({})");
 	/** Chrome's download list: the sync keeps only its newest entry there. */
 	const downloadList = () =>
 		h.control.eval<string[]>(
@@ -315,80 +276,5 @@ inBothSets("the sync", () => {
 			await panel.waitFor(`!document.getElementById("home").hidden`);
 		},
 		90_000,
-	);
-
-	fullTest(
-		"a paused folder shows the banner on Home and in the case, and “!” on the icon",
-		async () => {
-			await panel.eval(SYNC_KV("test:access", "prompt"));
-			await panel.eval(
-				`${FOLDER_HANDLE}.then((dir) => window.siteglossUseFolder(dir))`,
-			);
-			await panel.waitFor(`!${BANNER}.hidden`, 10_000);
-			expect(await panel.eval(`${BANNER}.querySelector("p").textContent`)).toBe(
-				`The copy to a folder is paused. Chrome needs your OK to write to “${FOLDER}” again.`,
-			);
-			expect(await panel.eval(`${BANNER}.getAttribute("role")`)).toBe("status");
-			expect(await panel.eval(SYNC_STATE)).toBe(
-				`Paused: Chrome wants your OK for “${FOLDER}” again.`,
-			);
-			await until(badge, (b) => b === "!");
-			expect(await title()).toBe(
-				"Sitegloss: the copy to a folder is paused. Click to allow access. AI access is on.",
-			);
-
-			await openCase(panel, "Synced case");
-			expect(await panel.eval(`${BANNER}.hidden`)).toBe(false);
-			expect(await panel.eval(`Boolean(${IN_BANNER("sync-allow")})`)).toBe(
-				true,
-			);
-			// Nothing was written to the folder.
-			expect(await panel.eval(FOLDER_FILES)).toEqual([]);
-		},
-		60_000,
-	);
-
-	fullTest(
-		"Allow access (Chrome's answer stubbed) clears the banner and the “!”",
-		async () => {
-			// Chrome's prompt cannot be answered here: "granted", as a yes would be.
-			await panel.eval(`(() => {
-			FileSystemHandle.prototype.requestPermission = async function () {
-				await ${SYNC_KV("test:access")};
-				return "granted";
-			};
-		})()`);
-			await panel.click(IN_BANNER("sync-allow"));
-			await panel.waitFor(`${BANNER}.hidden`, 10_000);
-			await until(badge, (b) => b === "");
-			expect(await title()).toBe("Sitegloss: AI access is on");
-			await until(
-				() => panel.eval<string[]>(FOLDER_FILES),
-				(files) => files.includes(FILE),
-				10_000,
-			);
-		},
-		60_000,
-	);
-
-	fullTest(
-		"Use Downloads instead switches; the folder's files stay",
-		async () => {
-			await panel.eval(SYNC_KV("test:access", "prompt"));
-			await panel.eval(RUN);
-			await panel.waitFor(`!${BANNER}.hidden`, 10_000);
-			await until(badge, (b) => b === "!");
-			await panel.click(IN_BANNER("sync-use-downloads"));
-			await panel.waitFor(`${BANNER}.hidden`, 10_000);
-			await until(badge, (b) => b === "");
-			// Home, in the control page: the section says where it syncs now.
-			await h.control.waitFor(
-				`${SYNC_STATE} === "Copying to Downloads/Sitegloss"`,
-				10_000,
-			);
-			expect(await panel.eval<string[]>(FOLDER_FILES)).toContain(FILE);
-			await panel.eval(SYNC_KV("test:access"));
-		},
-		60_000,
 	);
 });

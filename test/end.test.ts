@@ -10,6 +10,7 @@ import {
 	afterEach,
 	beforeAll,
 	beforeEach,
+	describe,
 	expect,
 	test,
 } from "bun:test";
@@ -116,16 +117,18 @@ const target = { caseId: "c_open", title: "Open case", nextMark: 3 };
 function adder(): {
 	a: MarkAdderClass;
 	overlay: InstanceType<typeof Overlay>;
+	activity: InstanceType<typeof PageActivity>;
 } {
 	const doc = window.document as unknown as Document;
 	const overlay = new Overlay(doc);
 	made.push(overlay);
+	const activity = new PageActivity();
 	// The page stands still after 80 ms, not 800; screenshots 30 ms apart, not 620.
-	const a = new MarkAdder(overlay, new PageBlur(doc), new PageActivity(), {
+	const a = new MarkAdder(overlay, new PageBlur(doc), activity, {
 		stillMs: 80,
 		shotGapMs: 30,
 	});
-	return { a, overlay };
+	return { a, overlay, activity };
 }
 
 /** Draw a note and close its comment: it goes into the case the toolbar adds to. */
@@ -483,4 +486,179 @@ test("a re-render keeps the toolbar's buttons: a click pressed before it still l
 		"close",
 		"move-toolbar",
 	]);
+});
+
+describe("which screenshot a mark gets", () => {
+	const saves = () =>
+		asked.flatMap((r) => (r.type === "case:save" ? [r.request] : []));
+	const captures = () => asked.filter((r) => r.type === "capture").length;
+	/** The screenshot each added mark went in with, by its number. */
+	const shotOf = (number: number) =>
+		saves().find((r) => r.marks[0]?.number === number)?.shots[0]?.id;
+	const added = (a: MarkAdderClass, n: number) =>
+		settle(
+			a,
+			() => saves().length === n && a.state().drafts === 0 && !a.state().saving,
+		);
+	const scrolled = (y: number) => {
+		window.scrollTo(0, y);
+		window.document.dispatchEvent(new window.Event("scroll"));
+	};
+	const tall = () => {
+		window.document.body.innerHTML = `<main style="height: 3000px"><input id="field"><p id="text">Some text</p></main>`;
+	};
+	const alert = (overlay: InstanceType<typeof Overlay>) =>
+		overlay.toolbar.querySelector('[data-role="alert"]')?.textContent ?? "";
+	/** Add mark N, which must be there. */
+	const retry = (overlay: InstanceType<typeof Overlay>) => {
+		const button = overlay.toolbar.querySelector<HTMLButtonElement>(
+			'[data-action="retry"]',
+		);
+		expect(button).not.toBeNull();
+		return button as HTMLButtonElement;
+	};
+
+	test.each([
+		["nothing changed: they share one screenshot", 1, (): void => undefined],
+		[
+			"a value typed is a change of the page: two screenshots",
+			2,
+			(): void => {
+				const field = window.document.getElementById("field");
+				field?.dispatchEvent(new window.Event("input", { bubbles: true }));
+			},
+		],
+	] as const)("between two marks %s", async (_what, shots, between) => {
+		tall();
+		const { a, overlay } = adder();
+		a.show({ target });
+		note(overlay, a);
+		await added(a, 1);
+		between();
+		note(overlay, a);
+		await added(a, 2);
+		expect(captures()).toBe(shots);
+	});
+
+	test("after an undo the next mark does not share the undone mark's screenshot", async () => {
+		const { a, overlay } = adder();
+		a.show({ target });
+		// Drawn, its screenshot taken, its comment still open: undone.
+		a.setTool("note");
+		const at = { clientX: 40, clientY: 40, button: 0, pointerId: 1 };
+		for (const type of ["pointerdown", "pointerup"])
+			overlay.capture.dispatchEvent(
+				new window.PointerEvent(type, at) as unknown as Event,
+			);
+		await settle(a, () => captures() === 1);
+		a.undo();
+		expect(a.state().drafts).toBe(0);
+		// Its screenshot went with it: the next mark takes one of its own.
+		note(overlay, a);
+		await added(a, 1);
+		expect(captures()).toBe(2);
+	});
+
+	test("a failed screenshot leaves nothing for the next mark to share", async () => {
+		tall();
+		const { a, overlay } = adder();
+		a.show({ target });
+		note(overlay, a);
+		await added(a, 1);
+		scrolled(400);
+		await Bun.sleep(100);
+		answer = (r) => {
+			if (r.type !== "capture") return works(r);
+			answer = works;
+			return { ok: false, error: "no picture" };
+		};
+		note(overlay, a);
+		await settle(a, () => alert(overlay).includes("no picture"));
+		note(overlay, a);
+		retry(overlay).click();
+		await added(a, 3);
+		// Mark 5 took its own; it is not mark 3's of the top of the page.
+		expect(shotOf(5)).not.toBe(shotOf(3));
+	});
+
+	test("a second click on Add mark N while its screenshot is awaited adds it once (DEC-026)", async () => {
+		answer = (r) => {
+			if (r.type !== "capture") return works(r);
+			answer = works;
+			return { ok: false, error: "no picture" };
+		};
+		const { a, overlay } = adder();
+		a.show({ target });
+		note(overlay, a);
+		await settle(a, () => alert(overlay).startsWith("Mark 3 was not added"));
+		const button = retry(overlay);
+		button.click();
+		button.click();
+		await added(a, 1);
+		await Bun.sleep(50);
+		expect(saves().map((r) => r.marks[0]?.number)).toEqual([3]);
+	});
+
+	test("a mark without a screenshot from another route is not added, and is kept", async () => {
+		const { a, overlay, activity } = adder();
+		a.show({ target });
+		// An AI app holds the page: the mark's screenshot waits.
+		expect(activity.begin("ai-capture").ok).toBe(true);
+		note(overlay, a);
+		window.history.pushState({}, "", "/cart/b");
+		activity.end("ai-capture");
+		try {
+			await settle(a, () => alert(overlay).includes("another page"));
+			retry(overlay).click();
+			await Bun.sleep(50);
+			await settle(a, () => alert(overlay).includes("another page"));
+			expect(a.state().drafts).toBe(1);
+			expect(saves()).toEqual([]);
+		} finally {
+			window.history.pushState({}, "", "/cart");
+			await a.end("c_open", { discard: true });
+		}
+	});
+
+	test("an add waits while an AI app holds the page, and goes in after (DEC-026)", async () => {
+		const { a, overlay, activity } = adder();
+		a.show({ target });
+		// Drawn and its screenshot taken; the AI app holds the page from then.
+		a.setTool("note");
+		const at = { clientX: 40, clientY: 40, button: 0, pointerId: 1 };
+		for (const type of ["pointerdown", "pointerup"])
+			overlay.capture.dispatchEvent(
+				new window.PointerEvent(type, at) as unknown as Event,
+			);
+		let held = false;
+		await settle(a, () => {
+			if (captures() === 1 && !held) held = activity.begin("ai-capture").ok;
+			return held;
+		});
+		overlay.popover
+			.querySelector<HTMLButtonElement>('[data-action="comment-done"]')
+			?.click();
+		await Bun.sleep(300);
+		expect(saves()).toEqual([]);
+		expect(a.state().drafts).toBe(1);
+		activity.end("ai-capture");
+		await added(a, 1);
+	});
+
+	test("leaving the page with a mark not in the case yet asks first", async () => {
+		const leaving = () => {
+			const e = new window.Event("beforeunload", { cancelable: true });
+			window.dispatchEvent(e);
+			return e.defaultPrevented;
+		};
+		const { a, overlay, activity } = adder();
+		a.show({ target });
+		expect(leaving()).toBe(false);
+		expect(activity.begin("ai-capture").ok).toBe(true);
+		note(overlay, a);
+		expect(leaving()).toBe(true);
+		activity.end("ai-capture");
+		await added(a, 1);
+		expect(leaving()).toBe(false);
+	});
 });

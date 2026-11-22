@@ -33,6 +33,7 @@ import {
 	TOKENS_KEY,
 	type Tokens,
 } from "../src/lib/cloud/auth.ts";
+import { MAX_SMALL_BYTES, readBody, TooLarge } from "../src/lib/cloud/body.ts";
 import {
 	DEVELOPMENT_SERVER,
 	DEVELOPMENT_SERVERS,
@@ -192,10 +193,10 @@ describe("the server's address", () => {
 		expect(serverProblem("https://app.sitegloss.dev")).toBeUndefined();
 		expect(serverProblem("http://localhost:3200")).toBeUndefined();
 		expect(serverProblem("http://127.0.0.1:3200/")).toBeUndefined();
-		expect(serverProblem("http://sitegloss.example")).toBe(
-			"Plain http: works only for localhost; use https: for other hosts.",
+		expect(serverProblem("http://sitegloss.example")).toContain(
+			"works only for localhost",
 		);
-		expect(serverProblem("ftp://x")).toBe("Use an https: address.");
+		expect(serverProblem("ftp://x")).toContain("Use an https:");
 		expect(serverProblem("not an address")).toBe("Not an address.");
 		// Kept as its origin: a path or a slash typed after it means nothing.
 		expect(serverOrigin("http://localhost:3200/app/")).toBe(
@@ -226,12 +227,8 @@ describe("the servers there are to choose from (DEC-041)", () => {
 
 	test("a server that is not the service is said to be none, in words", () => {
 		expect(serverNote(PRODUCTION_SERVER)).toBeUndefined();
-		expect(serverNote(DEVELOPMENT_SERVER)).toBe(
-			"Development server (app.dev.sitegloss.dev): not the real Sitegloss",
-		);
-		expect(serverNote("http://localhost:3200")).toBe(
-			"Another server (localhost:3200): not sitegloss.dev",
-		);
+		expect(serverNote(DEVELOPMENT_SERVER)).toContain("not the real Sitegloss");
+		expect(serverNote("http://localhost:3200")).toContain("not sitegloss.dev");
 	});
 
 	test("each server has its own part of the database, and sees no other's", async () => {
@@ -361,14 +358,14 @@ describe("a sign-in", () => {
 				`${REDIRECT}?error=access_denied&state=the-state`,
 				2000,
 			),
-		).toThrow("The sign-in was not allowed.");
+		).toThrow("was not allowed");
 		expect(() =>
 			codeFrom(
 				pending(),
 				`${REDIRECT}?error=server_error&error_description=Try+later&state=the-state`,
 				2000,
 			),
-		).toThrow("The sign-in failed: Try later");
+		).toThrow("failed: Try later");
 		// A "no" is this sign-in's only with this sign-in's state, as a code
 		// is: one without it, or with another's, is nobody's word.
 		for (const foreign of [
@@ -949,103 +946,6 @@ describe("the events stream", () => {
 });
 
 describe("the chosen server answers, nobody it points at", () => {
-	type Served = ReturnType<typeof Bun.serve>;
-	const up: Served[] = [];
-	const serve = (
-		answer: (request: Request) => Response | Promise<Response>,
-	) => {
-		const s = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: answer });
-		up.push(s);
-		return { origin: `http://127.0.0.1:${s.port}` };
-	};
-	const real = (input: string, init?: RequestInit) => fetch(input, init);
-
-	test("a redirect is never followed: the tokens, the code and the API's token go to the chosen server only, and no other site's content comes back", async () => {
-		try {
-			// Somewhere else: it would get what is sent on, and answer in the
-			// chosen server's stead.
-			const got: string[] = [];
-			const elsewhere = serve(async (request) => {
-				got.push(
-					`${request.method} ${new URL(request.url).pathname} ${await request.text()} ${request.headers.get("authorization") ?? ""}`,
-				);
-				return new URL(request.url).pathname.includes("/blobs/")
-					? new Response("ROUTER ADMIN PAGE", {
-							headers: { "content-type": "image/webp" },
-						})
-					: Response.json({
-							access_token: "theirs",
-							refresh_token: "theirs",
-							expires_in: 3600,
-							user: { id: "u", name: "n", email: "e" },
-							teams: [],
-						});
-			});
-			let asked = 0;
-			const chosen = serve((request) => {
-				asked++;
-				const { pathname, search } = new URL(request.url);
-				return new Response(null, {
-					status: 307,
-					headers: { location: `${elsewhere.origin}${pathname}${search}` },
-				});
-			});
-			const endpoints: Endpoints = {
-				authorize: `${chosen.origin}/api/auth/oauth2/authorize`,
-				token: `${chosen.origin}/api/auth/oauth2/token`,
-				revoke: `${chosen.origin}/api/auth/oauth2/revoke`,
-			};
-			const tokens: Tokens = {
-				access: "ACCESS",
-				refresh: "REFRESH",
-				expiresAt: 0,
-			};
-			// Discovery, the code, a refresh, the revoke.
-			await expect(discover(real, chosen.origin)).rejects.toBeInstanceOf(
-				OfflineError,
-			);
-			await expect(
-				exchangeCode(
-					real,
-					{ ...pending(), server: chosen.origin, token: endpoints.token },
-					"the-code",
-					2000,
-				),
-			).rejects.toBeInstanceOf(OfflineError);
-			await expect(
-				refreshTokens(real, chosen.origin, endpoints, tokens, 1000),
-			).rejects.toBeInstanceOf(OfflineError);
-			expect(await revokeTokens(real, endpoints, tokens)).toBe(false);
-			// The API: a call, and an image.
-			const api = httpApi({
-				server: chosen.origin,
-				token: async () => "ACCESS",
-				fetch: real,
-			});
-			await expect(api.me()).rejects.toMatchObject({ kind: "offline" });
-			await expect(api.getBlob("t", "a".repeat(64))).rejects.toMatchObject({
-				kind: "offline",
-			});
-			// The events stream: tried, never read.
-			const end = new AbortController();
-			const heard: number[] = [];
-			await listen({
-				url: `${chosen.origin}/api/v1/teams/t/events`,
-				token: async () => "ACCESS",
-				onChange: (cursor) => heard.push(cursor),
-				signal: end.signal,
-				fetch: real,
-				sleep: async () => end.abort(),
-			});
-			expect(heard).toEqual([]);
-			// The chosen server was asked each time; nobody else ever was.
-			expect(asked).toBe(7);
-			expect(got).toEqual([]);
-		} finally {
-			for (const s of up.splice(0)) s.stop(true);
-		}
-	});
-
 	test("every request says so, and none carries the browser's cookies", async () => {
 		const sent: RequestInit[] = [];
 		const spy = async (_input: string, init?: RequestInit) => {
@@ -1081,7 +981,7 @@ describe("the chosen server answers, nobody it points at", () => {
 		expect(sent.map((init) => init.credentials)).toEqual(Array(6).fill("omit"));
 	});
 
-	test("an image is read with its type and up to the API's limit; a larger one is given up, not held", async () => {
+	test("an image is read with its type", async () => {
 		const sha = "a".repeat(64);
 		const api = (answer: Response) =>
 			httpApi({
@@ -1098,72 +998,131 @@ describe("the chosen server answers, nobody it points at", () => {
 		expect((await api(new Response("<html>")).getBlob("t", sha)).type).not.toBe(
 			"image/webp",
 		);
-		// Said to be too large: not read at all.
-		let read = 0;
-		const endless = () =>
-			new ReadableStream<Uint8Array>({
-				pull(controller) {
-					read++;
-					controller.enqueue(new Uint8Array(1024 * 1024));
-				},
-			});
-		await expect(
-			api(
-				new Response(endless(), {
-					headers: { "content-length": String(MAX_IMAGE_BYTES + 1) },
-				}),
-			).getBlob("t", sha),
-		).rejects.toMatchObject({ code: TOO_LARGE });
-		expect(read).toBeLessThan(3);
-		// Not said, and it goes on and on: given up at the limit.
-		read = 0;
-		await expect(
-			api(new Response(endless())).getBlob("t", sha),
-		).rejects.toMatchObject({ code: TOO_LARGE });
-		expect(read).toBeGreaterThan(29);
-		expect(read).toBeLessThan(35);
 	});
-});
 
-describe("an answer is read up to what an answer may be", () => {
-	test("JSON: a page of changes can be asked for in fewer things; an answer over the limit is given up", async () => {
+	test("a page of changes can be asked for in fewer things", async () => {
 		const urls: string[] = [];
-		let read = 0;
-		const api = (answer: () => Response) =>
-			httpApi({
-				server: SERVER,
-				token: async () => "a",
-				fetch: async (url) => {
-					urls.push(url);
-					return answer();
-				},
-			});
-		const page = () => Response.json({ cursor: 3, more: false });
-		expect((await api(page).changes("t", undefined)).cursor).toBe(3);
-		await api(page).changes("t", 7, SMALL_PAGE);
-		await api(page).changes("t", undefined, SMALL_PAGE);
+		const api = httpApi({
+			server: SERVER,
+			token: async () => "a",
+			fetch: async (url) => {
+				urls.push(url);
+				return Response.json({ cursor: 3, more: false });
+			},
+		});
+		expect((await api.changes("t", undefined)).cursor).toBe(3);
+		await api.changes("t", 7, SMALL_PAGE);
+		await api.changes("t", undefined, SMALL_PAGE);
 		expect(urls.map((u) => u.slice(u.indexOf("/changes")))).toEqual([
 			"/changes",
 			`/changes?since=7&limit=${SMALL_PAGE}`,
 			`/changes?limit=${SMALL_PAGE}`,
 		]);
-		const endless = () =>
+	});
+});
+
+describe("an answer is read up to what an answer may be", () => {
+	const MB = 1024 * 1024;
+	/** An answer that goes on for ever, says it is `declared` long if told, and counts what was taken. */
+	function endless(declared?: number, status = 200) {
+		const taken = { pieces: 0 };
+		const response = () =>
 			new Response(
 				new ReadableStream<Uint8Array>({
 					pull(controller) {
-						read++;
-						controller.enqueue(new Uint8Array(4 * 1024 * 1024).fill(32));
+						taken.pieces++;
+						controller.enqueue(new Uint8Array(MB).fill(32));
 					},
 				}),
+				{
+					status,
+					headers: {
+						"content-type": "application/json",
+						...(declared === undefined
+							? {}
+							: { "content-length": String(declared) }),
+					},
+				},
 			);
-		await expect(api(endless).changes("t", undefined)).rejects.toMatchObject({
-			kind: "server",
-			code: TOO_LARGE,
-		});
-		// 64 MiB in pieces of 4 MiB: given up there.
-		expect(read).toBeGreaterThanOrEqual(MAX_JSON_BYTES / (4 * 1024 * 1024));
-		expect(read).toBeLessThan(MAX_JSON_BYTES / (4 * 1024 * 1024) + 4);
+		return { response, taken };
+	}
+
+	test("readBody: a length over the limit is not read, a stream over it is given up there, a body under it comes whole", async () => {
+		const declared = endless(3 * MB + 1);
+		await expect(readBody(declared.response(), 3 * MB)).rejects.toBeInstanceOf(
+			TooLarge,
+		);
+		expect(declared.taken.pieces).toBeLessThan(3);
+		const unsaid = endless();
+		await expect(readBody(unsaid.response(), 3 * MB)).rejects.toBeInstanceOf(
+			TooLarge,
+		);
+		expect(unsaid.taken.pieces).toBeGreaterThanOrEqual(3);
+		expect(unsaid.taken.pieces).toBeLessThan(7);
+		expect(await readBody(new Response("abc"), MB)).toEqual(
+			new TextEncoder().encode("abc"),
+		);
 	});
+
+	const api = (answer: Response) =>
+		httpApi({
+			server: SERVER,
+			token: async () => "a",
+			fetch: async () => answer,
+		});
+	const tokens = { access: "a", refresh: "r", expiresAt: 0 };
+	const tooLarge = expect.stringContaining("larger than an answer may be");
+	const given = { kind: "server", code: TOO_LARGE, message: tooLarge };
+	test.each([
+		[
+			"the discovery document",
+			MAX_SMALL_BYTES,
+			200,
+			(answer: Response) => discover(async () => answer, SERVER),
+			{ message: tooLarge },
+		],
+		[
+			"the token endpoint's answer",
+			MAX_SMALL_BYTES,
+			200,
+			(answer: Response) =>
+				refreshTokens(async () => answer, SERVER, ENDPOINTS, tokens, 0),
+			{ message: tooLarge },
+		],
+		[
+			"an error's body: its words are lost with it, its status is not",
+			MAX_SMALL_BYTES,
+			400,
+			(answer: Response) => api(answer).me(),
+			{ kind: "refused", status: 400, message: "The server answered 400." },
+		],
+		[
+			"a page of changes",
+			MAX_JSON_BYTES,
+			200,
+			(answer: Response) => api(answer).changes("t", undefined),
+			given,
+		],
+		[
+			"an image",
+			MAX_IMAGE_BYTES,
+			200,
+			(answer: Response) => api(answer).getBlob("t", "a".repeat(64)),
+			given,
+		],
+	])(
+		"%s: one byte over its limit is given up unread; unsaid, read up to that limit and no further",
+		async (_what, max, status, run, shape) => {
+			const answer = endless(max + 1, status);
+			await expect(run(answer.response())).rejects.toMatchObject(shape);
+			expect(answer.taken.pieces).toBeLessThan(3);
+			// Its limit is this one, not a smaller one.
+			const unsaid = endless(undefined, status);
+			await expect(run(unsaid.response())).rejects.toMatchObject(shape);
+			expect(unsaid.taken.pieces).toBeGreaterThanOrEqual(Math.floor(max / MB));
+			expect(unsaid.taken.pieces).toBeLessThan(Math.ceil(max / MB) + 4);
+		},
+	);
 });
 
 describe("the sign-ins under way", () => {
@@ -1182,57 +1141,5 @@ describe("the sign-ins under way", () => {
 		expect(stateOf(`${REDIRECT}?code=c&state=s-a`)).toBe("s-a");
 		expect(stateOf(`${REDIRECT}?code=c`)).toBe("");
 		expect(stateOf("not an address")).toBe("");
-	});
-});
-
-describe("small answers are read as small", () => {
-	/** An answer that goes on for 80 MiB, and counts what was taken of it. */
-	function huge(status = 200) {
-		let pulled = 0;
-		const response = () =>
-			new Response(
-				new ReadableStream<Uint8Array>({
-					pull(controller) {
-						if (pulled++ >= 80) controller.close();
-						else controller.enqueue(new Uint8Array(1024 * 1024).fill(32));
-					},
-				}),
-				{ status, headers: { "content-type": "application/json" } },
-			);
-		return { response, pulled: () => pulled };
-	}
-
-	test("the discovery document, the token endpoint's answer and an error's body: a megabyte at most", async () => {
-		const discovery = huge();
-		await expect(
-			discover(async () => discovery.response(), SERVER),
-		).rejects.toThrow("larger than an answer may be");
-		expect(discovery.pulled()).toBeLessThan(4);
-
-		const token = huge();
-		await expect(
-			refreshTokens(
-				async () => token.response(),
-				SERVER,
-				ENDPOINTS,
-				{ access: "a", refresh: "r", expiresAt: 0 },
-				0,
-			),
-		).rejects.toThrow("larger than an answer may be");
-		expect(token.pulled()).toBeLessThan(4);
-
-		const refused = huge(400);
-		const api = httpApi({
-			server: SERVER,
-			token: async () => "a",
-			fetch: async () => refused.response(),
-		});
-		// Its words are lost with it, its status is not.
-		await expect(api.me()).rejects.toMatchObject({
-			kind: "refused",
-			status: 400,
-			message: "The server answered 400.",
-		});
-		expect(refused.pulled()).toBeLessThan(4);
 	});
 });

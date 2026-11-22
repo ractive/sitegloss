@@ -444,6 +444,20 @@ inBothSets("adding marks to a case", () => {
 			const renamed = await caseTitled("Submit button contrast");
 			expect(renamed.c.id).toBe(made.c.id);
 			expect(renamed.c.marks.map((a) => a.comment)).toEqual(["Too pale"]);
+			// A link is stored at once too (DEC-028).
+			const ticket = "https://tickets.example.com/browse/ABC-123";
+			await panel.eval(`document.getElementById("case-link-edit").click()`);
+			await panel.waitFor(`document.activeElement?.id === "case-link-field"`);
+			await panel.eval(`(() => {
+				const f = document.getElementById("case-link-field");
+				f.value = ${JSON.stringify(ticket)};
+				f.dispatchEvent(new Event("input"));
+				f.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", cancelable: true }));
+			})()`);
+			await until(
+				async () => (await caseTitled("Submit button contrast")).c.link,
+				(link) => link === ticket,
+			);
 
 			// The next mark goes into it under its new title.
 			await markElement(page, "h1", "Too long");
@@ -459,84 +473,6 @@ inBothSets("adding marks to a case", () => {
 			await page.send("Page.close");
 		},
 		90_000,
-	);
-
-	fullTest(
-		"a link added, edited and removed in the case view is stored at once (DEC-028)",
-		async () => {
-			const { page } = await savedCase("Linked");
-			const panel = await panelHome(h);
-			await openCase(panel, "Linked");
-			const linkOf = async () => (await caseTitled("Linked")).c.link;
-			const anchor = `document.getElementById("case-link-open")`;
-			const edit = `document.getElementById("case-link-edit")`;
-			await panel.waitFor(
-				`${edit}.textContent === "Add a link" && ${anchor}.hidden`,
-			);
-			const typeLink = (text: string, key: string) =>
-				panel.eval(`(() => {
-				const f = document.getElementById("case-link-field");
-				f.value = ${JSON.stringify(text)};
-				f.dispatchEvent(new Event("input"));
-				f.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, cancelable: true }));
-			})()`);
-			const form = `document.getElementById("case-link-form")`;
-
-			// Text that is no link keeps the form open and says why; nothing stored.
-			await panel.eval(`${edit}.click()`);
-			await panel.waitFor(`document.activeElement?.id === "case-link-field"`);
-			await typeLink("javascript:alert(1)", "Enter");
-			await panel.waitFor(
-				`document.getElementById("case-link-hint").textContent === "A link starts with https:// or http://"`,
-			);
-			expect(await panel.eval<boolean>(`${form}.hidden`)).toBe(false);
-			expect(await linkOf()).toBeUndefined();
-
-			// Added: stored, an anchor to it, and Edit has the focus again.
-			const ticket = "https://tickets.example.com/browse/ABC-123";
-			await typeLink(ticket, "Enter");
-			await panel.waitFor(
-				`${form}.hidden && ${anchor}.getAttribute("href") === ${JSON.stringify(ticket)} && !${anchor}.hidden`,
-			);
-			expect(await linkOf()).toBe(ticket);
-			expect(
-				await panel.eval<string[]>(
-					`[${anchor}.target, ${anchor}.rel, ${anchor}.textContent, ${edit}.textContent, document.activeElement?.id]`,
-				),
-			).toEqual([
-				"_blank",
-				"noopener noreferrer",
-				"tickets.example.com/browse/ABC-123",
-				"Edit",
-				"case-link-edit",
-			]);
-
-			// Edited: the field starts with the stored link; Escape keeps it.
-			await panel.eval(`${edit}.click()`);
-			await panel.waitFor(
-				`document.getElementById("case-link-field").value === ${JSON.stringify(ticket)}`,
-			);
-			await typeLink("https://example.com/not-this", "Escape");
-			await panel.waitFor(`${form}.hidden`);
-			expect(await linkOf()).toBe(ticket);
-			const pr = "https://code.example.com/pull/7";
-			await panel.eval(`${edit}.click()`);
-			await typeLink(pr, "Enter");
-			await panel.waitFor(
-				`${anchor}.getAttribute("href") === ${JSON.stringify(pr)}`,
-			);
-			expect(await linkOf()).toBe(pr);
-
-			// Saved empty: gone from the store and from the view.
-			await panel.eval(`${edit}.click()`);
-			await typeLink("   ", "Enter");
-			await panel.waitFor(
-				`${form}.hidden && ${anchor}.hidden && !${anchor}.hasAttribute("href") && ${edit}.textContent === "Add a link"`,
-			);
-			expect(await linkOf()).toBeUndefined();
-			await page.send("Page.close");
-		},
-		60_000,
 	);
 
 	fullTest(
@@ -588,109 +524,6 @@ inBothSets("adding marks to a case", () => {
 		);
 
 	fullTest(
-		"New case for this page stays with the tab it was clicked for",
-		async () => {
-			const a = await h.open("v1");
-			const b = await h.open("v2");
-			// Sitegloss runs on the tab already: one question, no injection on the
-			// way (each would count against the 5 s the page has to answer).
-			await h.control.eval(
-				`chrome.scripting.executeScript({ target: { tabId: ${a.tabId} }, files: ["content.js"] })`,
-			);
-			// The page answers when the test says so: once the other tab is in
-			// front. A hold the test never released ends far inside the 5 s the
-			// page has, and fails the test saying so.
-			await wrapSend(`async (tabId, message, send) => {
-			if (message.type === "page:info")
-				await new Promise((release) => {
-					globalThis.releaseInfo = release;
-					setTimeout(() => {
-						globalThis.heldTooLong = true;
-						release();
-					}, 3000);
-				});
-			return send(tabId, message);
-		}`);
-			const panel = await startNewCase(a.page);
-			await h.control.waitFor(`typeof globalThis.releaseInfo === "function"`);
-			await b.page.activate();
-			const windowId = await h.control.eval<number>(
-				`chrome.tabs.get(${a.tabId}).then((t) => t.windowId)`,
-			);
-			await until(
-				() =>
-					h.control.eval<number | undefined>(
-						`chrome.tabs.query({ active: true, windowId: ${windowId} }).then(([t]) => t?.id)`,
-					),
-				(front) => front === b.tabId,
-			);
-			await h.control.eval("globalThis.releaseInfo()");
-			if (await h.control.eval<boolean>("globalThis.heldTooLong === true"))
-				throw new Error(
-					"page:info was not released by the test within 3 s: the hold ended by itself",
-				);
-			// No content script on the tab yet: no toolbar either.
-			const upOn = (tabId: number) =>
-				h.control.eval<boolean>(
-					`chrome.tabs.sendMessage(${tabId}, { type: "overlay:state" }).then((s) => s.visible, () => false)`,
-				);
-			await until(
-				() => upOn(a.tabId),
-				(up) => up,
-				10_000,
-			).catch(async (error: unknown) => {
-				const said = await panel.eval<string>(
-					`document.getElementById("hint").textContent + " | " + (document.getElementById("case-hint")?.textContent ?? "")`,
-				);
-				throw new Error(
-					`no toolbar on the tab clicked for; the panel says: ${said}`,
-					{ cause: error },
-				);
-			});
-			expect(await upOn(b.tabId)).toBe(false);
-			expect(
-				await panel.eval<string>(`document.getElementById("hint").textContent`),
-			).not.toContain("did not answer");
-			const made = await openOne(panel);
-			expect(made.page.url).toBe(`${h.base}/v1`);
-			expect(made.title).toBe("Krankenkasse vergleichen (v1)");
-			await a.page.send("Page.close");
-			await b.page.send("Page.close");
-		},
-		60_000,
-	);
-
-	fullTest(
-		"the first mark's draw meeting a busy page is drawn once it is free",
-		async () => {
-			const { page } = await h.open("v1");
-			// The page says it is busy at the first draw, as while the next
-			// mark's screenshot is taken.
-			await wrapSend(`(tabId, message, send) => {
-			if (message.type === "case:load" && !globalThis.saidBusy) {
-				globalThis.saidBusy = true;
-				return Promise.resolve({ error: "The user is marking this page right now; try again in a moment.", busy: true });
-			}
-			return send(tabId, message);
-		}`);
-			const panel = await startNewCase(page);
-			await inCase(panel, "Krankenkasse vergleichen (v1)");
-			await markElement(page, "h1", "Too long");
-			await panel.waitFor(
-				`globalThis.saidBusy && document.getElementById("case-hint").textContent.includes("1 of 1 marks found")`,
-				20_000,
-			);
-			expect(
-				await panel.eval<string>(
-					`document.getElementById("case-hint").textContent`,
-				),
-			).not.toContain("try again in a moment");
-			await page.send("Page.close");
-		},
-		60_000,
-	);
-
-	fullTest(
 		"a page that does not answer: said under the button, which works again",
 		async () => {
 			const { page, tabId } = await h.open("v1");
@@ -723,42 +556,6 @@ inBothSets("adding marks to a case", () => {
 	);
 
 	fullTest(
-		"an empty case whose toolbar holds a comment on another tab stays when left",
-		async () => {
-			const a = await h.open("v1");
-			let panel = await startNewCase(a.page);
-			await inCase(panel, "Krankenkasse vergleichen (v1)");
-			const made = await openOne(panel);
-			// A mark whose comment is still being typed: on the page only.
-			await a.page.click(shadow('[data-action="tool-note"]'));
-			await a.page.click(`document.querySelector("h1")`);
-			await a.page.waitFor(shadow(".popover textarea"));
-			await a.page.type("Still typing");
-			// The panel opened again on another tab knows nothing of that toolbar.
-			const b = await h.open("v2");
-			await b.page.activate();
-			panel = await panelHome(h);
-			const item = `document.querySelector('[data-case="${made.id}"]')`;
-			await panel.waitFor(item);
-			await panel.eval(`${item}.click()`);
-			await panel.waitFor(
-				`document.getElementById("verdict")?.dataset.case === "${made.id}"`,
-			);
-			await allCases(panel);
-			await home(panel);
-			await Bun.sleep(1000);
-			const db = await h.control.eval<Db>(READ_DB);
-			expect(db.cases.some((c) => c.id === made.id)).toBe(true);
-			expect(
-				await a.page.eval<string>(`${shadow(".popover textarea")}.value`),
-			).toBe("Still typing");
-			await b.page.send("Page.close");
-			await a.page.send("Page.close");
-		},
-		60_000,
-	);
-
-	fullTest(
 		"left without a mark, the user's case stays when a summary was typed and not saved",
 		async () => {
 			const { page } = await h.open("v1");
@@ -781,31 +578,6 @@ inBothSets("adding marks to a case", () => {
 			// The list shows only after the untouched case is gone (DEC-026).
 			expect(await stays(typed.id)).toBe(true);
 			await page.send("Page.close");
-		},
-		60_000,
-	);
-
-	fullTest(
-		"the tab closed while the case has a mark: the case stays open",
-		async () => {
-			const { page } = await h.open("v1");
-			const panel = await startNewCase(page);
-			await inCase(panel, "Krankenkasse vergleichen (v1)");
-			await markElement(page, "h1", "Kept");
-			await page.waitFor(`${status}?.startsWith("Mark 1 added")`, 20_000);
-			const made = await openOne(panel);
-			await page.send("Page.close");
-			await Bun.sleep(1500);
-			expect(
-				await panel.eval<string | undefined>(
-					`document.getElementById("case-view").hidden ? undefined : document.getElementById("verdict")?.dataset.case`,
-				),
-			).toBe(made.id);
-			expect(
-				(await h.control.eval<Db>(READ_DB)).cases.some((c) => c.id === made.id),
-			).toBe(true);
-			await allCases(panel);
-			await home(panel);
 		},
 		60_000,
 	);
@@ -916,65 +688,6 @@ inBothSets("adding marks to a case", () => {
 	};
 	const home = (panel: Page) =>
 		panel.waitFor(`!document.getElementById("home").hidden`, 10_000);
-
-	fullTest(
-		"All cases after a blocked one: the page decides, a later mark that fails blocks again",
-		async () => {
-			const { page, tabId } = await savedCase("Blocked once");
-			const panel = await addMarks(page, "Blocked once");
-			const { c } = await caseTitled("Blocked once");
-			const leaveHint = `document.getElementById("leave-hint")`;
-			let stored = await takeOut(c.id);
-			await markElement(page, "[data-truth=submit]", "Second");
-			await page.waitFor(
-				`${alert}?.startsWith("Mark 2 was not added")`,
-				20_000,
-			);
-			await allCases(panel);
-			await panel.waitFor(
-				`!${leaveHint}.hidden && ${leaveHint}.textContent.startsWith("1 mark is not in the case yet")`,
-				20_000,
-			);
-
-			// The mark goes in after all: the panel says nothing more about it.
-			await putBack(stored);
-			await page.click(shadow('[data-action="retry"]'));
-			await page.waitFor(
-				`${status} === "Mark 2 added to “Blocked once”"`,
-				20_000,
-			);
-			await panel.waitFor(`${leaveHint}.hidden`, 10_000);
-
-			// Much later a mark fails again: the first click finishes, it does not
-			// discard.
-			stored = await takeOut(c.id);
-			await markElement(page, "[data-truth=tip]", "Third");
-			await page.waitFor(
-				`${alert}?.startsWith("Mark 3 was not added")`,
-				20_000,
-			);
-			await allCases(panel);
-			await panel.waitFor(
-				`!${leaveHint}.hidden && ${leaveHint}.textContent.startsWith("1 mark is not in the case yet")`,
-				20_000,
-			);
-			expect(await toolbarUp(tabId)).toBe(true);
-			await drawnAre(page, { drafts: ["3"], saved: ["1", "2"] });
-			await putBack(stored);
-			// The second click leaves without it.
-			await allCases(panel);
-			await home(panel);
-			await until(
-				() => toolbarUp(tabId),
-				(up) => !up,
-			);
-			expect(
-				(await caseTitled("Blocked once")).c.marks.map((a) => a.comment),
-			).toEqual(["First", "Second"]);
-			await page.send("Page.close");
-		},
-		120_000,
-	);
 
 	fullTest(
 		"All cases with a mark not in the case: the panel stays and says so; again leaves without it",

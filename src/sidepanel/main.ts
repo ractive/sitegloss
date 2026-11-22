@@ -13,12 +13,8 @@ import {
 import {
 	type Case,
 	casePages,
-	cleanLink,
 	cleanTitle,
-	linkProblem,
 	MARK_CHANGED,
-	MAX_COMMENT,
-	MAX_LINK,
 	type Mark,
 	markFor,
 	markKey,
@@ -69,6 +65,7 @@ import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
+import { linkFromField } from "./case-link.ts";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { DELETE_ARMED_MS, deleteClick } from "./delete.ts";
@@ -88,6 +85,7 @@ import {
 } from "./follow.ts";
 import { isUntouched, mayHold, newCase, type TabAnswer } from "./fresh.ts";
 import { CaseHints } from "./hints.ts";
+import { markChange } from "./mark-change.ts";
 import {
 	linkStep,
 	markTargets,
@@ -1321,10 +1319,6 @@ async function renameCase(caseId: string, text: string): Promise<void> {
 	}
 }
 
-/** Under the link's field for a text that is no link (DEC-028). */
-const NOT_A_LINK = "A link starts with https:// or http://";
-const LINK_TOO_LONG = `A link has at most ${MAX_LINK} characters.`;
-
 /**
  * The case's link (DEC-028): stored at once, as every change is; an empty
  * field removes it. Text that is no http or https address keeps the form
@@ -1357,18 +1351,15 @@ async function changeThread(
 }
 
 async function linkCase(caseId: string, text: string): Promise<void> {
-	const link = text.trim() === "" ? undefined : cleanLink(text);
-	if (link === undefined && text.trim() !== "") {
+	const field = linkFromField(text);
+	if ("error" in field) {
 		update((s) => {
 			if (s.linking?.caseId === caseId)
-				s.linking = {
-					caseId,
-					text: s.linking.text,
-					error: linkProblem(text) === "long" ? LINK_TOO_LONG : NOT_A_LINK,
-				};
+				s.linking = { caseId, text: s.linking.text, error: field.error };
 		});
 		return;
 	}
+	const { link } = field;
 	if (state.current?.id === caseId && state.current.link === link) {
 		update((s) => (s.linking = undefined));
 		return;
@@ -2555,62 +2546,33 @@ function answerMark(
 	}
 	const done = (why: string | undefined) =>
 		answer(why === undefined ? { ok: true } : { ok: false, error: why });
-	const now = new Date().toISOString();
-	switch (request.type) {
-		case "mark:picked":
-			update((s) => {
-				// Its row shows, whatever the list was filtered by.
-				s.markFilter = undefined;
-				s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
-			});
-			answer({ ok: true });
-			return false;
-		case "mark:comment":
-			if (request.text.length > MAX_COMMENT) {
-				answer({ ok: false, error: "That comment is too long." });
-				return false;
-			}
-			void changeMark(c, a, (current, id) => ({
-				value: withComment(current, id, request.text, now),
-			})).then(done);
-			return true;
-		case "mark:resolve":
-			void changeMark(c, a, (current, id) => ({
-				value: withChoice(current, id, request.kind, request.note, now),
-			})).then(done);
-			return true;
-		case "mark:verify":
-			void changeMark(c, a, (current, id) => ({
-				value: withVerified(current, id, undefined, now),
-			})).then(done);
-			return true;
-		case "mark:reopen":
-			// The developer reads it first: a reopen says why, here as in the panel.
-			if (request.note.trim() === "") {
-				answer({ ok: false, error: "Say what is still wrong." });
-				return false;
-			}
-			void changeMark(c, a, (current, id) => ({
-				// Opened meanwhile: the form stays, and says why.
-				value: withReopen(
-					current,
-					id,
-					{ note: request.note, refuseOpen: true },
-					now,
-				),
-			})).then(done);
-			return true;
-		case "mark:delete":
-			if (deleting.has(a.id)) {
-				answer({ ok: false, error: "That mark is being deleted." });
-				return false;
-			}
-			deleting.add(a.id);
-			void changeMark(c, a, (current, id) => withoutMark(current, id, now))
-				.then(done)
-				.finally(() => deleting.delete(a.id));
-			return true;
+	if (request.type === "mark:picked") {
+		update((s) => {
+			// Its row shows, whatever the list was filtered by.
+			s.markFilter = undefined;
+			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
+		});
+		answer({ ok: true });
+		return false;
 	}
+	const made = markChange(request, new Date().toISOString());
+	if ("error" in made) {
+		answer({ ok: false, error: made.error });
+		return false;
+	}
+	if (request.type !== "mark:delete") {
+		void changeMark(c, a, made.change).then(done);
+		return true;
+	}
+	if (deleting.has(a.id)) {
+		answer({ ok: false, error: "That mark is being deleted." });
+		return false;
+	}
+	deleting.add(a.id);
+	void changeMark(c, a, made.change)
+		.then(done)
+		.finally(() => deleting.delete(a.id));
+	return true;
 }
 
 // The top bar's AI pill opens the Settings view, where the AI app card is;

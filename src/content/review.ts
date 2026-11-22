@@ -71,16 +71,26 @@ export type AskPanel = (request: MarkRequest) => Promise<MarkAnswer>;
 /** No panel shows the case: nothing changes it from the page. */
 export const NO_PANEL = `Open this case in Sitegloss's ${PANEL} to change its marks.`;
 
-const askPanel: AskPanel = async (request) => {
-	try {
-		const answer = (await chrome.runtime.sendMessage(request)) as
-			| MarkAnswer
-			| undefined;
-		return answer ?? { ok: false, error: NO_PANEL };
-	} catch {
-		return { ok: false, error: NO_PANEL };
-	}
-};
+/**
+ * Asks through `send`: no answer (no panel listens, or one that does not show
+ * the case) and a failed send are both "no panel shows the case".
+ */
+export function panelAsker(
+	send: (request: MarkRequest) => Promise<unknown>,
+): AskPanel {
+	return async (request) => {
+		try {
+			const answer = (await send(request)) as MarkAnswer | undefined;
+			return answer ?? { ok: false, error: NO_PANEL };
+		} catch {
+			return { ok: false, error: NO_PANEL };
+		}
+	};
+}
+
+const askPanel: AskPanel = panelAsker((request) =>
+	chrome.runtime.sendMessage(request),
+);
 
 // The test build's guards and delays below are short (DEC-053): its clicks
 // and pages come fast, and its tests need not sit them out.
@@ -1054,6 +1064,21 @@ export class Reviewer {
 		if (this.#open === undefined) return;
 		this.#open = undefined;
 		this.overlay.closePopover();
+	}
+
+	/**
+	 * `case:clear` for `caseId` (none: whatever is drawn). Another case, an AI
+	 * app's loaded meanwhile, stays; a load of the case still under way stops
+	 * too, or it would draw the marks after the clear ("← All cases" during a
+	 * draw).
+	 */
+	clearFor(caseId: string | undefined): void {
+		if (
+			caseId === undefined ||
+			caseId === this.caseId ||
+			caseId === this.loadingCaseId
+		)
+			this.clear();
 	}
 
 	clear(): void {

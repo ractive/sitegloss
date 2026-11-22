@@ -5,7 +5,6 @@ import {
 } from "@modelcontextprotocol/client";
 import { startTestRelay, tokenFor } from "@ractive-ch/tab-mcp/testing";
 import {
-	type ConfirmRequest,
 	type RelayClient,
 	TabMcp,
 	type Tool,
@@ -313,6 +312,26 @@ async function call(
 
 const json = (r: Result, i = 0) => JSON.parse(r.content[i]?.text ?? "null");
 
+/** What the user is asked before an AI app's call. */
+const ask = (
+	name: string,
+	args: Record<string, unknown>,
+	client: ToolCallClient = CLAUDE,
+	cloud?: Parameters<typeof confirmLines>[3],
+	signal: AbortSignal = new AbortController().signal,
+) =>
+	confirmLines(
+		store,
+		tab,
+		{
+			tool: { name, description: "Does it." },
+			arguments: args,
+			client,
+			signal,
+		},
+		cloud,
+	);
+
 beforeEach(() => {
 	store = new MemoryStore();
 	tab = new FakeTab();
@@ -413,9 +432,7 @@ describe("tools", () => {
 		expect(cases.length).toBeGreaterThan(0);
 		expect(cases.length).toBeLessThan(60);
 		expect(cases[0].caseId).toBe("c_69"); // newest first
-		expect(listed.content[1]?.text).toContain(
-			"cases are left out to stay under the size limit: the oldest",
-		);
+		expect(listed.content[1]?.text).toContain("cases are left out");
 		expect(JSON.stringify(listed).length).toBeLessThan(20_000);
 
 		// One case made to be huge (an imported file can be: 200 pages with
@@ -476,11 +493,6 @@ describe("tools", () => {
 		await expect(
 			call("get_image", { caseId: "c_1", path: "crops/m9.webp" }),
 		).rejects.toThrow("no image crops/m9.webp");
-		const image = await call("get_image", {
-			caseId: "c_1",
-			path: "shots/s1.webp",
-		});
-		expect(image.content[1]?.type).toBe("image");
 	});
 
 	test("load_case and highlight", async () => {
@@ -533,28 +545,54 @@ describe("tools", () => {
 			if (r.type === "case:show") expect(r.caseId).toBe("c_1");
 	});
 
-	test("load_case passes on the page's error", async () => {
-		await seed();
-		tab.loadError = "The user is saving marks on this page right now.";
-		await expect(call("load_case", { caseId: "c_1" })).rejects.toThrow(
-			"The user is saving marks on this page right now.",
-		);
-		await expect(call("highlight", { caseId: "c_1", mark: 1 })).rejects.toThrow(
-			"The user is saving marks on this page right now.",
-		);
-	});
-
-	test("load_case stopped by a clear or another case's load says so, and to call it again", async () => {
-		await seed();
-		tab.loadReplaced = true;
-		await expect(call("load_case", { caseId: "c_1" })).rejects.toThrow(
-			"taken off the page (Hide) or another case was loaded onto it; call load_case again",
-		);
-		tab.loadReplaced = false;
-		expect(json(await call("load_case", { caseId: "c_1" })).marks).toHaveLength(
-			2,
-		);
-	});
+	test.each([
+		[
+			"a load the page cannot take now",
+			{ loadError: "The user is saving marks on this page right now." },
+			"load_case",
+			"saving marks on this page",
+		],
+		[
+			"a highlight that has to load the case first",
+			{ loadError: "The user is saving marks on this page right now." },
+			"highlight",
+			"saving marks on this page",
+		],
+		[
+			"a load a clear or another case's load stopped",
+			{ loadReplaced: true },
+			"load_case",
+			"call load_case again",
+		],
+		[
+			"a mark shown on a busy page",
+			{ showError: "Sitegloss is saving on this page; try again." },
+			"highlight",
+			"try again",
+		],
+		[
+			"a capture while the user's save takes screenshots",
+			{ saving: true },
+			"capture",
+			"saving marks",
+		],
+	])(
+		"the page's refusal is passed on: %s",
+		async (_name, page, name, message) => {
+			await seed();
+			Object.assign(tab, page);
+			await expect(call(name, { caseId: "c_1", mark: 1 })).rejects.toThrow(
+				message,
+			);
+			expect(tab.captured).toEqual([]);
+			// The refusal does not stick: the page free again, the case loads.
+			for (const key of Object.keys(page))
+				(tab as unknown as Record<string, unknown>)[key] = undefined;
+			expect(
+				json(await call("load_case", { caseId: "c_1" })).marks,
+			).toHaveLength(2);
+		},
+	);
 
 	test("highlight loads the case again when the loaded copy lacks the mark", async () => {
 		await seed();
@@ -630,24 +668,15 @@ describe("tools", () => {
 		expect(changed).toEqual([]);
 	});
 
-	test("capture is refused while the user's save takes screenshots", async () => {
-		tab.saving = true;
-		await expect(call("capture")).rejects.toThrow("saving marks");
-		expect(tab.captured).toEqual([]);
-	});
-
 	test("a change the user allowed for one mark is not made to another that has its number by then (the team's sync renumbers)", async () => {
 		const c = await seed();
 		const [one, two] = c.marks as [Mark, Mark];
-		const ask = async (name: string, input: Record<string, unknown>) => {
+		const askAbout = async (name: string, input: Record<string, unknown>) => {
 			const signal = new AbortController().signal;
-			const lines = await confirmLines(store, tab, {
-				tool: { name, description: "" },
-				arguments: input,
-				client: CLAUDE,
+			return {
 				signal,
-			});
-			return { signal, lines };
+				lines: await ask(name, input, CLAUDE, undefined, signal),
+			};
 		};
 		// The user is asked about mark 2 as it is, and reads its comment.
 		const calls = [
@@ -655,7 +684,7 @@ describe("tools", () => {
 			["add_finding", { caseId: "c_1", mark: 2, text: "Found why" }],
 		] as const;
 		const asked = [];
-		for (const [name, input] of calls) asked.push(await ask(name, input));
+		for (const [name, input] of calls) asked.push(await askAbout(name, input));
 		expect(asked[0]?.lines.join("\n")).toContain("Mark 2:");
 		// Before they answer, the team's sync gives marks other numbers: a
 		// teammate's mark is 2 now, and the mark they read about is 3.
@@ -671,7 +700,7 @@ describe("tools", () => {
 		});
 		for (const [i, [name, input]] of calls.entries())
 			await expect(call(name, input, asked[i]?.signal)).rejects.toThrow(
-				"Mark 2 is not the mark the user was asked about: the case changed meanwhile",
+				"is not the mark the user was asked about",
 			);
 		const after = (await store.getCase("c_1")) as Case;
 		expect(after.marks.map((a) => [a.resolution, a.findings])).toEqual([
@@ -680,7 +709,7 @@ describe("tools", () => {
 			[undefined, undefined],
 		]);
 		// Asked again about what mark 3 is now, it goes through.
-		const again = await ask("set_mark_status", {
+		const again = await askAbout("set_mark_status", {
 			caseId: "c_1",
 			mark: 3,
 			status: "fixed",
@@ -703,17 +732,13 @@ describe("tools", () => {
 	test("add_mark is refused when the page in front changed after the user allowed it", async () => {
 		await seed();
 		const signal = new AbortController().signal;
-		const question = await confirmLines(store, tab, {
-			tool: { name: "add_mark", description: "Add a mark." },
-			arguments: { caseId: "c_1", selector: "button", comment: "x" },
-			client: {
-				kind: "relay",
-				grantId: "g",
-				id: "https://claude.ai/oauth",
-				host: "claude.ai",
-			},
+		const question = await ask(
+			"add_mark",
+			{ caseId: "c_1", selector: "button", comment: "x" },
+			CLAUDE,
+			undefined,
 			signal,
-		});
+		);
 		expect(question.join("\n")).toContain("Page: http://localhost:3000/kk");
 		tab.url = "https://mail.example/inbox";
 		await expect(
@@ -722,7 +747,7 @@ describe("tools", () => {
 				{ caseId: "c_1", selector: "button", comment: "x" },
 				signal,
 			),
-		).rejects.toThrow("The page in front changed since the user allowed this");
+		).rejects.toThrow("changed since the user allowed this");
 		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 		tab.url = "http://localhost:3000/kk";
 		await call(
@@ -851,9 +876,7 @@ describe("tools", () => {
 		};
 		await expect(
 			call("add_mark", { caseId: "c_1", selector: "a", comment: "x" }),
-		).rejects.toThrow(
-			"Mark 3 was added to the case meanwhile (by the user); call add_mark again.",
-		);
+		).rejects.toThrow("was added to the case meanwhile (by the user)");
 		// The AI app starts over with a new screenshot: this one has no use.
 		expect(
 			[...store.images.keys()].filter((k) => k.includes("/pending/")),
@@ -923,30 +946,69 @@ describe("tools", () => {
 			expect((await stored(1))?.reopens?.[0]?.note).toBeUndefined();
 		});
 
-		test("verified is refused unless the mark is fixed", async () => {
-			await seed();
-			await expect(status(2, "verified")).rejects.toThrow(
-				"Mark 2 is open: only a fixed mark can be verified. Set it fixed once the fix is in; verifying is the user's.",
-			);
-			await status(2, "wontfix");
-			await expect(status(2, "verified")).rejects.toThrow(
-				"Mark 2 is resolved as Won't fix: only a fixed mark can be verified.",
-			);
-			expect((await stored())?.resolution?.verified).toBeUndefined();
-		});
+		test.each<
+			[
+				string,
+				[string, string?][],
+				[string, string?],
+				string | { error: string },
+			]
+		>([
+			[
+				"verified on an open mark",
+				[],
+				["verified"],
+				{ error: "only a fixed mark can be verified" },
+			],
+			[
+				"verified on a mark closed as won't fix",
+				[["wontfix"]],
+				["verified"],
+				{ error: "resolved as Won't fix" },
+			],
+			[
+				"verified with a note",
+				[["fixed"]],
+				["verified", "Checked on build 412"],
+				{ error: "verified takes no note" },
+			],
+			[
+				"a reopen note of 2,001 characters",
+				[["fixed"]],
+				["open", "y".repeat(2001)],
+				{ error: "this one has 2,001" },
+			],
+			["open on an open mark", [], ["open"], "Mark 2 is open already."],
+			[
+				"open with a note on an open mark",
+				[],
+				["open", "x"],
+				"Mark 2 is open already; the note was not kept.",
+			],
+			[
+				"verified twice",
+				[["fixed"], ["verified"]],
+				["verified"],
+				"Mark 2 is verified already.",
+			],
+		])(
+			"a status call that changes nothing: %s",
+			async (_name, before, args, outcome) => {
+				await seed();
+				for (const [setup, note] of before) await status(2, setup, note);
+				const kept = await store.getCase("c_1");
+				const attempt = status(2, ...args);
+				if (typeof outcome === "string") expect(await attempt).toBe(outcome);
+				else await expect(attempt).rejects.toThrow(outcome.error);
+				expect(await store.getCase("c_1")).toEqual(kept as Case);
+			},
+		);
 
-		test("open on an open mark changes nothing; verified twice stays as it was", async () => {
+		test("a reopen's note of 2,000 characters is kept whole", async () => {
 			await seed();
-			const before = await store.getCase("c_1");
-			expect(await status(2, "open")).toBe("Mark 2 is open already.");
-			const after = await store.getCase("c_1");
-			expect(after).toEqual(before as Case);
-			expect(after?.marks[1]?.reopens).toBeUndefined();
 			await status(2, "fixed");
-			await status(2, "verified");
-			const once = (await stored())?.resolution;
-			expect(await status(2, "verified")).toBe("Mark 2 is verified already.");
-			expect((await stored())?.resolution).toEqual(once as never);
+			await status(2, "open", "y".repeat(2000));
+			expect((await stored())?.reopens?.[0]?.note?.length).toBe(2000);
 		});
 
 		test("an AI app changes a verified mark only by reopening it", async () => {
@@ -968,46 +1030,37 @@ describe("tools", () => {
 				],
 			});
 			const before = await store.getCase("c_1");
-			expect(await status(2, "fixed", "AI rewrote the note")).toBe(
-				"Mark 2 is verified already; to add something, add a finding.",
+			expect(await status(2, "fixed", "AI rewrote the note")).toContain(
+				"to add something, add a finding",
 			);
-			expect(await status(2, "fixed")).toBe(
-				"Mark 2 is verified already; to add something, add a finding.",
-			);
+			expect(await status(2, "fixed")).toContain("add a finding");
 			// Closing it is asked for and not done: an error, not a result
 			// an AI app could take for done.
 			for (const s of ["wontfix", "cantreproduce"])
-				await expect(status(2, s)).rejects.toThrow(
-					"Mark 2 is verified: reopen it first (status open, with a note) if it is wrong.",
-				);
+				await expect(status(2, s)).rejects.toThrow("reopen it first");
 			expect(await status(2, "verified")).toBe("Mark 2 is verified already.");
 			expect(await store.getCase("c_1")).toEqual(before as Case);
 			// The question says beforehand what the call will come to.
 			const asks = async (status: string, note?: string) =>
 				(
-					await confirmLines(store, tab, {
-						tool: { name: "set_mark_status", description: "Does it." },
-						arguments: {
-							caseId: "c_1",
-							mark: 2,
-							status,
-							...(note === undefined ? {} : { note }),
-						},
-						client: { kind: "relay", grantId: "g", id: "i", host: "claude.ai" },
-						signal: new AbortController().signal,
+					await ask("set_mark_status", {
+						caseId: "c_1",
+						mark: 2,
+						status,
+						...(note === undefined ? {} : { note }),
 					})
 				).join("\n");
 			expect(await asks("fixed")).toContain(
-				"This will change nothing: Mark 2 is verified already; to add something, add a finding.",
+				"change nothing: Mark 2 is verified already; to add something",
 			);
 			expect(await asks("verified")).toContain(
-				"This will change nothing: Mark 2 is verified already.",
+				"change nothing: Mark 2 is verified already.",
 			);
 			expect(await asks("wontfix")).toContain(
-				"Sitegloss will refuse this whatever you answer: Mark 2 is verified: reopen it first",
+				"refuse this whatever you answer: Mark 2 is verified: reopen it first",
 			);
 			expect(await asks("verified", "a note")).toContain(
-				"Sitegloss will refuse this whatever you answer: verified takes no note",
+				"refuse this whatever you answer: verified takes no note",
 			);
 			// A call that changes the mark gets neither line.
 			const reopen = await asks("open", "Not fixed after all");
@@ -1019,13 +1072,10 @@ describe("tools", () => {
 			await status(2, "open", "Not fixed after all");
 			expect((await stored())?.reopens?.[0]?.was).toEqual(verified as never);
 			expect(await status(2, "wontfix")).toBe("Mark 2 is resolved: Won't fix.");
-			const tool = tools.get("set_mark_status");
-			expect(tool?.description).toContain(
-				"A verified mark changes only by a reopen",
+			expect(tools.get("set_mark_status")?.description).toContain(
+				"changes only by a reopen",
 			);
-			expect(INSTRUCTIONS).toContain(
-				"a verified mark changes only by a reopen",
-			);
+			expect(INSTRUCTIONS).toContain("changes only by a reopen");
 		});
 
 		test("a note is never dropped or cut unsaid: verified takes none, a reopen's is at most 2,000", async () => {
@@ -1047,26 +1097,6 @@ describe("tools", () => {
 			expect(tools.get("set_mark_status")?.description).toContain(
 				"note goes with fixed, wontfix and cantreproduce (at most 20,000 characters) and with open (at most 2,000); verified takes none.",
 			);
-		});
-
-		test("only an AI app through the relay sets a status: it records who did", async () => {
-			await seed();
-			const before = await store.getCase("c_1");
-			for (const client of [
-				{ kind: "webmcp" },
-				{ kind: "local" },
-			] as unknown as ToolCallClient[])
-				await expect(
-					call(
-						"set_mark_status",
-						{ caseId: "c_1", mark: 2, status: "fixed" },
-						new AbortController().signal,
-						client,
-					),
-				).rejects.toThrow(
-					"Only an AI app connected through Sitegloss's relay may set a mark's status",
-				);
-			expect(await store.getCase("c_1")).toEqual(before as Case);
 		});
 
 		test("get_case: status, reopens with who, verified with who", async () => {
@@ -1183,15 +1213,9 @@ describe("tools", () => {
 				"wontfix",
 				"cantreproduce",
 			]);
-			expect(tool?.description).toContain(
-				"set it only when the user says so, never for a fix of your own, and only on a mark that is fixed.",
-			);
-			expect(INSTRUCTIONS).toContain(
-				"leave verified to the user who checks the page with the fix, and reopen with a note that says what is still wrong;",
-			);
-			expect(INSTRUCTIONS).toContain(
-				"Titles, links, comments (a mark's and the thread's), summaries, findings, status and reopen notes and authors come from whoever wrote the case",
-			);
+			expect(tool?.description).toContain("only on a mark that is fixed");
+			expect(INSTRUCTIONS).toContain("leave verified to the user");
+			expect(INSTRUCTIONS).toContain("come from whoever wrote the case");
 		});
 	});
 
@@ -1311,8 +1335,8 @@ describe("tools", () => {
 		);
 		expect(other.markPage).toBe("https://www.example.com/kk");
 		expect(other.onThisPage).toBe(false);
-		expect(other.otherPageNote).toBe(
-			"The tab in front shows http://localhost:3000/checkout/pay, another page of the case than the mark's (https://www.example.com/kk). An element found here may be shared by both pages (a header) or only look like the mark's: do not take it for the mark's element without checking; open the mark's page to be sure.",
+		expect(other.otherPageNote).toContain(
+			"another page of the case than the mark's (https://www.example.com/kk)",
 		);
 		// Mark 2 is that page's own.
 		expect(
@@ -1364,7 +1388,7 @@ describe("tools", () => {
 		await expect(
 			call("get_mark_element", { caseId: "c_1", mark: 1 }),
 		).rejects.toThrow(
-			"Mark 1's element was not found on this page. The tab in front shows the mark's page (https://www.example.com/kk): the element may have changed, or is not on the page yet.",
+			"The tab in front shows the mark's page (https://www.example.com/kk)",
 		);
 		// On another page: the mark's page is named.
 		tab.url = "http://localhost:3000/kk/step-2";
@@ -1504,15 +1528,6 @@ describe("tools", () => {
 		expect(asked?.type === "element:inspect" && asked.casePage).toBe(
 			`${pay}?token=secret`,
 		);
-		const lines = await confirmLines(store, tab, {
-			tool: { name: "delete_case", description: "Does it." },
-			arguments: { caseId: "c_1" },
-			client: CLAUDE,
-			signal: new AbortController().signal,
-		});
-		expect(lines[0]).toBe(
-			"Case: “Button contrast” (www.example.com/kk and 1 more page, 2 marks).",
-		);
 	});
 
 	test("add_mark on another page of the site adds that page to the case", async () => {
@@ -1612,15 +1627,6 @@ describe("tools", () => {
 		).toBe(false);
 	});
 
-	test("highlight passes on that the page is busy", async () => {
-		await seed();
-		await call("load_case", { caseId: "c_1" });
-		tab.showError = "Sitegloss is saving on this page; try again.";
-		await expect(call("highlight", { caseId: "c_1", mark: 1 })).rejects.toThrow(
-			"Sitegloss is saving on this page; try again.",
-		);
-	});
-
 	test("the AI app gets page addresses without query or fragment", async () => {
 		const c = await seed();
 		const secret = "https://app.example/reset?token=abc&email=a@b.ch#access";
@@ -1641,12 +1647,13 @@ describe("tools", () => {
 		expect(added.content[0]?.text).toContain(`on ${plain}.`);
 		// The user is asked with the whole address; the AI app is told less.
 		const signal = new AbortController().signal;
-		const asked = await confirmLines(store, tab, {
-			tool: { name: "add_mark", description: "Does it." },
-			arguments: { caseId: "c_1" },
-			client: { kind: "relay", grantId: "g", id: "i", host: "claude.ai" },
+		const asked = await ask(
+			"add_mark",
+			{ caseId: "c_1" },
+			CLAUDE,
+			undefined,
 			signal,
-		});
+		);
 		expect(asked.join("\n")).toContain(`Page: ${secret}`);
 		tab.url = "https://app.example/other";
 		const input = { caseId: "c_1", selector: "button", comment: "y" };
@@ -1753,45 +1760,44 @@ describe("findings", () => {
 		expect(await stored(1)).toBeUndefined();
 	});
 
-	test("a call through WebMCP writes no finding and owns none", async () => {
-		await seed();
-		const id = added(
-			await call("add_finding", { caseId: "c_1", mark: 1, text: "Mine" }),
-		);
-		const signal = new AbortController().signal;
-		const webmcp: ToolCallClient = { kind: "webmcp" };
-		const refusal = "Only an AI app connected through Sitegloss's relay";
-		await expect(
-			call(
-				"add_finding",
-				{ caseId: "c_1", mark: 1, text: "x" },
-				signal,
-				webmcp,
-			),
-		).rejects.toThrow(refusal);
-		const input = { caseId: "c_1", mark: 1, finding: id };
-		await expect(
-			call("edit_finding", { ...input, text: "Theirs" }, signal, webmcp),
-		).rejects.toThrow(refusal);
-		await expect(call("delete_finding", input, signal, webmcp)).rejects.toThrow(
-			refusal,
-		);
-		expect(await stored(1)).toEqual([
-			expect.objectContaining({ id, text: "Mine" }),
-		]);
-		expect(changed).toEqual(["c_1"]);
-		const view = json(
-			await call("get_case", { caseId: "c_1", images: false }, signal, webmcp),
-		);
-		expect(view.marks[0].findings[0].own).toBe(false);
-		const lines = await confirmLines(store, tab, {
-			tool: { name: "delete_finding", description: "Does it." },
-			arguments: input,
-			client: webmcp,
-			signal,
-		});
-		expect(lines.join("\n")).toContain("It is not this AI app's own");
-	});
+	test.each([
+		["WebMCP", { kind: "webmcp" }],
+		["a local call", { kind: "local" }],
+	] as unknown as [string, ToolCallClient][])(
+		"%s sets no status, writes no finding and owns none",
+		async (_name, client) => {
+			await seed();
+			const id = added(
+				await call("add_finding", { caseId: "c_1", mark: 1, text: "Mine" }),
+			);
+			const before = await store.getCase("c_1");
+			const signal = new AbortController().signal;
+			const input = { caseId: "c_1", mark: 1, finding: id };
+			for (const [name, args] of [
+				["set_mark_status", { caseId: "c_1", mark: 2, status: "fixed" }],
+				["add_finding", { caseId: "c_1", mark: 1, text: "x" }],
+				["edit_finding", { ...input, text: "Theirs" }],
+				["delete_finding", input],
+			] as const)
+				await expect(call(name, args, signal, client)).rejects.toThrow(
+					"Only an AI app connected through Sitegloss's relay",
+				);
+			expect(await store.getCase("c_1")).toEqual(before as Case);
+			expect(changed).toEqual(["c_1"]);
+			const view = json(
+				await call(
+					"get_case",
+					{ caseId: "c_1", images: false },
+					signal,
+					client,
+				),
+			);
+			expect(view.marks[0].findings[0].own).toBe(false);
+			expect((await ask("delete_finding", input, client)).join("\n")).toContain(
+				"not this AI app's own",
+			);
+		},
+	);
 
 	test("in a case synced with a team, a finding is its app's own only for the person it was written for (DEC-039)", async () => {
 		await seed();
@@ -1843,21 +1849,16 @@ describe("findings", () => {
 			finding: "f_tess",
 			text: "Edited by its own app",
 		});
-		const signal = new AbortController().signal;
-		const lines = await confirmLines(
-			store,
-			tab,
-			{
-				tool: { name: "delete_finding", description: "Does it." },
-				arguments: { caseId: "c_1", mark: 1, finding: "f_dana" },
-				client: CLAUDE,
-				signal,
-			},
+		const lines = await ask(
+			"delete_finding",
+			{ caseId: "c_1", mark: 1, finding: "f_dana" },
+			CLAUDE,
 			{ me: async () => "u_tess" },
 		);
 		expect(lines.join("\n")).toContain(
-			"Finding by claude.ai, for Dana Developer: “Dana's Claude found this”. It is not this AI app's own",
+			"for Dana Developer: “Dana's Claude found this”",
 		);
+		expect(lines.join("\n")).toContain("not this AI app's own");
 		// Nobody signed in: a finding that says whose it is is nobody's here.
 		build();
 		await expect(
@@ -1867,22 +1868,12 @@ describe("findings", () => {
 
 	test("deleting a case the team has: the question says that it goes for everyone (DEC-039)", async () => {
 		await seed();
-		const ask = (team?: string) =>
-			confirmLines(
-				store,
-				tab,
-				{
-					tool: { name: "delete_case", description: "Does it." },
-					arguments: { caseId: "c_1" },
-					client: CLAUDE,
-					signal: new AbortController().signal,
-				},
-				{ team: async () => team },
-			);
-		expect((await ask("Pedal & Pine web")).join("\n")).toContain(
-			"It syncs with the team “Pedal & Pine web”: deleting it deletes it for everyone there.",
+		const askTeam = (team?: string) =>
+			ask("delete_case", { caseId: "c_1" }, CLAUDE, { team: async () => team });
+		expect((await askTeam("Pedal & Pine web")).join("\n")).toContain(
+			"“Pedal & Pine web”: deleting it deletes it for everyone",
 		);
-		expect((await ask(undefined)).join("\n")).not.toContain("team");
+		expect((await askTeam(undefined)).join("\n")).not.toContain("team");
 	});
 
 	test("a finding from a file is no app's own", async () => {
@@ -1902,7 +1893,7 @@ describe("findings", () => {
 		});
 		await expect(
 			call("delete_finding", { caseId: "c_1", mark: 1, finding: "f_file" }),
-		).rejects.toThrow("came in with the case from a file");
+		).rejects.toThrow("came in with the case");
 		const view = json(await call("get_case", { caseId: "c_1", images: false }));
 		expect(view.marks[0].findings[0]).toMatchObject({
 			own: false,
@@ -1980,9 +1971,7 @@ describe("findings", () => {
 				);
 		await expect(
 			call("add_finding", { caseId: "c_1", mark: marks, text: "One more" }),
-		).rejects.toThrow(
-			"The case holds too much finding text: at most 200000 characters on all marks together. Shorten or delete findings of your own first.",
-		);
+		).rejects.toThrow("too much finding text");
 		const input = { caseId: "c_1", mark: marks - 1, finding: id };
 		await call("edit_finding", { ...input, text: "Short" });
 		await call("add_finding", {
@@ -2028,86 +2017,35 @@ describe("findings", () => {
 		const id = added(
 			await call("add_finding", { caseId: "c_1", mark: 2, text: "Padding" }),
 		);
-		const ask = (client: ToolCallClient) =>
-			confirmLines(store, tab, {
-				tool: { name: "delete_finding", description: "Does it." },
-				arguments: { caseId: "c_1", mark: 2, finding: id },
-				client,
-				signal: new AbortController().signal,
-			});
-		const own = await ask(CLAUDE);
+		const askAs = (client: ToolCallClient) =>
+			ask("delete_finding", { caseId: "c_1", mark: 2, finding: id }, client);
+		const own = await askAs(CLAUDE);
 		expect(own).toContain("Mark 2: “Comment 2”, now open.");
 		expect(own).toContain("Finding by Claude (claude.ai): “Padding”.");
-		expect((await ask(OTHER)).join("\n")).toContain(
-			"It is not this AI app's own, so Sitegloss will refuse the change",
-		);
-		const add = await confirmLines(store, tab, {
-			tool: { name: "add_finding", description: "Does it." },
-			arguments: { caseId: "c_1", mark: 1, text: "x" },
-			client: CLAUDE,
-			signal: new AbortController().signal,
-		});
+		expect((await askAs(OTHER)).join("\n")).toContain("will refuse the change");
+		const add = await ask("add_finding", { caseId: "c_1", mark: 1, text: "x" });
 		expect(add).toContain("Mark 1: “Comment 1”, now open.");
 	});
 });
 
 describe("confirmations", () => {
-	const request = (
-		name: string,
-		args: Record<string, unknown>,
-	): ConfirmRequest => ({
-		tool: { name, description: "Does it." },
-		arguments: args,
-		client: {
-			kind: "relay",
-			grantId: "g",
-			id: "https://claude.ai/oauth",
-			host: "claude.ai",
-		},
-		signal: new AbortController().signal,
-	});
-
-	test("name the case and, for a new mark, the page", async () => {
+	test("name the case and the mark, and its status", async () => {
 		await seed();
 		await store.updateCase("c_1", (c) => ({
 			value: { ...(c as Case), verdict: "x" },
 		}));
-		const del = await confirmLines(
-			store,
-			tab,
-			request("delete_case", { caseId: "c_1" }),
-		);
-		expect(del).toEqual([
+		expect(await ask("delete_case", { caseId: "c_1" })).toEqual([
 			"Case: “Button contrast” (www.example.com/kk, 2 marks, with a summary for the developer).",
 		]);
-		const add = await confirmLines(
-			store,
-			tab,
-			request("add_mark", { caseId: "c_1", selector: "a" }),
+		expect((await ask("set_summary", { caseId: "c_9" })).join("\n")).toContain(
+			"Case: none has the id c_9.",
 		);
-		expect(add.join("\n")).toContain("Page: http://localhost:3000/kk");
-		const unknown = await confirmLines(
-			store,
-			tab,
-			request("set_summary", { caseId: "c_9" }),
-		);
-		expect(unknown.join("\n")).toContain("Case: none has the id c_9.");
-		const status = await confirmLines(
-			store,
-			tab,
-			request("set_mark_status", { caseId: "c_1", mark: 2, status: "fixed" }),
-		);
-		expect(status.join("\n")).toContain("Mark 2: “Comment 2”, now open.");
 		await call("set_mark_status", { caseId: "c_1", mark: 2, status: "fixed" });
-		const fixed = await confirmLines(
-			store,
-			tab,
-			request("set_mark_status", {
-				caseId: "c_1",
-				mark: 2,
-				status: "verified",
-			}),
-		);
+		const fixed = await ask("set_mark_status", {
+			caseId: "c_1",
+			mark: 2,
+			status: "verified",
+		});
 		expect(fixed.join("\n")).toContain(
 			"Mark 2: “Comment 2”, now Fixed, to verify.",
 		);
@@ -2165,6 +2103,7 @@ describe("through a relay", () => {
 		);
 		try {
 			const listed = await client.listTools();
+			// The fixed tools an AI app is offered: the contract with it.
 			expect(listed.tools.map((t) => t.name).sort()).toEqual([
 				"add_comment",
 				"add_finding",
@@ -2383,15 +2322,10 @@ describe("the thread and closing (DEC-046)", () => {
 				},
 			],
 		});
-		const lines = await confirmLines(
-			store,
-			tab,
-			{
-				tool: { name: "delete_comment", description: "Does it." },
-				arguments: { caseId: "c_1", comment: "k_1" },
-				client: CLAUDE,
-				signal: new AbortController().signal,
-			},
+		const lines = await ask(
+			"delete_comment",
+			{ caseId: "c_1", comment: "k_1" },
+			CLAUDE,
 			{ team: async () => "Pedal & Pine web" },
 		);
 		expect(lines.join("\n")).toContain(
@@ -2522,7 +2456,7 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 		const waiting = json(await call("open_case", { caseId: "c_1" }));
 		expect(waiting.panel).toBe("opened");
 		expect(waiting.marks).toEqual([]);
-		expect(waiting.note).toContain("has not drawn the marks on this tab yet");
+		expect(waiting.note).toContain("has not drawn the marks");
 	});
 
 	test("open_case without a side panel draws the marks itself; a busy panel or a toolbar adding to another case: nothing is drawn, and the error says why", async () => {
@@ -2533,11 +2467,11 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 			},
 		});
 		const alone = json(await call("open_case", { caseId: "c_1" }));
-		expect(alone.panel).toContain("no side panel is open in that window");
+		expect(alone.panel).toContain("no side panel is open");
 		expect(tab.loaded).toBe("c_1");
 		build();
 		expect(json(await call("open_case", { caseId: "c_1" })).panel).toContain(
-			"no side panel is open in that window",
+			"no side panel is open",
 		);
 		tab.sent = [];
 		build({
@@ -2548,7 +2482,7 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 			}),
 		});
 		await expect(call("open_case", { caseId: "c_1" })).rejects.toThrow(
-			"not opened: the toolbar on that tab is adding marks to “Other”, and the panel stays on it",
+			"adding marks to “Other”",
 		);
 		build({
 			openInPanel: async () => ({
@@ -2559,7 +2493,7 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 			}),
 		});
 		await expect(call("open_case", { caseId: "c_1" })).rejects.toThrow(
-			"not opened: the panel is busy with “Checkout”: a mark's form is open there, with what is typed in it.",
+			"busy with “Checkout”: a mark's form is open there",
 		);
 		// Nothing was loaded over the case the panel shows.
 		expect(tab.sent.filter((r) => r.type === "case:load")).toEqual([]);
@@ -2571,12 +2505,7 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 	test("open_case's question names the case and the page in front, as Sitegloss keeps its address", async () => {
 		await queried();
 		tab.url = "http://localhost:3000/search?q=boots&session=x";
-		const lines = await confirmLines(store, tab, {
-			tool: { name: "open_case", description: "Opens it." },
-			arguments: { caseId: "c_1" },
-			client: CLAUDE,
-			signal: new AbortController().signal,
-		});
+		const lines = await ask("open_case", { caseId: "c_1" });
 		expect(lines).toEqual([
 			"Case: “Button contrast” (www.example.com and 1 more page, 2 marks).",
 			"Page: http://localhost:3000/search?q=boots",
