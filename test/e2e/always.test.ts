@@ -126,7 +126,12 @@ inFullSet(
 		 */
 		const pairApp = async () => {
 			client = await mcpClient(relay, address);
-			await panel.eval(`${byId("stop-ai")}.click()`);
+			// No app is listed yet, so no Stop in the top bar: the card's switch.
+			await panel.eval(
+				`${byId("settings")}.hidden && ${byId("ai-button")}.click()`,
+			);
+			await panel.waitFor(`!${byId("settings")}.hidden`);
+			await panel.eval(`${byId("ai-switch")}.click()`);
 			await panel.waitFor(
 				`document.documentElement.dataset.aiState === "disconnected"`,
 				10_000,
@@ -460,7 +465,9 @@ inFullSet(
 		test("Stop AI access in the dialog refuses what waits: the top bar's Stop is under it", async () => {
 			const result = call("set_summary", { caseId: "c_3", summary: "Eleven" });
 			await panel.waitFor(QUESTION, 10_000);
-			// The rest of the panel is inert while a question waits.
+			// Shown, as an app is connected; and inert, like the rest of the
+			// panel, while a question waits.
+			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(false);
 			expect(
 				await panel.eval(
 					`(() => { const b = ${byId("stop-ai")}; b.focus(); return document.activeElement === b; })()`,

@@ -1697,10 +1697,21 @@ describe("a case of several pages (DEC-038)", () => {
 			actionsWith({ openPage: (_c, url) => void opened.push(url) }),
 		);
 		expect(el("case-pages").hidden).toBe(false);
+		// The title, its marks, its path: the host only where pages differ in it.
 		expect(pages()).toEqual([
-			"shop.example/cart · 2 marks",
-			"shop.example/checkout/pay · 1 mark · this tab",
+			"Your cart2 marks/cart",
+			"Payment1 mark/checkout/pay",
 		]);
+		// The page in front is said to a screen reader once, by aria-current,
+		// and shown by its row's bar and weight, not by a word that would move
+		// the list.
+		const here = el("case-pages").querySelector("[aria-current=page]");
+		expect(here?.textContent).toBe("Payment");
+		expect(el("case-pages").querySelectorAll("[aria-current]").length).toBe(1);
+		// The tooltip has the whole title, the whole address, what a click does.
+		expect((here as unknown as HTMLElement).title).toBe(
+			`Payment\n${PAY}\nOpens in a new tab; the case's marks are drawn there`,
+		);
 		// The one link of a case of one page gives way to the list.
 		expect(el("open-page").hidden).toBe(true);
 		expect(el("case-view").querySelector(".case-meta")?.textContent).toContain(
@@ -1710,6 +1721,23 @@ describe("a case of several pages (DEC-038)", () => {
 		(links[1] as unknown as HTMLButtonElement).click();
 		(links[0] as unknown as HTMLButtonElement).click();
 		expect(opened).toEqual([PAY, CART]);
+
+		// Pages on two hosts are named with them; one without a title by its address.
+		const other = "https://staging.shop.example/checkout/pay";
+		render(
+			caseState({
+				...c,
+				pages: [c.pages?.[0] ?? c.page, { url: other, title: " ", lang: "" }],
+			}),
+			noActions,
+		);
+		expect(pages()).toEqual([
+			"Your cart2 marksshop.example/cart",
+			"staging.shop.example/checkout/pay1 mark",
+		]);
+		expect(el("case-pages").querySelectorAll("button")[1]?.title).toBe(
+			`${other}\nOpens in a new tab; the case's marks are drawn there`,
+		);
 	});
 
 	test("the size offered is the one the marks of the page in front were made at", () => {
@@ -2822,19 +2850,29 @@ describe("the AI app", () => {
 		s.ai = { ...s.ai, ...change };
 	};
 
-	test("its connection, and how to stop it, show in the case view too", () => {
+	test("its connection shows in the case view too, and Stop while an app is connected", () => {
 		const c = sampleCase("c_ai");
+		const on = { active: true, connected: true };
 		render(
-			caseState(c, ai({ status: "Connected: Claude", active: true })),
+			caseState(c, ai({ ...on, status: "Connected: Claude", apps: 1 })),
 			noActions,
 		);
 		expect(el("home").hidden).toBe(true);
 		// What the user sees of it: the pill's label, beside Stop.
 		expect(el("ai-label").closest("[hidden], .visually-hidden")).toBeNull();
-		expect(el("ai-label").textContent).toBe("AI connecting…");
+		expect(el("ai-label").textContent).toBe("AI on · 1 app");
 		// The whole sentence is the pill's name, for a screen reader.
 		expect(el("ai-status").textContent).toBe("Connected: Claude");
 		expect(el("stop-ai").closest("[hidden]")).toBeNull();
+		// No app that could act: the pill leads to the switch, no Stop beside it.
+		const waiting = "Waiting for an AI app to pair";
+		render(caseState(c, ai({ ...on, status: waiting })), noActions);
+		expect(el("stop-ai").hidden).toBe(true);
+		render(
+			caseState(c, ai({ active: true, status: "Connecting…" })),
+			noActions,
+		);
+		expect(el("stop-ai").hidden).toBe(true);
 		render(caseState(c, ai({ status: "Not connected" })), noActions);
 		expect(el("stop-ai").hidden).toBe(true);
 	});

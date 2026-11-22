@@ -45,6 +45,7 @@ import {
 import type { CaseStore } from "../lib/store.ts";
 import { AlwaysAllowed, removeOldStore } from "./always.ts";
 import { badge } from "./badge.ts";
+import { CodeWatch } from "./code-shown.ts";
 import { decide } from "./decide.ts";
 import { FillQuestion } from "./fill-question.ts";
 import { endedProblem, KeepOn } from "./keep-on.ts";
@@ -318,6 +319,15 @@ export class Connection {
 	/** Why the last command failed, until the next connection. */
 	#problem: string | undefined;
 	#lastCall: CallView | undefined;
+	/** The pairing code the card shows: a used one waits for its app (`nextCodeShown`). */
+	readonly #code = new CodeWatch(
+		{
+			now: () => Date.now(),
+			setTimer: (run, ms) => setTimeout(run, ms),
+			clearTimer: (timer) => clearTimeout(timer),
+		},
+		() => this.#changed(),
+	);
 	/** Why Disconnect did not work, by grant: until it goes, or connected again. */
 	readonly #revokeProblems = new Map<string, RevokeFailure>();
 	/** A revoke of this session timed out: its answer may still come. */
@@ -526,8 +536,19 @@ export class Connection {
 		this.#listening = new AbortController();
 		const { signal } = this.#listening;
 		const changed = () => this.#changed();
-		for (const type of ["pairingcode", "grantschange"] as const)
+		// The code shown moves on with the facts, also with no panel open.
+		const code = () =>
+			this.#code.update(
+				mcp.pairingCode,
+				mcp.grants.map((g) => g.grantId),
+			);
+		this.#code.stop();
+		code();
+		signal.addEventListener("abort", () => this.#code.stop());
+		for (const type of ["pairingcode", "grantschange"] as const) {
+			mcp.addEventListener(type, code, { signal });
 			mcp.addEventListener(type, changed, { signal });
+		}
 		// Allowances changed (by a switch, Always allow, an app's grant gone).
 		signal.addEventListener("abort", AlwaysAllowed.of(mcp).onChange(changed));
 		// The relay's list of the apps connected: only it, so a start or a
@@ -1213,7 +1234,9 @@ export class Connection {
 		const mcp = this.#mcp;
 		const problem = this.#keep.problem ?? this.#problem;
 		const address = mcp.session?.address;
-		const code = mcp.pairingCode?.code;
+		// Read only: moved on by the code's and the apps' events (`#watch`).
+		const shown = mcp.pairingCode === undefined ? {} : this.#code.shown;
+		const { code, used: codeUsed } = shown;
 		const replaced = this.#settings.replaced;
 		const fill = this.#fillAsk.question;
 		const fillProblem = this.#fillAsk.problem;
@@ -1247,6 +1270,7 @@ export class Connection {
 			}),
 			pairing: [...this.#panels].some((p) => p.pairing),
 			...(code !== undefined ? { code } : {}),
+			...(codeUsed !== undefined ? { codeUsed: true } : {}),
 			...(replaced !== undefined
 				? { replaced: { sibling: replaced.sibling } }
 				: {}),

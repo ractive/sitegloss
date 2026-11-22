@@ -1355,9 +1355,8 @@ inBothSets("the side panel's page", () => {
 					);
 					expect(await pageCase(tabId)).toBeNull();
 				} finally {
-					await panel.eval(
-						`${id("stop-ai")}.hidden || ${id("stop-ai")}.click()`,
-					);
+					// Stop works while it is hidden too (no app connected).
+					await panel.eval(`${id("stop-ai")}.click()`);
 					await page.send("Page.close");
 					await relay.stop();
 				}
@@ -1434,7 +1433,6 @@ inBothSets("the side panel's page", () => {
 					10_000,
 				);
 				expect(await panel.eval(status)).toContain("Trying again");
-				expect(await panel.eval(`${id("stop-ai")}.hidden`)).toBe(false);
 				const relay = startTestRelay({ port });
 				await panel.waitFor(
 					`${status} === "Waiting for an AI app to pair"`,
