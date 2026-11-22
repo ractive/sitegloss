@@ -97,7 +97,7 @@ describe("the thread", () => {
 		await change(tess, "c_flow", (c, now) =>
 			withCaseComment(
 				c,
-				{ id: "k_mark", text: "Which total?", mark: "a1" },
+				{ id: "k_mark", text: "Which total?", mark: "m1" },
 				now,
 			),
 		);
@@ -109,7 +109,7 @@ describe("the thread", () => {
 		const there = (await caseHere(dana)).comments ?? [];
 		expect(there.map((k) => [k.id, k.mark ?? null, k.user?.name])).toEqual([
 			["k_case", null, "Tess Tester"],
-			["k_mark", "a1", "Tess Tester"],
+			["k_mark", "m1", "Tess Tester"],
 		]);
 		// Tess's own comment, changed and then deleted by her.
 		await change(tess, "c_flow", (c, now) =>
@@ -183,7 +183,7 @@ describe("the thread", () => {
 		await change(tess, "c_flow", (c, now) =>
 			withCaseComment(
 				c,
-				{ id: "k_on3", text: "About my third", mark: "a3" },
+				{ id: "k_on3", text: "About my third", mark: "m3" },
 				now,
 			),
 		);
@@ -192,11 +192,11 @@ describe("the thread", () => {
 		await sync(tess, dana);
 		const c = await caseHere(tess);
 		const mine = c.marks.find((a) => a.comment === "Tess's third");
-		expect(mine?.id).toBe("a4");
-		expect(c.comments?.[0]?.mark).toBe("a4");
-		expect((await caseHere(dana)).comments?.[0]?.mark).toBe("a4");
+		expect(mine?.id).toBe("m4");
+		expect(c.comments?.[0]?.mark).toBe("m4");
+		expect((await caseHere(dana)).comments?.[0]?.mark).toBe("m4");
 		// The mark deleted: the comment stays, about a deleted mark.
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "a4", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "m4", now));
 		await sync(tess, dana);
 		const left = (await caseHere(dana)).comments?.[0];
 		expect(left?.mark).toBeUndefined();
@@ -255,7 +255,7 @@ describe("closing", () => {
 		await addMark(dana, "c_flow", "Last one");
 		await change(dana, "c_flow", (c, now) =>
 			withClosed(
-				withResolution(c, "a3", { kind: "fixed", note: "" }, now),
+				withResolution(c, "m3", { kind: "fixed", note: "" }, now),
 				true,
 				now,
 			),
@@ -315,7 +315,7 @@ describe("the AI app's name (via)", () => {
 		await shared();
 		await change(tess, "c_flow", (c, now) => ({
 			...c,
-			marks: c.marks.map((a) => (a.id === "a2" ? a : a)),
+			marks: c.marks.map((a) => (a.id === "m2" ? a : a)),
 			updatedAt: now,
 		}));
 		const made = await addMark(tess, "c_flow", "Made by Claude");
@@ -423,7 +423,7 @@ describe("who did it, per thing (review of DEC-046)", () => {
 		await shared();
 		recording(tess);
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Edited by hand", now),
+			withComment(c, "m1", "Edited by hand", now),
 		);
 		await change(tess, "c_flow", (c, now) => ({
 			...withVerdict(c, "From Claude", now),

@@ -57,7 +57,7 @@ describe("open_case and the case the panel shows", () => {
 	test("a mark's form open in the case shown: refused, the typing stays", () => {
 		const s = showing("c_old", (x) => {
 			x.markEdit = {
-				markId: "a1",
+				markId: "m1",
 				mode: "comment",
 				text: "half a sen",
 			} as never;

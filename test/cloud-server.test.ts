@@ -32,9 +32,10 @@ import {
 	TOKENS_KEY,
 	type Tokens,
 } from "../src/lib/cloud/auth.ts";
-import type { Account } from "../src/lib/cloud/book.ts";
+import { type Account, forgetCases } from "../src/lib/cloud/book.ts";
 import { CloudSync } from "../src/lib/cloud/engine.ts";
 import { listen } from "../src/lib/cloud/sse.ts";
+import { MemoryStore } from "../src/lib/store.ts";
 import {
 	addMark,
 	CART,
@@ -64,7 +65,6 @@ import {
 import { CloudSync as CloudSync030 } from "./compat/v0.3.0/src/lib/cloud/engine.ts";
 import { memoryKv as memoryKv030 } from "./compat/v0.3.0/src/lib/kv.ts";
 import { MemoryStore as MemoryStore030 } from "./compat/v0.3.0/src/lib/store.ts";
-import { openedByThisBuild } from "./upgrade-030.ts";
 
 const serverTest = BASE === undefined ? describe.skip : describe;
 
@@ -142,7 +142,7 @@ serverTest("against a real server", () => {
 		// Dana settles a mark: Tess hears of it on the stream, and has it with who did it.
 		const before = heard.length;
 		await change(dana.device, id, (c, now) =>
-			withChoice(c, "a1", "fixed", "Widened the column", now),
+			withChoice(c, "m1", "fixed", "Widened the column", now),
 		);
 		await dana.device.engine.request();
 		for (let i = 0; i < 50 && heard.length === before; i++)
@@ -166,10 +166,10 @@ serverTest("against a real server", () => {
 			expect(
 				look(await d.store.getCase(id))?.marks.map((m) => [m.id, m.comment]),
 			).toEqual([
-				["a1", "Total is cut off"],
-				["a2", "Pay button too pale"],
-				["a3", "Tess's third"],
-				["a4", "Dana's third"],
+				["m1", "Total is cut off"],
+				["m2", "Pay button too pale"],
+				["m3", "Tess's third"],
+				["m4", "Dana's third"],
 			]);
 		expect(await images(dana.device, id)).toEqual(
 			await images(tess.device, id),
@@ -177,10 +177,10 @@ serverTest("against a real server", () => {
 
 		// Two changes to one mark: both stay.
 		await change(tess.device, id, (c, now) =>
-			withComment(c, "a2", "Edited by Tess", now),
+			withComment(c, "m2", "Edited by Tess", now),
 		);
 		await change(dana.device, id, (c, now) =>
-			withChoice(c, "a2", "wontfix", "", now),
+			withChoice(c, "m2", "wontfix", "", now),
 		);
 		await sync(tess.device, dana.device);
 		for (const d of [tess.device, dana.device])
@@ -679,9 +679,12 @@ serverTest("a browser's 0.3.0 data, opened by this build", () => {
 			},
 		};
 		const statuses: { state: string; problems: unknown[] }[] = [];
-		// The extension reloaded as this build: its store's upgrade first (DEC-051).
+		// The extension reloaded as this build (DEC-051): its store starts
+		// empty, the cloud's database forgets what it kept about cases.
+		const store = new MemoryStore();
+		await forgetCases(old.kv as never);
 		const engine = new CloudSync({
-			store: openedByThisBuild(old.store) as never,
+			store,
 			kv: old.kv as never,
 			api: () => api,
 			onStatus: (s) => statuses.push(s),
@@ -692,21 +695,22 @@ serverTest("a browser's 0.3.0 data, opened by this build", () => {
 		await engine.request();
 		expect(statuses.at(-1)?.state).toBe("synced");
 		expect(statuses.at(-1)?.problems).toEqual([]);
-		expect((await old.store.listCases()).length).toBe(cases);
-		// What 0.3.0 passed by is here now.
-		const here = (await old.store.getCase(caseId)) as unknown as Case;
+		// The team's cases are here again, read from the server.
+		expect((await store.listCases()).length).toBe(cases);
+		const here = (await store.getCase(caseId)) as Case;
+		expect(here.marks.map((a) => a.id)).toEqual(["m1", "m2"]);
 		expect(here.comments?.map((k) => k.text)).toEqual(["Before the upgrade"]);
 		expect(here.closed?.user?.name).toBe("Dana Developer");
-		// Up to here (the upgrade, and the case read again) nothing went:
-		// no operation, no image, not even a question about one.
+		// Up to here (the upgrade, and the cases read again) nothing went:
+		// no operation (no delete), no image, not even a question about one.
 		expect(writes).toEqual([]);
 		// And it keeps syncing both ways.
-		await old.store.updateCase(caseId, (c) => ({
+		await store.updateCase(caseId, (c) => ({
 			value: withCaseComment(
-				c as unknown as Case,
+				c as Case,
 				{ id: `k_${caseId}_2`, text: "After the upgrade" },
 				new Date().toISOString(),
-			) as never,
+			),
 		}));
 		await engine.request();
 		await dana.device.engine.request();
@@ -716,13 +720,13 @@ serverTest("a browser's 0.3.0 data, opened by this build", () => {
 			),
 		).toEqual(["Before the upgrade", "After the upgrade"]);
 		await change(dana.device, caseId, (c, now) =>
-			withComment(c, "a1", "Total is cut off on small screens", now),
+			withComment(c, "m1", "Total is cut off on small screens", now),
 		);
 		await dana.device.engine.request();
 		await engine.request();
-		expect(
-			((await old.store.getCase(caseId)) as unknown as Case).marks[0]?.comment,
-		).toBe("Total is cut off on small screens");
+		expect(((await store.getCase(caseId)) as Case).marks[0]?.comment).toBe(
+			"Total is cut off on small screens",
+		);
 
 		await removeCase(dana.device, caseId);
 		await dana.device.engine.request();

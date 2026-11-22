@@ -576,7 +576,7 @@ export class Reviewer {
 	}
 
 	/**
-	 * The element a mark's mark is drawn on now (looked for again when a
+	 * The element a mark is drawn on now (looked for again when a
 	 * re-render replaced it), without scrolling or focusing anything.
 	 */
 	target(

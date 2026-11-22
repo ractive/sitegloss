@@ -184,7 +184,7 @@ describe("news from a tab's overlay after the icon's click", () => {
 
 describe("none of the case's marks found", () => {
 	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "lost" ? 0 : 0.9,
@@ -224,7 +224,7 @@ describe("what a draw found, in a line (DEC-024)", () => {
 		status: MarkMatch["status"],
 		sure = status === "found",
 	): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "lost" ? 0 : 0.9,
@@ -273,13 +273,13 @@ describe("what a draw found, in a line (DEC-024)", () => {
 		marks: shapes.map(
 			(shape, i) =>
 				({
-					id: `a${i + 1}`,
+					id: `m${i + 1}`,
 					number: i + 1,
 					shot: "s1",
 					comment: "",
 					author: "user",
 					shape: SHAPES[shape],
-					crop: `crops/a${i + 1}.webp`,
+					crop: `crops/m${i + 1}.webp`,
 					element: null,
 				}) as Case["marks"][number],
 		),

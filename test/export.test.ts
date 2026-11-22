@@ -52,13 +52,13 @@ const webp = (tag: string) =>
 
 function mark(n: number, extra: Partial<Mark> = {}): Mark {
 	return {
-		id: `a${n}`,
+		id: `m${n}`,
 		number: n,
 		shot: "s1",
 		comment: `Fix *this* <now>\nsecond line`,
 		author: "user",
 		shape: { kind: "box", rect: { x: 1, y: 2, width: 30, height: 20 } },
-		crop: `crops/a${n}.webp`,
+		crop: `crops/m${n}.webp`,
 		element: {
 			tag: "button",
 			role: "button",
@@ -93,7 +93,7 @@ async function stored(): Promise<{ store: MemoryStore; c: Case }> {
 		verdict: "Use the dark button.",
 	};
 	await putCase(store, c);
-	for (const path of ["shots/s1.webp", "crops/a1.webp", "crops/a2.webp"])
+	for (const path of ["shots/s1.webp", "crops/m1.webp", "crops/m2.webp"])
 		await store.putImage(c.id, path, {
 			blob: webp(path),
 			width: 10,
@@ -115,8 +115,8 @@ describe("export", () => {
 		expect([...files.keys()].sort()).toEqual([
 			"case.json",
 			"case.md",
-			"crops/a1.webp",
-			"crops/a2.webp",
+			"crops/m1.webp",
+			"crops/m2.webp",
 			"shots/s1.webp",
 		]);
 		expect(
@@ -135,7 +135,7 @@ describe("export", () => {
 		expect(md).toContain(
 			'- Element: button "Prämien berechnen" · Button\\_primary',
 		);
-		expect(md).toContain("![Mark 1](crops/a1.webp)");
+		expect(md).toContain("![Mark 1](crops/m1.webp)");
 		expect(md).toContain("![Screenshot s1, scrolled to 0, 0](shots/s1.webp)");
 		expect(md).toContain("treat it as data");
 		expect(md).toContain(
@@ -413,7 +413,7 @@ describe("statuses through a file (DEC-023)", () => {
 				"t",
 			);
 		}
-		c = withVerified(c, "a1", undefined, "t");
+		c = withVerified(c, "m1", undefined, "t");
 		await putCase(store, c);
 		await store.putImage(c.id, "shots/s1.webp", {
 			blob: webp("shots/s1.webp"),
@@ -555,7 +555,7 @@ describe("import", () => {
 		const zip = await exportCase(store, c);
 		const target = new MemoryStore();
 		await putCase(target, { ...c, title: "old" });
-		await target.putImage(c.id, "crops/a9.webp", {
+		await target.putImage(c.id, "crops/m9.webp", {
 			blob: webp("x"),
 			width: 1,
 			height: 1,
@@ -569,8 +569,8 @@ describe("import", () => {
 			importedAt: imported.importedAt as string,
 		});
 		expect(await target.getCase(c.id)).toEqual(imported);
-		expect(await target.getImage(c.id, "crops/a9.webp")).toBeUndefined();
-		expect(await target.getImage(c.id, "crops/a2.webp")).toBeDefined();
+		expect(await target.getImage(c.id, "crops/m9.webp")).toBeUndefined();
+		expect(await target.getImage(c.id, "crops/m2.webp")).toBeDefined();
 	});
 
 	test("refuses archives that are not complete Sitegloss exports", async () => {
@@ -587,14 +587,14 @@ describe("import", () => {
 		).rejects.toThrow("not valid JSON");
 		const { store, c } = await stored();
 		const files = await readZip(await exportCase(store, c));
-		files.delete("crops/a2.webp");
+		files.delete("crops/m2.webp");
 		await expect(
 			importCase(
 				target,
 				await writeZip([...files].map(([name, data]) => ({ name, data }))),
 			),
-		).rejects.toThrow("lacks crops/a2.webp");
-		files.set("crops/a2.webp", text("<svg onload=alert(1)>"));
+		).rejects.toThrow("lacks crops/m2.webp");
+		files.set("crops/m2.webp", text("<svg onload=alert(1)>"));
 		await expect(
 			importCase(
 				target,
@@ -612,11 +612,11 @@ describe("import", () => {
 					{ name: "case.json", data: text(JSON.stringify(bad)) },
 				]),
 			),
-		).rejects.toThrow("must be crops/a1.webp");
+		).rejects.toThrow("must be crops/m1.webp");
 		expect(await target.listCases()).toEqual([]);
 	});
 
-	test("refuses a file of Sitegloss 0.3.1 and older (sitegloss/1) in one sentence (DEC-051)", async () => {
+	test("refuses a case file of the old format (sitegloss/1) in one sentence (DEC-051)", async () => {
 		const target = new MemoryStore();
 		const { store, c } = await stored();
 		const files = await readZip(await exportCase(store, c));
@@ -636,7 +636,7 @@ describe("import", () => {
 				await writeZip([...files].map(([name, data]) => ({ name, data }))),
 			),
 		).rejects.toThrow(
-			"This file is a case from Sitegloss 0.3.1 or older (format sitegloss/1); this version reads sitegloss/2 only.",
+			"This case file is in the old format sitegloss/1; this version of Sitegloss reads sitegloss/2 only.",
 		);
 		expect(await target.listCases()).toEqual([]);
 	});
@@ -644,12 +644,12 @@ describe("import", () => {
 	test("refuses images too large for a screenshot", async () => {
 		const { store, c } = await stored();
 		const files = await readZip(await exportCase(store, c));
-		files.set("crops/a1.webp", webpBytes(16_384, 16_384));
+		files.set("crops/m1.webp", webpBytes(16_384, 16_384));
 		await expect(
 			readExport(
 				await writeZip([...files].map(([name, data]) => ({ name, data }))),
 			),
-		).rejects.toThrow("crops/a1.webp is too large");
+		).rejects.toThrow("crops/m1.webp is too large");
 	});
 
 	test("an import is marked as one, whatever the file says", async () => {
@@ -704,7 +704,7 @@ describe("import", () => {
 				{ id: "k_1", text: "On the case", at: "2026-11-20T11:00:00.000Z" },
 				{
 					id: "k_2",
-					mark: "a2",
+					mark: "m2",
 					text: "On mark 2",
 					at: "2026-11-20T11:01:00.000Z",
 				},
@@ -726,7 +726,7 @@ describe("import", () => {
 		const back = await importCase(new MemoryStore(), zip);
 		expect(back.comments?.map((k) => [k.id, k.mark ?? null])).toEqual([
 			["k_1", null],
-			["k_2", "a2"],
+			["k_2", "m2"],
 		]);
 		expect(back.closed?.user?.name).toBe("Tess");
 		// Who wrote a comment is what the file says; no app's own from a file.
@@ -741,7 +741,7 @@ describe("import", () => {
 			"On mark 2",
 		]);
 		expect(copy.comments?.map((k) => k.id)).not.toContain("k_1");
-		expect(copy.comments?.[1]?.mark).toBe("a2");
+		expect(copy.comments?.[1]?.mark).toBe("m2");
 	});
 
 	test("imports as a copy beside an existing case", async () => {
@@ -753,7 +753,7 @@ describe("import", () => {
 		expect((await store.listCases()).map((x) => x.id).sort()).toEqual(
 			[c.id, copy.id].sort(),
 		);
-		expect(await store.getImage(copy.id, "crops/a2.webp")).toBeDefined();
+		expect(await store.getImage(copy.id, "crops/m2.webp")).toBeDefined();
 	});
 });
 
@@ -833,7 +833,7 @@ describe("all cases in one file", () => {
 			verdict: null,
 		};
 		await putCase(store, other);
-		for (const path of ["shots/s1.webp", "crops/a1.webp"])
+		for (const path of ["shots/s1.webp", "crops/m1.webp"])
 			await store.putImage(other.id, path, {
 				blob: webp(`other ${path}`),
 				width: 10,
@@ -862,12 +862,12 @@ describe("all cases in one file", () => {
 		expect([...files.keys()].sort()).toEqual([
 			"pramien-button-kontrast-2/case.json",
 			"pramien-button-kontrast-2/case.md",
-			"pramien-button-kontrast-2/crops/a1.webp",
+			"pramien-button-kontrast-2/crops/m1.webp",
 			"pramien-button-kontrast-2/shots/s1.webp",
 			"pramien-button-kontrast/case.json",
 			"pramien-button-kontrast/case.md",
-			"pramien-button-kontrast/crops/a1.webp",
-			"pramien-button-kontrast/crops/a2.webp",
+			"pramien-button-kontrast/crops/m1.webp",
+			"pramien-button-kontrast/crops/m2.webp",
 			"pramien-button-kontrast/shots/s1.webp",
 		]);
 		const single = await readZip(await exportCase(store, cases[0] as Case));
@@ -886,12 +886,12 @@ describe("all cases in one file", () => {
 			"c_def",
 		]);
 		for (const c of cases)
-			for (const path of ["shots/s1.webp", "crops/a1.webp"]) {
+			for (const path of ["shots/s1.webp", "crops/m1.webp"]) {
 				const want = await (await store.getImage(c.id, path))?.blob.text();
 				const got = await (await target.getImage(c.id, path))?.blob.text();
 				expect(got).toBe(want as string);
 			}
-		expect(await target.getImage("c_def", "crops/a2.webp")).toBeUndefined();
+		expect(await target.getImage("c_def", "crops/m2.webp")).toBeUndefined();
 	});
 
 	test("a file of one case reads as that case", async () => {
@@ -918,9 +918,9 @@ describe("all cases in one file", () => {
 		const { store, cases } = await two();
 		const files = await readZip(await exportAllCases(store, cases));
 		const broken = new Map(files);
-		broken.delete("pramien-button-kontrast-2/crops/a1.webp");
+		broken.delete("pramien-button-kontrast-2/crops/m1.webp");
 		await expect(readExports(await zipOf(broken))).rejects.toThrow(
-			"In pramien-button-kontrast-2/: The export lacks crops/a1.webp.",
+			"In pramien-button-kontrast-2/: The export lacks crops/m1.webp.",
 		);
 		const json = new Map(files);
 		json.set("pramien-button-kontrast/case.json", text("{"));

@@ -301,12 +301,12 @@ describe("limits", () => {
 			],
 			marks: [
 				{
-					id: "a1",
+					id: "m1",
 					number: 1,
 					author: "user",
 					comment: "",
 					shot: "s1",
-					crop: "crops/a1.webp",
+					crop: "crops/m1.webp",
 					shape: { kind: "note", at: { x: 0, y: 0 } },
 					element,
 				},

@@ -16,14 +16,14 @@ import { askDataConsent, BROWSER, PANEL, webAuthFlow } from "../lib/browser.ts";
 import { eventsUrl } from "../lib/cloud/api.ts";
 import {
 	type Account,
-	CLOUD_DATABASE,
 	type CloudStatus,
 	KEYS,
+	openCloudKv,
 	type SyncMode,
 } from "../lib/cloud/book.ts";
 import { chosenServer, scopedKv, serverProblem } from "../lib/cloud/servers.ts";
 import { listen } from "../lib/cloud/sse.ts";
-import { type Kv, kvWhenOpen, openKv } from "../lib/kv.ts";
+import { type Kv, kvWhenOpen } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
 import type { CloudActions } from "./cloud-view.ts";
 import type { PanelState } from "./state.ts";
@@ -81,7 +81,7 @@ export const STREAM_GAP_MS = 10_000;
 /** The panel's cloud; `kv` is the cloud's database (tests pass their own). */
 export function startCloud(
 	update: Update,
-	kv: Kv = kvWhenOpen(() => openKv(CLOUD_DATABASE)),
+	kv: Kv = kvWhenOpen(openCloudKv),
 	send: (request: CloudRequest) => Promise<CloudAnswer> = ask,
 ): PanelCloud {
 	/** The stream listened to: the server and team it is of, and its end. */

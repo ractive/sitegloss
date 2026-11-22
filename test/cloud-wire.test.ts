@@ -31,13 +31,13 @@ import { sampleCase } from "./fixtures.ts";
 const NOW = "2026-11-19T12:00:00.000Z";
 
 const mark = (n: number, shot = "s1"): Mark => ({
-	id: `a${n}`,
+	id: `m${n}`,
 	number: n,
 	shot,
 	comment: `comment ${n}`,
 	author: "user",
 	shape: { kind: "box", rect: { x: n, y: 2, width: 30, height: 40 } },
-	crop: `crops/a${n}.webp`,
+	crop: `crops/m${n}.webp`,
 	element: null,
 });
 
@@ -146,10 +146,10 @@ describe("the operations a case becomes", () => {
 		const first = ops[2] as Extract<Op, { type: "mark.create" }>;
 		expect(first.mark.number).toBe(1);
 		expect(first.mark.shotId).toBe(shot.shot.id);
-		expect(first.mark.id).toBe(book.marks["a1"] as string);
+		expect(first.mark.id).toBe(book.marks["m1"] as string);
 		// Ids at the server are not the positions here.
-		expect(first.mark.id).not.toBe("a1");
-		expect(first.mark.crop).toEqual(ref("crops/a1.webp"));
+		expect(first.mark.id).not.toBe("m1");
+		expect(first.mark.crop).toEqual(ref("crops/m1.webp"));
 	});
 
 	test("once the server has it, nothing; then only what changed", () => {
@@ -191,7 +191,7 @@ describe("the operations a case becomes", () => {
 			{
 				opId: expect.any(String),
 				type: "mark.patch",
-				markId: book.marks["a1"] as string,
+				markId: book.marks["m1"] as string,
 				comment: "Edited",
 				author: "user",
 				state: { resolution: { kind: "fixed", at: NOW }, reopens: [] },
@@ -227,14 +227,14 @@ describe("the operations a case becomes", () => {
 			mark(2),
 		]);
 		const { book } = synced(c);
-		const wire = book.marks["a2"] as string;
+		const wire = book.marks["m2"] as string;
 		const { ops } = deriveOps({ ...c, marks: [mark(1)] }, book, ref, newId);
 		expect(ops).toEqual([
 			{ opId: expect.any(String), type: "mark.delete", markId: wire },
 			{
 				opId: expect.any(String),
 				type: "mark.patch",
-				markId: book.marks["a1"] as string,
+				markId: book.marks["m1"] as string,
 				findings: { remove: ["f_1"] },
 			},
 		]);
@@ -246,10 +246,10 @@ describe("the operations a case becomes", () => {
 		const { ops, missing } = deriveOps(
 			c,
 			book,
-			(path) => (path === "crops/a2.webp" ? undefined : ref(path)),
+			(path) => (path === "crops/m2.webp" ? undefined : ref(path)),
 			newId,
 		);
-		expect(missing).toEqual(["crops/a2.webp"]);
+		expect(missing).toEqual(["crops/m2.webp"]);
 		expect(ops.map((op) => op.type)).toEqual([
 			"case.create",
 			"shot.create",
@@ -260,17 +260,17 @@ describe("the operations a case becomes", () => {
 	test("a mark renumbered here whose book was not written is put together with the server's again", () => {
 		const c = local();
 		const { book } = synced(c);
-		const wire = book.marks["a2"] as string;
-		// The case says a5 now; the book still says a2.
+		const wire = book.marks["m2"] as string;
+		// The case says m5 now; the book still says m2.
 		const moved: Case = {
 			...c,
 			marks: [
 				mark(1),
-				{ ...mark(2), id: "a5", number: 5, crop: "crops/a5.webp" },
+				{ ...mark(2), id: "m5", number: 5, crop: "crops/m5.webp" },
 			],
 		};
 		relink(moved, book);
-		expect(book.marks).toEqual({ a1: book.marks["a1"] as string, a5: wire });
+		expect(book.marks).toEqual({ m1: book.marks["m1"] as string, m5: wire });
 		// No mark is deleted or made again: only the case's highest number is told.
 		expect(deriveOps(moved, book, ref, newId).ops).toEqual([
 			{
@@ -373,26 +373,26 @@ describe("numbers", () => {
 			deleteImages: new Set<string>(),
 		};
 		const crops = new Map<string, unknown>([
-			["crops/a2.webp", "crop two"],
-			["crops/a3.webp", "crop three"],
+			["crops/m2.webp", "crop two"],
+			["crops/m3.webp", "crop three"],
 		]);
 		// The server says the mark here called 2 is 3.
-		const next = renumber(c, book, new Map([["a2", 3]]), crops, out);
+		const next = renumber(c, book, new Map([["m2", 3]]), crops, out);
 		expect(next.marks.map((a) => [a.id, a.number, a.crop, a.comment])).toEqual([
-			["a1", 1, "crops/a1.webp", "comment 1"],
-			["a3", 3, "crops/a3.webp", "comment 2"],
-			["a4", 4, "crops/a4.webp", "comment 3"],
+			["m1", 1, "crops/m1.webp", "comment 1"],
+			["m3", 3, "crops/m3.webp", "comment 2"],
+			["m4", 4, "crops/m4.webp", "comment 3"],
 		]);
 		expect(Object.fromEntries(out.images)).toEqual({
-			"crops/a3.webp": "crop two",
-			"crops/a4.webp": "crop three",
+			"crops/m3.webp": "crop two",
+			"crops/m4.webp": "crop three",
 		});
-		// a3's path is written anew, not deleted.
-		expect([...out.deleteImages]).toEqual(["crops/a2.webp"]);
+		// m3's path is written anew, not deleted.
+		expect([...out.deleteImages]).toEqual(["crops/m2.webp"]);
 		expect(book.marks).toEqual({
-			a1: wires["a1"] as string,
-			a3: wires["a2"] as string,
-			a4: wires["a3"] as string,
+			m1: wires["m1"] as string,
+			m3: wires["m2"] as string,
+			m4: wires["m3"] as string,
 		});
 		expect(next.lastNumber).toBe(4);
 	});
@@ -401,7 +401,7 @@ describe("numbers", () => {
 		const c = local();
 		const { book } = synced(c);
 		expect(() =>
-			renumber(c, book, new Map([["a2", 7]]), new Map(), {
+			renumber(c, book, new Map([["m2", 7]]), new Map(), {
 				images: new Map(),
 				deleteImages: new Set(),
 			}),
@@ -487,7 +487,7 @@ describe("a case that is here and at the server, with no record of what the serv
 		]);
 		const book = merged?.book as CaseBook;
 		expect(book.mode).toBe("synced");
-		expect(book.marks).toEqual({ a1: "m_1", a2: "m_2" });
+		expect(book.marks).toEqual({ m1: "m_1", m2: "m_2" });
 		expect(book.shots).toEqual({ s1: "sh_1" });
 		// No image was needed: nothing new came.
 		expect(merged?.images.size).toBe(0);

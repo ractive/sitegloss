@@ -11,13 +11,13 @@ function caseWith(text: string, title = "Button contrast"): Case {
 		verdict: text,
 		marks: [
 			{
-				id: "a1",
+				id: "m1",
 				number: 1,
 				shot: "s1",
 				comment: text,
 				author: "user",
 				shape: { kind: "box", rect: { x: 1, y: 2, width: 30, height: 20 } },
-				crop: "crops/a1.webp",
+				crop: "crops/m1.webp",
 				element: null,
 				reopens: [{ note: text, at: "t2", was: { kind: "fixed", at: "t1" } }],
 				findings: [
@@ -318,7 +318,7 @@ describe("addresses and paths in case.md link only where they are what they say"
 			],
 		});
 		expect(md).toContain("- Screenshot: [s1](shots/s1.webp)");
-		expect(md).toContain("![Mark 1](crops/a1.webp)");
+		expect(md).toContain("![Mark 1](crops/m1.webp)");
 		expect(md).toContain("![Screenshot s1, scrolled to 0, 0](shots/s1.webp)");
 	});
 });
@@ -483,7 +483,7 @@ describe("the thread and closing in case.md (DEC-046)", () => {
 			comments: [
 				{
 					id: "k_1",
-					mark: "a1",
+					mark: "m1",
 					text: "Fixed in PR 12.\n## Marks (0)",
 					at: "2026-11-20T11:00:00.000Z",
 					user: { id: "u_dana", name: "Dana Developer" },

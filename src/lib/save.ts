@@ -22,6 +22,7 @@ import {
 	MAX_PAGES,
 	MAX_SHOTS,
 	type Mark,
+	markIdOf,
 	nextNumbers,
 	type PageInfo,
 	pageKey,
@@ -244,7 +245,7 @@ export async function saveCase(
 					`mark ${draft.number} exists in the case already: the case changed meanwhile. Adding it again gives it the next free number.`,
 				);
 			taken.add(draft.number);
-			const id = `a${draft.number}`;
+			const id = markIdOf(draft.number);
 			// A new mark's fields, and nothing else of the draft: it is open and
 			// has no findings, whatever the sender put in (CR-07).
 			marks.push({

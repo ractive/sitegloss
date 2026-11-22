@@ -35,6 +35,7 @@ import {
 	MAX_VERDICT,
 	type Mark,
 	type MarkEnds,
+	markIdOf,
 	markSignature,
 	pageAt,
 	pageKey,
@@ -441,7 +442,7 @@ const instant = (time: string | undefined): number => {
  * - A screenshot's id here (`s<n>`) is given again after an Undo or a
  *   delete: a screenshot taken at another time than the server's is not
  *   the server's.
- * - A mark's id here (`a<number>`) is another mark's after a renumbering
+ * - A mark's id here (`m<number>`) is another mark's after a renumbering
  *   this server's book did not hear of (the case synced with another
  *   server meanwhile, DEC-041): a mark with another drawing, or on another
  *   screenshot, than the server's mark is not that mark.
@@ -1282,7 +1283,7 @@ export function renumber(
 	const renamed = new Map<string, string>();
 	for (const a of c.marks) {
 		const number = moves.get(a.id);
-		renamed.set(a.id, number === undefined ? a.id : `a${number}`);
+		renamed.set(a.id, number === undefined ? a.id : markIdOf(number));
 	}
 	for (const [id, wire] of Object.entries(book.marks))
 		wireIds[renamed.get(id) ?? id] = wire;
@@ -1290,7 +1291,7 @@ export function renumber(
 	const marks = c.marks.map((a) => {
 		const number = moves.get(a.id);
 		if (number === undefined) return a;
-		const id = `a${number}`;
+		const id = markIdOf(number);
 		// Its crop as stored: the path may be taken by another mark's meanwhile.
 		const crop = crops.get(a.crop);
 		if (crop === undefined) throw new NeedsImage(a.crop, undefined);
@@ -1545,7 +1546,7 @@ export function mergeCase(
 			delete shadow.marks[w.id];
 			continue;
 		}
-		const markId = `a${w.number}`;
+		const markId = markIdOf(w.number);
 		added.push({
 			wire: w.id,
 			// A crop cut here from a whole-screenshot one (DEC-047), if one was.

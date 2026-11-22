@@ -64,13 +64,13 @@ const shot = (id: string, url?: string, width = 1280): Shot => ({
 });
 
 const mark = (n: number, shotId: string, element = false): Mark => ({
-	id: `a${n}`,
+	id: `m${n}`,
 	number: n,
 	shot: shotId,
 	comment: `comment ${n}`,
 	author: "user",
 	shape: { kind: "box", rect: { x: 1, y: 2, width: 30, height: 40 } },
-	crop: `crops/a${n}.webp`,
+	crop: `crops/m${n}.webp`,
 	element: element
 		? {
 				tag: "button",
@@ -302,13 +302,13 @@ describe("the pages of a case", () => {
 
 	test("deleting a page's last mark takes the page off the list; the first page follows the first one left", () => {
 		const c = flow();
-		const { value } = withoutMark(c, "a3", NOW);
+		const { value } = withoutMark(c, "m3", NOW);
 		expect(casePages(value).map((p) => p.url)).toEqual([CART]);
 		expect(value.page.url).toBe(CART);
 		// The cart's marks go: the payment page is the case's first page now.
-		let rest = withoutMark(c, "a1", NOW).value;
+		let rest = withoutMark(c, "m1", NOW).value;
 		expect(casePages(rest).map((p) => p.url)).toEqual([CART, PAY]);
-		rest = withoutMark(rest, "a2", NOW).value;
+		rest = withoutMark(rest, "m2", NOW).value;
 		expect(rest.pages).toEqual([{ url: PAY, title: "Payment", lang: "en" }]);
 		// The first page is the payment page now, window and all: it was made
 		// at 390, not at the 1280 of the cart that left.
@@ -321,7 +321,7 @@ describe("the pages of a case", () => {
 		});
 		expect(() => validateCase(rest)).not.toThrow();
 		// The last mark of all: the case stays its page's.
-		const none = withoutMark(rest, "a3", NOW).value;
+		const none = withoutMark(rest, "m3", NOW).value;
 		expect(none.pages).toEqual([{ url: PAY, title: "Payment", lang: "en" }]);
 		expect(none.page.url).toBe(PAY);
 	});
@@ -332,7 +332,7 @@ describe("the pages of a case", () => {
 			shots: [shot("s1"), shot("s2", "https://www.example.com/other")],
 			marks: [mark(1, "s1"), mark(2, "s2")],
 		};
-		const { value } = withoutMark(old, "a2", NOW);
+		const { value } = withoutMark(old, "m2", NOW);
 		expect(value.pages).toBeUndefined();
 		expect(withPagesOfShots(old)).toBe(old);
 		expect(casePages(value).map((p) => p.url)).toEqual([
@@ -347,7 +347,7 @@ const crop: Crop = async (_image, rects) =>
 	rects.map(() => ({ blob: new Blob(["crop"]), width: 280, height: 160 }));
 
 const draft = (n: number, shotId: string): MarkDraft => ({
-	id: `a${n}`,
+	id: `m${n}`,
 	number: n,
 	shot: shotId,
 	comment: `comment ${n}`,
@@ -515,7 +515,7 @@ describe("marks on another page go into the open case", () => {
 		const at = new Date().toISOString();
 		const c = await add(store, "c_1", 2, PAY, "Payment", at);
 		const added = c.marks.find((a) => a.number === 2) as Mark;
-		await undoAdd(store, "c_1", "a2", {
+		await undoAdd(store, "c_1", "m2", {
 			shot: added.shot,
 			comment: added.comment,
 		});
@@ -681,7 +681,7 @@ describe("who did something, in a case synced with a team (DEC-039)", () => {
 
 describe("what a draw found, judged for the page in front", () => {
 	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "found" ? 0.9 : 0,
@@ -813,7 +813,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			1, 1, 1,
 		]);
 		// The cart's mark goes: mark 1 stays where it was.
-		const rest = withoutMark(agreed, "a2", NOW).value;
+		const rest = withoutMark(agreed, "m2", NOW).value;
 		expect(markUrl(rest, rest.marks[0] as Mark)).toBe(HOME);
 		expect(rest.page.url).toBe(HOME);
 
@@ -867,7 +867,7 @@ describe("page, the list and the screenshots agree (review of DEC-038)", () => {
 			],
 		};
 		// `page` (the cart) is not first in the list; a delete rewrites it.
-		const rest = withoutMark(c, "a3", NOW).value;
+		const rest = withoutMark(c, "m3", NOW).value;
 		expect(rest.page.url).toBe(PAY);
 		// Mark 1's screenshot was the cart's and says so now.
 		expect(markUrl(rest, rest.marks[0] as Mark)).toBe(CART);

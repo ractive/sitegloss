@@ -84,8 +84,8 @@ describe.skipIf(browserBinary === undefined)(
 			const saved = (await readDb()).cases[0];
 			if (saved === undefined) throw new Error("not saved");
 			const paths = imagesOf(await readDb(), saved.id);
-			expect(paths).toContain("crops/a1.webp");
-			expect(paths).toContain("crops/a2.webp");
+			expect(paths).toContain("crops/m1.webp");
+			expect(paths).toContain("crops/m2.webp");
 			expect(paths).toContain("shots/s1.webp");
 
 			// Export: the file holds the case and the stored images, byte for byte.
@@ -171,7 +171,7 @@ describe.skipIf(browserBinary === undefined)(
 			await h.control.eval(
 				write(`
 				tx.objectStore("cases").put({ ...${JSON.stringify(saved)}, title: "Changed since" });
-				${putImage(`${saved.id}/crops/a9.webp`)};
+				${putImage(`${saved.id}/crops/m9.webp`)};
 				${putImage(`${saved.id}/shots/s1.webp`)};
 			`),
 			);

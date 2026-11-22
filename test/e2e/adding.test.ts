@@ -213,9 +213,9 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 			[3, "Say how much", "s3"],
 		]);
 		expect(imagesOf(db, c.id)).toEqual([
-			"crops/a1.webp",
-			"crops/a2.webp",
-			"crops/a3.webp",
+			"crops/m1.webp",
+			"crops/m2.webp",
+			"crops/m3.webp",
 			"shots/s1.webp",
 			"shots/s2.webp",
 			"shots/s3.webp",
@@ -259,7 +259,7 @@ describe.skipIf(browserBinary === undefined)("adding marks to a case", () => {
 		const { c, db } = await caseTitled("Taken back");
 		expect(c.marks.map((a) => a.number)).toEqual([1]);
 		expect(c.shots.map((s) => s.id)).toEqual(["s1"]);
-		expect(imagesOf(db, c.id)).toEqual(["crops/a1.webp", "shots/s1.webp"]);
+		expect(imagesOf(db, c.id)).toEqual(["crops/m1.webp", "shots/s1.webp"]);
 		// Nothing more to take back: the saved case is not this toolbar's to undo.
 		expect(
 			await page.eval<boolean>(`${shadow('[data-action="undo"]')}.disabled`),

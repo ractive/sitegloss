@@ -62,13 +62,13 @@ const shot = (id: string, url: string, query?: string, width = 1280): Shot => ({
 });
 
 const mark = (n: number, shotId: string): Mark => ({
-	id: `a${n}`,
+	id: `m${n}`,
 	number: n,
 	shot: shotId,
 	comment: `comment ${n}`,
 	author: "user",
 	shape: { kind: "box", rect: { x: 1, y: 2, width: 30, height: 40 } },
-	crop: `crops/a${n}.webp`,
+	crop: `crops/m${n}.webp`,
 	element: null,
 });
 
@@ -195,7 +195,7 @@ describe("the same page: exact for the offer, by path for drawing", () => {
 	test("a draw on localhost's home page judges production's home page marks as the page's own", () => {
 		const c = shopCase();
 		const found = (n: number): MarkMatch => ({
-			markId: `a${n}`,
+			markId: `m${n}`,
 			number: n,
 			status: "lost",
 			score: 0,
@@ -217,7 +217,7 @@ describe("the same page: exact for the offer, by path for drawing", () => {
 
 describe("a screenshot keeps its query", () => {
 	const draft = (n: number, shotId: string): MarkDraft => ({
-		id: `a${n}`,
+		id: `m${n}`,
 		number: n,
 		shot: shotId,
 		comment: `comment ${n}`,
@@ -472,7 +472,7 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 describe("two sites' home pages in one case (review of DEC-050)", () => {
 	const PAY = "https://pay.example/";
 	const lost = (n: number): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status: "lost",
 		score: 0,
@@ -522,13 +522,13 @@ describe("a mark's link waits for its page (review of DEC-050, 6 and 7)", () => 
 	const p: PendingShow = {
 		tabId: 4,
 		caseId: "c_shop",
-		markId: "a2",
+		markId: "m2",
 		mark: "key",
 		url: `${SEARCH}?q=shoes`,
 		until: 1000,
 	};
 	const match = (status: MarkMatch["status"]): MarkMatch => ({
-		markId: "a2",
+		markId: "m2",
 		number: 2,
 		status,
 		score: 0.9,
@@ -539,7 +539,7 @@ describe("a mark's link waits for its page (review of DEC-050, 6 and 7)", () => 
 		tabId: 4,
 		caseId: "c_shop",
 		url: `${SEARCH}?q=shoes`,
-		matches: new Map([["a2", match(status)]]),
+		matches: new Map([["m2", match(status)]]),
 		settling,
 	});
 

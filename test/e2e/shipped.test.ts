@@ -162,7 +162,7 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		const saved = db.cases[0];
 		expect(saved?.title).toBe("From the store package");
 		expect(saved?.marks[0]?.element?.tag).toBe("button");
-		expect(imagesOf(db, saved?.id ?? "")).toContain("crops/a1.webp");
+		expect(imagesOf(db, saved?.id ?? "")).toContain("crops/m1.webp");
 		await panel.waitFor(`document.querySelector("[data-case]")`);
 
 		// The click was for that tab: the panel, still open, may not touch the

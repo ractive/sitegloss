@@ -161,7 +161,7 @@ export async function addMark(
 		height: 1600,
 	});
 	const draft: MarkDraft = {
-		id: `a${number}`,
+		id: `m${number}`,
 		number,
 		shot: id,
 		comment,

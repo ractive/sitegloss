@@ -494,13 +494,13 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				...sampleCase("c_slow"),
 				marks: [
 					{
-						id: "a1",
+						id: "m1",
 						number: 1,
 						shot: "s1",
 						comment: "Somewhere",
 						author: "user",
 						shape: { kind: "note", at: { x: 1, y: 1 } },
-						crop: "crops/a1.webp",
+						crop: "crops/m1.webp",
 						element: null,
 					},
 				],
@@ -510,9 +510,9 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				...sampleCase("c_next"),
 				marks: [1, 2].map((n) => ({
 					...(slow.marks[0] as Case["marks"][number]),
-					id: `a${n}`,
+					id: `m${n}`,
 					number: n,
-					crop: `crops/a${n}.webp`,
+					crop: `crops/m${n}.webp`,
 				})),
 			};
 			await fresh([slow, next]);
@@ -1126,13 +1126,13 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				...c,
 				page: { ...c.page, url: `${h.base}/v1` },
 				marks: Array.from({ length: n }, (_, i) => ({
-					id: `a${i + 1}`,
+					id: `m${i + 1}`,
 					number: i + 1,
 					shot: "s1",
 					comment: `Mark ${i + 1}`,
 					author: "user" as const,
 					shape: { kind: "note" as const, at: { x: 10 + i, y: 10 } },
-					crop: `crops/a${i + 1}.webp`,
+					crop: `crops/m${i + 1}.webp`,
 					element: null,
 				})),
 			};

@@ -37,6 +37,7 @@ import {
 	MAX_VERDICT,
 	type Mark,
 	type MarkStatus,
+	markIdOf,
 	markKey,
 	markStatus,
 	marksByPage,
@@ -1003,7 +1004,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 				path: {
 					type: "string",
 					description:
-						"shots/s1.webp or crops/a1.webp, as get_case lists them.",
+						"shots/s1.webp or crops/m1.webp, as get_case lists them.",
 					pattern: "^(shots|crops)/[A-Za-z0-9_-]{1,64}\\.webp$",
 				},
 			},
@@ -1371,7 +1372,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			url: described.url,
 		};
 		await store.putImage(c.id, shot.image, webp);
-		const id = `a${next.mark}`;
+		const id = markIdOf(next.mark);
 		let saved: Case;
 		try {
 			saved = await saveCase(

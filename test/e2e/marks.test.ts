@@ -104,10 +104,10 @@ describe.skipIf(browserBinary === undefined)(
 			const { c } = await saved("Scroller");
 			expect(c.shots).toHaveLength(2);
 			expect(
-				await countColour(h.control, "Scroller", "crops/a1.webp", BLUE),
+				await countColour(h.control, "Scroller", "crops/m1.webp", BLUE),
 			).toBeGreaterThan(1000);
 			expect(
-				await countColour(h.control, "Scroller", "crops/a2.webp", GREEN),
+				await countColour(h.control, "Scroller", "crops/m2.webp", GREEN),
 			).toBeGreaterThan(1000);
 			expect(
 				await countColour(h.control, "Scroller", "shots/s1.webp", GREEN),
@@ -137,10 +137,10 @@ describe.skipIf(browserBinary === undefined)(
 			const shotOf = (n: number) => c.marks.find((a) => a.number === n)?.shot;
 			expect(new Set([shotOf(1), shotOf(2)]).size).toBe(2);
 			expect(
-				await countColour(h.control, "Waited", "crops/a1.webp", BLUE),
+				await countColour(h.control, "Waited", "crops/m1.webp", BLUE),
 			).toBeGreaterThan(1000);
 			expect(
-				await countColour(h.control, "Waited", "crops/a2.webp", GREEN),
+				await countColour(h.control, "Waited", "crops/m2.webp", GREEN),
 			).toBeGreaterThan(1000);
 			expect(
 				await countColour(
@@ -199,7 +199,7 @@ describe.skipIf(browserBinary === undefined)(
 			const { c } = await saved("After undo");
 			expect(c.marks.map((a) => a.shot)).toEqual(["s1", "s2"]);
 			expect(
-				await countColour(h.control, "After undo", "crops/a2.webp", GREEN),
+				await countColour(h.control, "After undo", "crops/m2.webp", GREEN),
 			).toBeGreaterThan(1000);
 			await close(page);
 		}, 60_000);
@@ -232,7 +232,7 @@ describe.skipIf(browserBinary === undefined)(
 			const { c } = await saved("Failed shot");
 			expect(c.marks[2]?.shot).not.toBe("s1");
 			expect(
-				await countColour(h.control, "Failed shot", "crops/a3.webp", GREEN),
+				await countColour(h.control, "Failed shot", "crops/m3.webp", GREEN),
 			).toBeGreaterThan(1000);
 			await close(page);
 		}, 60_000);
@@ -422,10 +422,10 @@ describe.skipIf(browserBinary === undefined)(
 			).toEqual([]);
 			// Both marks are on the image, drawn at saving, and the overlay is not.
 			expect(
-				await countColour(h.control, "Shared", "crops/a1.webp", MARK, 60),
+				await countColour(h.control, "Shared", "crops/m1.webp", MARK, 60),
 			).toBeGreaterThan(100);
 			expect(
-				await countColour(h.control, "Shared", "crops/a2.webp", MARK, 60),
+				await countColour(h.control, "Shared", "crops/m2.webp", MARK, 60),
 			).toBeGreaterThan(100);
 			await close(page);
 		}, 60_000);
@@ -590,7 +590,7 @@ describe.skipIf(browserBinary === undefined)(
 				await sendToTab(tabId, {
 					type: "case:show",
 					caseId: "x",
-					markId: "a1",
+					markId: "m1",
 				}),
 			).toEqual({
 				error: "An AI app is taking a screenshot; try again in a moment.",

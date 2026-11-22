@@ -277,7 +277,7 @@ describe("syncing from the worker", () => {
 		const other = device("dana", server.api({ id: "u_dana", name: "Dana" }));
 		await other.engine.signedIn(SERVER, await other.api.me());
 		await change(other, "c_1", (c, at) =>
-			withComment(c, "a1", "Dana's words", at),
+			withComment(c, "m1", "Dana's words", at),
 		);
 		await other.engine.request();
 		const seen = data.get(KEYS.cursor) as number;

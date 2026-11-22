@@ -168,13 +168,13 @@ describe("the case list", () => {
 
 describe("a mark's status and actions", () => {
 	const mark = (n: number, resolution?: Mark["resolution"]): Mark => ({
-		id: `a${n}`,
+		id: `m${n}`,
 		number: n,
 		shot: "s1",
 		comment: `Comment ${n}`,
 		author: "user",
 		shape: { kind: "note", at: { x: 1, y: 1 } },
-		crop: `crops/a${n}.webp`,
+		crop: `crops/m${n}.webp`,
 		element: null,
 		...(resolution ? { resolution } : {}),
 	});
@@ -206,14 +206,14 @@ describe("a mark's status and actions", () => {
 
 	test("a resolved mark says how, with its note, and the chips sum up", () => {
 		render(caseState(twoMarks()), noActions);
-		expect(row("a2").dataset["resolved"]).toBe("wontfix");
-		expect(row("a2").querySelector(".history")?.textContent).toMatch(
+		expect(row("m2").dataset["resolved"]).toBe("wontfix");
+		expect(row("m2").querySelector(".history")?.textContent).toMatch(
 			/^Won't fix .+ · Legal wants it$/,
 		);
-		expect(row("a1").querySelector(".history")).toBeNull();
+		expect(row("m1").querySelector(".history")).toBeNull();
 		expect(chips()).toEqual(["● Open 1", "– Closed 1"]);
-		expect(action("a1", "resolve").textContent).toBe("Resolve…");
-		expect(action("a2", "reopen").textContent).toBe("Reopen…");
+		expect(action("m1", "resolve").textContent).toBe("Resolve…");
+		expect(action("m2", "reopen").textContent).toBe("Reopen…");
 	});
 
 	test("Resolve opens its form; the choice and note go to resolveMark", () => {
@@ -225,11 +225,11 @@ describe("a mark's status and actions", () => {
 				calls.push(["resolve", a.id, kind, note]),
 		});
 		render(caseState(c), actions);
-		action("a1", "resolve").click();
+		action("m1", "resolve").click();
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					markId: "a1",
+					markId: "m1",
 					mark: "",
 					mode: "resolve",
 					kind: "fixed",
@@ -238,7 +238,7 @@ describe("a mark's status and actions", () => {
 			}),
 			actions,
 		);
-		const form = row("a1").querySelector(
+		const form = row("m1").querySelector(
 			"[data-form=resolve]",
 		) as unknown as HTMLElement;
 		const radio = form.querySelector(
@@ -253,8 +253,8 @@ describe("a mark's status and actions", () => {
 			) as unknown as HTMLElement
 		).click();
 		expect(calls).toEqual([
-			["edit", "a1", "resolve"],
-			["resolve", "a1", "cantreproduce", "Not on dev"],
+			["edit", "m1", "resolve"],
+			["resolve", "m1", "cantreproduce", "Not on dev"],
 		]);
 	});
 
@@ -263,7 +263,7 @@ describe("a mark's status and actions", () => {
 		const editing = (updatedAt: string) =>
 			caseState({ ...c, updatedAt }, (s) => {
 				s.markEdit = {
-					markId: "a1",
+					markId: "m1",
 					mark: "",
 					mode: "comment",
 					kind: "fixed",
@@ -272,7 +272,7 @@ describe("a mark's status and actions", () => {
 			});
 		render(editing("2026-11-08T10:00:00Z"), noActions);
 		await Promise.resolve();
-		const comment = row("a1").querySelector(
+		const comment = row("m1").querySelector(
 			"textarea",
 		) as unknown as HTMLElement;
 		expect(window.document.activeElement).toBe(comment as never);
@@ -319,7 +319,7 @@ describe("a mark's status and actions", () => {
 		render(
 			caseState(c, (s) => {
 				s.findingDeleteArmed = {
-					markId: "a1",
+					markId: "m1",
 					mark: "",
 					findingId: "f_2",
 					at: 1,
@@ -328,13 +328,13 @@ describe("a mark's status and actions", () => {
 			actions,
 		);
 		const finding = (id: string) =>
-			row("a1").querySelector(
+			row("m1").querySelector(
 				`[data-finding="${id}"]`,
 			) as unknown as HTMLElement;
-		expect(row("a1").querySelector(".findings-count")?.textContent).toBe(
+		expect(row("m1").querySelector(".findings-count")?.textContent).toBe(
 			"2 AI findings",
 		);
-		expect(row("a2").querySelector(".findings")).toBeNull();
+		expect(row("m2").querySelector(".findings")).toBeNull();
 		expect(finding("f_1").querySelector(".finding-text")?.textContent).toBe(
 			"Padding in Card.tsx",
 		);
@@ -349,7 +349,7 @@ describe("a mark's status and actions", () => {
 		expect(button("f_1").textContent).toBe("Delete");
 		expect(button("f_2").textContent).toBe("Really delete?");
 		button("f_1").click();
-		expect(deleted).toEqual(["a1:f_1"]);
+		expect(deleted).toEqual(["m1:f_1"]);
 	});
 
 	test("a finding's Delete, clicked once, asks on its own mark only: ids repeat on other marks", () => {
@@ -369,7 +369,7 @@ describe("a mark's status and actions", () => {
 		render(
 			caseState(c, (s) => {
 				s.findingDeleteArmed = {
-					markId: "a2",
+					markId: "m2",
 					mark: "",
 					findingId: "f_1",
 					at: 1,
@@ -381,22 +381,22 @@ describe("a mark's status and actions", () => {
 			row(markId).querySelector(
 				'[data-finding="f_1"] [data-finding-action="delete"]',
 			) as unknown as HTMLButtonElement;
-		expect(button("a1").textContent).toBe("Delete");
-		expect(button("a1").hasAttribute("data-armed")).toBe(false);
-		expect(button("a2").textContent).toBe("Really delete?");
-		expect(button("a2").hasAttribute("data-armed")).toBe(true);
+		expect(button("m1").textContent).toBe("Delete");
+		expect(button("m1").hasAttribute("data-armed")).toBe(false);
+		expect(button("m2").textContent).toBe("Really delete?");
+		expect(button("m2").hasAttribute("data-armed")).toBe(true);
 	});
 
 	test("Delete asks once more", () => {
 		const c = twoMarks();
 		render(
 			caseState(c, (s) => {
-				s.markDeleteArmed = { markId: "a1", mark: "", at: 1 };
+				s.markDeleteArmed = { markId: "m1", mark: "", at: 1 };
 			}),
 			noActions,
 		);
-		expect(action("a1", "delete").textContent).toBe("Really delete?");
-		expect(action("a2", "delete").textContent).toBe("Delete");
+		expect(action("m1", "delete").textContent).toBe("Really delete?");
+		expect(action("m2", "delete").textContent).toBe("Delete");
 	});
 
 	test("Show sits in a mark's head, where the page can show the mark", () => {
@@ -406,7 +406,7 @@ describe("a mark's status and actions", () => {
 			showMatch: (_caseId, a, candidate) => shown.push([a.id, candidate]),
 		});
 		const found: MarkMatch = {
-			markId: "a1",
+			markId: "m1",
 			number: 1,
 			status: "found",
 			score: 1,
@@ -417,21 +417,21 @@ describe("a mark's status and actions", () => {
 		};
 		// A note or box: no element to find, but Show still scrolls to it.
 		const noElement: MarkMatch = {
-			markId: "a2",
+			markId: "m2",
 			number: 2,
 			status: "no-element",
 			score: 0,
 			current: 0,
 			candidates: [],
 		};
-		const withImages = (loaded: boolean, matches = new Map([["a1", found]])) =>
+		const withImages = (loaded: boolean, matches = new Map([["m1", found]])) =>
 			caseState(c, (s) => {
 				s.images = {
 					caseId: c.id,
 					version: "v1",
 					urls: new Map([
-						["crops/a1.webp", "blob:a1"],
-						["crops/a2.webp", "blob:a2"],
+						["crops/m1.webp", "blob:m1"],
+						["crops/m2.webp", "blob:m2"],
 					]),
 				};
 				if (loaded)
@@ -444,37 +444,37 @@ describe("a mark's status and actions", () => {
 			});
 		// Not loaded on a tab: nothing to show.
 		render(withImages(false), actions);
-		expect(row("a1").querySelector("[data-action=show]")).toBeNull();
+		expect(row("m1").querySelector("[data-action=show]")).toBeNull();
 		render(withImages(true), actions);
 		const show = (id: string) =>
 			row(id).querySelector(
 				".mark-head [data-action=show]",
 			) as unknown as HTMLButtonElement | null;
-		expect(show("a1")?.getAttribute("aria-label")).toBe(
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
 			"Show mark 1 on the page",
 		);
-		show("a1")?.click();
-		expect(shown).toEqual([["a1", 0]]);
+		show("m1")?.click();
+		expect(shown).toEqual([["m1", 0]]);
 		// A mark the page has no match for: no Show.
-		expect(show("a2")).toBeNull();
+		expect(show("m2")).toBeNull();
 		// A note or box has no element, and Show still scrolls to it.
 		render(
 			withImages(
 				true,
 				new Map([
-					["a1", found],
-					["a2", noElement],
+					["m1", found],
+					["m2", noElement],
 				]),
 			),
 			actions,
 		);
-		show("a2")?.click();
+		show("m2")?.click();
 		expect(shown).toEqual([
-			["a1", 0],
-			["a2", 0],
+			["m1", 0],
+			["m2", 0],
 		]);
 		// A crop is small; a click shows it large, another small again.
-		const crop = row("a1").querySelector(
+		const crop = row("m1").querySelector(
 			"button.crop",
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("aria-pressed")).toBe("false");
@@ -497,25 +497,25 @@ describe("a mark's status and actions", () => {
 			window.document.getElementById(
 				"toggle-marks",
 			) as unknown as HTMLButtonElement;
-		expect([isOpen("a1"), isOpen("a2")]).toEqual([false, false]);
+		expect([isOpen("m1"), isOpen("m2")]).toEqual([false, false]);
 		expect(all().textContent).toBe("Expand all");
 		(
-			row("a1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+			row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
 		).click();
-		expect([isOpen("a1"), isOpen("a2")]).toEqual([true, false]);
+		expect([isOpen("m1"), isOpen("m2")]).toEqual([true, false]);
 		all().click();
-		expect([isOpen("a1"), isOpen("a2")]).toEqual([true, true]);
+		expect([isOpen("m1"), isOpen("m2")]).toEqual([true, true]);
 		expect(all().textContent).toBe("Collapse all");
 		// Drawn again (the case changed): what was open stays open.
 		render(caseState({ ...c, updatedAt: "2026-11-08T23:00:00Z" }), noActions);
-		expect([isOpen("a1"), isOpen("a2")]).toEqual([true, true]);
+		expect([isOpen("m1"), isOpen("m2")]).toEqual([true, true]);
 		all().click();
-		expect([isOpen("a1"), isOpen("a2")]).toEqual([false, false]);
+		expect([isOpen("m1"), isOpen("m2")]).toEqual([false, false]);
 		// A mark being edited is open.
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					markId: "a2",
+					markId: "m2",
 					mark: "",
 					mode: "comment",
 					kind: "fixed",
@@ -524,21 +524,21 @@ describe("a mark's status and actions", () => {
 			}),
 			noActions,
 		);
-		expect(isOpen("a2")).toBe(true);
+		expect(isOpen("m2")).toBe(true);
 		// Neither Collapse all nor its own head hides its form.
 		all().click();
 		all().click();
-		expect([isOpen("a1"), isOpen("a2")]).toEqual([false, true]);
+		expect([isOpen("m1"), isOpen("m2")]).toEqual([false, true]);
 		(
-			row("a2").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+			row("m2").querySelector(".mark-toggle") as unknown as HTMLButtonElement
 		).click();
-		expect(isOpen("a2")).toBe(true);
+		expect(isOpen("m2")).toBe(true);
 	});
 
 	test("a closed mark says its state in a word, and the counts read apart", () => {
 		const c = twoMarks();
 		const found: MarkMatch = {
-			markId: "a1",
+			markId: "m1",
 			number: 1,
 			status: "lost",
 			score: 0,
@@ -551,7 +551,7 @@ describe("a mark's status and actions", () => {
 					caseId: c.id,
 					tabId: 1,
 					url: "https://www.example.com/kk",
-					matches: new Map([["a1", found]]),
+					matches: new Map([["m1", found]]),
 				};
 			}),
 			noActions,
@@ -560,9 +560,9 @@ describe("a mark's status and actions", () => {
 			row(id).querySelector(".mark-sub .state")?.textContent;
 		const pill = (id: string) =>
 			row(id).querySelector(".mark-sub .pill")?.textContent;
-		expect(state("a1")).toBe("Not found on this page");
-		expect(pill("a1")).toBeUndefined();
-		expect(pill("a2")).toBe("Won't fix");
+		expect(state("m1")).toBe("Not found on this page");
+		expect(pill("m1")).toBeUndefined();
+		expect(pill("m2")).toBe("Won't fix");
 		expect(window.document.getElementById("marks-heading")?.textContent).toBe(
 			"Marks 2",
 		);
@@ -584,13 +584,13 @@ describe("Verify (DEC-023)", () => {
 		host: "claude.ai",
 	};
 	const mark = (n: number, more: Partial<Mark> = {}): Mark => ({
-		id: `a${n}`,
+		id: `m${n}`,
 		number: n,
 		shot: "s1",
 		comment: `Comment ${n}`,
 		author: "user",
 		shape: { kind: "note", at: { x: 1, y: 1 } },
-		crop: `crops/a${n}.webp`,
+		crop: `crops/m${n}.webp`,
 		element: null,
 		...more,
 	});
@@ -720,37 +720,37 @@ describe("Verify (DEC-023)", () => {
 				.querySelector(`[data-mark="${id}"]`)
 				?.hasAttribute("data-open");
 		render(caseState(c), noActions);
-		expect(open("a3")).toBe(false);
+		expect(open("m3")).toBe(false);
 		const picked = (at: number) =>
 			caseState(c, (s) => {
-				s.picked = { caseId: c.id, markId: "a3", at };
+				s.picked = { caseId: c.id, markId: "m3", at };
 			});
 		render(picked(1), noActions);
-		expect(open("a3")).toBe(true);
+		expect(open("m3")).toBe(true);
 		expect(
 			window.document
-				.querySelector('[data-mark="a3"]')
+				.querySelector('[data-mark="m3"]')
 				?.hasAttribute("data-picked"),
 		).toBe(true);
 		// Closed by hand: the same click does not open it again.
 		(
 			window.document.querySelector(
-				'[data-mark="a3"] .mark-toggle',
+				'[data-mark="m3"] .mark-toggle',
 			) as unknown as HTMLElement
 		).click();
-		expect(open("a3")).toBe(false);
+		expect(open("m3")).toBe(false);
 		render(picked(1), noActions);
-		expect(open("a3")).toBe(false);
+		expect(open("m3")).toBe(false);
 		// Another click does; another case's does not.
 		render(picked(2), noActions);
-		expect(open("a3")).toBe(true);
+		expect(open("m3")).toBe(true);
 		render(
 			caseState(c, (s) => {
-				s.picked = { caseId: "c_other", markId: "a1", at: 3 };
+				s.picked = { caseId: "c_other", markId: "m1", at: 3 };
 			}),
 			noActions,
 		);
-		expect(open("a1")).toBe(false);
+		expect(open("m1")).toBe(false);
 	});
 
 	test("a chip filters the list, a second click or Show all shows all", () => {
@@ -769,7 +769,7 @@ describe("Verify (DEC-023)", () => {
 			s.markFilter = { caseId: c.id, group: "toVerify", upTo: 4 };
 		});
 		render(filtered, actions);
-		expect(rows()).toEqual(["a2"]);
+		expect(rows()).toEqual(["m2"]);
 		expect(
 			window.document
 				.querySelector('.chip[data-group="toVerify"]')
@@ -800,7 +800,7 @@ describe("Verify (DEC-023)", () => {
 			}),
 			actions,
 		);
-		expect(rows()).toEqual(["a1", "a2", "a3", "a4"]);
+		expect(rows()).toEqual(["m1", "m2", "m3", "m4"]);
 		expect(el("marks-filtered")).toBeNull();
 	});
 
@@ -814,10 +814,10 @@ describe("Verify (DEC-023)", () => {
 		const none: Case = {
 			...c,
 			updatedAt: "2026-11-15T10:00:00Z",
-			marks: c.marks.filter((a) => a.id !== "a2"),
+			marks: c.marks.filter((a) => a.id !== "m2"),
 		};
 		render(filtered(none), noActions);
-		expect(rows()).toEqual(["a1", "a3", "a4"]);
+		expect(rows()).toEqual(["m1", "m3", "m4"]);
 		expect(el("marks-filtered")).toBeNull();
 		// A mark drawn while filtered shows, whatever its status.
 		const added: Case = {
@@ -826,7 +826,7 @@ describe("Verify (DEC-023)", () => {
 			marks: [...c.marks, mark(5)],
 		};
 		render(filtered(added), noActions);
-		expect(rows()).toEqual(["a1", "a2", "a3", "a4", "a5"]);
+		expect(rows()).toEqual(["m1", "m2", "m3", "m4", "m5"]);
 		expect(
 			window.document
 				.querySelector('.chip[data-group="toVerify"]')
@@ -847,21 +847,21 @@ describe("Verify (DEC-023)", () => {
 		render(caseState(fourMarks()), noActions);
 		const pill = (id: string) =>
 			row(id).querySelector(".mark-sub .pill")?.textContent;
-		expect([pill("a1"), pill("a2"), pill("a3"), pill("a4")]).toEqual([
+		expect([pill("m1"), pill("m2"), pill("m3"), pill("m4")]).toEqual([
 			undefined,
 			"To verify",
 			"Verified",
 			"Won't fix",
 		]);
-		expect(actionsOf("a1")).toEqual(["Resolve…", "Edit comment", "Delete"]);
-		expect(actionsOf("a2")).toEqual([
+		expect(actionsOf("m1")).toEqual(["Resolve…", "Edit comment", "Delete"]);
+		expect(actionsOf("m2")).toEqual([
 			"Verified",
 			"Reopen…",
 			"Change…",
 			"Edit comment",
 			"Delete",
 		]);
-		for (const id of ["a3", "a4"])
+		for (const id of ["m3", "m4"])
 			expect(actionsOf(id)).toEqual([
 				"Reopen…",
 				"Change…",
@@ -872,27 +872,27 @@ describe("Verify (DEC-023)", () => {
 			[...row(id).querySelectorAll(".mark-actions .strong")].map(
 				(b) => b.textContent,
 			);
-		expect([strong("a1"), strong("a2"), strong("a3")]).toEqual([
+		expect([strong("m1"), strong("m2"), strong("m3")]).toEqual([
 			["Resolve…"],
 			["Verified"],
 			[],
 		]);
 		// To verify: Verified and Reopen… in the collapsed head too.
 		expect(
-			[...row("a2").querySelectorAll(".mark-sub button")].map(
+			[...row("m2").querySelectorAll(".mark-sub button")].map(
 				(b) => b.textContent,
 			),
 		).toEqual(["Verified", "Reopen…"]);
-		expect(row("a3").querySelector(".mark-sub button")).toBeNull();
+		expect(row("m3").querySelector(".mark-sub button")).toBeNull();
 		expect(
-			row("a2")
+			row("m2")
 				.querySelector('.mark-sub [data-mark-action="verify"]')
 				?.getAttribute("title"),
 		).toBe("The fix holds on the page you checked");
 		// A mark to verify is drawn in full; verified and closed step back.
-		expect(row("a2").hasAttribute("data-resolved")).toBe(false);
-		expect(row("a2").dataset["status"]).toBe("fixed");
-		expect(row("a3").dataset["resolved"]).toBe("fixed");
+		expect(row("m2").hasAttribute("data-resolved")).toBe(false);
+		expect(row("m2").dataset["status"]).toBe("fixed");
+		expect(row("m3").dataset["resolved"]).toBe("fixed");
 	});
 
 	test("Verified and Reopen… in the head call their actions", () => {
@@ -907,13 +907,13 @@ describe("Verify (DEC-023)", () => {
 		);
 		for (const name of ["verify", "reopen"])
 			(
-				row("a2").querySelector(
+				row("m2").querySelector(
 					`.mark-sub [data-mark-action="${name}"]`,
 				) as unknown as HTMLElement
 			).click();
 		expect(calls).toEqual([
-			["verify", "a2"],
-			["edit", "a2", "reopen"],
+			["verify", "m2"],
+			["edit", "m2", "reopen"],
 		]);
 	});
 
@@ -936,11 +936,11 @@ describe("Verify (DEC-023)", () => {
 			],
 		};
 		render(caseState(c), noActions);
-		expect(row("a1").querySelector(".mark-sub .reopened")?.textContent).toBe(
+		expect(row("m1").querySelector(".mark-sub .reopened")?.textContent).toBe(
 			"Reopened: Still pale on hover",
 		);
 		render(caseState(verified), noActions);
-		const lines = [...row("a1").querySelectorAll(".history li")].map((li) => [
+		const lines = [...row("m1").querySelectorAll(".history li")].map((li) => [
 			li.getAttribute("data-kind"),
 			li.textContent,
 		]);
@@ -957,7 +957,7 @@ describe("Verify (DEC-023)", () => {
 		);
 		expect(lines[3]?.[1]).toMatch(/^Verified /);
 		// Not reopened any more: no reopen line in the head.
-		expect(row("a1").querySelector(".mark-sub .reopened")).toBeNull();
+		expect(row("m1").querySelector(".mark-sub .reopened")).toBeNull();
 	});
 
 	test("a status from a file says so in the history", () => {
@@ -980,7 +980,7 @@ describe("Verify (DEC-023)", () => {
 			],
 		};
 		render(caseState(fromFile), noActions);
-		const lines = [...row("a2").querySelectorAll(".history li")].map(
+		const lines = [...row("m2").querySelectorAll(".history li")].map(
 			(li) => li.textContent,
 		);
 		expect(lines[0]).toMatch(
@@ -1005,7 +1005,7 @@ describe("Verify (DEC-023)", () => {
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					markId: "a1",
+					markId: "m1",
 					mark: "",
 					mode: "resolve",
 					kind: "fixed",
@@ -1014,7 +1014,7 @@ describe("Verify (DEC-023)", () => {
 			}),
 			actions,
 		);
-		const form = row("a1").querySelector(
+		const form = row("m1").querySelector(
 			"[data-form=resolve]",
 		) as unknown as HTMLElement;
 		expect(form.querySelector("legend")?.textContent).toBe("Mark 1 is");
@@ -1040,7 +1040,7 @@ describe("Verify (DEC-023)", () => {
 		) as unknown as HTMLElement;
 		expect(done.textContent).toBe("Save");
 		done.click();
-		expect(calls).toEqual([["a1", "verified", ""]]);
+		expect(calls).toEqual([["m1", "verified", ""]]);
 	});
 
 	test("Reopen…: the note is required, then goes to reopenMark", () => {
@@ -1052,7 +1052,7 @@ describe("Verify (DEC-023)", () => {
 		render(
 			caseState(c, (s) => {
 				s.markEdit = {
-					markId: "a2",
+					markId: "m2",
 					mark: "",
 					mode: "reopen",
 					kind: "fixed",
@@ -1061,7 +1061,7 @@ describe("Verify (DEC-023)", () => {
 			}),
 			actions,
 		);
-		const form = row("a2").querySelector(
+		const form = row("m2").querySelector(
 			"[data-form=reopen]",
 		) as unknown as HTMLElement;
 		expect(form.querySelector("legend")?.textContent).toBe("Reopen mark 2");
@@ -1083,9 +1083,9 @@ describe("Verify (DEC-023)", () => {
 		field.dispatchEvent(new window.Event("input") as unknown as Event);
 		expect(done.disabled).toBe(false);
 		done.click();
-		expect(calls).toEqual([["a2", "Still pale"]]);
+		expect(calls).toEqual([["m2", "Still pale"]]);
 		// The head's buttons wait while a form is open.
-		expect(row("a2").querySelector(".mark-sub button")).toBeNull();
+		expect(row("m2").querySelector(".mark-sub button")).toBeNull();
 	});
 
 	test("the case list counts by status, with the bar", () => {
@@ -1200,13 +1200,13 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		...sampleCase("c_reach"),
 		marks: [
 			{
-				id: "a1",
+				id: "m1",
 				number: 1,
 				shot: "s1",
 				comment: "Here",
 				author: "user",
 				shape: { kind: "note", at: { x: 1, y: 1 } },
-				crop: "crops/a1.webp",
+				crop: "crops/m1.webp",
 				element: null,
 			},
 		],
@@ -1222,9 +1222,9 @@ describe("a case on a tab Sitegloss may not run on", () => {
 			url: "https://www.example.com/kk",
 			matches: new Map([
 				[
-					"a1",
+					"m1",
 					{
-						markId: "a1",
+						markId: "m1",
 						number: 1,
 						status: "no-element",
 						score: 0,
@@ -1326,7 +1326,7 @@ describe("a case on a tab Sitegloss may not run on", () => {
 
 describe("none of the case's marks found (DEC-022)", () => {
 	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "lost" ? 0 : 0.9,
@@ -1408,7 +1408,7 @@ describe("none of the case's marks found (DEC-022)", () => {
 
 describe("what the panel's draw found, under the case's buttons", () => {
 	const found = (n: number): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status: "found",
 		score: 1,
@@ -1450,7 +1450,7 @@ describe("what the panel's draw found, under the case's buttons", () => {
 		);
 		// Marks 2 to 4 saved: the page's answer to the case's update is in
 		// `loaded` (redrawLoaded), and no draw wrote under the buttons since.
-		for (const n of [2, 3, 4]) state.loaded?.matches.set(`a${n}`, found(n));
+		for (const n of [2, 3, 4]) state.loaded?.matches.set(`m${n}`, found(n));
 		render(state, noActions);
 		expect(el("case-hint").textContent).toBe(
 			"4 of 4 marks found on www.example.com/kk.",
@@ -1538,13 +1538,13 @@ describe("a case of several pages (DEC-038)", () => {
 		url,
 	});
 	const mark = (n: number, shotId: string): Mark => ({
-		id: `a${n}`,
+		id: `m${n}`,
 		number: n,
 		shot: shotId,
 		comment: `comment ${n}`,
 		author: "user",
 		shape: { kind: "box", rect: { x: 1, y: 2, width: 30, height: 40 } },
-		crop: `crops/a${n}.webp`,
+		crop: `crops/m${n}.webp`,
 		element: {
 			tag: "button",
 			classes: [],
@@ -1567,7 +1567,7 @@ describe("a case of several pages (DEC-038)", () => {
 		marks: [mark(1, "s1"), mark(2, "s1"), mark(3, "s2")],
 	});
 	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
-		markId: `a${n}`,
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "found" ? 0.9 : 0,
@@ -1693,7 +1693,7 @@ describe("a case of several pages (DEC-038)", () => {
 				s.caseHint = { kind: "found" };
 			});
 		const word = (n: number) =>
-			el("case-view").querySelector(`[data-mark="a${n}"] .mark-sub .state`)
+			el("case-view").querySelector(`[data-mark="m${n}"] .mark-sub .state`)
 				?.textContent;
 		const cart = "http://localhost:3000/cart";
 		render(
@@ -1707,7 +1707,7 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(word(1)).toContain("Found here");
 		expect(word(3)).toBe("On another page");
 		// Not red, and no "Not found" in its row.
-		const row = el("case-view").querySelector('[data-mark="a3"]');
+		const row = el("case-view").querySelector('[data-mark="m3"]');
 		expect(row?.getAttribute("data-colour")).toBeNull();
 		expect(row?.textContent).toContain("Marked on shop.example/checkout/pay");
 		expect(row?.textContent).not.toContain("Not found");
@@ -1749,7 +1749,7 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(word(3)).toBe("Also on this page?");
 		expect(
 			el("case-view")
-				.querySelector('[data-mark="a3"]')
+				.querySelector('[data-mark="m3"]')
 				?.getAttribute("data-colour"),
 		).toBe("unsure");
 		expect(el("case-hint").textContent).toBe(
@@ -2441,13 +2441,13 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			],
 			marks: [
 				{
-					id: "a1",
+					id: "m1",
 					number: 1,
 					shot: "s1",
 					comment: "Too pale",
 					author: "user",
 					shape: { kind: "note", at: { x: 1, y: 2 } },
-					crop: "crops/a1.webp",
+					crop: "crops/m1.webp",
 					element: null,
 					createdBy: { id: "u_tess", name: "Tess Tester" },
 					resolution: {
@@ -2473,7 +2473,7 @@ describe("the account and the sync with a team (DEC-039)", () => {
 			],
 		};
 		render(caseState(marked), noActions);
-		const mark = el("case-view").querySelector('[data-mark="a1"]');
+		const mark = el("case-view").querySelector('[data-mark="m1"]');
 		const history = [...(mark?.querySelectorAll(".history li") ?? [])].map(
 			(li) => li.textContent,
 		);
@@ -2500,7 +2500,7 @@ describe("the thread and closing (DEC-046)", () => {
 			},
 			{
 				id: "k_2",
-				mark: "a1",
+				mark: "m1",
 				text: "Fixed in PR 12.",
 				at: "2026-11-20T11:00:00.000Z",
 				user: { id: "u_dana", name: "Dana Developer" },
@@ -3683,13 +3683,13 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 			...sampleCase("c_tabline"),
 			marks: [
 				{
-					id: "a1",
+					id: "m1",
 					number: 1,
 					shot: "s1",
 					comment: "Here",
 					author: "user",
 					shape: { kind: "note", at: { x: 1, y: 1 } },
-					crop: "crops/a1.webp",
+					crop: "crops/m1.webp",
 					element: null,
 				},
 			],
@@ -3768,13 +3768,13 @@ describe("a loaded mark", () => {
 		text: "Berechnen",
 	};
 	const mark = {
-		id: "a1",
+		id: "m1",
 		number: 1,
 		shot: "s1",
 		comment: "Too pale",
 		author: "user",
 		shape: { kind: "element", rect: element.rect },
-		crop: "crops/a1.webp",
+		crop: "crops/m1.webp",
 		element,
 	} as Mark;
 	const shownAs = (summary: string, visible = true, current = 0) =>
@@ -3785,9 +3785,9 @@ describe("a loaded mark", () => {
 				url: "https://www.example.com/kk",
 				matches: new Map([
 					[
-						"a1",
+						"m1",
 						{
-							markId: "a1",
+							markId: "m1",
 							number: 1,
 							status: "found",
 							score: 1,
@@ -3835,15 +3835,15 @@ describe("a loaded mark", () => {
 	test("the pin: its colour is the status, its fill the match (DEC-024)", async () => {
 		const at = "2026-11-14T09:00:00Z";
 		const marks: Mark[] = [
-			{ ...mark, id: "a1", number: 1 },
-			{ ...mark, id: "a2", number: 2, resolution: { kind: "fixed", at } },
+			{ ...mark, id: "m1", number: 1 },
+			{ ...mark, id: "m2", number: 2, resolution: { kind: "fixed", at } },
 			{
 				...mark,
-				id: "a3",
+				id: "m3",
 				number: 3,
 				resolution: { kind: "fixed", at, verified: { at } },
 			},
-			{ ...mark, id: "a4", number: 4, resolution: { kind: "wontfix", at } },
+			{ ...mark, id: "m4", number: 4, resolution: { kind: "wontfix", at } },
 		];
 		const candidate = (found: boolean) => ({
 			score: found ? 1 : 0.6,
@@ -3857,9 +3857,9 @@ describe("a loaded mark", () => {
 			status: MarkMatch["status"],
 			candidates: ReturnType<typeof candidate>[],
 		): [string, MarkMatch] => [
-			`a${n}`,
+			`m${n}`,
 			{
-				markId: `a${n}`,
+				markId: `m${n}`,
 				number: n,
 				status,
 				score: candidates[0]?.score ?? 0,
@@ -4453,7 +4453,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 		// The same host in front: one link only.
 		expect(link("here")).toBeNull();
 		made?.click();
-		expect(asked).toEqual([["a1", "made"]]);
+		expect(asked).toEqual([["m1", "made"]]);
 	});
 
 	test("with the case open on another host, the same path and query there too", () => {
@@ -4465,7 +4465,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 			}),
 			actionsWith({ openMarkPage: (_c, _a, where) => void asked.push(where) }),
 		);
-		const mark = window.document.querySelector('[data-mark="a1"] .mark-page');
+		const mark = window.document.querySelector('[data-mark="m1"] .mark-page');
 		expect(mark?.textContent).toBe(
 			"Marked on shop.example/search?q=shoes · Open on localhost:3000",
 		);
@@ -4499,7 +4499,7 @@ describe("the second link names the origin in front (review of DEC-050)", () => 
 				}),
 				noActions,
 			);
-			return window.document.querySelector('[data-mark="a1"] .mark-page')
+			return window.document.querySelector('[data-mark="m1"] .mark-page')
 				?.textContent;
 		};
 		expect(line("http://shop.example/cart")).toBe(

@@ -58,13 +58,13 @@ const element: ElementDetails = {
 };
 
 const mark = (n: number): Mark => ({
-	id: `a${n}`,
+	id: `m${n}`,
 	number: n,
 	shot: "s1",
 	comment: `Comment ${n}`,
 	author: "user",
 	shape: { kind: "box", rect: { x: 5, y: 5, width: 120, height: 40 } },
-	crop: `crops/a${n}.webp`,
+	crop: `crops/m${n}.webp`,
 	element,
 });
 
@@ -73,7 +73,7 @@ function webp(size: number): Blob {
 }
 
 const foundMatch: MarkMatch = {
-	markId: "a1",
+	markId: "m1",
 	number: 1,
 	status: "found",
 	score: 0.91,
@@ -145,7 +145,7 @@ class FakeTab implements TabBridge {
 		this.sent.push(request);
 		if (request.type === this.stalled) await new Promise(() => {});
 		const match: MarkMatch = {
-			markId: "a1",
+			markId: "m1",
 			number: 1,
 			status: "found",
 			score: 0.91,
@@ -268,7 +268,7 @@ async function seed(
 		),
 	};
 	await putCase(store, c);
-	for (const path of ["shots/s1.webp", "crops/a1.webp", "crops/a2.webp"])
+	for (const path of ["shots/s1.webp", "crops/m1.webp", "crops/m2.webp"])
 		await store.putImage(c.id, path, {
 			blob: webp(100),
 			width: path.startsWith("crops") ? cropWidth : 10,
@@ -378,7 +378,7 @@ describe("tools", () => {
 		cropSize = 400_000; // ~533 000 base64 characters each
 		const result = await call("get_case", { caseId: "c_1" });
 		expect(result.content.filter((c) => c.type === "image")).toHaveLength(1);
-		expect(result.content.at(-1)?.text).toContain("crops/a2.webp");
+		expect(result.content.at(-1)?.text).toContain("crops/m2.webp");
 	});
 
 	test("get_case counts the text against the limit and compacts a large case", async () => {
@@ -474,8 +474,8 @@ describe("tools", () => {
 		);
 		await seed();
 		await expect(
-			call("get_image", { caseId: "c_1", path: "crops/a9.webp" }),
-		).rejects.toThrow("no image crops/a9.webp");
+			call("get_image", { caseId: "c_1", path: "crops/m9.webp" }),
+		).rejects.toThrow("no image crops/m9.webp");
 		const image = await call("get_image", {
 			caseId: "c_1",
 			path: "shots/s1.webp",
@@ -667,7 +667,7 @@ describe("tools", () => {
 		};
 		await putCase(store, {
 			...c,
-			marks: [one, theirs, { ...two, id: "a3", number: 3 }],
+			marks: [one, theirs, { ...two, id: "m3", number: 3 }],
 		});
 		for (const [i, [name, input]] of calls.entries())
 			await expect(call(name, input, asked[i]?.signal)).rejects.toThrow(
@@ -752,7 +752,7 @@ describe("tools", () => {
 			rect: { x: 100, y: 200, width: 150, height: 40 },
 		});
 		expect(c?.shots.map((s) => s.id)).toEqual(["s1", "s2"]);
-		expect(await store.getImage("c_1", "crops/a3.webp")).toBeDefined();
+		expect(await store.getImage("c_1", "crops/m3.webp")).toBeDefined();
 		expect(await store.getImage("c_1", "shots/s2.webp")).toBeDefined();
 		expect(tab.sent.at(-1)?.type).toBe("element:unmark");
 		expect(changed).toEqual(["c_1"]);
@@ -1305,8 +1305,8 @@ describe("tools", () => {
 		// to compare.
 		const c = (await store.getCase("c_1")) as Case;
 		const [s1] = c.shots;
-		const [a1, a2] = c.marks;
-		if (s1 === undefined || a1 === undefined || a2 === undefined)
+		const [m1, m2] = c.marks;
+		if (s1 === undefined || m1 === undefined || m2 === undefined)
 			throw new Error("the seeded case has two marks");
 		await putCase(store, {
 			...c,
@@ -1319,7 +1319,7 @@ describe("tools", () => {
 					url: "https://www.example.com/checkout/pay",
 				},
 			],
-			marks: [a1, { ...a2, shot: "s2" }],
+			marks: [m1, { ...m2, shot: "s2" }],
 		});
 		tab.inspected = {
 			...(inspectedButton(undefined) as Extract<InspectResult, { ok: true }>),
@@ -1514,7 +1514,7 @@ describe("tools", () => {
 			reason: "other-page",
 			error:
 				"Mark 2 was not drawn on an element, and the tab in front does not show the mark's page, so the selector is not looked for here.",
-			match: { ...foundMatch, markId: "a2", number: 2 },
+			match: { ...foundMatch, markId: "m2", number: 2 },
 		};
 		await expect(
 			call("get_mark_element", { caseId: "c_1", mark: 2, selector: "form" }),
@@ -2276,7 +2276,7 @@ describe("the thread and closing (DEC-046)", () => {
 			stored.map((k) => [k.id, k.mark ?? null, k.text, k.app?.name]),
 		).toEqual([
 			[onCase, null, "Fixed in PR 12.", "Claude"],
-			[onMark, "a2", "Which padding?", "Claude"],
+			[onMark, "m2", "Which padding?", "Claude"],
 		]);
 		// Named on what is sent: the comment carries its app.
 		const view = json(await call("get_case", { caseId: "c_1", images: false }));
@@ -2559,8 +2559,8 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 			caseId: "c_1",
 			url: "http://localhost:3000/search",
 			matches: [
-				{ ...foundMatch, markId: "a1", number: 1 },
-				{ ...foundMatch, markId: "a2", number: 2 },
+				{ ...foundMatch, markId: "m1", number: 1 },
+				{ ...foundMatch, markId: "m2", number: 2 },
 			],
 		};
 		build({

@@ -49,13 +49,13 @@ export function withOneMark(c: Case): Case {
 		],
 		marks: [
 			{
-				id: "a1",
+				id: "m1",
 				number: 1,
 				shot: "s1",
 				comment: "Too pale",
 				author: "user",
 				shape: { kind: "note", at: { x: 10, y: 20 } },
-				crop: "crops/a1.webp",
+				crop: "crops/m1.webp",
 				element: null,
 			},
 		],
@@ -75,7 +75,7 @@ function tinyWebp(): Blob {
 /** Store `c` with one mark and its two images. */
 export async function putMarked(store: CaseStore, c: Case): Promise<Case> {
 	const marked = withOneMark(c);
-	for (const path of ["shots/s1.webp", "crops/a1.webp"])
+	for (const path of ["shots/s1.webp", "crops/m1.webp"])
 		await store.putImage(marked.id, path, {
 			blob: tinyWebp(),
 			width: 10,

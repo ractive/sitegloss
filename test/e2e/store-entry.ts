@@ -3,7 +3,11 @@
  * contract, as a global, with a fresh database for each run.
  */
 
-import { DB_VERSION, IdbStore } from "../../src/lib/store.ts";
+import {
+	DB_VERSION,
+	IdbStore,
+	StoreBlockedError,
+} from "../../src/lib/store.ts";
 import { IdbStore as IdbStore030 } from "../compat/v0.3.0/src/lib/store.ts";
 import { storeContract } from "../store-contract.ts";
 
@@ -104,8 +108,61 @@ function rawDatabase(): Promise<{
 	});
 }
 
+/** A request's outcome, or "pending" after `ms`. */
+function settled(req: IDBRequest, ms: number): Promise<string> {
+	return new Promise((resolve) => {
+		const timer = setTimeout(() => resolve("pending"), ms);
+		req.addEventListener("success", () => {
+			clearTimeout(timer);
+			resolve("success");
+		});
+		req.addEventListener("error", () => {
+			clearTimeout(timer);
+			resolve(req.error?.name ?? "error");
+		});
+	});
+}
+
 globalThis.__siteglossStore = {
 	names: Object.keys(storeContract),
+	/**
+	 * Database `sitegloss` held at version 1 by a connection that never
+	 * closes itself (a build before this one): this build's open gives up
+	 * with `StoreBlockedError`, and works once that connection goes. Then
+	 * this build's own connection gives way to an upgrade and to a delete.
+	 */
+	async blocked() {
+		indexedDB.deleteDatabase("sitegloss");
+		const old = indexedDB.open("sitegloss", 1);
+		old.onupgradeneeded = () => {
+			old.result.createObjectStore("cases", { keyPath: "id" });
+			old.result.createObjectStore("images");
+		};
+		await settled(old, 5000);
+		const store = new IdbStore({ blockedWaitMs: 200, retryAfterMs: 400 });
+		const said = (error: unknown) =>
+			error instanceof StoreBlockedError ? error.message : String(error);
+		const first = await store.listCases().then(() => "opened", said);
+		old.result.close();
+		// A call right after: the same error at once, no new open (no tight loop).
+		const during = await store.listCases().then(() => "opened", said);
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		const after = await store.listCases().then(
+			(cases) => `opened, ${cases.length} cases`,
+			(error: unknown) => String(error),
+		);
+		// A later version, while this build's connection is open: not blocked.
+		const newer = indexedDB.open("sitegloss", DB_VERSION + 1);
+		let blocked = false;
+		newer.onblocked = () => {
+			blocked = true;
+		};
+		const upgraded = await settled(newer, 2000);
+		newer.result?.close();
+		const deleting = indexedDB.deleteDatabase("sitegloss");
+		const deleted = await settled(deleting, 2000);
+		return { first, during, after, upgraded, blocked, deleted };
+	},
 	/**
 	 * Database `sitegloss` (of a page whose origin has none yet) written by
 	 * 0.3.0's own `IdbStore` with `old` (cases as 0.3.0 stores them), a
@@ -119,7 +176,7 @@ globalThis.__siteglossStore = {
 			for (const c of old) {
 				await store.updateCase(c.id, () => ({ value: c as never }));
 				await store.putImage(c.id, "shots/s1.webp", image);
-				await store.putImage(c.id, "crops/a1.webp", image);
+				await store.putImage(c.id, "crops/m1.webp", image);
 			}
 			await store.deleteCase("c_gone");
 		});
@@ -159,7 +216,7 @@ globalThis.__siteglossStore = {
 			...(storedAt === undefined ? {} : { storedAt }),
 		});
 		await store.putImage("c_1", "shots/s1.webp", image());
-		await store.putImage("c_1", "crops/a1.webp", image());
+		await store.putImage("c_1", "crops/m1.webp", image());
 		await store.putImage("c_1", "pending/p_old.webp", image(1000));
 		await store.putImage("c_2", "pending/p_new.webp", image(9000));
 		let swept = 0;

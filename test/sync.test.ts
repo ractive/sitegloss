@@ -237,10 +237,10 @@ describe("the sync to a folder (DEC-021)", () => {
 		expect(folder.writes).toEqual(["login.sitegloss.zip"]);
 	});
 
-	test("a file written by 0.3.1 or older (sitegloss/1) is written again once, in sitegloss/2 (DEC-051)", async () => {
+	test("after the update (DEC-051): a file of before is never written over or removed; the emptied store writes nothing; a case that comes back gets a file beside it", async () => {
 		const c = await add("c_1", "Login");
 		await sync.request();
-		// What 0.3.1 kept for the file it wrote: a version without the format.
+		// As 0.3.1 kept it: a version without the format.
 		const before = store.records.get("f_1");
 		if (before === undefined) throw new Error("no record");
 		before.byCase["c_1"] = {
@@ -248,14 +248,28 @@ describe("the sync to a folder (DEC-021)", () => {
 			file: "login.sitegloss.zip",
 		};
 		store.records.set("f_1", before);
-		folder.writes = [];
-		await sync.request();
-		expect(folder.writes).toEqual(["login.sitegloss.zip"]);
-		const file = folder.files.get("login.sitegloss.zip") as Uint8Array;
-		expect((await readExport(file)).case.format).toBe("sitegloss/2");
+		const old = folder.files.get("login.sitegloss.zip");
+		// The store's upgrade emptied it.
+		cases.cases.clear();
+		cases.images.clear();
 		folder.writes = [];
 		await sync.request();
 		expect(folder.writes).toEqual([]);
+		expect(folder.removed).toEqual([]);
+		expect(folder.files.get("login.sitegloss.zip")).toBe(old);
+		// The team's case comes back, under the same id and title.
+		await add("c_1", "Login");
+		await sync.request();
+		expect(folder.writes).toEqual(["login-2.sitegloss.zip"]);
+		expect(folder.removed).toEqual([]);
+		expect(folder.files.get("login.sitegloss.zip")).toBe(old);
+		const file = folder.files.get("login-2.sitegloss.zip") as Uint8Array;
+		expect((await readExport(file)).case.format).toBe("sitegloss/2");
+		// Renamed later: its own file moves, the one of before stays.
+		await change((await cases.getCase("c_1")) as Case, { title: "Sign in" });
+		await sync.request();
+		expect(folder.removed).toEqual(["login-2.sitegloss.zip"]);
+		expect(folder.files.get("login.sitegloss.zip")).toBe(old);
 	});
 
 	test("a case without marks gets no file; one written before is kept up to date (DEC-026)", async () => {
@@ -670,6 +684,28 @@ describe("the sync to Downloads (DEC-025)", () => {
 			now: () => NOW,
 			downloads: downloadsTarget(api),
 		});
+	});
+
+	test("after the update (DEC-051): a case that comes back is not downloaded over its file of before", async () => {
+		const c = await add("c_1", "Login");
+		await sync.request();
+		const record = store.records.get("downloads");
+		if (record === undefined) throw new Error("no record");
+		record.byCase["c_1"] = {
+			version: `${c.updatedAt}|${c.importedAt ?? ""}`,
+			file: "login.sitegloss.zip",
+		};
+		store.records.set("downloads", record);
+		cases.cases.clear();
+		cases.images.clear();
+		api.downloads.length = 0;
+		await sync.request();
+		expect(api.downloads).toEqual([]);
+		await add("c_1", "Login");
+		await sync.request();
+		expect(api.downloads.map((d) => d.filename)).toEqual([
+			"Sitegloss/login-2.sitegloss.zip",
+		]);
 	});
 
 	test("writes each case into Sitegloss/ in the downloads, overwriting, without a dialog", async () => {

@@ -27,6 +27,7 @@ import {
 	MAX_PAGE_TITLE,
 	MAX_PEN_POINTS,
 	type MarkEnds,
+	markIdOf,
 	newId,
 	type PageInfo,
 	type Point,
@@ -1363,7 +1364,7 @@ export class MarkAdder {
 	#markOf(d: Draft): MarkDraft {
 		const { view, shape, box, siblings } = d.shot as NonNullable<Draft["shot"]>;
 		return {
-			id: `a${d.number}`,
+			id: markIdOf(d.number),
 			number: d.number,
 			shot: view.shot.id,
 			comment: d.comment,
@@ -1642,7 +1643,7 @@ export class MarkAdder {
 			const result = await ask<UndoResult>({
 				type: "case:undo-add",
 				caseId: target.caseId,
-				markId: `a${draft.number}`,
+				markId: markIdOf(draft.number),
 			});
 			this.#added = this.#added.filter((d) => d !== draft);
 			this.#savedMarks = this.#savedMarks.filter((d) => d !== draft);

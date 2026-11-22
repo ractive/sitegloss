@@ -42,7 +42,7 @@ const shot = (id: string): Shot => ({
 });
 
 const draft = (n: number, shotId: string): MarkDraft => ({
-	id: `a${n}`,
+	id: `m${n}`,
 	number: n,
 	shot: shotId,
 	comment: `comment ${n}`,
@@ -115,13 +115,13 @@ describe("saveCase", () => {
 			["s1", "shots/s1.webp"],
 		]);
 		expect(saved.marks.map((a) => [a.shot, a.crop])).toEqual([
-			["s1", "crops/a1.webp"],
-			["s1", "crops/a2.webp"],
+			["s1", "crops/m1.webp"],
+			["s1", "crops/m2.webp"],
 		]);
 		expect("cropRect" in (saved.marks[0] ?? {})).toBe(false);
 		expect(keys(store)).toEqual([
-			"c_1/crops/a1.webp",
-			"c_1/crops/a2.webp",
+			"c_1/crops/m1.webp",
+			"c_1/crops/m2.webp",
 			"c_1/shots/s1.webp",
 		]);
 		expect((await store.getCase("c_1"))?.createdAt).toBe(
@@ -348,7 +348,7 @@ describe("saveCase", () => {
 				"shot",
 			].sort(),
 		);
-		expect(stored["crop"]).toBe("crops/a1.webp");
+		expect(stored["crop"]).toBe("crops/m1.webp");
 		expect((await store.getCase("c_1"))?.marks[0]).toEqual(
 			saved.marks[0] as never,
 		);
@@ -449,7 +449,7 @@ describe("saveCase", () => {
 		expect(await store.getCase("c_1")).toBeUndefined();
 	});
 
-	test("the first mark of a case New case for this page made: s1 and a1, the page its mark's, the title kept (DEC-026)", async () => {
+	test("the first mark of a case New case for this page made: s1 and m1, the page its mark's, the title kept (DEC-026)", async () => {
 		const store = new MemoryStore();
 		const empty = await putCase(store, {
 			...sampleCase("c_1"),
@@ -480,12 +480,12 @@ describe("saveCase", () => {
 		});
 		expect(saved.createdAt).toBe(empty.createdAt);
 		expect(saved.shots.map((s) => s.id)).toEqual(["s1"]);
-		expect(saved.marks.map((a) => [a.id, a.shot])).toEqual([["a1", "s1"]]);
+		expect(saved.marks.map((a) => [a.id, a.shot])).toEqual([["m1", "s1"]]);
 		// Undo of that first mark leaves the case as it was made: empty.
 		const undone = await undoAdd(
 			store,
 			"c_1",
-			"a1",
+			"m1",
 			{ shot: "s1", comment: "comment 1" },
 			new Date("2026-11-04T10:05:00Z"),
 		);
@@ -666,7 +666,7 @@ describe("adding mark by mark", () => {
 		await captured(store, "c_session", "p_v");
 		await addOne(store, 3, "p_v");
 		expect(keys(store)).toContain("c_1/shots/s2.webp");
-		const result = await undoAdd(store, "c_1", "a3", as("s2", 3), at);
+		const result = await undoAdd(store, "c_1", "m3", as("s2", 3), at);
 		expect(result).toEqual({ removed: true, next: 3 });
 		const c = (await store.getCase("c_1")) as Case;
 		expect(c.marks.map((a) => a.number)).toEqual([1, 2]);
@@ -674,8 +674,8 @@ describe("adding mark by mark", () => {
 		// It records that marks were stored (review of PR 57), below the freed number.
 		expect(c.lastNumber).toBe(2);
 		expect(keys(store)).toEqual([
-			"c_1/crops/a1.webp",
-			"c_1/crops/a2.webp",
+			"c_1/crops/m1.webp",
+			"c_1/crops/m2.webp",
 			"c_1/shots/s1.webp",
 			"c_session/pending/p_v.webp",
 		]);
@@ -687,11 +687,11 @@ describe("adding mark by mark", () => {
 	test("undoAdd: a mark already gone is no error", async () => {
 		const store = new MemoryStore();
 		await newCase(store);
-		expect(await undoAdd(store, "c_1", "a7", as("s9", 7), at)).toEqual({
+		expect(await undoAdd(store, "c_1", "m7", as("s9", 7), at)).toEqual({
 			removed: false,
 			next: 3,
 		});
-		await expect(undoAdd(store, "c_9", "a1", as("s1", 1), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_9", "m1", as("s1", 1), at)).rejects.toThrow(
 			"no longer exists",
 		);
 	});
@@ -718,26 +718,26 @@ describe("adding mark by mark", () => {
 			...a,
 			resolution: { kind: "fixed", at: "2026-11-04T10:05:30Z" },
 		}));
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"was resolved since",
 		);
 		await change(store, 3, ({ resolution: _, ...a }) => ({
 			...a,
 			comment: "edited in the side panel",
 		}));
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"was edited since",
 		);
 		await change(store, 3, (a) => ({ ...a, comment: "comment 3" }));
 		await captured(store, "c_session", "p_w");
 		await addOne(store, 4, "p_w");
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"has marks after it",
 		);
 		expect((await store.getCase("c_1"))?.marks).toHaveLength(4);
 		// The last one can go, then the one before it.
-		await undoAdd(store, "c_1", "a4", as("s3", 4), at);
-		await undoAdd(store, "c_1", "a3", as("s2", 3), at);
+		await undoAdd(store, "c_1", "m4", as("s3", 4), at);
+		await undoAdd(store, "c_1", "m3", as("s2", 3), at);
 		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 	});
 
@@ -745,20 +745,20 @@ describe("adding mark by mark", () => {
 		const store = new MemoryStore();
 		await newCase(store);
 		// Marks 1 and 2 were saved together, on one screenshot.
-		await expect(undoAdd(store, "c_1", "a2", as("s1", 2), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m2", as("s1", 2), at)).rejects.toThrow(
 			"cannot be undone here",
 		);
 		await captured(store, "c_session", "p_v");
 		await addOne(store, 3, "p_v");
-		await expect(undoAdd(store, "c_1", "a3", as("s9", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s9", 3), at)).rejects.toThrow(
 			"cannot be undone here",
 		);
 		const later = new Date(Date.parse("2026-11-04T10:00:00Z") + UNDO_WINDOW_MS);
 		await expect(
-			undoAdd(store, "c_1", "a3", as("s2", 3), later),
+			undoAdd(store, "c_1", "m3", as("s2", 3), later),
 		).rejects.toThrow("cannot be undone here");
 		await change(store, 3, (a) => ({ ...a, author: "ai" as const }));
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"was edited since",
 		);
 		expect((await store.getCase("c_1"))?.marks).toHaveLength(3);

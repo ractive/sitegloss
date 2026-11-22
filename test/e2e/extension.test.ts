@@ -189,25 +189,25 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 		// One screenshot per mark added (DEC-014): marks 1 and 2 shared the
 		// page's picture, each has its own copy with its pin.
 		expect(saved?.shots).toHaveLength(3);
-		const [a1, a2, a3] = saved?.marks ?? [];
-		expect(a1?.shape.kind).toBe("box");
-		expect(a1?.comment).toBe("Contrast too low");
-		expect(a1?.element?.tag).toBe("button");
-		expect(a1?.element?.name).toBe("Prämien berechnen");
-		expect(a2?.shape.kind).toBe("note");
-		expect(a2?.element?.text).toContain("höheren Franchise");
-		expect(a3?.shape.kind).toBe("element");
-		expect(a3?.element?.text).toBe("Unser Team hilft Ihnen gerne weiter.");
-		expect(a3?.shot).not.toBe(a1?.shot);
+		const [m1, m2, m3] = saved?.marks ?? [];
+		expect(m1?.shape.kind).toBe("box");
+		expect(m1?.comment).toBe("Contrast too low");
+		expect(m1?.element?.tag).toBe("button");
+		expect(m1?.element?.name).toBe("Prämien berechnen");
+		expect(m2?.shape.kind).toBe("note");
+		expect(m2?.element?.text).toContain("höheren Franchise");
+		expect(m3?.shape.kind).toBe("element");
+		expect(m3?.element?.text).toBe("Unser Team hilft Ihnen gerne weiter.");
+		expect(m3?.shot).not.toBe(m1?.shot);
 		// The case's own (the page's picture waits for the next mark meanwhile).
 		const keys = db.images
 			.filter((i) => i.key.startsWith(`${saved?.id}/`))
 			.map((i) => i.key.split("/").slice(1).join("/"))
 			.sort();
 		expect(keys).toEqual([
-			"crops/a1.webp",
-			"crops/a2.webp",
-			"crops/a3.webp",
+			"crops/m1.webp",
+			"crops/m2.webp",
+			"crops/m3.webp",
 			"shots/s1.webp",
 			"shots/s2.webp",
 			"shots/s3.webp",
@@ -558,22 +558,22 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 		const bar = `${shadow('[data-role="review-status"] .count')}.textContent`;
 
 		// Resolve 2 as won't fix, with a note.
-		await h.control.eval(`${act("a2", "resolve")}.click()`);
+		await h.control.eval(`${act("m2", "resolve")}.click()`);
 		await h.control.waitFor(
-			`${row("a2")}.querySelector("[data-form=resolve]")`,
+			`${row("m2")}.querySelector("[data-form=resolve]")`,
 		);
 		await h.control.eval(`(() => {
-			const form = ${row("a2")}.querySelector("[data-form=resolve]");
+			const form = ${row("m2")}.querySelector("[data-form=resolve]");
 			form.querySelector('input[value="wontfix"]').click();
 			const note = form.querySelector("input.note");
 			note.value = "Legal wants it";
 			note.dispatchEvent(new Event("input"));
 			form.querySelector('[data-mark-action="resolve-done"]').click();
 		})()`);
-		await h.control.waitFor(`${row("a2")}?.dataset.resolved === "wontfix"`);
+		await h.control.waitFor(`${row("m2")}?.dataset.resolved === "wontfix"`);
 		expect(
 			await h.control.eval<string>(
-				`${row("a2")}.querySelector(".history").textContent`,
+				`${row("m2")}.querySelector(".history").textContent`,
 			),
 		).toMatch(/^Won't fix .+ · Legal wants it$/);
 		await v1.page.waitFor(`${review(2)}?.hasAttribute("data-resolved")`);
@@ -590,7 +590,7 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 		).toEqual(["null", String(RESOLVED_OPACITY), "true"]);
 		// Shown from the panel, it is looked for: it shows fully.
 		await h.control.eval(
-			`document.querySelector('[data-mark="a2"] [data-action=show]').click()`,
+			`document.querySelector('[data-mark="m2"] [data-action=show]').click()`,
 		);
 		await v1.page.waitFor(
 			`${review(2)}?.hasAttribute("data-resolved") && ${review(2)}.querySelector("[data-faded]") === null`,
@@ -605,31 +605,31 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 		).toBe(3);
 
 		// Edit 1's comment.
-		await h.control.eval(`${act("a1", "comment")}.click()`);
+		await h.control.eval(`${act("m1", "comment")}.click()`);
 		await h.control.waitFor(
-			`${row("a1")}.querySelector("[data-form=comment] textarea")`,
+			`${row("m1")}.querySelector("[data-form=comment] textarea")`,
 		);
 		await h.control.eval(`(() => {
-			const field = ${row("a1")}.querySelector("[data-form=comment] textarea");
+			const field = ${row("m1")}.querySelector("[data-form=comment] textarea");
 			field.value = "One, shorter";
 			field.dispatchEvent(new Event("input"));
-			${row("a1")}.querySelector('[data-mark-action="comment-done"]').click();
+			${row("m1")}.querySelector('[data-mark-action="comment-done"]').click();
 		})()`);
 		await h.control.waitFor(
-			`${row("a1")}.querySelector(".comment").textContent === "One, shorter"`,
+			`${row("m1")}.querySelector(".comment").textContent === "One, shorter"`,
 		);
 
 		// Delete 3: twice, the second a moment later.
-		await h.control.eval(`${act("a3", "delete")}.click()`);
+		await h.control.eval(`${act("m3", "delete")}.click()`);
 		await h.control.waitFor(
-			`${act("a3", "delete")}.textContent === "Really delete?"`,
+			`${act("m3", "delete")}.textContent === "Really delete?"`,
 		);
 		await Bun.sleep(600);
 		// A double click: one delete, and no error about a mark already gone.
 		await h.control.eval(
-			`(() => { const b = ${act("a3", "delete")}; b.click(); b.click(); })()`,
+			`(() => { const b = ${act("m3", "delete")}; b.click(); b.click(); })()`,
 		);
-		await h.control.waitFor(`${row("a3")} === null`);
+		await h.control.waitFor(`${row("m3")} === null`);
 		await Bun.sleep(300);
 		expect(
 			await h.control.eval<string>(
@@ -640,21 +640,21 @@ describe.skipIf(browserBinary === undefined)("marking and saving", () => {
 		expect(await v1.page.eval<string>(bar)).toBe("1 of 1 found");
 		const db = await h.control.eval<Db>(READ_DB);
 		const saved = db.cases.find((c) => c.title === "Settled marks");
-		expect(saved?.marks.map((a) => a.id)).toEqual(["a1", "a2"]);
+		expect(saved?.marks.map((a) => a.id)).toEqual(["m1", "m2"]);
 		expect(saved?.lastNumber).toBe(3);
 		expect(saved?.marks[0]?.comment).toBe("One, shorter");
-		expect(imagesOf(db, saved?.id ?? "")).not.toContain("crops/a3.webp");
+		expect(imagesOf(db, saved?.id ?? "")).not.toContain("crops/m3.webp");
 
 		// Open again, saying why.
-		await h.control.eval(`${act("a2", "reopen")}.click()`);
+		await h.control.eval(`${act("m2", "reopen")}.click()`);
 		await h.control.waitFor(
-			`${row("a2")}.querySelector("[data-form=reopen] textarea")`,
+			`${row("m2")}.querySelector("[data-form=reopen] textarea")`,
 		);
 		await h.control.eval(`(() => {
-			const field = ${row("a2")}.querySelector("[data-form=reopen] textarea");
+			const field = ${row("m2")}.querySelector("[data-form=reopen] textarea");
 			field.value = "Legal changed its mind";
 			field.dispatchEvent(new Event("input"));
-			${row("a2")}.querySelector('[data-mark-action="reopen-done"]').click();
+			${row("m2")}.querySelector('[data-mark-action="reopen-done"]').click();
 		})()`);
 		await v1.page.waitFor(`!${review(2)}?.hasAttribute("data-resolved")`);
 		expect(await v1.page.eval<string>(bar)).toBe("2 of 2 found");
@@ -1182,7 +1182,7 @@ describe.skipIf(browserBinary === undefined)("screenshot scale", () => {
 			`new Promise((resolve) => { const o = indexedDB.open("sitegloss"); o.onsuccess = () => { const tx = o.result.transaction(["cases", "images"]); const cases = tx.objectStore("cases").getAll(); const images = tx.objectStore("images").getAll(); const keys = tx.objectStore("images").getAllKeys(); tx.oncomplete = () => { const id = cases.result.find((c) => c.title === "Scale").id; const out = {}; keys.result.forEach((k, i) => { if (k.startsWith(id + "/")) out[k.slice(id.length + 1)] = { width: images.result[i].width, height: images.result[i].height }; }); resolve(out); }; }; })`,
 		);
 		const shot = sizes["shots/s1.webp"];
-		const crop = sizes["crops/a1.webp"];
+		const crop = sizes["crops/m1.webp"];
 		const button = await page.eval<{ width: number; height: number }>(
 			`(() => { const r = document.querySelector("[data-truth=submit]").getBoundingClientRect(); return { width: r.width, height: r.height }; })()`,
 		);

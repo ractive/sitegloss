@@ -5,13 +5,13 @@ import { sampleCase } from "./fixtures.ts";
 
 describe("which panel answers a page about a mark (DEC-027)", () => {
 	const mark: Mark = {
-		id: "a1",
+		id: "m1",
 		number: 1,
 		shot: "s1",
 		comment: "Here",
 		author: "user",
 		shape: { kind: "note", at: { x: 1, y: 1 } },
-		crop: "crops/a1.webp",
+		crop: "crops/m1.webp",
 		element: null,
 	};
 	const c: Case = { ...sampleCase("c_open"), marks: [mark] };
@@ -95,10 +95,10 @@ describe("which panel answers a page about a mark (DEC-027)", () => {
 			comment: "A teammate's",
 			shape: { kind: "note", at: { x: 50, y: 50 } },
 		};
-		const moved: Mark = { ...mark, id: "a2", number: 2 };
+		const moved: Mark = { ...mark, id: "m2", number: 2 };
 		const now = { ...showing, open: { ...c, marks: [other, moved] } };
 		const key = markKey(c, mark);
-		// Asked for "a1", which is the teammate's mark now: its own, under its new id.
+		// Asked for "m1", which is the teammate's mark now: its own, under its new id.
 		expect(markAsked(now, { ...request, mark: key }, 7)).toBe(moved);
 		// Gone from the case.
 		expect(
@@ -109,7 +109,7 @@ describe("which panel answers a page about a mark (DEC-027)", () => {
 			),
 		).toBe("gone");
 		// Two that nothing tells apart, and the id is neither: not the first found.
-		const twin = { ...moved, id: "a3", number: 3 };
+		const twin = { ...moved, id: "m3", number: 3 };
 		expect(
 			markAsked(
 				{ ...showing, open: { ...c, marks: [other, moved, twin] } },

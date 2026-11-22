@@ -38,13 +38,13 @@ const markedCase = (): Case => ({
 	],
 	marks: [
 		{
-			id: "a1",
+			id: "m1",
 			number: 1,
 			shot: "s1",
 			comment: "The button is too light",
 			author: "user",
 			shape: { kind: "note", at: { x: 10, y: 10 } },
-			crop: "crops/a1.webp",
+			crop: "crops/m1.webp",
 			element: null,
 		},
 	],
@@ -56,7 +56,7 @@ const storedMark = async (h: Harness) =>
 	)?.marks[0];
 
 const QUESTION = `document.querySelector("[data-question]")`;
-const FINDING = `document.querySelector('[data-mark="a1"] [data-finding]')`;
+const FINDING = `document.querySelector('[data-mark="m1"] [data-finding]')`;
 const DELETE = `${FINDING}?.querySelector('[data-finding-action="delete"]')`;
 
 describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
@@ -99,7 +99,7 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 		const item = `document.querySelector('button[data-case="c_f"]')`;
 		await panel.waitFor(item, 10_000);
 		await panel.eval(`${item}.click()`);
-		const toggle = `document.querySelector('[data-mark="a1"] .mark-toggle')`;
+		const toggle = `document.querySelector('[data-mark="m1"] .mark-toggle')`;
 		await panel.waitFor(toggle, 10_000);
 		await panel.eval(`${toggle}.click()`);
 	}, 60_000);
@@ -178,9 +178,9 @@ describe.skipIf(browserBinary === undefined)("AI findings on a mark", () => {
 		});
 		expect(result.isError).toBeFalsy();
 		await panel.waitFor(FINDING, 10_000);
-		const form = `document.querySelector('[data-mark="a1"] [data-form="comment"] textarea')`;
+		const form = `document.querySelector('[data-mark="m1"] [data-form="comment"] textarea')`;
 		await panel.eval(
-			`document.querySelector('[data-mark="a1"] [data-mark-action="comment"]').click()`,
+			`document.querySelector('[data-mark="m1"] [data-mark-action="comment"]').click()`,
 		);
 		await panel.waitFor(form);
 		await panel.eval(`(() => {

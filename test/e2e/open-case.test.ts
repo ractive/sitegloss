@@ -40,13 +40,13 @@ const noteCase = (id: string, title: string, url: string): Case => ({
 	],
 	marks: [
 		{
-			id: "a1",
+			id: "m1",
 			number: 1,
 			shot: "s1",
 			comment: `${title}: the note`,
 			author: "user",
 			shape: { kind: "note", at: { x: 40, y: 120 } },
-			crop: "crops/a1.webp",
+			crop: "crops/m1.webp",
 			element: null,
 		},
 	],
@@ -98,10 +98,10 @@ describe.skipIf(browserBinary === undefined)("open_case", () => {
 		await panel.waitFor(item, 10_000);
 		await panel.eval(`${item}.click()`);
 		await panel.waitFor(`${id("verdict")}?.dataset.case === "c_old"`, 10_000);
-		const edit = `document.querySelector('[data-mark="a1"] [data-mark-action="comment"]')`;
+		const edit = `document.querySelector('[data-mark="m1"] [data-mark-action="comment"]')`;
 		await panel.waitFor(edit, 10_000);
 		await panel.eval(`${edit}.click()`);
-		const field = `document.querySelector('[data-mark="a1"] [data-form="comment"] textarea')`;
+		const field = `document.querySelector('[data-mark="m1"] [data-form="comment"] textarea')`;
 		await panel.waitFor(field);
 		await panel.eval(
 			`(() => { const f = ${field}; f.value = "Half a sente"; f.dispatchEvent(new Event("input")); })()`,
@@ -123,7 +123,7 @@ describe.skipIf(browserBinary === undefined)("open_case", () => {
 		expect(await title()).toBe("Old case");
 		expect(
 			await panel.eval<string>(
-				`document.querySelector('[data-mark="a1"] [data-form="comment"] textarea').value`,
+				`document.querySelector('[data-mark="m1"] [data-form="comment"] textarea').value`,
 			),
 		).toBe("Half a sente");
 		// Nothing of the new case was drawn over it: the page shows the old one.
@@ -136,10 +136,10 @@ describe.skipIf(browserBinary === undefined)("open_case", () => {
 
 	test("with the form closed, the panel leaves the old case and opens the new one, its mark of this path drawn", async () => {
 		await panel.eval(
-			`[...document.querySelectorAll('[data-mark="a1"] [data-form="comment"] button')].find((b) => b.textContent === "Cancel").click()`,
+			`[...document.querySelectorAll('[data-mark="m1"] [data-form="comment"] button')].find((b) => b.textContent === "Cancel").click()`,
 		);
 		await panel.waitFor(
-			`!document.querySelector('[data-mark="a1"] [data-form="comment"]')`,
+			`!document.querySelector('[data-mark="m1"] [data-form="comment"]')`,
 		);
 		const result = await openCase("c_new");
 		expect(result.isError).toBeFalsy();

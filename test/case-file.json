@@ -510,7 +510,7 @@
 		],
 		"marks": [
 			{
-				"id": "a1",
+				"id": "m1",
 				"number": 1,
 				"shot": "s1",
 				"comment": "Pale text on yellow.",
@@ -524,7 +524,7 @@
 						"height": 40
 					}
 				},
-				"crop": "crops/a1.webp",
+				"crop": "crops/m1.webp",
 				"element": {
 					"tag": "button",
 					"testId": "checkout",
@@ -630,7 +630,7 @@
 				]
 			},
 			{
-				"id": "a3",
+				"id": "m3",
 				"number": 3,
 				"shot": "s2",
 				"comment": "Total differs from the cart.",
@@ -646,7 +646,7 @@
 						"y": 300
 					}
 				},
-				"crop": "crops/a3.webp",
+				"crop": "crops/m3.webp",
 				"element": {
 					"tag": "td",
 					"text": "CHF 45",
@@ -720,7 +720,7 @@
 				}
 			},
 			{
-				"id": "a6",
+				"id": "m6",
 				"number": 6,
 				"shot": "s2",
 				"comment": "No focus ring on Pay.",
@@ -734,7 +734,7 @@
 						"height": 60
 					}
 				},
-				"crop": "crops/a6.webp",
+				"crop": "crops/m6.webp",
 				"element": null,
 				"createdBy": {
 					"id": "u_dana",
@@ -774,7 +774,7 @@
 		"comments": [
 			{
 				"id": "k_1",
-				"mark": "a1",
+				"mark": "m1",
 				"text": "Fixed in pull request #42.",
 				"at": "2026-11-20T10:01:00.000Z",
 				"user": {
@@ -1025,7 +1025,7 @@
 		],
 		"marks": [
 			{
-				"id": "a1",
+				"id": "m1",
 				"number": 1,
 				"shot": "s1",
 				"comment": "Cheapest is not first.",
@@ -1037,7 +1037,7 @@
 						"y": 20
 					}
 				},
-				"crop": "crops/a1.webp",
+				"crop": "crops/m1.webp",
 				"element": null,
 				"createdBy": {
 					"id": "u_tess",
@@ -1045,7 +1045,7 @@
 				}
 			},
 			{
-				"id": "a2",
+				"id": "m2",
 				"number": 2,
 				"shot": "s2",
 				"comment": "Filter chips overlap.",
@@ -1057,7 +1057,7 @@
 						"y": 20
 					}
 				},
-				"crop": "crops/a2.webp",
+				"crop": "crops/m2.webp",
 				"element": null,
 				"createdBy": {
 					"id": "u_tess",

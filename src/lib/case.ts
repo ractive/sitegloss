@@ -1,7 +1,7 @@
 /**
  * The case format `sitegloss/2` (see kb/design/overview.md): the same JSON in
  * IndexedDB and in an export. Images are referenced by paths relative to the
- * case (`shots/s1.webp`, `crops/a1.webp`).
+ * case (`shots/s1.webp`, `crops/m1.webp`).
  */
 
 import { storedQuery, withQuery } from "./query.ts";
@@ -9,9 +9,9 @@ import { storedQuery, withQuery } from "./query.ts";
 export const CASE_FORMAT = "sitegloss/2";
 
 /**
- * The format before it (Sitegloss 0.3.1 and older): its marks were under
- * another key. Not read (DEC-051); a stored case of it is brought to
- * `CASE_FORMAT` once, when the store's database is upgraded (store.ts).
+ * The format before it: its marks under another key, their ids
+ * `a<number>`. Not read (DEC-051): a file of it is refused, and the store's
+ * upgrade to its version 2 emptied what was kept in it (store.ts).
  */
 export const OLD_CASE_FORMAT = "sitegloss/1";
 
@@ -426,7 +426,7 @@ export interface Stamp {
 /**
  * A comment in a case's thread (DEC-046): the team's conversation about the
  * case, apart from its summary. `mark`: the mark it is about, by its id
- * here (`a<number>`, which follows the mark when it takes another number);
+ * here (`m<number>`, which follows the mark when it takes another number);
  * none: the case. `markGone`: it was about a mark deleted since.
  */
 export interface CaseComment {
@@ -760,6 +760,9 @@ export function newId(prefix: string): string {
 
 export const shotImage = (shotId: string) => `shots/${shotId}.webp`;
 export const cropImage = (markId: string) => `crops/${markId}.webp`;
+
+/** A mark's id in its case: `m` and its number (`m1`, `m2`…; DEC-051). */
+export const markIdOf = (number: number) => `m${number}`;
 /** A screenshot taken for a save that is not committed yet (save.ts). */
 export const pendingImage = (shotId: string) => `pending/${shotId}.webp`;
 
@@ -993,7 +996,7 @@ export const samePath = (a: string, b: string): boolean =>
 
 /**
  * What tells a mark from every other mark of its case, whatever its number:
- * when its screenshot was taken, and its drawing. A mark's id (`a<number>`)
+ * when its screenshot was taken, and its drawing. A mark's id (`m<number>`)
  * is another mark's after the team's sync gave it another number (DEC-039),
  * so what is opened on one mark is held to this, not to the id.
  */
@@ -1443,7 +1446,7 @@ export function validateCase(value: unknown): Case {
 	const format = o["format"];
 	if (format === OLD_CASE_FORMAT)
 		throw new CaseError(
-			`This file is a case from Sitegloss 0.3.1 or older (format ${OLD_CASE_FORMAT}); this version reads ${CASE_FORMAT} only.`,
+			`This case file is in the old format ${OLD_CASE_FORMAT}; this version of Sitegloss reads ${CASE_FORMAT} only.`,
 		);
 	if (typeof format === "string" && format !== CASE_FORMAT)
 		fail(
@@ -1494,9 +1497,9 @@ export function validateCase(value: unknown): Case {
 		)
 			fail(`${p}.number`, `must be a unique integer from 1 to ${MAX_NUMBER}`);
 		numbers.add(number);
-		// Saving names new marks a<number>: another scheme would collide later.
-		if (markId !== `a${number}`)
-			fail(`${p}.id`, `must be a${number}, after its number`);
+		// Saving names new marks m<number>: another scheme would collide later.
+		if (markId !== markIdOf(number))
+			fail(`${p}.id`, `must be ${markIdOf(number)}, after its number`);
 		const shot = str(a["shot"], `${p}.shot`, 64);
 		if (!shotIds.has(shot)) fail(`${p}.shot`, "names no shot of the case");
 		const crop = str(a["crop"], `${p}.crop`);

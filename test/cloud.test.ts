@@ -215,8 +215,8 @@ describe("two devices and one team", () => {
 			title: "Your cart",
 			pages: [CART, PAY],
 			marks: [
-				{ number: 1, id: "a1", comment: "Total is cut off", page: CART },
-				{ number: 2, id: "a2", comment: "Pay button too pale", page: PAY },
+				{ number: 1, id: "m1", comment: "Total is cut off", page: CART },
+				{ number: 2, id: "m2", comment: "Pay button too pale", page: PAY },
 			],
 		});
 		expect(await images(dana, "c_flow")).toEqual(await images(tess, "c_flow"));
@@ -241,7 +241,7 @@ describe("two devices and one team", () => {
 		await change(tess, "c_flow", (c, now) =>
 			withFinding(
 				c,
-				"a1",
+				"m1",
 				{ id: "f_1", text: "The total wraps", app, at: now },
 				now,
 			),
@@ -268,7 +268,7 @@ describe("two devices and one team", () => {
 	test("what each changes reaches the other, with who did it", async () => {
 		await shared();
 		await change(dana, "c_flow", (c, now) =>
-			withChoice(c, "a1", "fixed", "Widened the column", now),
+			withChoice(c, "m1", "fixed", "Widened the column", now),
 		);
 		await change(tess, "c_flow", (c, now) =>
 			withLink(
@@ -289,7 +289,7 @@ describe("two devices and one team", () => {
 			});
 		// The tester verifies: that is hers.
 		await change(tess, "c_flow", (c, now) =>
-			withVerified(c, "a1", undefined, now),
+			withVerified(c, "m1", undefined, now),
 		);
 		await sync(tess, dana);
 		const there = (await dana.store.getCase("c_flow")) as Case;
@@ -300,10 +300,10 @@ describe("two devices and one team", () => {
 	test("two changes to different things of one mark both stay; the same thing: the later one", async () => {
 		await shared();
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Total is cut off on small windows", now),
+			withComment(c, "m1", "Total is cut off on small windows", now),
 		);
 		await change(dana, "c_flow", (c, now) =>
-			withChoice(c, "a1", "wontfix", "", now),
+			withChoice(c, "m1", "wontfix", "", now),
 		);
 		await sync(tess, dana);
 		for (const d of [tess, dana])
@@ -313,10 +313,10 @@ describe("two devices and one team", () => {
 			});
 		// Both change the comment: who sends later wins, on both.
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a2", "Tess's words", now),
+			withComment(c, "m2", "Tess's words", now),
 		);
 		await change(dana, "c_flow", (c, now) =>
-			withComment(c, "a2", "Dana's words", now),
+			withComment(c, "m2", "Dana's words", now),
 		);
 		await tess.engine.request();
 		await dana.engine.request();
@@ -388,7 +388,7 @@ describe("the status line, from the engine's real states (DEC-045)", () => {
 		// Offline with a change: the change waits, and says so.
 		tess.api.offline = true;
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Edited offline", now),
+			withComment(c, "m1", "Edited offline", now),
 		);
 		await tess.engine.request();
 		const offline = await panelOf(tess, false);
@@ -506,7 +506,7 @@ describe("changes that wait", () => {
 		await shared();
 		tess.api.offline = true;
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Edited offline", now),
+			withComment(c, "m1", "Edited offline", now),
 		);
 		await addMark(tess, "c_flow", "Added offline");
 		await tess.engine.request();
@@ -526,14 +526,14 @@ describe("changes that wait", () => {
 		await shared();
 		tess.api.offline = true;
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Tess, offline", now),
+			withComment(c, "m1", "Tess, offline", now),
 		);
 		await tess.engine.request();
 		// Meanwhile Dana settles that mark and edits the other.
 		await change(dana, "c_flow", (c, now) =>
 			withComment(
-				withChoice(c, "a1", "fixed", "Done", now),
-				"a2",
+				withChoice(c, "m1", "fixed", "Done", now),
+				"m2",
 				"Dana's edit",
 				now,
 			),
@@ -554,7 +554,7 @@ describe("changes that wait", () => {
 	test("a change made while the team's changes are fetched is not overwritten, and goes next", async () => {
 		await shared();
 		await change(dana, "c_flow", (c, now) =>
-			withComment(c, "a1", "Dana's words", now),
+			withComment(c, "m1", "Dana's words", now),
 		);
 		await dana.engine.request();
 		// Tess types while her device fetches.
@@ -564,8 +564,8 @@ describe("changes that wait", () => {
 			tess.api.changes = changes;
 			await change(tess, "c_flow", (c, now) =>
 				withChoice(
-					withComment(c, "a1", "Tess, just now", now),
-					"a2",
+					withComment(c, "m1", "Tess, just now", now),
+					"m2",
 					"fixed",
 					"",
 					now,
@@ -637,9 +637,9 @@ describe("mark numbers", () => {
 		await shared();
 		const mine = await addMark(tess, "c_flow", "Tess's third");
 		const theirs = await addMark(dana, "c_flow", "Dana's third");
-		expect([mine.id, theirs.id]).toEqual(["a3", "a3"]);
+		expect([mine.id, theirs.id]).toEqual(["m3", "m3"]);
 		const danaCrop = await (
-			await dana.store.getImage("c_flow", "crops/a3.webp")
+			await dana.store.getImage("c_flow", "crops/m3.webp")
 		)?.blob.text();
 		await tess.engine.request();
 		await dana.engine.request();
@@ -647,23 +647,23 @@ describe("mark numbers", () => {
 		const there = (await dana.store.getCase("c_flow")) as Case;
 		expect(there.marks.map((a) => [a.id, a.number, a.crop, a.comment])).toEqual(
 			[
-				["a1", 1, "crops/a1.webp", "Total is cut off"],
-				["a2", 2, "crops/a2.webp", "Pay button too pale"],
-				["a3", 3, "crops/a3.webp", "Tess's third"],
-				["a4", 4, "crops/a4.webp", "Dana's third"],
+				["m1", 1, "crops/m1.webp", "Total is cut off"],
+				["m2", 2, "crops/m2.webp", "Pay button too pale"],
+				["m3", 3, "crops/m3.webp", "Tess's third"],
+				["m4", 4, "crops/m4.webp", "Dana's third"],
 			],
 		);
 		expect(
-			await (await dana.store.getImage("c_flow", "crops/a4.webp"))?.blob.text(),
+			await (await dana.store.getImage("c_flow", "crops/m4.webp"))?.blob.text(),
 		).toBe(danaCrop);
 		expect(there.lastNumber).toBe(4);
 		expect(keys(dana, "c_flow").filter((k) => k.includes("/crops/"))).toEqual([
-			"c_flow/crops/a1.webp",
-			"c_flow/crops/a2.webp",
-			"c_flow/crops/a3.webp",
-			"c_flow/crops/a4.webp",
+			"c_flow/crops/m1.webp",
+			"c_flow/crops/m2.webp",
+			"c_flow/crops/m3.webp",
+			"c_flow/crops/m4.webp",
 		]);
-		expect(book(dana, "c_flow")?.marks["a4"]).toBe(
+		expect(book(dana, "c_flow")?.marks["m4"]).toBe(
 			server.marksOf("c_flow")[3]?.id as string,
 		);
 		await sync(tess, dana);
@@ -685,10 +685,10 @@ describe("mark numbers", () => {
 		await dana.engine.request();
 		const there = (await dana.store.getCase("c_flow")) as Case;
 		expect(there.marks.map((a) => [a.id, a.comment])).toEqual([
-			["a1", "Total is cut off"],
-			["a2", "Pay button too pale"],
-			["a3", "Tess's third"],
-			["a4", "Dana's, not sent"],
+			["m1", "Total is cut off"],
+			["m2", "Pay button too pale"],
+			["m3", "Tess's third"],
+			["m4", "Dana's, not sent"],
 		]);
 		expect(status(dana)?.problems[0]?.text).toContain("does not allow");
 		// Allowed again: it goes, as 4.
@@ -710,7 +710,7 @@ describe("mark numbers", () => {
 		await addMark(tess, "c_flow", "Third");
 		await sync(tess, dana);
 		// Tess takes it out again: the panel's delete, which keeps the number.
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "a3", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "m3", now));
 		await sync(tess, dana);
 		const next = await addMark(dana, "c_flow", "Dana's next");
 		expect(next.number).toBe(4);
@@ -726,9 +726,9 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 		await addMark(tess, "c_flow", "Tess's third");
 		await addMark(dana, "c_flow", "Dana's third", { url: PAY });
 		const before = (await tess.store.getCase("c_flow")) as Case;
-		const mine = before.marks.find((a) => a.id === "a3") as Mark;
+		const mine = before.marks.find((a) => a.id === "m3") as Mark;
 		const edit: MarkEdit = {
-			markId: "a3",
+			markId: "m3",
 			mark: markKey(before, mine),
 			mode: "comment",
 			kind: "fixed",
@@ -736,42 +736,42 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 		};
 		await dana.engine.request();
 		await sync(tess, dana);
-		// Her mark is 4 now, and "a3" is Dana's.
+		// Her mark is 4 now, and "m3" is Dana's.
 		const after = (await tess.store.getCase("c_flow")) as Case;
 		expect(after.marks.map((a) => [a.id, a.comment])).toEqual([
-			["a1", "Total is cut off"],
-			["a2", "Pay button too pale"],
-			["a3", "Dana's third"],
-			["a4", "Tess's third"],
+			["m1", "Total is cut off"],
+			["m2", "Pay button too pale"],
+			["m3", "Dana's third"],
+			["m4", "Tess's third"],
 		]);
-		expect(editAfter(edit, after)).toEqual({ ...edit, markId: "a4" });
+		expect(editAfter(edit, after)).toEqual({ ...edit, markId: "m4" });
 		// A change is held to the mark it was opened on, not to the id.
-		expect(markFor(after, "a3", edit.mark)).toMatchObject({
-			id: "a4",
+		expect(markFor(after, "m3", edit.mark)).toMatchObject({
+			id: "m4",
 			comment: "Tess's third",
 		});
 		expect(markKey(after, after.marks[2] as Mark)).not.toBe(edit.mark);
 		// The mark deleted meanwhile: the form closes, and nothing is its mark.
-		const gone = withoutMark(after, "a4", after.updatedAt).value;
+		const gone = withoutMark(after, "m4", after.updatedAt).value;
 		expect(editAfter(edit, gone)).toBeUndefined();
-		expect(markFor(gone, "a3", edit.mark)).toBeUndefined();
+		expect(markFor(gone, "m3", edit.mark)).toBeUndefined();
 		// A mark that nothing tells apart from the form's mark (the same
 		// element marked twice on one screenshot) came since: neither is the
 		// form's mark, whatever the ids say, and nothing is changed.
 		const twin = {
 			...(after.marks[3] as Mark),
-			id: "a5",
+			id: "m5",
 			number: 5,
 		};
 		const twins = { ...after, marks: [...after.marks, twin] };
-		expect(markFor(twins, "a4", edit.mark)).toBe("ambiguous");
-		expect(markFor(twins, "a5", edit.mark)).toBe("ambiguous");
-		expect(markFor(twins, "a3", edit.mark)).toBe("ambiguous");
+		expect(markFor(twins, "m4", edit.mark)).toBe("ambiguous");
+		expect(markFor(twins, "m5", edit.mark)).toBe("ambiguous");
+		expect(markFor(twins, "m3", edit.mark)).toBe("ambiguous");
 		expect(editAfter(edit, twins)).toBeUndefined();
 		// A delete asked once ("Really delete?") follows its mark the same
 		// way: its second click must not find the teammate's mark.
-		const armed = { markId: "a3", mark: edit.mark, at: 1 };
-		expect(heldAfter(armed, after)).toEqual({ ...armed, markId: "a4" });
+		const armed = { markId: "m3", mark: edit.mark, at: 1 };
+		expect(heldAfter(armed, after)).toEqual({ ...armed, markId: "m4" });
 		expect(heldAfter(armed, gone)).toBeUndefined();
 		expect(heldAfter(armed, before)).toBe(armed);
 		// Unchanged: the same form.
@@ -782,41 +782,41 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 		await shared();
 		await addMark(tess, "c_flow", "Tess's third");
 		const one = (await tess.store.getCase("c_flow")) as Case;
-		const third = one.marks.find((a) => a.id === "a3") as Mark;
-		// Before: M = a3, T = a4, the same drawing on the same screenshot.
+		const third = one.marks.find((a) => a.id === "m3") as Mark;
+		// Before: M = m3, T = m4, the same drawing on the same screenshot.
 		const before: Case = {
 			...one,
 			marks: [
-				...one.marks.filter((a) => a.id !== "a3"),
+				...one.marks.filter((a) => a.id !== "m3"),
 				{ ...third, comment: "M" },
-				{ ...third, id: "a4", number: 4, comment: "T" },
+				{ ...third, id: "m4", number: 4, comment: "T" },
 			],
 		};
 		const t = before.marks[3] as Mark;
 		const key = markKey(before, t);
 		// Nothing moved: each twin is its own, and can be changed.
-		expect(markFor(before, "a4", key)).toMatchObject({ comment: "T" });
+		expect(markFor(before, "m4", key)).toMatchObject({ comment: "T" });
 		expect(
-			markFor(before, "a3", markKey(before, before.marks[2] as Mark)),
+			markFor(before, "m3", markKey(before, before.marks[2] as Mark)),
 		).toMatchObject({ comment: "M" });
-		// A teammate's mark takes 3: M is a4, T is a5. What was opened on T
-		// (a4) must not land on M, which has T's id and drawing now.
+		// A teammate's mark takes 3: M is m4, T is m5. What was opened on T
+		// (m4) must not land on M, which has T's id and drawing now.
 		const dana3 = {
 			...(one.marks[0] as Mark),
-			id: "a3",
+			id: "m3",
 			number: 3,
 			comment: "Dana's",
 		};
 		const after: Case = {
 			...one,
 			marks: [
-				...one.marks.filter((a) => a.id !== "a3"),
+				...one.marks.filter((a) => a.id !== "m3"),
 				dana3,
-				{ ...third, id: "a4", number: 4, comment: "M" },
-				{ ...third, id: "a5", number: 5, comment: "T" },
+				{ ...third, id: "m4", number: 4, comment: "M" },
+				{ ...third, id: "m5", number: 5, comment: "T" },
 			],
 		};
-		expect(markFor(after, "a4", key)).toBe("ambiguous");
+		expect(markFor(after, "m4", key)).toBe("ambiguous");
 		// The popover's page and the panel answer by it.
 		expect(
 			markAsked(
@@ -825,20 +825,20 @@ describe("a form open on a mark that takes another number (review B, sync 8)", (
 					loaded: { caseId: "c_flow", tabId: 1 },
 					front: undefined,
 				},
-				{ caseId: "c_flow", markId: "a4", mark: key },
+				{ caseId: "c_flow", markId: "m4", mark: key },
 				1,
 			),
 		).toBe("changed");
 		// The panel's form and a "Really delete?" let go.
 		const edit: MarkEdit = {
-			markId: "a4",
+			markId: "m4",
 			mark: key,
 			mode: "comment",
 			kind: "fixed",
 			text: "Typed for T",
 		};
 		expect(editAfter(edit, after)).toBeUndefined();
-		expect(heldAfter({ markId: "a4", mark: key, at: 1 }, after)).toBe(
+		expect(heldAfter({ markId: "m4", mark: key, at: 1 }, after)).toBe(
 			undefined,
 		);
 		// A confirmed AI call held to T's key finds none at mark 4.
@@ -877,10 +877,10 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 		await addMark(tess, "c_flow", "Third", { element: true });
 		await sync(tess, dana);
 		const old = (await tess.store.getCase("c_flow"))?.marks.find(
-			(a) => a.id === "a3",
+			(a) => a.id === "m3",
 		) as Mark;
 		const before = server.shotsOf("c_flow").map((s) => s.id);
-		await undo(tess, "a3");
+		await undo(tess, "m3");
 		const again = await addMark(tess, "c_flow", "Third", { element: true });
 		// The very same drawing, on a screenshot with the id the old one had.
 		expect(again.shot).toBe(old.shot);
@@ -906,7 +906,7 @@ describe("the toolbar's Undo in a synced case (review B, sync 12)", () => {
 		await shared();
 		await addMark(tess, "c_flow", "Third", { element: true });
 		await sync(tess, dana);
-		await undo(tess, "a3");
+		await undo(tess, "m3");
 		await addMark(tess, "c_flow", "Third, taken again");
 		await sync(tess, dana);
 		await sync(tess, dana);
@@ -998,10 +998,10 @@ describe("an id that passes from one mark to another in a merge (review B, re-ch
 		void tess.engine.request();
 		await until(() => reached);
 		tess.store.updateCase = update;
-		// The id "a3" passes from Tess's mark to Dana's in that merge: it is
+		// The id "m3" passes from Tess's mark to Dana's in that merge: it is
 		// announced, with Dana's drawing, like a new one.
 		expect(Object.keys(book(tess, "c_flow")?.announced?.marks ?? {})).toContain(
-			"a3",
+			"m3",
 		);
 		const again = restarted(tess);
 		for (let i = 0; i < 4; i++) {
@@ -1126,7 +1126,7 @@ describe("operations written down, and their images (review B, sync 9 and 11)", 
 		tess.kv.set = put;
 		tess.api.ops = ops;
 		expect(writes.at(-1)?.sort()).toEqual(["case:c_flow", KEYS.queue].sort());
-		expect(Object.keys(book(tess, "c_flow")?.marks ?? {})).toContain("a3");
+		expect(Object.keys(book(tess, "c_flow")?.marks ?? {})).toContain("m3");
 		await sync(restarted(tess), dana);
 		// One mark 3, no mark deleted and made again under 4.
 		expect(
@@ -1142,16 +1142,16 @@ describe("operations written down, and their images (review B, sync 9 and 11)", 
 describe("what the server refused (review B, sync 14)", () => {
 	test("a refusal the fetch settles goes with it: a change to a mark a teammate deleted is not said for ever", async () => {
 		await shared();
-		await change(dana, "c_flow", (c, now) => withoutMark(c, "a2", now));
+		await change(dana, "c_flow", (c, now) => withoutMark(c, "m2", now));
 		await dana.engine.request();
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a2", "Tess edits the deleted mark", now),
+			withComment(c, "m2", "Tess edits the deleted mark", now),
 		);
 		await tess.engine.request();
 		// The mark is gone here too, and there is nothing left to say.
 		expect(
 			(await tess.store.getCase("c_flow"))?.marks.map((a) => a.id),
-		).toEqual(["a1"]);
+		).toEqual(["m1"]);
 		await tess.engine.request();
 		expect(status(tess)?.problems).toEqual([]);
 		expect(status(tess)?.state).toBe("synced");
@@ -1481,7 +1481,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		await fromFile("c_file");
 		// Her own words on mark 2, and a mark only she has.
 		await change(dana, "c_file", (c, now) =>
-			withComment(c, "a2", "Dana's words", now),
+			withComment(c, "m2", "Dana's words", now),
 		);
 		await addMark(dana, "c_file", "Only Dana's", { url: PAY });
 		const sent: Op[] = [];
@@ -1542,7 +1542,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		await tessShares();
 		await fromFile("c_file");
 		await change(dana, "c_file", (c, now) =>
-			withComment(c, "a1", "Dana's newer words", now),
+			withComment(c, "m1", "Dana's newer words", now),
 		);
 		await addMark(dana, "c_file", "Dana's own third");
 		await signIn(dana);
@@ -1583,7 +1583,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		await tessShares();
 		await fromFile("c_file");
 		await change(dana, "c_file", (c, now) =>
-			withComment(c, "a1", "Dana's newer words", now),
+			withComment(c, "m1", "Dana's newer words", now),
 		);
 		await addMark(dana, "c_file", "Dana's own third");
 		// The first fetch fails, so the question has no count; she says yes.
@@ -1627,7 +1627,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		await tessShares();
 		await fromFile("c_file");
 		await change(dana, "c_file", (c, now) =>
-			withComment(c, "a1", "Dana's newer words", now),
+			withComment(c, "m1", "Dana's newer words", now),
 		);
 		await addMark(dana, "c_file", "Dana's own third");
 		await signIn(dana);
@@ -1663,7 +1663,7 @@ describe("a case the team already has (review B, sync 2 and 3)", () => {
 		await tessShares();
 		await fromFile("c_file");
 		await change(dana, "c_file", (c, now) =>
-			withComment(c, "a2", "Dana's words in the file", now),
+			withComment(c, "m2", "Dana's words in the file", now),
 		);
 		await dana.engine.request();
 		expect(
@@ -1727,7 +1727,7 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 	test("the cursor goes on, the case does not: it is marked to be read again, the problem stays, and a minute later it arrives", async () => {
 		await shared();
 		await change(dana, "c_flow", (c, now) =>
-			withComment(c, "a1", "Dana's words", now),
+			withComment(c, "m1", "Dana's words", now),
 		);
 		await addMark(dana, "c_flow", "Dana's third");
 		await dana.engine.request();
@@ -1746,8 +1746,8 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 		expect(status(tess)?.problems).toEqual(said);
 		// The ids written down for the marks that were not stored are taken back.
 		expect(Object.keys(book(tess, "c_flow")?.marks ?? {})).toEqual([
-			"a1",
-			"a2",
+			"m1",
+			"m2",
 		]);
 		expect(book(tess, "c_flow")?.announced).toBeUndefined();
 		// Run after run it stays said, and nothing is fetched for it yet.
@@ -1781,7 +1781,7 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 		const theirs = server
 			.marksOf("c_flow")
 			.find((m) => m.comment === "Dana's third");
-		expect(own.id).toBe("a3");
+		expect(own.id).toBe("m3");
 		tess.clock.now = new Date(tess.clock.now.getTime() + 61_000);
 		await sync(tess, dana);
 		await sync(tess, dana);
@@ -1812,7 +1812,7 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 		void tess.engine.request();
 		await until(() => book(tess, "c_flow")?.announced !== undefined);
 		const stopped = structuredClone(book(tess, "c_flow")) as CaseBook;
-		expect(Object.keys(stopped.announced?.marks ?? {})).toEqual(["a3"]);
+		expect(Object.keys(stopped.announced?.marks ?? {})).toEqual(["m3"]);
 		// A new worker, with the book as the stopped one left it.
 		const again = device("tess", server.api(TESS));
 		for (const [key, value] of tess.kv.data) again.kv.data.set(key, value);
@@ -1823,7 +1823,7 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 			again.store.images.set(key, value);
 		tess.store.updateCase = update;
 		const own = await addMark(again, "c_flow", "Tess's own");
-		expect(own.id).toBe("a3");
+		expect(own.id).toBe("m3");
 		await sync(again, dana);
 		await sync(again, dana);
 		const all = server
@@ -1846,7 +1846,7 @@ describe("a change of the team's that cannot be stored (review B, sync 1)", () =
 		const sha = server.shotsOf("c_a")[0]?.image.sha256 as string;
 		server.blobs.delete(sha);
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Tess's newer words", now),
+			withComment(c, "m1", "Tess's newer words", now),
 		);
 		await tess.engine.request();
 		const checked = (dana.kv.data.get(KEYS.account) as Account).checkedAt;
@@ -1873,9 +1873,9 @@ describe("a book taken up again (review B, sync 4)", () => {
 		await tess.engine.signOut();
 		expect(tess.kv.data.get(KEYS.modes)).toEqual({ c_flow: "local" });
 		// While not syncing: one mark deleted, one edited, one added.
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "m2", now));
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Edited while signed out", now),
+			withComment(c, "m1", "Edited while signed out", now),
 		);
 		await addMark(tess, "c_flow", "Added while signed out");
 		const sent: Op[] = [];
@@ -1911,7 +1911,7 @@ describe("a book taken up again (review B, sync 4)", () => {
 		expect(status(tess)?.problems).toEqual([]);
 		expect(status(tess)?.state).toBe("synced");
 		// From here on a delete is a delete again.
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "m2", now));
 		await sync(tess, dana);
 		expect(server.marksOf("c_flow").map((m) => m.comment)).toEqual([
 			"Edited while signed out",
@@ -2165,7 +2165,7 @@ describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
 		expect(tess.kv.data.get(KEYS.cursor)).toBe(0);
 		expect(server.marksOf("c_zero")).toHaveLength(2);
 		await dana.engine.request();
-		await change(dana, "c_zero", (c, now) => withoutMark(c, "a2", now));
+		await change(dana, "c_zero", (c, now) => withoutMark(c, "m2", now));
 		await dana.engine.request();
 		await tess.engine.request();
 		expect(
@@ -2188,7 +2188,7 @@ describe("a cursor of 0 (review B, sync 7, and its re-check)", () => {
 
 	test("the server in memory answers since=0 as the real one does: as any revision, with what was deleted", async () => {
 		await shared();
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "m2", now));
 		await tess.engine.request();
 		const from0 = server.changes(0);
 		expect(from0.removed?.map((r) => r.type).sort()).toEqual(["mark", "shot"]);
@@ -2300,10 +2300,10 @@ describe("the pages of a synced case are the server's (DEC-039)", () => {
 describe("deleting", () => {
 	test("a mark deleted on one device goes on the other, its screenshot with its last mark", async () => {
 		await shared();
-		await change(tess, "c_flow", (c, now) => withoutMark(c, "a2", now));
+		await change(tess, "c_flow", (c, now) => withoutMark(c, "m2", now));
 		await sync(tess, dana);
 		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.marks.map((a) => a.id)).toEqual(["a1"]);
+		expect(there.marks.map((a) => a.id)).toEqual(["m1"]);
 		expect(there.shots).toHaveLength(1);
 		expect(keys(dana, "c_flow")).toHaveLength(2);
 		expect(server.marksOf("c_flow")).toHaveLength(1);
@@ -2331,7 +2331,7 @@ describe("deleting", () => {
 		await shared();
 		tess.api.offline = true;
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Too late", now),
+			withComment(c, "m1", "Too late", now),
 		);
 		await tess.engine.request();
 		await removeCase(dana, "c_flow");
@@ -2369,7 +2369,7 @@ describe("what the server does not take", () => {
 			message: "A mark holds at most 20 findings.",
 		};
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Refused", now),
+			withComment(c, "m1", "Refused", now),
 		);
 		await tess.engine.request();
 		expect(status(tess)?.state).toBe("problem");
@@ -2408,7 +2408,7 @@ describe("what the server does not take", () => {
 			code: "frozen",
 			message: "The case is frozen for a release.",
 		};
-		await change(tess, "c_flow", (c, now) => withComment(c, "a1", "Edit", now));
+		await change(tess, "c_flow", (c, now) => withComment(c, "m1", "Edit", now));
 		await tess.engine.request();
 		expect(status(tess)?.problems[0]?.text).toBe(
 			"A change to a mark was not taken: The case is frozen for a release.",
@@ -2423,7 +2423,7 @@ describe("what the server does not take", () => {
 		await dana.engine.retry();
 		dana.api.calls.length = 0;
 		await change(dana, "c_flow", (c, now) =>
-			withComment(c, "a1", "Not mine to edit", now),
+			withComment(c, "m1", "Not mine to edit", now),
 		);
 		await dana.engine.request();
 		expect(posts(dana)).toEqual([]);
@@ -2698,7 +2698,7 @@ describe("a contract that has grown", () => {
 		await shared();
 		server.future = true;
 		await change(dana, "c_flow", (c, now) =>
-			withComment(c, "a1", "From the future", now),
+			withComment(c, "m1", "From the future", now),
 		);
 		await sync(dana, tess);
 		expect(status(tess)?.state).toBe("synced");
@@ -2733,14 +2733,14 @@ describe("a contract that has grown", () => {
 			await addMark(tess, "c_many", `Mark ${i}`);
 			await tess.engine.request();
 		}
-		await change(tess, "c_many", (c, now) => withoutMark(c, "a9", now));
+		await change(tess, "c_many", (c, now) => withoutMark(c, "m9", now));
 		await tess.engine.request();
 		const changes = dana.api.changes.bind(dana.api);
 		let asked = 0;
 		dana.api.changes = async (team, since, limit) => {
 			if (++asked === 2) {
 				await change(tess, "c_many", (c, now) =>
-					withComment(c, "a2", "Changed between two pages", now),
+					withComment(c, "m2", "Changed between two pages", now),
 				);
 				await tess.engine.request();
 			}
@@ -2796,7 +2796,7 @@ describe("a contract that has grown", () => {
 			"A third mark, after the copy",
 		]);
 		expect(server.marksOf("c_flow")[2]?.id).toBe(
-			book(tess, "c_flow")?.marks["a3"] as string,
+			book(tess, "c_flow")?.marks["m3"] as string,
 		);
 		// The one the server lost is still here, and is the team's again.
 		expect(server.caseOf("c_second")?.title).toBe("Your cart");
@@ -2817,7 +2817,7 @@ describe("signing out and in", () => {
 		expect(tess.kv.data.get(KEYS.modes)).toEqual({ c_flow: "local" });
 		tess.api.calls.length = 0;
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "Signed out", now),
+			withComment(c, "m1", "Signed out", now),
 		);
 		await tess.engine.request();
 		expect(tess.api.calls).toEqual([]);
@@ -2828,10 +2828,10 @@ describe("signing out and in", () => {
 		await shared();
 		await tess.engine.signOut();
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "While signed out", now),
+			withComment(c, "m1", "While signed out", now),
 		);
 		await change(dana, "c_flow", (c, now) =>
-			withChoice(c, "a2", "fixed", "", now),
+			withChoice(c, "m2", "fixed", "", now),
 		);
 		await dana.engine.request();
 		await signIn(tess);
@@ -2850,7 +2850,7 @@ describe("signing out and in", () => {
 		await shared();
 		tess.api.unauthorized = true;
 		await change(tess, "c_flow", (c, now) =>
-			withComment(c, "a1", "While the token was out", now),
+			withComment(c, "m1", "While the token was out", now),
 		);
 		await tess.engine.request();
 		expect(status(tess)?.state).toBe("signed-out");
@@ -2946,7 +2946,7 @@ describe("the worker stopped in the middle", () => {
 		expect((await dana.store.getCase("c_flow"))?.marks).toHaveLength(3);
 		// The ids were written down first, each with its mark's drawing.
 		expect(Object.keys(book(dana, "c_flow")?.announced?.marks ?? {})).toEqual([
-			"a3",
+			"m3",
 		]);
 		dana.kv.set = put;
 		dana = restarted(dana);

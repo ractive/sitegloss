@@ -5,7 +5,7 @@
  * last had of it. The cases themselves stay as they are: a case holds nothing
  * of this, so it reads the same with or without an account.
  *
- * Ids: a mark is `a<number>` and a screenshot `s<n>` on this device, which
+ * Ids: a mark is `m<number>` and a screenshot `s<n>` on this device, which
  * says where it is, not what it is; two devices give the same ids to
  * different things. At the server a mark and a screenshot have ids of their
  * own, made once on the device that made them. `marks` and `shots` say which
@@ -13,7 +13,7 @@
  */
 
 import type { CaseComment } from "../case.ts";
-import type { Kv } from "../kv.ts";
+import { type Kv, openKv } from "../kv.ts";
 import type {
 	ImageRef,
 	Op,
@@ -24,6 +24,13 @@ import type {
 } from "./api.ts";
 
 export const CLOUD_DATABASE = "sitegloss-cloud";
+
+/** The cloud's database, opened, and brought along once (`forgetCases`). */
+export async function openCloudKv(): Promise<Kv> {
+	const kv = await openKv(CLOUD_DATABASE);
+	await forgetCases(kv);
+	return kv;
+}
 
 /**
  * Keys in one server's part of the database (servers.ts: everything here is
@@ -44,6 +51,47 @@ export const KEYS = {
 
 /** What a case's book is kept under, before the case's id. */
 export const BOOK = "case:";
+
+/**
+ * Which cases the database's bookkeeping is for: the store's version 2
+ * (DEC-051) starts with no case (store.ts), and `forgetCases` brings this
+ * database along once. Not kept per server.
+ */
+export const CASES_KEY = "cases";
+export const CASES = "sitegloss/2";
+
+/** One server's entries that are about cases (beside the books). */
+const ABOUT_CASES: ReadonlySet<string> = new Set([
+	KEYS.cursor,
+	KEYS.queue,
+	KEYS.whole,
+	KEYS.modes,
+	KEYS.status,
+]);
+
+/**
+ * Forget, once, everything the cloud's database kept about the cases of
+ * before DEC-051, for every server: the books (which mark here is which
+ * there, what was sent), how far the team's changes were read, what waited
+ * to be sent, and the deletes an expired sign-in recorded. What is not about
+ * cases stays: the server chosen, the account and its team, the tokens. The
+ * cases are gone from the store too, so the next run has no book, no cursor
+ * and no case: it sends nothing and reads the team's whole state again.
+ */
+export async function forgetCases(kv: Kv): Promise<void> {
+	if ((await kv.get(CASES_KEY)) === CASES) return;
+	for (const [key, value] of Object.entries(await kv.all())) {
+		const space = key.startsWith("@") ? key.indexOf(" ") : -1;
+		const own = space < 0 ? key : key.slice(space + 1);
+		// (Keys without a server's scope are as 0.3.0 kept them, before DEC-041.)
+		if (own.startsWith(BOOK) || ABOUT_CASES.has(own)) await kv.remove(key);
+		else if (own === KEYS.account) {
+			const { liveDeletes: _gone, ...account } = value as Account;
+			if ("liveDeletes" in (value as object)) await kv.set({ [key]: account });
+		}
+	}
+	await kv.set({ [CASES_KEY]: CASES });
+}
 
 /** Who is signed in, and where. */
 export interface Account {
@@ -150,7 +198,7 @@ export interface CaseBook {
 	mode: SyncMode;
 	/** The team it is synced with, or was. */
 	teamId?: string;
-	/** The mark's id here (`a<number>`) to its id at the server. */
+	/** The mark's id here (`m<number>`) to its id at the server. */
 	marks: Record<string, string>;
 	/** The screenshot's id here (`s<n>`) to its id at the server. */
 	shots: Record<string, string>;
