@@ -65,7 +65,7 @@ function sizeProblems(c: StoredCase): string[] {
 				`shot ${shot.id}: ${JSON.stringify(size)} for ${width}×${height} at ${dpr}`,
 			);
 	}
-	for (const a of c.annotations) {
+	for (const a of c.marks) {
 		const shot = c.shots.find((s) => s.id === a.shot);
 		const size = c.sizes[a.crop];
 		if (
@@ -174,7 +174,7 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 		});
 		await marksInPanel(h, 2);
 		const c = await readCase(h, TITLE);
-		expect(c.annotations.map((a) => [a.shape.kind, a.comment])).toEqual([
+		expect(c.marks.map((a) => [a.shape.kind, a.comment])).toEqual([
 			["element", "The title"],
 			["box", "This text"],
 		]);
@@ -202,7 +202,7 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 			});
 			await marksInPanel(h, 2);
 			const c = await readCase(h, TITLE);
-			expect(c.annotations.map((a) => a.comment)).toEqual([
+			expect(c.marks.map((a) => a.comment)).toEqual([
 				"Zoomed button",
 				"Zoomed box",
 			]);
@@ -276,7 +276,7 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 			"the copy in the panel",
 		);
 		const copy = await readCase(h, `${TITLE} (copy)`);
-		expect(copy.annotations.map((a) => a.comment)).toEqual([
+		expect(copy.marks.map((a) => a.comment)).toEqual([
 			"Zoomed button",
 			"Zoomed box",
 		]);
@@ -295,9 +295,9 @@ describe.skipIf(!firefoxReady)("Firefox: the test build", () => {
 				if (json === undefined) return -1;
 				return (
 					JSON.parse(new TextDecoder().decode(json)) as {
-						annotations: unknown[];
+						marks: unknown[];
 					}
-				).annotations.length;
+				).marks.length;
 			} catch {
 				return -1;
 			}

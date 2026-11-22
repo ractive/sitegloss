@@ -3,6 +3,7 @@
 import { join } from "node:path";
 import { type Case, newId, type PageInfo } from "../../src/lib/case.ts";
 import type { OverlayState } from "../../src/lib/messages.ts";
+import { DB_VERSION } from "../../src/lib/store.ts";
 import { newCase } from "../../src/sidepanel/fresh.ts";
 import type { Page } from "./browser.ts";
 import { type Harness, opened } from "./harness.ts";
@@ -47,7 +48,7 @@ export const READ_DB = `new Promise((resolve, reject) => {
 export function putCases(h: Harness, cases: Case[]): Promise<unknown> {
 	return step("put the cases", () =>
 		h.control.eval(`new Promise((resolve, reject) => {
-			const open = indexedDB.open("sitegloss", 1);
+			const open = indexedDB.open("sitegloss", ${DB_VERSION});
 			open.onupgradeneeded = () => {
 				open.result.createObjectStore("cases", { keyPath: "id" });
 				open.result.createObjectStore("images");
@@ -80,7 +81,7 @@ export interface Db {
 			viewport: { width: number; height: number };
 		};
 		shots: { id: string; scrollY: number }[];
-		annotations: {
+		marks: {
 			id: string;
 			number: number;
 			shot: string;
@@ -186,7 +187,7 @@ const toTab = (tabId: number, message: object) =>
  * Opened as `putCases` opens it: the stores made if the extension has not.
  */
 export const PUT_CASE = (c: Case) => `new Promise((resolve, reject) => {
-	const open = indexedDB.open("sitegloss", 1);
+	const open = indexedDB.open("sitegloss", ${DB_VERSION});
 	open.onupgradeneeded = () => {
 		open.result.createObjectStore("cases", { keyPath: "id" });
 		open.result.createObjectStore("images");
@@ -225,7 +226,7 @@ export async function showToolbar(
 	await h.control.eval(
 		toTab(tabId, {
 			type: "overlay:show",
-			target: { caseId: c.id, title: c.title, nextAnnotation: 1 },
+			target: { caseId: c.id, title: c.title, nextMark: 1 },
 		}),
 	);
 	await page.waitFor(shadow('[data-action="tool-box"]'));

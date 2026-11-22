@@ -1519,7 +1519,7 @@ ul.cases .progress {
  * each mark's pin on a rail from the first pin to the last, the marks right
  * of it. Scanning the rail says what is left.
  */
-ol.annotations {
+ol.marks {
 	/* Where a mark's words begin: after the pin and the chevron. */
 	--margin: 68px;
 	list-style: none;
@@ -1528,12 +1528,12 @@ ol.annotations {
 }
 
 /* A mark: a row of the list, no box; its status gives `--tone` and `--tint`. */
-.annotation {
+.mark {
 	position: relative;
 }
 
 /* The rail, behind the pin: from the first pin's middle to the last one's. */
-.annotation::before {
+.mark::before {
 	content: "";
 	position: absolute;
 	top: 0;
@@ -1543,21 +1543,21 @@ ol.annotations {
 	background: color-mix(in srgb, var(--edge) 40%, var(--paper));
 }
 
-.annotation:first-child::before {
+.mark:first-child::before {
 	top: 22px;
 }
 
-.annotation:last-child::before {
+.mark:last-child::before {
 	bottom: auto;
 	height: 22px;
 }
 
-.annotation:only-child::before {
+.mark:only-child::before {
 	display: none;
 }
 
 /* The line between two marks stays out of the margin. */
-.annotation::after {
+.mark::after {
 	content: "";
 	position: absolute;
 	right: 0;
@@ -1567,7 +1567,7 @@ ol.annotations {
 	background: var(--rule);
 }
 
-.annotation:last-child::after {
+.mark:last-child::after {
 	left: 0;
 }
 
@@ -1580,12 +1580,12 @@ ol.annotations {
 }
 
 /* Brought into view (its pin was clicked on the page): below the bars. */
-.annotation {
+.mark {
 	scroll-margin-top: calc(var(--bar) + 48px);
 }
 
 /* Its pin was clicked on the page (DEC-027): the row says "this one" a moment. */
-.annotation[data-picked] > .mark-head {
+.mark[data-picked] > .mark-head {
 	animation: picked 1.6s ease-out;
 }
 
@@ -1596,7 +1596,7 @@ ol.annotations {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.annotation[data-picked] > .mark-head {
+	.mark[data-picked] > .mark-head {
 		animation: none;
 	}
 }
@@ -1651,7 +1651,7 @@ ol.annotations {
 	transition: transform 0.15s;
 }
 
-.annotation[data-open] .chevron {
+.mark[data-open] .chevron {
 	margin-top: 6px;
 	transform: rotate(45deg);
 }
@@ -1677,12 +1677,12 @@ ol.annotations {
 	font-variant-numeric: tabular-nums;
 }
 
-.annotation[data-colour="unsure"] .number {
+.mark[data-colour="unsure"] .number {
 	outline: 1.5px dashed var(--tone, var(--st-open));
 	outline-offset: 2px;
 }
 
-.annotation[data-colour="lost"] .number {
+.mark[data-colour="lost"] .number {
 	background: var(--paper);
 	box-shadow:
 		inset 0 0 0 2px var(--tone, var(--st-open)),
@@ -1700,7 +1700,7 @@ ol.annotations {
 }
 
 /* A verified or closed mark steps back; its crop stays as it is, to compare. */
-.annotation[data-resolved] .comment {
+.mark[data-resolved] .comment {
 	color: var(--ink-2);
 }
 
@@ -1713,7 +1713,7 @@ ol.annotations {
 	overflow: hidden;
 }
 
-.annotation[data-open] .mark-toggle .comment {
+.mark[data-open] .mark-toggle .comment {
 	display: block;
 }
 
@@ -1787,7 +1787,7 @@ ol.annotations {
 	color: var(--ink-2);
 }
 
-.annotation[data-colour="lost"] .mark-sub .state {
+.mark[data-colour="lost"] .mark-sub .state {
 	color: var(--danger);
 	font-weight: 600;
 }
@@ -1799,12 +1799,12 @@ ol.annotations {
 }
 
 /* Focus moving up the list stops below the bars, not under them. */
-.annotation :is(button, input, textarea) {
+.mark :is(button, input, textarea) {
 	scroll-margin-top: calc(var(--bar) + 48px);
 }
 
 /* Open: the rest of the mark on a sheet, right of the margin. */
-.annotation .body {
+.mark .body {
 	display: grid;
 	gap: var(--s2);
 	min-width: 0;
@@ -1815,16 +1815,16 @@ ol.annotations {
 	background: var(--sheet);
 }
 
-.annotation .body > * {
+.mark .body > * {
 	min-width: 0;
 }
 
-.annotation .body .meta {
+.mark .body .meta {
 	margin: 0;
 }
 
 .shots img,
-.annotation img {
+.mark img {
 	display: block;
 	max-width: 100%;
 	border: 1px solid var(--edge);

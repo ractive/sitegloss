@@ -16,7 +16,7 @@
  */
 
 import { BROWSER, FIREFOX } from "./browser.ts";
-import type { Case } from "./case.ts";
+import { CASE_FORMAT, type Case } from "./case.ts";
 import { EXPORT_SUFFIX, exportCase, exportFileName } from "./export.ts";
 import type { Kv } from "./kv.ts";
 import type { CaseStore } from "./store.ts";
@@ -243,8 +243,13 @@ export async function chooseDownloads(kv: Kv): Promise<void> {
 		| SyncedFiles
 		| undefined;
 	const byCase: Record<string, SyncedFile> = {};
+	// A version of this format that no case has: written again, into its file.
+	// A file of before (`movedAside`) stays as it is.
 	for (const [id, f] of Object.entries(record?.byCase ?? {}))
-		byCase[id] = { version: "", file: f.file };
+		byCase[id] =
+			id.startsWith(BEFORE) || !f.version.startsWith(`${CASE_FORMAT}|`)
+				? f
+				: { version: `${CASE_FORMAT}|`, file: f.file };
 	await kv.set({
 		[TARGET_KEY]: "downloads",
 		[FOLDER_KEY]: undefined,
@@ -304,8 +309,31 @@ export const stopSyncing = (kv: Kv): Promise<void> =>
 		[LAST_DOWNLOAD_KEY]: undefined,
 	});
 
-/** A case's version: an import may keep `updatedAt` and still change it. */
-export const versionOf = (c: Case) => `${c.updatedAt}|${c.importedAt ?? ""}`;
+/**
+ * A case's version: an import may keep `updatedAt` and still change it. With
+ * the format, so a file written in another one is told apart (`movedAside`).
+ */
+export const versionOf = (c: Case) =>
+	`${c.format}|${c.updatedAt}|${c.importedAt ?? ""}`;
+
+/** What the record of a file written before DEC-051 is kept under, before the case's id. */
+export const BEFORE = "before:";
+
+/**
+ * The records of files written before this version (`sitegloss/1`, their
+ * version without the format), moved aside under `BEFORE`: such a file is
+ * left as it is, never written over or removed, and its name stays taken, so
+ * a case that comes back from the team (DEC-051: the update emptied the
+ * store) gets a file of its own beside it. This version cannot import such a
+ * file; Sitegloss 0.3.1 and older still can.
+ */
+function movedAside(byCase: Record<string, SyncedFile>): void {
+	for (const [id, f] of Object.entries(byCase))
+		if (!id.startsWith(BEFORE) && !f.version.startsWith(`${CASE_FORMAT}|`)) {
+			byCase[`${BEFORE}${id}`] = f;
+			delete byCase[id];
+		}
+}
 
 const errorName = (error: unknown) =>
 	error instanceof Error || error instanceof DOMException ? error.name : "";
@@ -744,6 +772,7 @@ export class Sync {
 				version: settled.version,
 				file: settled.file,
 			};
+		movedAside(byCase);
 		const all = await cases.listCases();
 		// A case without marks gets no file until its first mark (DEC-026): a
 		// file in Downloads cannot be taken back, and an empty case that is
@@ -751,7 +780,7 @@ export class Sync {
 		const todo = all.filter(
 			(c) =>
 				byCase[c.id]?.version !== versionOf(c) &&
-				(c.annotations.length > 0 || byCase[c.id] !== undefined),
+				(c.marks.length > 0 || byCase[c.id] !== undefined),
 		);
 		if (todo.length === 0)
 			return this.#report(

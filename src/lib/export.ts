@@ -84,7 +84,7 @@ function withoutSyncNotes(c: Case): Case {
 	const { via: _v, createdVia: _c, deletedVia: _d, ...rest } = c;
 	return {
 		...rest,
-		annotations: rest.annotations.map(({ via: _a, ...a }) => a),
+		marks: rest.marks.map(({ via: _a, ...a }) => a),
 	};
 }
 
@@ -511,7 +511,7 @@ export async function storeImport(
 		}),
 		// The app that made a mark is the server's record, which a file only
 		// claims (DEC-046): it would be sent as the app's doing.
-		annotations: parsed.case.annotations.map(({ createdVia: _cv, ...a }) => ({
+		marks: parsed.case.marks.map(({ createdVia: _cv, ...a }) => ({
 			...a,
 			...(a.findings === undefined
 				? {}
@@ -534,7 +534,7 @@ export async function storeImport(
 	});
 	// A comment kept from here about a mark the file does not have: about a
 	// deleted mark.
-	const live = new Set(c.annotations.map((a) => a.id));
+	const live = new Set(c.marks.map((a) => a.id));
 	const value: Case =
 		c.comments === undefined
 			? c

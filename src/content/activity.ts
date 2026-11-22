@@ -9,11 +9,11 @@
  *   idle ──AI mark / AI capture──▶ ai-mark / ai-capture ──end or 10 s──▶ idle
  */
 
-import type { AnnotateTarget } from "../lib/messages.ts";
+import type { MarkTarget } from "../lib/messages.ts";
 
 export interface ShowOptions {
 	/** The case the toolbar adds to: always one (DEC-026). */
-	target: AnnotateTarget;
+	target: MarkTarget;
 	blurForms?: boolean;
 }
 

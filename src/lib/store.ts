@@ -6,6 +6,18 @@
 
 import { type Case, imageKey } from "./case.ts";
 
+/**
+ * The database's version. 1: the stores. 2 (DEC-051): the case format
+ * `sitegloss/2`. The upgrade to it empties both stores (the cases, their
+ * images, the delete records and the screenshots of saves that never
+ * finished), in the upgrade itself: no case of the old format is ever read,
+ * and none is converted. The sync's bookkeeping goes with them
+ * (`forgetCases` in cloud/book.ts), so a team's cases come back from the
+ * server whole. A case that was only in this browser is gone (the owner's
+ * decision). A build before this one cannot open version 2.
+ */
+export const DB_VERSION = 2;
+
 export interface StoredImage {
 	blob: Blob;
 	/** Pixels. */
@@ -59,6 +71,8 @@ export interface DeletedCase {
 }
 
 export interface CaseStore {
+	/** The store's version, once it is open (and upgraded): `DB_VERSION`. */
+	version(): Promise<number>;
 	/** All cases, newest change first. */
 	listCases(): Promise<Case[]>;
 	getCase(id: string): Promise<Case | undefined>;
@@ -128,6 +142,10 @@ export class MemoryStore implements CaseStore {
 	readonly images = new Map<string, StoredImage>();
 	/** The deletes on record: case id to when. */
 	readonly deleted = new Map<string, number>();
+
+	async version(): Promise<number> {
+		return DB_VERSION;
+	}
 
 	async listCases(): Promise<Case[]> {
 		return [...this.cases.values()]
@@ -248,23 +266,159 @@ function done(tx: IDBTransaction): Promise<void> {
 const prefixRange = (caseId: string) =>
 	IDBKeyRange.bound(`${caseId}/`, `${caseId}/￿`);
 
-export class IdbStore implements CaseStore {
-	#db: Promise<IDBDatabase> | undefined;
+/**
+ * How long an open waits while an older version's connection holds the
+ * database (`onblocked`) before it gives up with `StoreBlockedError`.
+ */
+export const BLOCKED_WAIT_MS = 5000;
 
+/**
+ * The database could not be opened: a connection of the build before this
+ * one (a page or worker of it that is still running) holds it at its old
+ * version, so the upgrade cannot run yet. Nothing was read or changed; the
+ * upgrade runs by itself once that connection goes, and the next call opens
+ * the database then.
+ */
+export class StoreBlockedError extends Error {
+	constructor() {
+		super(
+			"Sitegloss cannot open its cases yet: a window of the version before this update still has them open. Close Sitegloss's pages and side panels, or restart the browser, then try again.",
+		);
+		this.name = "StoreBlockedError";
+	}
+}
+
+/** After a failed open, how long every call fails at once with the same error. */
+export const RETRY_AFTER_MS = 10_000;
+
+/**
+ * The database could not be opened or upgraded (IndexedDB's error, by its
+ * name only). A failed upgrade changes nothing: the database stays as it was.
+ */
+export class StoreOpenError extends Error {
+	constructor(reason: string) {
+		super(
+			`Sitegloss could not open its cases (${reason}). Nothing in them was changed; it tries again in a moment.`,
+		);
+		this.name = "StoreOpenError";
+	}
+}
+
+export class IdbStore implements CaseStore {
+	/** The open connection. */
+	#db: IDBDatabase | undefined;
+	/**
+	 * The one open request under way, and whether it got anywhere (its
+	 * upgrade began, or it succeeded): every call waits on it, none makes
+	 * another. It may wait long (another connection holds the database); a
+	 * call waits for it at most `#blockedWaitMs`.
+	 */
+	#opening: { done: Promise<IDBDatabase>; moved: () => boolean } | undefined;
+	/** The last open that failed, and until when that is the answer. */
+	#failed: { error: Error; until: number } | undefined;
+	readonly #blockedWaitMs: number;
+	readonly #retryAfterMs: number;
+
+	constructor(options: { blockedWaitMs?: number; retryAfterMs?: number } = {}) {
+		this.#blockedWaitMs = options.blockedWaitMs ?? BLOCKED_WAIT_MS;
+		this.#retryAfterMs = options.retryAfterMs ?? RETRY_AFTER_MS;
+	}
+
+	/**
+	 * An open failed: said once in the console (the error's name, nothing of
+	 * the cases), and for `#retryAfterMs` every call (the panel's list, the
+	 * folder sync, the cloud sync) gets the same error without waiting again.
+	 */
+	#fail(error: Error): Error {
+		console.error(`Sitegloss: ${error.name}: ${error.message}`);
+		this.#failed = { error, until: Date.now() + this.#retryAfterMs };
+		return error;
+	}
+
+	async version(): Promise<number> {
+		return (await this.#open()).version;
+	}
+
+	/**
+	 * The database, opened (and made or upgraded). As the settings' database
+	 * (`kv.ts`): a connection Chrome closes (`onclose`) or another context's
+	 * upgrade or delete asks to close (`onversionchange`, which it does) is
+	 * forgotten, and the next call opens the database again.
+	 *
+	 * An open that another connection holds up (the build before this one,
+	 * still running; IndexedDB fires `blocked` only for the first request in
+	 * line, the others just wait) gets nowhere: a call then fails with
+	 * `StoreBlockedError` after `#blockedWaitMs` instead of waiting for ever.
+	 * Its request stays and is the one every later call waits on, so the
+	 * upgrade runs once that connection goes, and no request piles up.
+	 */
 	#open(): Promise<IDBDatabase> {
-		this.#db ??= new Promise((resolve, reject) => {
-			const req = indexedDB.open("sitegloss", 1);
-			req.onupgradeneeded = () => {
-				req.result.createObjectStore("cases", { keyPath: "id" });
-				req.result.createObjectStore("images");
+		if (this.#db !== undefined) return Promise.resolve(this.#db);
+		const failed = this.#failed;
+		if (failed !== undefined && Date.now() < failed.until)
+			return Promise.reject(failed.error);
+		this.#opening ??= this.#request();
+		const { done, moved } = this.#opening;
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				// An upgrade under way is waited for: it ends on its own.
+				if (!moved()) reject(this.#fail(new StoreBlockedError()));
+			}, this.#blockedWaitMs);
+			done.then(
+				(db) => {
+					clearTimeout(timer);
+					resolve(db);
+				},
+				(error: unknown) => {
+					clearTimeout(timer);
+					reject(error);
+				},
+			);
+		});
+	}
+
+	#request(): { done: Promise<IDBDatabase>; moved: () => boolean } {
+		let moved = false;
+		const done = new Promise<IDBDatabase>((resolve, reject) => {
+			const req = indexedDB.open("sitegloss", DB_VERSION);
+			req.onupgradeneeded = (event) => {
+				moved = true;
+				if (event.oldVersion < 1) {
+					req.result.createObjectStore("cases", { keyPath: "id" });
+					req.result.createObjectStore("images");
+					return;
+				}
+				// In the upgrade's own transaction: both stores emptied, or (a
+				// failure aborts it) the database stays as it was, at its old
+				// version, and nothing opens it.
+				const tx = req.transaction as IDBTransaction;
+				tx.objectStore("cases").clear();
+				tx.objectStore("images").clear();
 			};
-			req.onsuccess = () => resolve(req.result);
+			req.onsuccess = () => {
+				moved = true;
+				const db = req.result;
+				const forget = () => {
+					if (this.#db === db) this.#db = undefined;
+				};
+				db.onclose = forget;
+				db.onversionchange = () => {
+					db.close();
+					forget();
+				};
+				this.#db = db;
+				this.#opening = undefined;
+				this.#failed = undefined;
+				resolve(db);
+			};
 			req.onerror = () => {
-				this.#db = undefined;
-				reject(req.error);
+				this.#opening = undefined;
+				reject(this.#fail(new StoreOpenError(req.error?.name ?? "unknown")));
 			};
 		});
-		return this.#db;
+		// Nobody may be waiting when it ends.
+		done.catch(() => {});
+		return { done, moved: () => moved };
 	}
 
 	async listCases(): Promise<Case[]> {

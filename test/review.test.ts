@@ -3,9 +3,9 @@ import { Window } from "happy-dom";
 import type { Overlay } from "../src/content/overlay.ts";
 import { LoadReplaced, NO_PANEL, Reviewer } from "../src/content/review.ts";
 import {
-	type Annotation,
 	type Case,
 	MARK_CHANGED,
+	type Mark,
 	type Shape,
 } from "../src/lib/case.ts";
 import { describeElement } from "../src/lib/element.ts";
@@ -120,14 +120,14 @@ const shot = (id: string, scrollY = 0, url?: string) => ({
 
 function caseOf(el: Element): Case {
 	const element = describeElement(el);
-	const annotation = {
-		id: "a1",
+	const mark = {
+		id: "m1",
 		number: 1,
 		shot: "s1",
 		shape: { kind: "element", rect: element.rect },
 		element,
-	} as Annotation;
-	return { ...sampleCase(), shots: [shot("s1")], annotations: [annotation] };
+	} as Mark;
+	return { ...sampleCase(), shots: [shot("s1")], marks: [mark] };
 }
 
 describe("elements replaced after loading", () => {
@@ -140,7 +140,7 @@ describe("elements replaced after loading", () => {
 		const old = $("button");
 		$("main").innerHTML = `<h1>Prämien</h1><button>Berechnen</button>`;
 		expect(old.isConnected).toBe(false);
-		const match = reviewer.show("a1");
+		const match = reviewer.show("m1");
 		expect(match?.status).toBe("found");
 		expect(overlay.items.length).toBe(1);
 		expect(bar()).toContain("1 of 1 found");
@@ -181,7 +181,7 @@ describe("elements replaced after loading", () => {
 		doc.body.innerHTML = PAGE;
 		await reviewer.load(caseOf($("button")));
 		$("button").remove();
-		const match = reviewer.show("a1");
+		const match = reviewer.show("m1");
 		expect(match?.status).toBe("lost");
 		expect(match?.candidates).toEqual([]);
 		expect(overlay.items.length).toBe(0);
@@ -206,7 +206,7 @@ describe("elements replaced after loading", () => {
 		doc.body.innerHTML = PAGE;
 		await reviewer.load(caseOf($("button")));
 		$("button").textContent = "Jetzt berechnen und vergleichen";
-		expect(reviewer.show("a1")?.score).toBe(1);
+		expect(reviewer.show("m1")?.score).toBe(1);
 	});
 });
 
@@ -214,13 +214,13 @@ describe("a drawn mark", () => {
 	/** A case of one mark drawn on an element, which was at `rect`. */
 	function drawnOn(el: Element, shape: Shape, scrollY = 0): Case {
 		const c = caseOf(el);
-		const a = c.annotations[0] as Annotation;
-		const element = a.element as NonNullable<Annotation["element"]>;
+		const a = c.marks[0] as Mark;
+		const element = a.element as NonNullable<Mark["element"]>;
 		const rect = { x: 500, y: 1000, width: 200, height: 40 };
 		return {
 			...c,
 			shots: [shot("s1", scrollY)],
-			annotations: [{ ...a, shape, element: { ...element, rect } }],
+			marks: [{ ...a, shape, element: { ...element, rect } }],
 		};
 	}
 
@@ -248,17 +248,17 @@ describe("a drawn mark", () => {
 	/** A case of one mark without an element, on a shot of `url`. */
 	function withoutElement(url?: string): Case {
 		const shape = { kind: "note", at: { x: 40, y: 50 } } as const;
-		const annotation = {
-			id: "a1",
+		const mark = {
+			id: "m1",
 			number: 1,
 			shot: "s1",
 			shape,
 			element: null,
-		} as Annotation;
+		} as Mark;
 		return {
 			...sampleCase(),
 			shots: [shot("s1", 100, url)],
-			annotations: [annotation],
+			marks: [mark],
 		};
 	}
 
@@ -278,7 +278,7 @@ describe("a drawn mark", () => {
 			scrolled.push(to);
 		}) as typeof win.scrollTo;
 		await reviewer.load(withoutElement());
-		reviewer.show("a1");
+		reviewer.show("m1");
 		expect(scrolled[0]?.top).toBe(150 - win.innerHeight / 2);
 		await Bun.sleep(10);
 		expect(overlay.items[0]?.focused).toBe(true);
@@ -310,7 +310,7 @@ describe("the outline", () => {
 describe("a loaded case that changes", () => {
 	const PAGE = `<main><h1>Prämien</h1><button>Berechnen</button><p>Kontakt</p></main>`;
 	function twoMarks(): Case {
-		const mark = (id: string, n: number, el: Element): Annotation => {
+		const mark = (id: string, n: number, el: Element): Mark => {
 			const element = describeElement(el);
 			return {
 				id,
@@ -326,7 +326,7 @@ describe("a loaded case that changes", () => {
 		return {
 			...sampleCase(),
 			shots: [shot("s1")],
-			annotations: [mark("a1", 1, $("button")), mark("a2", 2, $("p"))],
+			marks: [mark("m1", 1, $("button")), mark("m2", 2, $("p"))],
 		};
 	}
 
@@ -334,17 +334,17 @@ describe("a loaded case that changes", () => {
 		doc.body.innerHTML = PAGE;
 		const c = twoMarks();
 		await reviewer.load(c);
-		reviewer.show("a1", 0);
+		reviewer.show("m1", 0);
 		const settled = {
 			...c,
-			annotations: c.annotations.map((a) =>
-				a.id === "a2"
+			marks: c.marks.map((a) =>
+				a.id === "m2"
 					? { ...a, resolution: { kind: "wontfix" as const, at: "now" } }
 					: a,
 			),
 		};
 		const result = await reviewer.update(settled);
-		expect(result?.matches.map((m) => m.annotationId)).toEqual(["a1", "a2"]);
+		expect(result?.matches.map((m) => m.markId)).toEqual(["m1", "m2"]);
 		expect(
 			(overlay.items as unknown as { status: string }[]).map((i) => i.status),
 		).toEqual(["open", "wontfix"]);
@@ -358,8 +358,8 @@ describe("a loaded case that changes", () => {
 		await reviewer.load(c);
 		const fixed = {
 			...c,
-			annotations: c.annotations.map((a) =>
-				a.id === "a2"
+			marks: c.marks.map((a) =>
+				a.id === "m2"
 					? { ...a, resolution: { kind: "fixed" as const, at: "now" } }
 					: a,
 			),
@@ -371,7 +371,7 @@ describe("a loaded case that changes", () => {
 		expect(bar()).toBe(`${c.title}·2 of 2 found · 1 to verify`);
 		const done = {
 			...c,
-			annotations: c.annotations.map((a) => ({
+			marks: c.marks.map((a) => ({
 				...a,
 				resolution: {
 					kind: "fixed" as const,
@@ -393,7 +393,7 @@ describe("a loaded case that changes", () => {
 		await reviewer.load(c);
 		const result = await reviewer.update({
 			...c,
-			annotations: [c.annotations[0] as Annotation],
+			marks: [c.marks[0] as Mark],
 		});
 		expect(result?.matches.length).toBe(1);
 		expect(overlay.items.length).toBe(1);
@@ -404,12 +404,12 @@ describe("a loaded case that changes", () => {
 		doc.body.innerHTML = PAGE;
 		const c = twoMarks();
 		await reviewer.load(c);
-		const [first, second] = c.annotations as [Annotation, Annotation];
-		// a2 now marks the heading, as a file imported over it says.
+		const [first, second] = c.marks as [Mark, Mark];
+		// m2 now marks the heading, as a file imported over it says.
 		const h1 = describeElement($("h1"));
 		const replaced = {
 			...c,
-			annotations: [
+			marks: [
 				first,
 				{
 					...second,
@@ -431,7 +431,7 @@ describe("a loaded case that changes", () => {
 		expect(
 			await reviewer.update({
 				...c,
-				annotations: [c.annotations[0] as Annotation],
+				marks: [c.marks[0] as Mark],
 			}),
 		).toBeNull();
 		const result = await loading;
@@ -481,17 +481,14 @@ describe("loads close together", () => {
 		const one = caseOf($("button"));
 		const c: Case = {
 			...one,
-			annotations: [
-				...one.annotations,
-				{ ...(one.annotations[0] as Annotation), id: "a2", number: 2 },
-			],
+			marks: [...one.marks, { ...(one.marks[0] as Mark), id: "m2", number: 2 }],
 		};
 		const first = reviewer.load(c);
 		const second = reviewer.load(c);
 		expect(
 			await reviewer.update({
 				...c,
-				annotations: [c.annotations[0] as Annotation],
+				marks: [c.marks[0] as Mark],
 			}),
 		).toBeNull();
 		expect((await second).matches.length).toBe(1);
@@ -503,11 +500,11 @@ describe("a load that draws a newer copy at its end", () => {
 	const PAGE = `<main><h1>Prämien</h1><button>Berechnen</button><a href="#">Link</a><p>Text hier</p></main>`;
 	const withMarks = (base: Case, ...selectors: string[]): Case => ({
 		...base,
-		annotations: [
-			...base.annotations,
+		marks: [
+			...base.marks,
 			...selectors.map((sel, i) => ({
-				...(base.annotations[0] as Annotation),
-				id: `a${i + 2}`,
+				...(base.marks[0] as Mark),
+				id: `m${i + 2}`,
 				number: i + 2,
 				element: describeElement($(sel)),
 			})),
@@ -557,7 +554,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		const c = caseOf($("button"));
 		const marked = {
 			...c,
-			annotations: c.annotations.map((a) => ({ ...a, comment })),
+			marks: c.marks.map((a) => ({ ...a, comment })),
 		};
 		await reviewer.load(marked);
 		return marked;
@@ -576,7 +573,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(overlay.items[0]?.focused).toBe(true);
 		expect(overlay.placed).toBeGreaterThan(0);
 		expect(asked).toEqual([
-			{ type: "mark:picked", caseId: c.id, annotationId: "a1" },
+			{ type: "mark:picked", caseId: c.id, markId: "m1" },
 		]);
 		// A second click on the same pin leaves what is being typed.
 		field().value = "Typing";
@@ -593,7 +590,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		const c = await loaded();
 		const fixed = {
 			...c,
-			annotations: c.annotations.map((a) => ({
+			marks: c.marks.map((a) => ({
 				...a,
 				resolution: { kind: "fixed" as const, at: "2026-11-14T10:00:00Z" },
 			})),
@@ -623,7 +620,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:comment",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 			text: "Much too pale",
 		});
 		expect(asked.filter((r) => r.type === "mark:comment").length).toBe(1);
@@ -670,7 +667,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:delete",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 		});
 		expect(overlay.popover.hidden).toBe(true);
 	});
@@ -689,14 +686,14 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 
 		overlay.onPick?.(1);
 		field().value = "Kept";
-		// What the annotator does at a press beside the popover, or as it opens
+		// What the mark adder does at a press beside the popover, or as it opens
 		// a new mark's comment.
 		expect(overlay.dismissPopover()).toBe(true);
 		expect(overlay.popover.hidden).toBe(true);
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:comment",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 			text: "Kept",
 		});
 	});
@@ -707,7 +704,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		// Another change of the case leaves it open.
 		await reviewer.update({ ...c, title: "Renamed" });
 		expect(overlay.popover.hidden).toBe(false);
-		await reviewer.update({ ...c, annotations: [] });
+		await reviewer.update({ ...c, marks: [] });
 		expect(overlay.popover.hidden).toBe(true);
 		await reviewer.load(c);
 		overlay.onPick?.(1);
@@ -726,7 +723,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		more: object = {},
 	): Case => ({
 		...c,
-		annotations: c.annotations.map((a) => ({
+		marks: c.marks.map((a) => ({
 			...a,
 			resolution: { kind, at: "2026-11-14T10:00:00Z", ...more },
 		})),
@@ -788,7 +785,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:resolve",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 			kind: "wontfix",
 			note: "By design",
 		});
@@ -804,7 +801,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:comment",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 			text: "Much too pale",
 		});
 		expect(overlay.popover.querySelector(".choices")).not.toBeNull();
@@ -842,7 +839,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:verify",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 		});
 		expect(overlay.popover.hidden).toBe(true);
 	});
@@ -883,7 +880,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		expect(asked.at(-1)).toMatchObject({
 			type: "mark:reopen",
 			caseId: c.id,
-			annotationId: "a1",
+			markId: "m1",
 			note: "Still pale on hover",
 		});
 		expect(overlay.popover.hidden).toBe(true);
@@ -907,7 +904,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		// Untouched here, changed in the panel: it shows, and Done asks nothing.
 		const edited = {
 			...c,
-			annotations: c.annotations.map((a) => ({
+			marks: c.marks.map((a) => ({
 				...a,
 				comment: "From the panel",
 			})),
@@ -929,14 +926,14 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 			{
 				type: "mark:comment",
 				caseId: c.id,
-				annotationId: "a1",
+				markId: "m1",
 				text: "Typing",
 			},
 		]);
 	});
 
 	test("only a mark's request with its fields is one", () => {
-		const base = { caseId: "c_1", annotationId: "a1" };
+		const base = { caseId: "c_1", markId: "m1" };
 		expect(isMarkRequest({ type: "mark:picked", ...base })).toBe(true);
 		expect(isMarkRequest({ type: "mark:delete", ...base })).toBe(true);
 		expect(isMarkRequest({ type: "mark:comment", ...base, text: "" })).toBe(
@@ -984,12 +981,12 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 			doc.body.innerHTML = html;
 			const element = describeElement($(selector));
 			return {
-				id: `a${n}`,
+				id: `m${n}`,
 				number: n,
 				shot: shotId,
 				shape: { kind: "element", rect: element.rect },
 				element,
-			} as Annotation;
+			} as Mark;
 		};
 		return {
 			...sampleCase(),
@@ -998,10 +995,7 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 				{ url: PAY, title: "Zahlung", lang: "de" },
 			],
 			shots: [shot("s1", 0, KK), shot("s2", 0, PAY)],
-			annotations: [
-				mark(1, "s1", CART_PAGE, "button"),
-				mark(2, "s2", PAY_PAGE, "a"),
-			],
+			marks: [mark(1, "s1", CART_PAGE, "button"), mark(2, "s2", PAY_PAGE, "a")],
 		};
 	}
 	const go = (path: string, html: string) => {
@@ -1020,8 +1014,8 @@ describe("a case of several pages on the page in front (review of DEC-038)", () 
 		go("/kk/pay", PAY_PAGE);
 		expect(location.href).toBe(PAY);
 		// Asked about that one mark at once (an AI app's get_mark_element).
-		expect(reviewer.target("a2")?.match.status).toBe("found");
-		expect(reviewer.target("a2")?.element).toBe($("a"));
+		expect(reviewer.target("m2")?.match.status).toBe("found");
+		expect(reviewer.target("m2")?.element).toBe($("a"));
 		// The panel's question: what is there now, for the page it shows now.
 		const now = await reviewer.matches(c.id);
 		expect(now?.url).toBe(PAY);
@@ -1085,21 +1079,21 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 		doc.body.innerHTML = PAGE;
 		const base = caseOf($("button"));
 		const mine = {
-			...(base.annotations[0] as Annotation),
-			id: "a3",
+			...(base.marks[0] as Mark),
+			id: "m3",
 			number: 3,
 			comment: "Tess's third",
 		};
 		const hers = describeElement($("p"));
 		const theirs = {
-			id: "a3",
+			id: "m3",
 			number: 3,
 			shot: "s2",
 			comment: "Dana's third",
 			shape: { kind: "element", rect: hers.rect },
 			element: hers,
-		} as Annotation;
-		const before: Case = { ...base, annotations: [mine] };
+		} as Mark;
+		const before: Case = { ...base, marks: [mine] };
 		const after: Case = {
 			...base,
 			updatedAt: "2026-11-19T12:00:00.000Z",
@@ -1107,7 +1101,7 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 				...s,
 				capturedAt: `2026-11-04T10:0${i}:00Z`,
 			})),
-			annotations: [theirs, { ...mine, id: "a4", number: 4 }],
+			marks: [theirs, { ...mine, id: "m4", number: 4 }],
 		};
 		return {
 			before: {
@@ -1137,7 +1131,7 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 		const sent = asked.filter((r) => r.type === "mark:comment").at(-1);
 		expect(sent).toMatchObject({
 			type: "mark:comment",
-			annotationId: "a4",
+			markId: "m4",
 			text: "Typed while the sync ran",
 		});
 	});
@@ -1148,10 +1142,10 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 		overlay.onPick?.(3);
 		field().value = "Typed while the sync ran";
 		// Tess's mark is 4 now, and a mark nothing tells from it is 5.
-		const own = after.annotations[1] as Annotation;
+		const own = after.marks[1] as Mark;
 		await reviewer.update({
 			...after,
-			annotations: [...after.annotations, { ...own, id: "a5", number: 5 }],
+			marks: [...after.marks, { ...own, id: "m5", number: 5 }],
 		});
 		const problem = overlay.popover.querySelector(".problem");
 		expect(overlay.popover.hidden).toBe(false);
@@ -1173,7 +1167,7 @@ describe("the popover and a mark that takes another number (review B, sync 8)", 
 		field().value = "Typed";
 		await reviewer.update({
 			...after,
-			annotations: after.annotations.filter((a) => a.id === "a3"),
+			marks: after.marks.filter((a) => a.id === "m3"),
 		});
 		expect(overlay.popover.hidden).toBe(true);
 		expect(asked.some((r) => r.type === "mark:comment")).toBe(false);

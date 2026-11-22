@@ -13,7 +13,18 @@ export interface Kv {
 	/** Write several entries at once (one transaction): all or none. */
 	set(entries: Record<string, unknown>): Promise<void>;
 	remove(key: string): Promise<void>;
+	/**
+	 * Read every entry and write what `change` answers, in one transaction:
+	 * nobody writes in between. `change` runs synchronously and gets a copy.
+	 * Where a store has none, nothing that needs it can run there.
+	 */
+	update?(change: KvChange): Promise<void>;
 }
+
+/** What `Kv.update` writes: entries to set and keys to remove; nothing: no write. */
+export type KvChange = (
+	entries: Readonly<Record<string, unknown>>,
+) => { set?: Record<string, unknown>; remove?: readonly string[] } | undefined;
 
 const STORE = "settings";
 
@@ -102,6 +113,37 @@ export async function openKv(name: string): Promise<Kv> {
 			s.delete(key);
 			await finished(s.transaction);
 		},
+		async update(change) {
+			const s = await store("readwrite");
+			const end = finished(s.transaction);
+			const keys = s.getAllKeys();
+			const values = s.getAll();
+			let failure: unknown;
+			values.onsuccess = () => {
+				try {
+					const entries = Object.fromEntries(
+						(keys.result as IDBValidKey[]).map((k, i) => [
+							String(k),
+							values.result[i],
+						]),
+					);
+					const write = change(entries);
+					for (const key of write?.remove ?? []) s.delete(key);
+					for (const [key, value] of Object.entries(write?.set ?? {}))
+						s.put(value, key);
+				} catch (error) {
+					end.catch(() => {});
+					s.transaction.abort();
+					failure = error;
+				}
+			};
+			try {
+				await end;
+			} catch (error) {
+				throw failure ?? error;
+			}
+			if (failure !== undefined) throw failure;
+		},
 	};
 }
 
@@ -128,6 +170,12 @@ export function kvWhenOpen(open: () => Promise<Kv>): Kv {
 		all: async () => (await kv()).all(),
 		set: async (entries) => (await kv()).set(entries),
 		remove: async (key) => (await kv()).remove(key),
+		async update(change) {
+			const inner = await kv();
+			if (inner.update === undefined)
+				throw new Error("this database cannot change in one step");
+			await inner.update(change);
+		},
 	};
 }
 
@@ -149,6 +197,12 @@ export function memoryKv(initial: Record<string, unknown> = {}): Kv & {
 		},
 		async remove(key) {
 			data.delete(key);
+		},
+		async update(change) {
+			const write = change(structuredClone(Object.fromEntries(data)));
+			const set = structuredClone(write?.set ?? {});
+			for (const key of write?.remove ?? []) data.delete(key);
+			for (const [key, value] of Object.entries(set)) data.set(key, value);
 		},
 	};
 }

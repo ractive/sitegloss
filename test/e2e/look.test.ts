@@ -95,12 +95,12 @@ describe.skipIf(browserBinary === undefined)("the look", () => {
 	}
 
 	test("Home, a case with its marks open, and Settings: no sideways scroll at 345, 360 and 420 px, at most one amber button", async () => {
-		await panel.waitFor(`!${id("annotate")}.disabled`);
+		await panel.waitFor(`!${id("new-case")}.disabled`);
 		// Home, empty.
-		await holds(["annotate"]);
+		await holds(["new-case"]);
 
 		// A case with a long title and three marks, drawn on the page.
-		await panel.eval(`${id("annotate")}.click()`);
+		await panel.eval(`${id("new-case")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
 		// The case is made and open, the toolbar adding to it (DEC-026): Done
 		// adding is no amber button.
@@ -154,10 +154,10 @@ describe.skipIf(browserBinary === undefined)("the look", () => {
 		);
 		await panel.eval(`${id("toggle-marks")}.click()`);
 		await panel.waitFor(
-			`document.querySelectorAll(".annotation[data-open]").length === 3`,
+			`document.querySelectorAll(".mark[data-open]").length === 3`,
 		);
 		// One mark fixed: its second row has the pill, Verified and Reopen….
-		const first = `document.querySelector(".annotation")`;
+		const first = `document.querySelector(".mark")`;
 		await panel.eval(
 			`${first}.querySelector('[data-mark-action="resolve"]').click()`,
 		);
@@ -184,7 +184,7 @@ describe.skipIf(browserBinary === undefined)("the look", () => {
 		// The pins: the status's colour, on the rail.
 		expect(
 			await panel.eval<string[]>(
-				`[...document.querySelectorAll(".annotation .number")].map((n) => getComputedStyle(n).backgroundColor)`,
+				`[...document.querySelectorAll(".mark .number")].map((n) => getComputedStyle(n).backgroundColor)`,
 			),
 		).toEqual(["rgb(67, 71, 201)", "rgb(194, 15, 76)", "rgb(194, 15, 76)"]);
 

@@ -38,7 +38,7 @@ export function newCase(id: string, page: PageInfo, now: string): Case {
 		page: kept,
 		pages: [{ url: kept.url, title: kept.title, lang: kept.lang }],
 		shots: [],
-		annotations: [],
+		marks: [],
 		verdict: null,
 	});
 }
@@ -60,7 +60,7 @@ export function isUntouched(
 ): boolean {
 	const title = cleanTitle(typedTitle ?? "");
 	return (
-		c.annotations.length === 0 &&
+		c.marks.length === 0 &&
 		c.shots.length === 0 &&
 		c.lastNumber === undefined &&
 		c.importedAt === undefined &&

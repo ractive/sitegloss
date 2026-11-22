@@ -336,7 +336,7 @@ describe("a call of a tool that changes something", () => {
 	test("Allow all changes: nothing asks for that app", async () => {
 		const d = decider("deny");
 		d.always.all.add("g1");
-		for (const tool of ["add_annotation", "set_summary", "delete_case"])
+		for (const tool of ["add_mark", "set_summary", "delete_case"])
 			expect(await decide(d, request(tool))).toBe(true);
 		expect(d.asked).toBe(0);
 		expect(await decide(d, request("delete_case", "g2"))).toBe(false);

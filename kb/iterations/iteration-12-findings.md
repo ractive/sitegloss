@@ -14,7 +14,7 @@ becomes the "Summary for the developer". The decision is DEC-019.
 
 ## Scope
 
-- `src/lib/case.ts`: `Finding` and `FindingApp` on `Annotation.findings`, their
+- `src/lib/case.ts`: `Finding` and `FindingApp` on `Mark.findings`, their
   validation and limits (`MAX_FINDING`, `MAX_FINDINGS`, `MAX_FINDINGS_TEXT` per case),
   `withFinding`, `withFindingText`, `withoutFinding`, `isOwnFinding`, `appLabel`;
   lengths in code points (`textLength`, `cutText`).

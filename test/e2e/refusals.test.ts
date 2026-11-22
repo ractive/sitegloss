@@ -115,7 +115,7 @@ describe.skipIf(browserBinary === undefined)("the worker refuses", () => {
 					caseId: "c_1",
 					imagesFrom: "../x",
 					shots: [],
-					annotations: [],
+					marks: [],
 				},
 			}),
 		).toEqual({ ok: false, error: "invalid id" });

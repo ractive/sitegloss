@@ -101,7 +101,7 @@ describe.skipIf(SERVER === undefined || browserBinary === undefined)(
 			// Tess comments on mark 1, by hand.
 			const db = await panel.eval<Db>(READ_DB);
 			const here = db.cases.find((c) => c.id === caseId) as unknown as Case;
-			const first = here.annotations.find((a) => a.number === 1)?.id as string;
+			const first = here.marks.find((a) => a.number === 1)?.id as string;
 			await panel.eval(
 				`(() => { const f = ${id("comment-new")}; f.value = "Seen on the phone too."; f.dispatchEvent(new Event("input")); const m = ${id("comment-mark")}; m.value = ${JSON.stringify(first)}; m.dispatchEvent(new Event("change")); return true; })()`,
 			);
@@ -122,7 +122,7 @@ describe.skipIf(SERVER === undefined || browserBinary === undefined)(
 			expect(k?.text).toBe("Seen on the phone too.");
 			expect(k?.user?.name).toBe("Tess Tester");
 			expect(k?.app).toBeUndefined();
-			expect(arrived.annotations.find((a) => a.id === k?.mark)?.number).toBe(1);
+			expect(arrived.marks.find((a) => a.id === k?.mark)?.number).toBe(1);
 
 			// Dana's comment, written through Claude: "Dana Developer via Claude".
 			await change(dana.device, caseId, (c, now) =>

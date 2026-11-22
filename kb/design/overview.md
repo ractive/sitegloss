@@ -2,7 +2,7 @@
 type: design
 title: "Sitegloss design"
 description: >-
-  What Sitegloss is for, the workflow from a PO's annotation on prod to a dev's fix on
+  What Sitegloss is for, the workflow from a PO's mark on prod to a dev's fix on
   localhost and the check on dev and prod, the parts of the extension, the case format,
   how an element is found again in another environment, and the tools an AI app gets through
   tab-mcp.
@@ -14,8 +14,8 @@ timestamp: 2026-11-05T08:00:00+01:00
 
 # Sitegloss design
 
-Sitegloss is a Chrome (and Edge) extension for annotating any web page: pick an element,
-draw boxes, arrows and freehand marks, and comment on each. The annotations are saved
+Sitegloss is a Chrome (and Edge) extension for marking any web page: pick an element,
+draw boxes, arrows and freehand marks, and comment on each. The marks are saved
 as a named **case**. A case can be loaded onto the same page in another environment (localhost,
 dev, prod), exported as a file, and read or extended by an AI app such as Claude through
 a [tab-mcp](https://github.com/ractive/tab-mcp) relay.
@@ -23,7 +23,7 @@ a [tab-mcp](https://github.com/ractive/tab-mcp) relay.
 ## Workflow
 
 1. A PO, designer or PM sees an issue on `https://www.example.com/…`, clicks the
-   Sitegloss icon, annotates the page and saves the case. They talk it through with
+   Sitegloss icon, marks the page and saves the case. They talk it through with
    their AI app, which adds its findings to the marks and records the summary for the
    developer in the case (DEC-019).
 2. A dev opens `http://localhost:3000/…` themselves, loads the case onto that tab
@@ -40,7 +40,7 @@ whoever signs in (DEC-039); tickets and links to other tools are out of scope.
 
 Finding the same element in another environment is unreliable: class names from CSS modules
 change, generated ids change, content differs between environments, layouts differ by
-window size, and the fix itself changes the element. So the **annotated screenshot**
+window size, and the fix itself changes the element. So the **screenshot with its marks**
 is what a case is about, and finding the element again is a best-effort extra:
 
 - When a mark is drawn, Sitegloss captures the visible part of the page as the user sees
@@ -61,19 +61,19 @@ is what a case is about, and finding the element again is a best-effort extra:
   that drew the case on that tab does the change (DEC-027).
 - Shapes are stored in the screenshot's own coordinates (CSS pixels of that viewport).
   They never have to follow the live page.
-- Each annotation also stores the details of its element (tag, role, accessible name,
+- Each mark also stores the details of its element (tag, role, accessible name,
   text, test id, the readable part of its classes, the heading above it, its landmark,
   its ancestors, its position). They are hints for the AI app and the dev to find the
   code, and the input of the matching below. A mark's own element also keeps how it
   looked when the mark was made: computed styles, the colour behind it, its neighbours'
   boxes (DEC-048), for contrast and alignment questions; matching never reads them.
 - Opening a case in the side panel draws its marks on the tab in front, whatever page
-  that is, and highlights each annotation's element where it can be found ("found",
+  that is, and highlights each mark's element where it can be found ("found",
   "probable", "ambiguous" with candidates, or "not found"). While the case is open the
   marks follow the tab in front (another tab, a reload, a navigation); "← All cases"
   takes them off, whoever drew them (DEC-023), and a Hide holds on its tab, also
   through a reload (DEC-022). When none is found the case
-  says it is probably for another page. The side panel always shows the annotated
+  says it is probably for another page. The side panel always shows the marked
   screenshots, so a case makes sense even when nothing is found.
 
 ## Parts
@@ -155,21 +155,25 @@ same ID, `ldmcfigcnobhnbaigehcaodheklibeon`. The store package itself leaves the
 
 ## Case format
 
-A case is JSON (`format: "sitegloss/1"`) with its images referenced by relative path. A
-file of another format is not read. The same JSON is stored in IndexedDB and written into
-the export, so an export is the case plus its images:
+A case is JSON (`format: "sitegloss/2"`) with its images referenced by relative path; a
+mark's id is `m<number>`. A file of another format is not read: one of `sitegloss/1`
+(marks under another key, ids `a<number>`) is refused with a sentence that says so
+(DEC-051). The same JSON is stored in IndexedDB and written into the export, so an
+export is the case plus its images. The database's version 2 started empty: its upgrade
+emptied the cases and images kept in `sitegloss/1`, and the sync read the team's cases
+again (`store.ts`, `forgetCases` in `cloud/book.ts`):
 
 ```text
 <title>.sitegloss.zip
   case.json      the case
   case.md        generated: summary, comments, AI findings, element details, image links
-  shots/s1.webp  annotated screenshots
-  crops/a1.webp  one crop per annotation
+  shots/s1.webp  screenshots with their marks
+  crops/m1.webp  one crop per mark
 ```
 
 ```json
 {
-  "format": "sitegloss/1",
+  "format": "sitegloss/2",
   "id": "c_…", "title": "Login button contrast",
   "createdAt": "…", "updatedAt": "…",
   "page": { "url": "https://www.example.com/cart", "title": "…", "lang": "de",
@@ -179,10 +183,10 @@ the export, so an export is the case plus its images:
   "shots": [{ "id": "s1", "image": "shots/s1.webp", "scrollX": 0, "scrollY": 0,
               "viewport": { "width": 1440, "height": 900, "dpr": 2 }, "capturedAt": "…",
               "url": "https://www.example.com/cart" }],
-  "annotations": [{
-    "id": "a1", "number": 1, "shot": "s1", "comment": "…", "author": "user",
+  "marks": [{
+    "id": "m1", "number": 1, "shot": "s1", "comment": "…", "author": "user",
     "shape": { "kind": "box", "rect": { "x": 10, "y": 20, "width": 200, "height": 40 } },
-    "crop": "crops/a1.webp",
+    "crop": "crops/m1.webp",
     "element": { "tag": "button", "role": "button", "name": "Anmelden", "…": "…" },
     "resolution": { "kind": "fixed", "note": "…", "at": "…",
                     "app": { "id": "https://claude.ai/oauth", "name": "Claude", "host": "claude.ai" },
@@ -250,7 +254,7 @@ both directions, by the service worker:
   server applies an operation's id once.
 - **Fetching:** everything after the team's revision this browser has seen; what was
   not changed here becomes the server's, what was changed here stays and is sent next.
-- **Ids:** `a<number>` and `s<n>` stay what they are here; the server knows marks and
+- **Ids:** `m<number>` and `s<n>` stay what they are here; the server knows marks and
   screenshots by ids of their own, and the bookkeeping maps one to the other. A mark's
   number is the server's to give when two people drew the same one.
 - **Live:** the open side panel listens to the server's events stream and tells the
@@ -302,13 +306,13 @@ loading is searched for again.
 | Tool | What it does | Asks first |
 |---|---|---|
 | `list_cases` | Cases with title, pages, their marks by status (`open`, `toVerify`, `verified`, `closed`), the start of the summary for the developer | no |
-| `get_case` | A case's pages and summary, its screenshots with their pages, annotations with their page, status, resolution (`verified`, `by`), reopens and findings (`own` for the caller's), element details and crops | no |
+| `get_case` | A case's pages and summary, its screenshots with their pages, marks with their page, status, resolution (`verified`, `by`), reopens and findings (`own` for the caller's), element details and crops | no |
 | `get_image` | One screenshot or crop, scaled to at most 1568 px | no |
 | `load_case` | Loads a case onto the tab in front and reports what was found | no |
-| `highlight` | Scrolls to and outlines one annotation's element (or another candidate) | no |
-| `get_mark_element` | Reads one annotation's element (or, by selector, an ancestor or an element inside it; for an annotation without an element, an element of the annotation's page) from the tab in front: trimmed HTML, box, computed styles, matching CSS rules, ancestors and children (DEC-013) | no |
+| `highlight` | Scrolls to and outlines one mark's element (or another candidate) | no |
+| `get_mark_element` | Reads one mark's element (or, by selector, an ancestor or an element inside it; for a mark without an element, an element of the mark's page) from the tab in front: trimmed HTML, box, computed styles, matching CSS rules, ancestors and children (DEC-013) | no |
 | `capture` | A screenshot of the tab in front | no |
-| `add_annotation` | Adds a comment on an element (by CSS selector) to a case | yes |
+| `add_mark` | Adds a comment on an element (by CSS selector) to a case | yes |
 | `set_summary` | Writes the case's summary for the developer (stored as `verdict`, DEC-019) | yes |
 | `set_mark_status` | Sets a mark fixed (to verify), verified (only a fixed mark, and only when the user says so), won't fix or can't reproduce, or opens it again with a note, which records a reopen (DEC-023) | yes |
 | `add_finding` | Adds a finding of the calling AI app to a mark (DEC-019) | yes |
@@ -319,11 +323,11 @@ loading is searched for again.
 Every call that changes something asks, every time (DEC-008): in the side panel of the
 window in front when it is open and focused, else also in a Chrome notification; no
 answer in 60 s is Don't allow (DEC-015). The question names the case (title, page, number
-of marks) and, for `add_annotation`, the page in front, next to the raw arguments. "The
+of marks) and, for `add_mark`, the page in front, next to the raw arguments. "The
 tab in front" is the active tab of the last focused normal window.
 
 The tools that act on the tab (`load_case`, `highlight`, `get_mark_element`, `capture`,
-`add_annotation`) run
+`add_mark`) run
 one at a time: they share the page's one loaded case and one temporary mark. An AI app's
 screenshots blur form fields as the user's own do (password fields always, all fields
 with the side panel's setting), go through the service worker's capture queue, and are

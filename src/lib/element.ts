@@ -1,5 +1,5 @@
 /**
- * Describing an element: the details a case stores for each annotation, and
+ * Describing an element: the details a case stores for each mark, and
  * that matching (match.ts) compares in another environment.
  *
  * What is recorded is this list and nothing else (DEC-009). All of it comes

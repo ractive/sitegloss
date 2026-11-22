@@ -9,7 +9,7 @@ import { comment, READ_DB, saveAs, shadow, showToolbar } from "./steps.ts";
 
 interface Stored {
 	title: string;
-	annotations: {
+	marks: {
 		element: {
 			tag: string;
 			text?: string;
@@ -80,7 +80,7 @@ describe.skipIf(browserBinary === undefined)("web components", () => {
 
 		const db = await h.control.eval<{ cases: Stored[] }>(READ_DB);
 		const saved = db.cases.find((c) => c.title === "Components");
-		const elements = saved?.annotations.map((a) => a.element);
+		const elements = saved?.marks.map((a) => a.element);
 		expect(elements?.map((e) => e?.tag)).toEqual([
 			"button",
 			"button",

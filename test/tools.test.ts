@@ -12,22 +12,22 @@ import {
 	type ToolCallClient,
 } from "@ractive-ch/tab-mcp-client";
 import {
-	type Annotation,
 	type Case,
 	type ElementDetails,
 	MAX_FINDING,
 	MAX_FINDINGS,
 	MAX_FINDINGS_TEXT,
+	type Mark,
 	validateCase,
 	withComment,
 } from "../src/lib/case.ts";
 import { emptyBook } from "../src/lib/cloud/book.ts";
 import { deriveOps, markViaOf } from "../src/lib/cloud/wire.ts";
 import type {
-	AnnotationMatch,
 	ContentRequest,
 	DescribedElement,
 	InspectResult,
+	MarkMatch,
 } from "../src/lib/messages.ts";
 import { MemoryStore } from "../src/lib/store.ts";
 import { relayProblem } from "../src/worker/settings.ts";
@@ -57,14 +57,14 @@ const element: ElementDetails = {
 	selector: '[class*="Button_primary"]',
 };
 
-const mark = (n: number): Annotation => ({
-	id: `a${n}`,
+const mark = (n: number): Mark => ({
+	id: `m${n}`,
 	number: n,
 	shot: "s1",
 	comment: `Comment ${n}`,
 	author: "user",
 	shape: { kind: "box", rect: { x: 5, y: 5, width: 120, height: 40 } },
-	crop: `crops/a${n}.webp`,
+	crop: `crops/m${n}.webp`,
 	element,
 });
 
@@ -72,8 +72,8 @@ function webp(size: number): Blob {
 	return new Blob([new Uint8Array(size)], { type: "image/webp" });
 }
 
-const foundMatch: AnnotationMatch = {
-	annotationId: "a1",
+const foundMatch: MarkMatch = {
+	markId: "m1",
 	number: 1,
 	status: "found",
 	score: 0.91,
@@ -116,7 +116,7 @@ function inspectedButton(selector?: string): InspectResult {
 class FakeTab implements TabBridge {
 	sent: ContentRequest[] = [];
 	loaded: string | undefined;
-	/** The annotation ids of the loaded copy. */
+	/** The mark ids of the loaded copy. */
 	loadedIds = new Set<string>();
 	loadError: string | undefined;
 	/** The page's answer when a clear or another case's load stopped it. */
@@ -144,8 +144,8 @@ class FakeTab implements TabBridge {
 	async send<T>(_tabId: number, request: ContentRequest): Promise<T> {
 		this.sent.push(request);
 		if (request.type === this.stalled) await new Promise(() => {});
-		const match: AnnotationMatch = {
-			annotationId: "a1",
+		const match: MarkMatch = {
+			markId: "m1",
 			number: 1,
 			status: "found",
 			score: 0.91,
@@ -165,13 +165,13 @@ class FakeTab implements TabBridge {
 				if (this.loadError !== undefined) return { error: this.loadError } as T;
 				if (this.loadReplaced) return { replaced: true } as T;
 				this.loaded = request.case.id;
-				this.loadedIds = new Set(request.case.annotations.map((a) => a.id));
+				this.loadedIds = new Set(request.case.marks.map((a) => a.id));
 				return {
 					caseId: request.case.id,
 					url: this.url,
-					matches: request.case.annotations.map((a) => ({
+					matches: request.case.marks.map((a) => ({
 						...match,
-						annotationId: a.id,
+						markId: a.id,
 						number: a.number,
 					})),
 				} as T;
@@ -181,8 +181,7 @@ class FakeTab implements TabBridge {
 			case "case:show":
 				if (this.showError !== undefined) return { error: this.showError } as T;
 				return (
-					request.caseId === this.loaded &&
-					this.loadedIds.has(request.annotationId)
+					request.caseId === this.loaded && this.loadedIds.has(request.markId)
 						? { ...match, current: request.candidate ?? 0 }
 						: null
 				) as T;
@@ -209,8 +208,7 @@ class FakeTab implements TabBridge {
 				) as T;
 			case "element:inspect":
 				return (
-					request.caseId === this.loaded &&
-					this.loadedIds.has(request.annotationId)
+					request.caseId === this.loaded && this.loadedIds.has(request.markId)
 						? (this.inspected ?? inspectedButton(request.selector))
 						: null
 				) as T;
@@ -265,12 +263,12 @@ async function seed(
 				capturedAt: "2026-11-04T10:00:00Z",
 			},
 		],
-		annotations: Array.from({ length: marks }, (_, i) => mark(i + 1)).map(
-			(a) => (comment === undefined ? a : { ...a, comment }),
+		marks: Array.from({ length: marks }, (_, i) => mark(i + 1)).map((a) =>
+			comment === undefined ? a : { ...a, comment },
 		),
 	};
 	await putCase(store, c);
-	for (const path of ["shots/s1.webp", "crops/a1.webp", "crops/a2.webp"])
+	for (const path of ["shots/s1.webp", "crops/m1.webp", "crops/m2.webp"])
 		await store.putImage(c.id, path, {
 			blob: webp(100),
 			width: path.startsWith("crops") ? cropWidth : 10,
@@ -380,7 +378,7 @@ describe("tools", () => {
 		cropSize = 400_000; // ~533 000 base64 characters each
 		const result = await call("get_case", { caseId: "c_1" });
 		expect(result.content.filter((c) => c.type === "image")).toHaveLength(1);
-		expect(result.content.at(-1)?.text).toContain("crops/a2.webp");
+		expect(result.content.at(-1)?.text).toContain("crops/m2.webp");
 	});
 
 	test("get_case counts the text against the limit and compacts a large case", async () => {
@@ -476,8 +474,8 @@ describe("tools", () => {
 		);
 		await seed();
 		await expect(
-			call("get_image", { caseId: "c_1", path: "crops/a9.webp" }),
-		).rejects.toThrow("no image crops/a9.webp");
+			call("get_image", { caseId: "c_1", path: "crops/m9.webp" }),
+		).rejects.toThrow("no image crops/m9.webp");
 		const image = await call("get_image", {
 			caseId: "c_1",
 			path: "shots/s1.webp",
@@ -561,7 +559,7 @@ describe("tools", () => {
 	test("highlight loads the case again when the loaded copy lacks the mark", async () => {
 		await seed();
 		await call("load_case", { caseId: "c_1" });
-		await call("add_annotation", {
+		await call("add_mark", {
 			caseId: "c_1",
 			selector: "form button",
 			comment: "New",
@@ -594,7 +592,7 @@ describe("tools", () => {
 	test("screenshots for the AI app follow the blur setting, and unblur on failure", async () => {
 		build({ blurForms: () => true });
 		await seed();
-		await call("add_annotation", {
+		await call("add_mark", {
 			caseId: "c_1",
 			selector: "form button",
 			comment: "x",
@@ -621,13 +619,13 @@ describe("tools", () => {
 		Object.assign(tab, page);
 		await expect(call("capture")).rejects.toThrow("thrown away");
 		await expect(
-			call("add_annotation", {
+			call("add_mark", {
 				caseId: "c_1",
 				selector: "button",
 				comment: "x",
 			}),
 		).rejects.toThrow("thrown away");
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(2);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 		expect(await store.getImage("c_1", "shots/s2.webp")).toBeUndefined();
 		expect(changed).toEqual([]);
 	});
@@ -640,7 +638,7 @@ describe("tools", () => {
 
 	test("a change the user allowed for one mark is not made to another that has its number by then (the team's sync renumbers)", async () => {
 		const c = await seed();
-		const [one, two] = c.annotations as [Annotation, Annotation];
+		const [one, two] = c.marks as [Mark, Mark];
 		const ask = async (name: string, input: Record<string, unknown>) => {
 			const signal = new AbortController().signal;
 			const lines = await confirmLines(store, tab, {
@@ -661,7 +659,7 @@ describe("tools", () => {
 		expect(asked[0]?.lines.join("\n")).toContain("Mark 2:");
 		// Before they answer, the team's sync gives marks other numbers: a
 		// teammate's mark is 2 now, and the mark they read about is 3.
-		const theirs: Annotation = {
+		const theirs: Mark = {
 			...two,
 			comment: "A teammate's mark",
 			shape: { kind: "box", rect: { x: 400, y: 400, width: 9, height: 9 } },
@@ -669,14 +667,14 @@ describe("tools", () => {
 		};
 		await putCase(store, {
 			...c,
-			annotations: [one, theirs, { ...two, id: "a3", number: 3 }],
+			marks: [one, theirs, { ...two, id: "m3", number: 3 }],
 		});
 		for (const [i, [name, input]] of calls.entries())
 			await expect(call(name, input, asked[i]?.signal)).rejects.toThrow(
 				"Mark 2 is not the mark the user was asked about: the case changed meanwhile",
 			);
 		const after = (await store.getCase("c_1")) as Case;
-		expect(after.annotations.map((a) => [a.resolution, a.findings])).toEqual([
+		expect(after.marks.map((a) => [a.resolution, a.findings])).toEqual([
 			[undefined, undefined],
 			[undefined, undefined],
 			[undefined, undefined],
@@ -693,20 +691,20 @@ describe("tools", () => {
 			again.signal,
 		);
 		expect(
-			(await store.getCase("c_1"))?.annotations.map((a) => a.resolution?.kind),
+			(await store.getCase("c_1"))?.marks.map((a) => a.resolution?.kind),
 		).toEqual([undefined, undefined, "fixed"]);
 		// A call nobody was asked about (allowed always) goes by its number.
 		await call("add_finding", { caseId: "c_1", mark: 2, text: "By number" });
-		expect(
-			(await store.getCase("c_1"))?.annotations[1]?.findings?.[0]?.text,
-		).toBe("By number");
+		expect((await store.getCase("c_1"))?.marks[1]?.findings?.[0]?.text).toBe(
+			"By number",
+		);
 	});
 
-	test("add_annotation is refused when the page in front changed after the user allowed it", async () => {
+	test("add_mark is refused when the page in front changed after the user allowed it", async () => {
 		await seed();
 		const signal = new AbortController().signal;
 		const question = await confirmLines(store, tab, {
-			tool: { name: "add_annotation", description: "Add a mark." },
+			tool: { name: "add_mark", description: "Add a mark." },
 			arguments: { caseId: "c_1", selector: "button", comment: "x" },
 			client: {
 				kind: "relay",
@@ -720,31 +718,31 @@ describe("tools", () => {
 		tab.url = "https://mail.example/inbox";
 		await expect(
 			call(
-				"add_annotation",
+				"add_mark",
 				{ caseId: "c_1", selector: "button", comment: "x" },
 				signal,
 			),
 		).rejects.toThrow("The page in front changed since the user allowed this");
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(2);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 		tab.url = "http://localhost:3000/kk";
 		await call(
-			"add_annotation",
+			"add_mark",
 			{ caseId: "c_1", selector: "button", comment: "x" },
 			signal,
 		);
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(3);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(3);
 	});
 
-	test("add_annotation adds an AI mark with its own screenshot", async () => {
+	test("add_mark adds an AI mark with its own screenshot", async () => {
 		await seed();
-		const result = await call("add_annotation", {
+		const result = await call("add_mark", {
 			caseId: "c_1",
 			selector: "form button",
 			comment: "  Fixed on localhost  ",
 		});
 		expect(result.content[0]?.text).toContain("Added mark 3");
 		const c = await store.getCase("c_1");
-		const added = c?.annotations.find((a) => a.number === 3);
+		const added = c?.marks.find((a) => a.number === 3);
 		expect(added?.author).toBe("ai");
 		expect(added?.comment).toBe("Fixed on localhost");
 		expect(added?.shot).toBe("s2");
@@ -754,16 +752,16 @@ describe("tools", () => {
 			rect: { x: 100, y: 200, width: 150, height: 40 },
 		});
 		expect(c?.shots.map((s) => s.id)).toEqual(["s1", "s2"]);
-		expect(await store.getImage("c_1", "crops/a3.webp")).toBeDefined();
+		expect(await store.getImage("c_1", "crops/m3.webp")).toBeDefined();
 		expect(await store.getImage("c_1", "shots/s2.webp")).toBeDefined();
 		expect(tab.sent.at(-1)?.type).toBe("element:unmark");
 		expect(changed).toEqual(["c_1"]);
 	});
 
-	test("add_annotation: a missing element, and a failed screenshot still unmarks", async () => {
+	test("add_mark: a missing element, and a failed screenshot still unmarks", async () => {
 		await seed();
 		await expect(
-			call("add_annotation", {
+			call("add_mark", {
 				caseId: "c_1",
 				selector: "#missing",
 				comment: "x",
@@ -771,21 +769,21 @@ describe("tools", () => {
 		).rejects.toThrow("No element on this page matches #missing");
 		tab.captureFails = true;
 		await expect(
-			call("add_annotation", {
+			call("add_mark", {
 				caseId: "c_1",
 				selector: "button",
 				comment: "x",
 			}),
 		).rejects.toThrow("no access");
 		expect(tab.sent.at(-1)?.type).toBe("element:unmark");
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(2);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 	});
 
 	test("tools on the tab run one at a time", async () => {
 		await seed();
 		const results = await Promise.all([
-			call("add_annotation", { caseId: "c_1", selector: "a", comment: "one" }),
-			call("add_annotation", { caseId: "c_1", selector: "b", comment: "two" }),
+			call("add_mark", { caseId: "c_1", selector: "a", comment: "one" }),
+			call("add_mark", { caseId: "c_1", selector: "b", comment: "two" }),
 			call("capture"),
 		]);
 		expect(results.map((r) => r.content[0]?.text?.slice(0, 11))).toEqual([
@@ -794,7 +792,7 @@ describe("tools", () => {
 			'{\n  "url": ',
 		]);
 		const c = await store.getCase("c_1");
-		expect(c?.annotations.map((a) => [a.number, a.comment]).slice(2)).toEqual([
+		expect(c?.marks.map((a) => [a.number, a.comment]).slice(2)).toEqual([
 			[3, "one"],
 			[4, "two"],
 		]);
@@ -815,7 +813,7 @@ describe("tools", () => {
 		const first = call("capture");
 		const cancel = new AbortController();
 		const queued = call(
-			"add_annotation",
+			"add_mark",
 			{ caseId: "c_1", selector: "a", comment: "late" },
 			cancel.signal,
 		);
@@ -824,7 +822,7 @@ describe("tools", () => {
 		release();
 		await first;
 		await expect(queued).rejects.toThrow("cancelled");
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(2);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 		expect(tab.sent.map((r) => r.type)).not.toContain("element:mark");
 	});
 
@@ -847,14 +845,14 @@ describe("tools", () => {
 			await store.updateCase("c_1", (c) => ({
 				value: {
 					...(c as Case),
-					annotations: [...(c as Case).annotations, mark(3)],
+					marks: [...(c as Case).marks, mark(3)],
 				},
 			}));
 		};
 		await expect(
-			call("add_annotation", { caseId: "c_1", selector: "a", comment: "x" }),
+			call("add_mark", { caseId: "c_1", selector: "a", comment: "x" }),
 		).rejects.toThrow(
-			"Mark 3 was added to the case meanwhile (by the user); call add_annotation again.",
+			"Mark 3 was added to the case meanwhile (by the user); call add_mark again.",
 		);
 		// The AI app starts over with a new screenshot: this one has no use.
 		expect(
@@ -882,15 +880,13 @@ describe("tools", () => {
 			status: "wontfix",
 			note: "Legal wants it",
 		});
-		const settled = (await store.getCase("c_1"))?.annotations[1]?.resolution;
+		const settled = (await store.getCase("c_1"))?.marks[1]?.resolution;
 		expect(settled?.kind).toBe("wontfix");
 		expect(settled?.note).toBe("Legal wants it");
 		const read = await call("get_case", { caseId: "c_1" });
 		expect(JSON.stringify(read)).toContain("Legal wants it");
 		await call("set_mark_status", { caseId: "c_1", mark: 2, status: "open" });
-		expect(
-			(await store.getCase("c_1"))?.annotations[1]?.resolution,
-		).toBeUndefined();
+		expect((await store.getCase("c_1"))?.marks[1]?.resolution).toBeUndefined();
 		expect(changed).toEqual(["c_1", "c_1"]);
 		await expect(
 			call("set_mark_status", { caseId: "c_1", mark: 9, status: "fixed" }),
@@ -906,7 +902,7 @@ describe("tools", () => {
 				...(note === undefined ? {} : { note }),
 			}).then((r) => r.content[0]?.text);
 		const stored = async (mark = 2) =>
-			(await store.getCase("c_1"))?.annotations.find((a) => a.number === mark);
+			(await store.getCase("c_1"))?.marks.find((a) => a.number === mark);
 
 		test("each status, its result, and the app that set it", async () => {
 			await seed();
@@ -964,7 +960,7 @@ describe("tools", () => {
 			expect(await status(2, "open")).toBe("Mark 2 is open already.");
 			const after = await store.getCase("c_1");
 			expect(after).toEqual(before as Case);
-			expect(after?.annotations[1]?.reopens).toBeUndefined();
+			expect(after?.marks[1]?.reopens).toBeUndefined();
 			await status(2, "fixed");
 			await status(2, "verified");
 			const once = (await stored())?.resolution;
@@ -977,10 +973,10 @@ describe("tools", () => {
 			// Verified in the panel, the user's note.
 			await putCase(store, {
 				...c,
-				annotations: [
-					c.annotations[0] as Annotation,
+				marks: [
+					c.marks[0] as Mark,
 					{
-						...(c.annotations[1] as Annotation),
+						...(c.marks[1] as Mark),
 						resolution: {
 							kind: "fixed",
 							note: "user note",
@@ -1139,9 +1135,9 @@ describe("tools", () => {
 			};
 			await putCase(store, {
 				...c,
-				annotations: [
+				marks: [
 					{
-						...(c.annotations[0] as Annotation),
+						...(c.marks[0] as Mark),
 						resolution: {
 							kind: "fixed",
 							at: "t",
@@ -1158,7 +1154,7 @@ describe("tools", () => {
 							},
 						],
 					},
-					c.annotations[1] as Annotation,
+					c.marks[1] as Mark,
 				],
 			});
 			const view = json(
@@ -1233,7 +1229,7 @@ describe("tools", () => {
 		])
 			expect(hints[name]?.readOnlyHint).toBe(true);
 		for (const name of [
-			"add_annotation",
+			"add_mark",
 			"set_summary",
 			"set_mark_status",
 			"add_finding",
@@ -1254,7 +1250,7 @@ describe("tools", () => {
 			"highlight",
 			"get_mark_element",
 			"capture",
-			"add_annotation",
+			"add_mark",
 			"delete_case",
 			"open_case",
 		])
@@ -1309,8 +1305,8 @@ describe("tools", () => {
 		// to compare.
 		const c = (await store.getCase("c_1")) as Case;
 		const [s1] = c.shots;
-		const [a1, a2] = c.annotations;
-		if (s1 === undefined || a1 === undefined || a2 === undefined)
+		const [m1, m2] = c.marks;
+		if (s1 === undefined || m1 === undefined || m2 === undefined)
 			throw new Error("the seeded case has two marks");
 		await putCase(store, {
 			...c,
@@ -1323,7 +1319,7 @@ describe("tools", () => {
 					url: "https://www.example.com/checkout/pay",
 				},
 			],
-			annotations: [a1, { ...a2, shot: "s2" }],
+			marks: [m1, { ...m2, shot: "s2" }],
 		});
 		tab.inspected = {
 			...(inspectedButton(undefined) as Extract<InspectResult, { ok: true }>),
@@ -1476,7 +1472,7 @@ describe("tools", () => {
 					viewport: { width: 390, height: 800, dpr: 3 },
 				},
 			],
-			annotations: [mark(1), { ...mark(2), shot: "s2", element: null }],
+			marks: [mark(1), { ...mark(2), shot: "s2", element: null }],
 		});
 		expect(json(await call("list_cases"))[0].pages).toEqual([c.page.url, pay]);
 		const view = json(await call("get_case", { caseId: "c_1", images: false }));
@@ -1518,7 +1514,7 @@ describe("tools", () => {
 			reason: "other-page",
 			error:
 				"Mark 2 was not drawn on an element, and the tab in front does not show the mark's page, so the selector is not looked for here.",
-			match: { ...foundMatch, annotationId: "a2", number: 2 },
+			match: { ...foundMatch, markId: "m2", number: 2 },
 		};
 		await expect(
 			call("get_mark_element", { caseId: "c_1", mark: 2, selector: "form" }),
@@ -1538,10 +1534,10 @@ describe("tools", () => {
 		);
 	});
 
-	test("add_annotation on another page of the site adds that page to the case", async () => {
+	test("add_mark on another page of the site adds that page to the case", async () => {
 		await seed();
 		// The same page in another environment is no new page.
-		await call("add_annotation", {
+		await call("add_mark", {
 			caseId: "c_1",
 			selector: "button",
 			comment: "On localhost",
@@ -1552,7 +1548,7 @@ describe("tools", () => {
 			{ url: "https://www.example.com/kk", title: "KK", lang: "de" },
 		]);
 		tab.url = "http://localhost:3000/kk/step-2?session=secret";
-		await call("add_annotation", {
+		await call("add_mark", {
 			caseId: "c_1",
 			selector: "button",
 			comment: "The next step",
@@ -1600,7 +1596,7 @@ describe("tools", () => {
 		};
 		await putCase(store, {
 			...c,
-			annotations: c.annotations.map((a, i) =>
+			marks: c.marks.map((a, i) =>
 				i === 0 && a.element !== null
 					? { ...a, element: { ...a.element, ...looked } }
 					: a,
@@ -1674,7 +1670,7 @@ describe("tools", () => {
 		).toBe(plain);
 		expect(json(await call("load_case", { caseId: "c_1" })).url).toBe(plain);
 		expect(json(await call("capture")).url).toBe(plain);
-		const added = await call("add_annotation", {
+		const added = await call("add_mark", {
 			caseId: "c_1",
 			selector: "button",
 			comment: "x",
@@ -1683,7 +1679,7 @@ describe("tools", () => {
 		// The user is asked with the whole address; the AI app is told less.
 		const signal = new AbortController().signal;
 		const asked = await confirmLines(store, tab, {
-			tool: { name: "add_annotation", description: "Does it." },
+			tool: { name: "add_mark", description: "Does it." },
 			arguments: { caseId: "c_1" },
 			client: { kind: "relay", grantId: "g", id: "i", host: "claude.ai" },
 			signal,
@@ -1691,7 +1687,7 @@ describe("tools", () => {
 		expect(asked.join("\n")).toContain(`Page: ${secret}`);
 		tab.url = "https://app.example/other";
 		const input = { caseId: "c_1", selector: "button", comment: "y" };
-		const refused = call("add_annotation", input, signal);
+		const refused = call("add_mark", input, signal);
 		await expect(refused).rejects.toThrow(`it was ${plain})`);
 	});
 
@@ -1724,7 +1720,7 @@ describe("findings", () => {
 	const added = (r: Result) =>
 		/finding (f_[0-9a-f]+)/.exec(r.content[0]?.text ?? "")?.[1] as string;
 	const stored = async (mark = 2) =>
-		(await store.getCase("c_1"))?.annotations.find((a) => a.number === mark)
+		(await store.getCase("c_1"))?.marks.find((a) => a.number === mark)
 			?.findings;
 
 	test("an AI app adds, edits and deletes its own; the comment stays the user's", async () => {
@@ -1739,7 +1735,7 @@ describe("findings", () => {
 			app: { id: "https://claude.ai/oauth", name: "Claude", host: "claude.ai" },
 		});
 		expect(f?.editedAt).toBeUndefined();
-		const mark2 = (await store.getCase("c_1"))?.annotations[1];
+		const mark2 = (await store.getCase("c_1"))?.marks[1];
 		expect(mark2?.comment).toBe("Comment 2");
 		expect(mark2?.author).toBe("user");
 
@@ -1838,7 +1834,7 @@ describe("findings", () => {
 		await seed();
 		await store.updateCase("c_1", (c) => {
 			const value = structuredClone(c as Case);
-			(value.annotations[0] as Annotation).findings = [
+			(value.marks[0] as Mark).findings = [
 				{
 					id: "f_dana",
 					text: "Dana's Claude found this",
@@ -1930,7 +1926,7 @@ describe("findings", () => {
 		await seed();
 		await store.updateCase("c_1", (c) => {
 			const value = structuredClone(c as Case);
-			(value.annotations[0] as Annotation).findings = [
+			(value.marks[0] as Mark).findings = [
 				{
 					id: "f_file",
 					text: "From the file",
@@ -1999,7 +1995,7 @@ describe("findings", () => {
 		const emoji = "\u{1F600}";
 		await store.updateCase("c_1", (c) => {
 			const value = structuredClone(c as Case);
-			const f = value.annotations[0]?.findings?.[1];
+			const f = value.marks[0]?.findings?.[1];
 			if (f) f.text = emoji.repeat(FINDING_PREVIEW + 1);
 			return { value };
 		});
@@ -2054,7 +2050,7 @@ describe("findings", () => {
 				text,
 			});
 		const c = await store.getCase("c_1");
-		const total = (c?.annotations ?? []).reduce(
+		const total = (c?.marks ?? []).reduce(
 			(n, a) => n + (a.findings ?? []).reduce((k, f) => k + f.text.length, 0),
 			0,
 		);
@@ -2124,7 +2120,7 @@ describe("confirmations", () => {
 		const add = await confirmLines(
 			store,
 			tab,
-			request("add_annotation", { caseId: "c_1", selector: "a" }),
+			request("add_mark", { caseId: "c_1", selector: "a" }),
 		);
 		expect(add.join("\n")).toContain("Page: http://localhost:3000/kk");
 		const unknown = await confirmLines(
@@ -2207,9 +2203,9 @@ describe("through a relay", () => {
 		try {
 			const listed = await client.listTools();
 			expect(listed.tools.map((t) => t.name).sort()).toEqual([
-				"add_annotation",
 				"add_comment",
 				"add_finding",
+				"add_mark",
 				"capture",
 				"delete_case",
 				"delete_comment",
@@ -2280,7 +2276,7 @@ describe("the thread and closing (DEC-046)", () => {
 			stored.map((k) => [k.id, k.mark ?? null, k.text, k.app?.name]),
 		).toEqual([
 			[onCase, null, "Fixed in PR 12.", "Claude"],
-			[onMark, "a2", "Which padding?", "Claude"],
+			[onMark, "m2", "Which padding?", "Claude"],
 		]);
 		// Named on what is sent: the comment carries its app.
 		const view = json(await call("get_case", { caseId: "c_1", images: false }));
@@ -2380,13 +2376,13 @@ describe("the thread and closing (DEC-046)", () => {
 
 	test("a mark an AI app adds is stored as the app's, and what is sent of it names the app", async () => {
 		await seed();
-		await call("add_annotation", {
+		await call("add_mark", {
 			caseId: "c_1",
 			selector: "form button",
 			comment: "From Claude",
 		});
 		const c = (await store.getCase("c_1")) as Case;
-		const added = c.annotations.find((a) => a.number === 3);
+		const added = c.marks.find((a) => a.number === 3);
 		expect(added?.createdVia?.name).toBe("Claude");
 		// As the sync derives it for a case the team does not have yet.
 		const { ops } = deriveOps(
@@ -2458,7 +2454,7 @@ describe("the thread and closing (DEC-046)", () => {
 		await seed();
 		await call("set_mark_status", { caseId: "c_1", mark: 1, status: "fixed" });
 		const c = (await store.getCase("c_1")) as Case;
-		const a = c.annotations[0] as Annotation;
+		const a = c.marks[0] as Mark;
 		expect(markViaOf(a).via?.name).toBe("Claude");
 		// The person changes the mark's comment by hand: no longer the app's.
 		const byHand = withComment(
@@ -2467,7 +2463,7 @@ describe("the thread and closing (DEC-046)", () => {
 			"Changed by hand",
 			"2026-11-20T12:00:00.000Z",
 		);
-		expect(markViaOf(byHand.annotations[0] as Annotation).via).toBeUndefined();
+		expect(markViaOf(byHand.marks[0] as Mark).via).toBeUndefined();
 	});
 });
 
@@ -2494,7 +2490,7 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 					query: "q=shoes&sort=price",
 				},
 			],
-			annotations: [{ ...mark(1) }, { ...mark(2), shot: "s2" }],
+			marks: [{ ...mark(1) }, { ...mark(2), shot: "s2" }],
 		};
 		await putCase(store, value);
 		return value;
@@ -2542,10 +2538,10 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 		expect(shown).not.toHaveProperty("otherPageNote");
 	});
 
-	test("add_annotation says the address with what is kept of its query, and records it", async () => {
+	test("add_mark says the address with what is kept of its query, and records it", async () => {
 		await queried();
 		tab.url = `${SEARCH}?q=shoes&token=abc`;
-		const added = await call("add_annotation", {
+		const added = await call("add_mark", {
 			caseId: "c_1",
 			selector: "button",
 			comment: "x",
@@ -2563,8 +2559,8 @@ describe("where a mark was made, and open_case (DEC-050)", () => {
 			caseId: "c_1",
 			url: "http://localhost:3000/search",
 			matches: [
-				{ ...foundMatch, annotationId: "a1", number: 1 },
-				{ ...foundMatch, annotationId: "a2", number: 2 },
+				{ ...foundMatch, markId: "m1", number: 1 },
+				{ ...foundMatch, markId: "m2", number: 2 },
 			],
 		};
 		build({

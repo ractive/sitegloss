@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { lastMark } from "../src/content/annotator.ts";
+import { lastMark } from "../src/content/adding.ts";
 import {
 	type Case,
 	MAX_SHOTS,
@@ -10,10 +10,10 @@ import {
 } from "../src/lib/case.ts";
 import type { Draw } from "../src/lib/save.ts";
 import {
-	type AnnotationDraft,
 	type Crop,
 	fromPage,
 	MAX_NUMBER_GAP,
+	type MarkDraft,
 	numberFree,
 	type SaveRequest,
 	saveCase,
@@ -41,8 +41,8 @@ const shot = (id: string): Shot => ({
 	capturedAt: "2026-11-04T10:00:00Z",
 });
 
-const draft = (n: number, shotId: string): AnnotationDraft => ({
-	id: `a${n}`,
+const draft = (n: number, shotId: string): MarkDraft => ({
+	id: `m${n}`,
 	number: n,
 	shot: shotId,
 	comment: `comment ${n}`,
@@ -74,9 +74,9 @@ function request(
 	caseId: string,
 	isNew: boolean,
 	shots: Shot[],
-	annotations: AnnotationDraft[],
+	marks: MarkDraft[],
 ): SaveRequest {
-	return { caseId, isNew, title: "One", page, shots, annotations };
+	return { caseId, isNew, title: "One", page, shots, marks };
 }
 
 async function newCase(store: MemoryStore) {
@@ -114,14 +114,14 @@ describe("saveCase", () => {
 		expect(saved.shots.map((s) => [s.id, s.image])).toEqual([
 			["s1", "shots/s1.webp"],
 		]);
-		expect(saved.annotations.map((a) => [a.shot, a.crop])).toEqual([
-			["s1", "crops/a1.webp"],
-			["s1", "crops/a2.webp"],
+		expect(saved.marks.map((a) => [a.shot, a.crop])).toEqual([
+			["s1", "crops/m1.webp"],
+			["s1", "crops/m2.webp"],
 		]);
-		expect("cropRect" in (saved.annotations[0] ?? {})).toBe(false);
+		expect("cropRect" in (saved.marks[0] ?? {})).toBe(false);
 		expect(keys(store)).toEqual([
-			"c_1/crops/a1.webp",
-			"c_1/crops/a2.webp",
+			"c_1/crops/m1.webp",
+			"c_1/crops/m2.webp",
 			"c_1/shots/s1.webp",
 		]);
 		expect((await store.getCase("c_1"))?.createdAt).toBe(
@@ -152,7 +152,7 @@ describe("saveCase", () => {
 		expect(saved.verdict).toBe("Fix it");
 		expect(saved.link).toBe("https://tickets.example.com/browse/ABC-123");
 		expect(saved.shots.map((s) => s.id)).toEqual(["s1", "s2"]);
-		expect(saved.annotations.map((a) => [a.number, a.shot])).toEqual([
+		expect(saved.marks.map((a) => [a.number, a.shot])).toEqual([
 			[1, "s1"],
 			[2, "s1"],
 			[3, "s2"],
@@ -226,7 +226,7 @@ describe("saveCase", () => {
 			slowCrop,
 		);
 		expect(saved.verdict).toBe("Agreed meanwhile");
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(3);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(3);
 	});
 
 	test("a number the case has already is refused without touching its images", async () => {
@@ -249,7 +249,7 @@ describe("saveCase", () => {
 		expect([...store.images.keys()].sort()).toEqual(
 			[...before.keys(), "c_1/pending/p_b.webp"].sort(),
 		);
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(2);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 	});
 
 	test("a number used twice in one save is refused and stores no case", async () => {
@@ -329,13 +329,13 @@ describe("saveCase", () => {
 			],
 			crop: "crops/other.webp",
 			extra: "kept?",
-		} as unknown as AnnotationDraft;
+		} as unknown as MarkDraft;
 		const saved = await saveCase(
 			store,
 			request("c_1", true, [shot("p_a")], [forged]),
 			crop,
 		);
-		const stored = saved.annotations[0] as unknown as Record<string, unknown>;
+		const stored = saved.marks[0] as unknown as Record<string, unknown>;
 		expect(Object.keys(stored).sort()).toEqual(
 			[
 				"author",
@@ -348,9 +348,9 @@ describe("saveCase", () => {
 				"shot",
 			].sort(),
 		);
-		expect(stored["crop"]).toBe("crops/a1.webp");
-		expect((await store.getCase("c_1"))?.annotations[0]).toEqual(
-			saved.annotations[0] as never,
+		expect(stored["crop"]).toBe("crops/m1.webp");
+		expect((await store.getCase("c_1"))?.marks[0]).toEqual(
+			saved.marks[0] as never,
 		);
 	});
 
@@ -364,8 +364,8 @@ describe("saveCase", () => {
 			fromPage(request("c_1", false, [shot("p_a")], [ai, draft(2, "p_a")])),
 			crop,
 		);
-		expect(saved.annotations.map((a) => a.author)).toEqual(["user", "user"]);
-		// An AI app's own mark (add_annotation) is still its own.
+		expect(saved.marks.map((a) => a.author)).toEqual(["user", "user"]);
+		// An AI app's own mark (add_mark) is still its own.
 		await captured(store, "c_1", "p_b");
 		const added = await saveCase(
 			store,
@@ -377,11 +377,7 @@ describe("saveCase", () => {
 			),
 			crop,
 		);
-		expect(added.annotations.map((a) => a.author)).toEqual([
-			"user",
-			"user",
-			"ai",
-		]);
+		expect(added.marks.map((a) => a.author)).toEqual(["user", "user", "ai"]);
 	});
 
 	test("a mark added after a delete raises lastNumber with it (was refused by the format)", async () => {
@@ -396,7 +392,7 @@ describe("saveCase", () => {
 			fromPage(request("c_1", false, [shot("p_b")], [draft(3, "p_b")])),
 			crop,
 		);
-		expect(saved.annotations.map((a) => a.number)).toEqual([1, 2, 3]);
+		expect(saved.marks.map((a) => a.number)).toEqual([1, 2, 3]);
 		expect(saved.lastNumber).toBe(3);
 		expect(validateCase(saved)).toEqual(saved);
 	});
@@ -438,7 +434,7 @@ describe("saveCase", () => {
 			fromPage(request("c_1", false, [shot("p_a")], [draft(1, "p_a")])),
 			crop,
 		);
-		expect(saved.annotations.map((a) => [a.number, a.shot])).toEqual([
+		expect(saved.marks.map((a) => [a.number, a.shot])).toEqual([
 			[1, "s2"],
 			[2, "s1"],
 		]);
@@ -453,13 +449,13 @@ describe("saveCase", () => {
 		expect(await store.getCase("c_1")).toBeUndefined();
 	});
 
-	test("the first mark of a case New case for this page made: s1 and a1, the page its mark's, the title kept (DEC-026)", async () => {
+	test("the first mark of a case New case for this page made: s1 and m1, the page its mark's, the title kept (DEC-026)", async () => {
 		const store = new MemoryStore();
 		const empty = await putCase(store, {
 			...sampleCase("c_1"),
 			title: "Your cart",
 		});
-		expect(nextNumbers(empty)).toEqual({ annotation: 1, shot: 1 });
+		expect(nextNumbers(empty)).toEqual({ mark: 1, shot: 1 });
 		await captured(store, "c_1", "p_a");
 		const saved = await saveCase(
 			store,
@@ -484,26 +480,24 @@ describe("saveCase", () => {
 		});
 		expect(saved.createdAt).toBe(empty.createdAt);
 		expect(saved.shots.map((s) => s.id)).toEqual(["s1"]);
-		expect(saved.annotations.map((a) => [a.id, a.shot])).toEqual([
-			["a1", "s1"],
-		]);
+		expect(saved.marks.map((a) => [a.id, a.shot])).toEqual([["m1", "s1"]]);
 		// Undo of that first mark leaves the case as it was made: empty.
 		const undone = await undoAdd(
 			store,
 			"c_1",
-			"a1",
+			"m1",
 			{ shot: "s1", comment: "comment 1" },
 			new Date("2026-11-04T10:05:00Z"),
 		);
 		expect(undone).toEqual({ removed: true, next: 1 });
 
 		const after = (await store.getCase("c_1")) as Case;
-		expect(after.annotations).toEqual([]);
+		expect(after.marks).toEqual([]);
 		expect(after.shots).toEqual([]);
 		// A mark was stored: the case is the user's now (review of PR 57),
 		// and number 1 is free again.
 		expect(after.lastNumber).toBe(0);
-		expect(nextNumbers(after).annotation).toBe(1);
+		expect(nextNumbers(after).mark).toBe(1);
 		expect(validateCase(after)).toEqual(after);
 	});
 
@@ -520,7 +514,7 @@ describe("saveCase", () => {
 				),
 			).rejects.toThrow(`mark ${n} is far above the case's next number, 3`);
 		}
-		expect(nextNumbers(await store.getCase("c_1")).annotation).toBe(3);
+		expect(nextNumbers(await store.getCase("c_1")).mark).toBe(3);
 		// Gaps a toolbar leaves (drafts taken out before they were added) are fine.
 		await captured(store, "c_1", "p_b");
 		const gap = await saveCase(
@@ -535,7 +529,7 @@ describe("saveCase", () => {
 			),
 			crop,
 		);
-		expect(gap.annotations.at(-1)?.number).toBe(3 + MAX_NUMBER_GAP);
+		expect(gap.marks.at(-1)?.number).toBe(3 + MAX_NUMBER_GAP);
 		// Several marks in one save: each may be one more.
 		await putCase(store, sampleCase("c_2"));
 		await captured(store, "c_2", "p_a");
@@ -547,7 +541,7 @@ describe("saveCase", () => {
 			fromPage(request("c_2", false, [shot("p_a")], many)),
 			crop,
 		);
-		expect(saved.annotations).toHaveLength(5);
+		expect(saved.marks).toHaveLength(5);
 		// The worker's own add (an AI app's mark) is not bound by it.
 		await captured(store, "c_1", "p_c");
 		const ai = await saveCase(
@@ -560,7 +554,7 @@ describe("saveCase", () => {
 			),
 			crop,
 		);
-		expect(ai.annotations.at(-1)?.number).toBe(5000);
+		expect(ai.marks.at(-1)?.number).toBe(5000);
 	});
 
 	test("a missing screenshot fails the save", async () => {
@@ -637,7 +631,7 @@ describe("adding mark by mark", () => {
 			draw,
 		);
 		expect(drawn).toEqual([[3], [3, 4]]);
-		expect(saved.annotations.map((a) => [a.number, a.shot])).toEqual([
+		expect(saved.marks.map((a) => [a.number, a.shot])).toEqual([
 			[1, "s1"],
 			[2, "s1"],
 			[3, "s2"],
@@ -672,32 +666,32 @@ describe("adding mark by mark", () => {
 		await captured(store, "c_session", "p_v");
 		await addOne(store, 3, "p_v");
 		expect(keys(store)).toContain("c_1/shots/s2.webp");
-		const result = await undoAdd(store, "c_1", "a3", as("s2", 3), at);
+		const result = await undoAdd(store, "c_1", "m3", as("s2", 3), at);
 		expect(result).toEqual({ removed: true, next: 3 });
 		const c = (await store.getCase("c_1")) as Case;
-		expect(c.annotations.map((a) => a.number)).toEqual([1, 2]);
+		expect(c.marks.map((a) => a.number)).toEqual([1, 2]);
 		expect(c.shots.map((s) => s.id)).toEqual(["s1"]);
 		// It records that marks were stored (review of PR 57), below the freed number.
 		expect(c.lastNumber).toBe(2);
 		expect(keys(store)).toEqual([
-			"c_1/crops/a1.webp",
-			"c_1/crops/a2.webp",
+			"c_1/crops/m1.webp",
+			"c_1/crops/m2.webp",
 			"c_1/shots/s1.webp",
 			"c_session/pending/p_v.webp",
 		]);
 		// Added again, it takes the same number and the next shot number.
 		const again = await addOne(store, 3, "p_v");
-		expect(again.annotations.at(-1)?.shot).toBe("s2");
+		expect(again.marks.at(-1)?.shot).toBe("s2");
 	});
 
 	test("undoAdd: a mark already gone is no error", async () => {
 		const store = new MemoryStore();
 		await newCase(store);
-		expect(await undoAdd(store, "c_1", "a7", as("s9", 7), at)).toEqual({
+		expect(await undoAdd(store, "c_1", "m7", as("s9", 7), at)).toEqual({
 			removed: false,
 			next: 3,
 		});
-		await expect(undoAdd(store, "c_9", "a1", as("s1", 1), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_9", "m1", as("s1", 1), at)).rejects.toThrow(
 			"no longer exists",
 		);
 	});
@@ -706,14 +700,12 @@ describe("adding mark by mark", () => {
 	const change = (
 		store: MemoryStore,
 		n: number,
-		edit: (a: Case["annotations"][number]) => Case["annotations"][number],
+		edit: (a: Case["marks"][number]) => Case["marks"][number],
 	) =>
 		store.updateCase("c_1", (c) => ({
 			value: {
 				...(c as Case),
-				annotations: (c as Case).annotations.map((a) =>
-					a.number === n ? edit(a) : a,
-				),
+				marks: (c as Case).marks.map((a) => (a.number === n ? edit(a) : a)),
 			},
 		}));
 
@@ -726,50 +718,50 @@ describe("adding mark by mark", () => {
 			...a,
 			resolution: { kind: "fixed", at: "2026-11-04T10:05:30Z" },
 		}));
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"was resolved since",
 		);
 		await change(store, 3, ({ resolution: _, ...a }) => ({
 			...a,
 			comment: "edited in the side panel",
 		}));
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"was edited since",
 		);
 		await change(store, 3, (a) => ({ ...a, comment: "comment 3" }));
 		await captured(store, "c_session", "p_w");
 		await addOne(store, 4, "p_w");
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"has marks after it",
 		);
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(4);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(4);
 		// The last one can go, then the one before it.
-		await undoAdd(store, "c_1", "a4", as("s3", 4), at);
-		await undoAdd(store, "c_1", "a3", as("s2", 3), at);
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(2);
+		await undoAdd(store, "c_1", "m4", as("s3", 4), at);
+		await undoAdd(store, "c_1", "m3", as("s2", 3), at);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(2);
 	});
 
 	test("undoAdd refuses a mark that shares its screenshot, an AI app's, another shot, or an old one", async () => {
 		const store = new MemoryStore();
 		await newCase(store);
 		// Marks 1 and 2 were saved together, on one screenshot.
-		await expect(undoAdd(store, "c_1", "a2", as("s1", 2), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m2", as("s1", 2), at)).rejects.toThrow(
 			"cannot be undone here",
 		);
 		await captured(store, "c_session", "p_v");
 		await addOne(store, 3, "p_v");
-		await expect(undoAdd(store, "c_1", "a3", as("s9", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s9", 3), at)).rejects.toThrow(
 			"cannot be undone here",
 		);
 		const later = new Date(Date.parse("2026-11-04T10:00:00Z") + UNDO_WINDOW_MS);
 		await expect(
-			undoAdd(store, "c_1", "a3", as("s2", 3), later),
+			undoAdd(store, "c_1", "m3", as("s2", 3), later),
 		).rejects.toThrow("cannot be undone here");
 		await change(store, 3, (a) => ({ ...a, author: "ai" as const }));
-		await expect(undoAdd(store, "c_1", "a3", as("s2", 3), at)).rejects.toThrow(
+		await expect(undoAdd(store, "c_1", "m3", as("s2", 3), at)).rejects.toThrow(
 			"was edited since",
 		);
-		expect((await store.getCase("c_1"))?.annotations).toHaveLength(3);
+		expect((await store.getCase("c_1"))?.marks).toHaveLength(3);
 	});
 
 	test("a case with as many screenshots as it can hold says so before anything is drawn", async () => {

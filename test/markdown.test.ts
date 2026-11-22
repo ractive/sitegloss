@@ -9,15 +9,15 @@ function caseWith(text: string, title = "Button contrast"): Case {
 		...sampleCase(),
 		title,
 		verdict: text,
-		annotations: [
+		marks: [
 			{
-				id: "a1",
+				id: "m1",
 				number: 1,
 				shot: "s1",
 				comment: text,
 				author: "user",
 				shape: { kind: "box", rect: { x: 1, y: 2, width: 30, height: 20 } },
-				crop: "crops/a1.webp",
+				crop: "crops/m1.webp",
 				element: null,
 				reopens: [{ note: text, at: "t2", was: { kind: "fixed", at: "t1" } }],
 				findings: [
@@ -266,7 +266,7 @@ describe("addresses and paths in case.md link only where they are what they say"
 
 	test("a crop, a shot or a screenshot path that is not Sitegloss's is no link", () => {
 		const c = caseWith("plain");
-		const a = c.annotations[0] as Case["annotations"][number];
+		const a = c.marks[0] as Case["marks"][number];
 		const md = caseMarkdown({
 			...c,
 			shots: [
@@ -279,7 +279,7 @@ describe("addresses and paths in case.md link only where they are what they say"
 					capturedAt: "t",
 				},
 			],
-			annotations: [
+			marks: [
 				{
 					...a,
 					shot: "s1](https://evil.example/",
@@ -318,7 +318,7 @@ describe("addresses and paths in case.md link only where they are what they say"
 			],
 		});
 		expect(md).toContain("- Screenshot: [s1](shots/s1.webp)");
-		expect(md).toContain("![Mark 1](crops/a1.webp)");
+		expect(md).toContain("![Mark 1](crops/m1.webp)");
 		expect(md).toContain("![Screenshot s1, scrolled to 0, 0](shots/s1.webp)");
 	});
 });
@@ -328,13 +328,13 @@ describe("every value on one line of case.md shows as written and stays there", 
 	function everywhere(v: string): string {
 		const app = { id: "https://x.example/oauth", name: v, host: v };
 		const c = caseWith("plain");
-		const a = c.annotations[0] as Case["annotations"][number];
+		const a = c.marks[0] as Case["marks"][number];
 		return caseMarkdown({
 			...c,
 			createdAt: v,
 			updatedAt: v,
 			page: { ...c.page, title: v, lang: v },
-			annotations: [
+			marks: [
 				{
 					...a,
 					resolution: { kind: "fixed", note: v, at: v, app },
@@ -408,7 +408,7 @@ describe("every value on one line of case.md shows as written and stays there", 
 describe("an arrow's ends in case.md (DEC-047)", () => {
 	test("says what it links", () => {
 		const base = caseWith("x");
-		const a = base.annotations[0] as Case["annotations"][number];
+		const a = base.marks[0] as Case["marks"][number];
 		const element = {
 			tag: "p",
 			classes: ["pp-price"],
@@ -421,7 +421,7 @@ describe("an arrow's ends in case.md (DEC-047)", () => {
 		};
 		const md = caseMarkdown({
 			...base,
-			annotations: [
+			marks: [
 				{
 					...a,
 					shape: { kind: "arrow", from: { x: 0, y: 0 }, to: { x: 5, y: 5 } },
@@ -436,7 +436,7 @@ describe("an arrow's ends in case.md (DEC-047)", () => {
 describe("an element's look in case.md (DEC-048)", () => {
 	test("says the few values an AI reads first; nothing for a mark without", () => {
 		const base = caseWith("x");
-		const a = base.annotations[0] as Case["annotations"][number];
+		const a = base.marks[0] as Case["marks"][number];
 		const element = {
 			tag: "a",
 			classes: ["pp-btn"],
@@ -450,7 +450,7 @@ describe("an element's look in case.md (DEC-048)", () => {
 		};
 		const md = caseMarkdown({
 			...base,
-			annotations: [{ ...a, element }],
+			marks: [{ ...a, element }],
 		});
 		expect(md).toContain(
 			"- Look: rgb(245, 207, 88) on rgb(242, 194, 48), contrast 1.11:1 · 700\n",
@@ -458,7 +458,7 @@ describe("an element's look in case.md (DEC-048)", () => {
 		expect(
 			caseMarkdown({
 				...base,
-				annotations: [
+				marks: [
 					{
 						...a,
 						element: (({ styles: _s, backdrop: _b, ...plain }) => plain)(
@@ -483,7 +483,7 @@ describe("the thread and closing in case.md (DEC-046)", () => {
 			comments: [
 				{
 					id: "k_1",
-					mark: "a1",
+					mark: "m1",
 					text: "Fixed in PR 12.\n## Marks (0)",
 					at: "2026-11-20T11:00:00.000Z",
 					user: { id: "u_dana", name: "Dana Developer" },

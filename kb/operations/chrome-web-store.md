@@ -207,14 +207,14 @@ the notes in the workflow. On failure the log shows Microsoft's error code and m
 > app. Sitegloss works inside the page, so that page's own scripts can see what it shows
 > there and the keys you press there.
 
-**Single purpose:** Annotating web pages and reviewing the annotations on the same pages
+**Single purpose:** Marking web pages and reviewing the marks on the same pages
 in other environments, alone or with an AI app the user connects.
 
 **Permission justifications:**
 
 | Permission | Justification |
 |---|---|
-| `activeTab` | Add the annotation toolbar to the tab where the user clicked the icon, read the marked elements' details, and take screenshots of that tab. |
+| `activeTab` | Add the toolbar for marks to the tab where the user clicked the icon, read the marked elements' details, and take screenshots of that tab. |
 | `alarms` | While the user has the AI app connected, wake the background service worker once a minute, so the connection comes back after the computer slept. |
 | `notifications` | When the connected AI app wants to change something (add a mark, record the summary for the developer, change a mark's status, add, change or delete one of its findings on a mark, add, change or delete a comment, close or reopen a case, delete a case) and the side panel is not open in front, ask the user in a notification with Allow and Always allow; closing it is Don't allow. Where the call's arguments do not fit in a notification, it offers only Don't allow and says to answer in the side panel, which shows them all (its question has Don't allow, Allow and Always allow). A tool runs without a question only after the user chose Always allow for that tool, or turned on "Allow all changes", for that AI app, until the app's pairing ends (the user disconnects it, or the relay lets it expire; a tool always allowed one by one also asks again once an update changes what it says it does); otherwise nothing changes without the user's answer. |
 | `offscreen` | The sync to Downloads, which the user turns on with "Sync to Downloads": the background service worker cannot make a URL for a case's file (no `URL.createObjectURL`), so while it writes the cases it opens an offscreen document (reason `BLOBS`) that builds one case's export file and makes its blob URL, which the worker downloads; the document closes when the cases are written. |

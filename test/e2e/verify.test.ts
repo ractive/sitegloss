@@ -35,8 +35,7 @@ interface CallResult {
 	content: { type: string; text?: string }[];
 }
 
-const row = (id: string) =>
-	`document.querySelector('[data-annotation="${id}"]')`;
+const row = (id: string) => `document.querySelector('[data-mark="${id}"]')`;
 const act = (id: string, name: string) =>
 	`${row(id)}?.querySelector('[data-mark-action="${name}"]')`;
 const chips = `[...document.querySelectorAll("#case-status .chip")].map((b) => b.textContent.trim())`;
@@ -92,7 +91,7 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 		// The developer: marks 1 and 2 fixed, then Export.
 		const panel = await panelHome(h);
 		await openCase(panel, "Hand back");
-		for (const id of ["a1", "a2"]) {
+		for (const id of ["m1", "m2"]) {
 			await panel.eval(`${act(id, "resolve")}.click()`);
 			await panel.waitFor(`${row(id)}.querySelector("[data-form=resolve]")`);
 			await panel.eval(`(() => {
@@ -130,18 +129,18 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 		await panel.click(replace);
 		await until(storedCases, (cases) =>
 			cases.some(
-				(c) => c.id === tester.id && c.annotations[0]?.resolution !== undefined,
+				(c) => c.id === tester.id && c.marks[0]?.resolution !== undefined,
 			),
 		);
 		// The marks to verify: their pill, and Verified in the head.
 		await panelHome(h);
 		await openCase(panel, "Hand back");
-		await panel.waitFor(`${row("a1")}?.dataset.status === "fixed"`);
+		await panel.waitFor(`${row("m1")}?.dataset.status === "fixed"`);
 		const pill = (id: string) =>
 			panel.eval<string | null>(
 				`${row(id)}.querySelector(".mark-sub .pill")?.textContent ?? null`,
 			);
-		expect([await pill("a1"), await pill("a2"), await pill("a3")]).toEqual([
+		expect([await pill("m1"), await pill("m2"), await pill("m3")]).toEqual([
 			"To verify",
 			"To verify",
 			null,
@@ -152,24 +151,20 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 		await panel.click(
 			`document.querySelector('#case-status .chip[data-group="toVerify"]')`,
 		);
-		await panel.waitFor(
-			`document.querySelectorAll("li.annotation").length === 2`,
-		);
+		await panel.waitFor(`document.querySelectorAll("li.mark").length === 2`);
 		expect(
 			await panel.eval<string>(
 				`document.getElementById("marks-filtered").textContent`,
 			),
 		).toBe("Showing 2 of 3 marks. Show all");
 		await panel.click(`document.querySelector('[data-action="show-all"]')`);
-		await panel.waitFor(
-			`document.querySelectorAll("li.annotation").length === 3`,
-		);
+		await panel.waitFor(`document.querySelectorAll("li.mark").length === 3`);
 
 		// Verified, from the collapsed head: the bar and the chips move.
 		await panel.click(
-			`${row("a1")}.querySelector('.mark-sub [data-mark-action="verify"]')`,
+			`${row("m1")}.querySelector('.mark-sub [data-mark-action="verify"]')`,
 		);
-		await panel.waitFor(`${row("a1")}?.dataset.status === "verified"`);
+		await panel.waitFor(`${row("m1")}?.dataset.status === "verified"`);
 		expect(await panel.eval<string[]>(chips)).toEqual([
 			"● Open 1",
 			"◐ To verify 1",
@@ -182,15 +177,15 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 		]);
 
 		// Reopen… needs a note; it shows in the head, the claimed fix stays.
-		await reopen(panel, "a2", "Still pale on hover");
-		await panel.waitFor(`${row("a2")}?.dataset.status === "open"`);
+		await reopen(panel, "m2", "Still pale on hover");
+		await panel.waitFor(`${row("m2")}?.dataset.status === "open"`);
 		expect(
 			await panel.eval<string>(
-				`${row("a2")}.querySelector(".mark-sub .reopened").textContent`,
+				`${row("m2")}.querySelector(".mark-sub .reopened").textContent`,
 			),
 		).toBe("Reopened: Still pale on hover");
 		const stored = (await storedCases()).find((c) => c.id === tester.id);
-		expect(stored?.annotations[1]?.reopens).toEqual([
+		expect(stored?.marks[1]?.reopens).toEqual([
 			{
 				note: "Still pale on hover",
 				at: expect.any(String),
@@ -203,7 +198,7 @@ describe.skipIf(browserBinary === undefined)("Verify", () => {
 				},
 			},
 		]);
-		expect(stored?.annotations[0]?.resolution?.verified).toEqual({
+		expect(stored?.marks[0]?.resolution?.verified).toEqual({
 			at: expect.any(String),
 		});
 	}, 90_000);
@@ -240,15 +235,15 @@ describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
 					capturedAt: "2026-11-13T10:00:00Z",
 				},
 			],
-			annotations: [
+			marks: [
 				{
-					id: "a1",
+					id: "m1",
 					number: 1,
 					shot: "s1",
 					comment: "Too pale",
 					author: "user",
 					shape: { kind: "note", at: { x: 40, y: 40 } },
-					crop: "crops/a1.webp",
+					crop: "crops/m1.webp",
 					element: null,
 					resolution: {
 						kind: "fixed",
@@ -266,7 +261,7 @@ describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
 		const item = `document.querySelector('button[data-case="c_v"]')`;
 		await panel.waitFor(item, 10_000);
 		await panel.eval(`${item}.click()`);
-		await panel.waitFor(row("a1"), 10_000);
+		await panel.waitFor(row("m1"), 10_000);
 	}, 60_000);
 
 	afterAll(async () => {
@@ -309,9 +304,9 @@ describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
 		const done = await result;
 		expect(done.isError).toBeFalsy();
 		expect(done.content[0]?.text).toBe("Mark 1 is verified.");
-		await panel.waitFor(`${row("a1")}?.dataset.status === "verified"`, 10_000);
-		await panel.eval(`${row("a1")}.querySelector(".mark-toggle").click()`);
-		const verified = `[...${row("a1")}.querySelectorAll(".history li")].find((li) => li.dataset.kind === "verified")`;
+		await panel.waitFor(`${row("m1")}?.dataset.status === "verified"`, 10_000);
+		await panel.eval(`${row("m1")}.querySelector(".mark-toggle").click()`);
+		const verified = `[...${row("m1")}.querySelectorAll(".history li")].find((li) => li.dataset.kind === "verified")`;
 		await panel.waitFor(verified);
 		expect(await panel.eval<string>(`${verified}.textContent`)).toMatch(
 			/^Verified .+ by .*client\.example/,
@@ -324,8 +319,8 @@ describe.skipIf(browserBinary === undefined)("Verify with an AI app", () => {
 	});
 
 	test("a reopen in the panel: its note is in get_case", async () => {
-		await reopen(panel, "a1", "Still pale on hover");
-		await panel.waitFor(`${row("a1")}?.dataset.status === "open"`);
+		await reopen(panel, "m1", "Still pale on hover");
+		await panel.waitFor(`${row("m1")}?.dataset.status === "open"`);
 		const read = await call("get_case", { caseId: "c_v", images: false });
 		const view = JSON.parse(read.content[0]?.text ?? "{}");
 		expect(view.marks[0].status).toBe("open");

@@ -14,7 +14,7 @@ import {
 	test,
 } from "bun:test";
 import { Window } from "happy-dom";
-import type { Annotator as AnnotatorClass } from "../src/content/annotator.ts";
+import type { MarkAdder as MarkAdderClass } from "../src/content/adding.ts";
 import type { WorkerRequest } from "../src/lib/messages.ts";
 
 const window = new Window({
@@ -42,7 +42,7 @@ const before = Object.fromEntries(names.map((n) => [n, globals[n]]));
 let answer: (r: WorkerRequest) => object;
 const asked: WorkerRequest[] = [];
 
-let Annotator: typeof AnnotatorClass;
+let MarkAdder: typeof MarkAdderClass;
 let PageActivity: typeof import("../src/content/activity.ts").PageActivity;
 let PageBlur: typeof import("../src/content/blur.ts").PageBlur;
 let Overlay: typeof import("../src/content/overlay.ts").Overlay;
@@ -61,7 +61,7 @@ beforeAll(async () => {
 			},
 		},
 	};
-	({ Annotator } = await import("../src/content/annotator.ts"));
+	({ MarkAdder } = await import("../src/content/adding.ts"));
 	({ PageActivity } = await import("../src/content/activity.ts"));
 	({ PageBlur } = await import("../src/content/blur.ts"));
 	({ Overlay } = await import("../src/content/overlay.ts"));
@@ -83,7 +83,7 @@ const works = (r: WorkerRequest): object => {
 				ok: true,
 				caseId: r.request.caseId,
 				title: r.request.title,
-				annotations: 1,
+				marks: 1,
 			};
 		default:
 			return { ok: true };
@@ -108,24 +108,24 @@ beforeEach(() => {
 const made: InstanceType<typeof Overlay>[] = [];
 
 afterEach(() => {
-	for (const overlay of made.splice(0)) overlay.setAnnotating(false);
+	for (const overlay of made.splice(0)) overlay.setAddingMarks(false);
 });
 
-const target = { caseId: "c_open", title: "Open case", nextAnnotation: 3 };
+const target = { caseId: "c_open", title: "Open case", nextMark: 3 };
 
-function annotator(): {
-	a: AnnotatorClass;
+function adder(): {
+	a: MarkAdderClass;
 	overlay: InstanceType<typeof Overlay>;
 } {
 	const doc = window.document as unknown as Document;
 	const overlay = new Overlay(doc);
 	made.push(overlay);
-	const a = new Annotator(overlay, new PageBlur(doc), new PageActivity());
+	const a = new MarkAdder(overlay, new PageBlur(doc), new PageActivity());
 	return { a, overlay };
 }
 
 /** Draw a note and close its comment: it goes into the case the toolbar adds to. */
-function note(overlay: InstanceType<typeof Overlay>, a: AnnotatorClass): void {
+function note(overlay: InstanceType<typeof Overlay>, a: MarkAdderClass): void {
 	a.setTool("note");
 	const at = { clientX: 40, clientY: 40, button: 0, pointerId: 1 };
 	overlay.capture.dispatchEvent(
@@ -142,14 +142,14 @@ function note(overlay: InstanceType<typeof Overlay>, a: AnnotatorClass): void {
 }
 
 /** Until the queue has added or failed what was drawn. */
-const settle = async (a: AnnotatorClass, done: () => boolean) => {
+const settle = async (a: MarkAdderClass, done: () => boolean) => {
 	for (let i = 0; i < 100 && !done(); i++) await Bun.sleep(50);
 	expect(done()).toBe(true);
 	return a;
 };
 
 test("the target is cleared and the toolbar hidden: it adds to no case until shown for one", async () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	expect(a.state().target?.caseId).toBe("c_open");
 	note(overlay, a);
@@ -159,7 +159,7 @@ test("the target is cleared and the toolbar hidden: it adds to no case until sho
 	expect(a.state().visible).toBe(false);
 	expect(a.state().target).toBeUndefined();
 	// Shown again only for a case (DEC-026): the next one.
-	a.show({ target: { caseId: "c_next", title: "Next", nextAnnotation: 1 } });
+	a.show({ target: { caseId: "c_next", title: "Next", nextMark: 1 } });
 	expect(a.state().target?.caseId).toBe("c_next");
 	const status = overlay.toolbar.querySelector('[data-role="status"]');
 	expect(status?.textContent).toBe("Adding to “Next”");
@@ -168,7 +168,7 @@ test("the target is cleared and the toolbar hidden: it adds to no case until sho
 });
 
 test("the toolbar draws no case of its own: no Save case…, no title, no Close (DEC-026)", () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	const actions = [...overlay.toolbar.querySelectorAll("button")].map(
 		(b) => b.dataset["action"],
@@ -191,7 +191,7 @@ test("the toolbar draws no case of its own: no Save case…, no title, no Close 
 });
 
 test("a toolbar hidden by its own Done still drops its case", async () => {
-	const { a } = annotator();
+	const { a } = adder();
 	a.show({ target });
 	a.hide();
 	expect(a.state().target?.caseId).toBe("c_open");
@@ -200,7 +200,7 @@ test("a toolbar hidden by its own Done still drops its case", async () => {
 });
 
 test("another case's toolbar is left as it is", async () => {
-	const { a } = annotator();
+	const { a } = adder();
 	a.show({ target });
 	await a.end("c_other");
 	expect(a.state().visible).toBe(true);
@@ -209,7 +209,7 @@ test("another case's toolbar is left as it is", async () => {
 
 test("a mark that could not be added keeps the toolbar up and the case; discard drops it", async () => {
 	answer = noShots;
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	const alert = () =>
@@ -229,7 +229,7 @@ test("a mark that could not be added keeps the toolbar up and the case; discard 
 });
 
 test("the page tells the side panel when its marks not in the case or its case change", async () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	let told = 0;
 	overlay.onChange = () => told++;
 	a.show({ target });
@@ -251,7 +251,7 @@ test("the page tells the side panel when its marks not in the case or its case c
 
 test("All cases after the toolbar's Done left a mark out tries it once more, and says so", async () => {
 	answer = noShots;
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	const alert = () =>
@@ -275,7 +275,7 @@ test("All cases after the toolbar's Done left a mark out tries it once more, and
 });
 
 test("a case loaded onto the page leaves Undo its marks, whatever copy it is", async () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	await settle(a, () => asked.some((r) => r.type === "case:save"));
@@ -298,12 +298,12 @@ test("All cases during another case's add: a show for that case waiting for it i
 		if (r.type !== "case:save") return works(r);
 		return held.then(() => works(r));
 	};
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	await settle(a, () => a.state().saving);
 	// The panel opens case X and Add marks: the show waits for the add.
-	a.show({ target: { caseId: "c_x", title: "X", nextAnnotation: 1 } });
+	a.show({ target: { caseId: "c_x", title: "X", nextMark: 1 } });
 	// "← All cases" for X before the add is over.
 	await a.end("c_x");
 	release();
@@ -313,7 +313,7 @@ test("All cases during another case's add: a show for that case waiting for it i
 });
 
 test("every button of the toolbar that can be an icon alone has a tooltip, Done too", () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	const bare = () =>
 		[...overlay.toolbar.querySelectorAll("button")]
@@ -328,7 +328,7 @@ test("every button of the toolbar that can be an icon alone has a tooltip, Done 
 });
 
 test("a rename reaches the toolbar adding to the case, and only that one (DEC-026)", async () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	const status = () =>
 		overlay.toolbar.querySelector('[data-role="status"]')?.textContent;
@@ -346,7 +346,7 @@ test("a rename reaches the toolbar adding to the case, and only that one (DEC-02
 });
 
 test("what a new case records of the page: address, title, language, window", async () => {
-	const { pageInfo } = await import("../src/content/annotator.ts");
+	const { pageInfo } = await import("../src/content/adding.ts");
 	const doc = window.document as unknown as Document;
 	doc.title = "Cart";
 	doc.documentElement.lang = "de-CH";
@@ -369,7 +369,7 @@ test("a rename while a mark is being added is not reverted (review of PR 57)", a
 	});
 	answer = (r) =>
 		r.type === "case:save" ? held.then(() => works(r)) : works(r);
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	await settle(a, () => asked.some((r) => r.type === "case:save"));
@@ -379,7 +379,7 @@ test("a rename while a mark is being added is not reverted (review of PR 57)", a
 	expect(a.state().target).toEqual({
 		caseId: "c_open",
 		title: "Login button",
-		nextAnnotation: 4,
+		nextMark: 4,
 	});
 	const status = overlay.toolbar.querySelector('[data-role="status"]');
 	expect(status?.textContent).toBe("Mark 3 added to “Login button”");
@@ -387,7 +387,7 @@ test("a rename while a mark is being added is not reverted (review of PR 57)", a
 
 test("a mark the page moved away from gets its screenshot again by itself once the page stands still (review of PR 57)", async () => {
 	window.document.body.innerHTML = `<main style="height: 3000px"><p id="text">Some text</p></main>`;
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	// The page scrolls before the mark's screenshot is taken: given up.
@@ -410,7 +410,7 @@ test("a mark the page moved away from gets its screenshot again by itself once t
 
 test("a failed mark takes the next number of the case the toolbar is shown for (review of PR 57)", async () => {
 	answer = noShots;
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	note(overlay, a);
 	const alert = () =>
@@ -418,7 +418,7 @@ test("a failed mark takes the next number of the case the toolbar is shown for (
 	await settle(a, () => alert().startsWith("Mark 3 was not added"));
 	// "Add marks" for case B, whose next number is 7: the mark waits, as 7.
 	answer = works;
-	a.show({ target: { caseId: "c_b", title: "B", nextAnnotation: 7 } });
+	a.show({ target: { caseId: "c_b", title: "B", nextMark: 7 } });
 	const retry = () =>
 		overlay.toolbar.querySelector<HTMLButtonElement>('[data-action="retry"]');
 	expect(retry()?.textContent).toBe("Add mark 7");
@@ -434,13 +434,11 @@ test("a failed mark takes the next number of the case the toolbar is shown for (
 	await settle(a, () => asked.some((r) => r.type === "case:save"));
 	const save = asked.find((r) => r.type === "case:save");
 	expect(save?.type === "case:save" && save.request.caseId).toBe("c_b");
-	expect(
-		save?.type === "case:save" && save.request.annotations[0]?.number,
-	).toBe(7);
+	expect(save?.type === "case:save" && save.request.marks[0]?.number).toBe(7);
 });
 
 test("a re-render keeps the toolbar's buttons: a click pressed before it still lands", async () => {
-	const { a, overlay } = annotator();
+	const { a, overlay } = adder();
 	a.show({ target });
 	const button = (action: string) =>
 		overlay.toolbar.querySelector<HTMLButtonElement>(

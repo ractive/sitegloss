@@ -18,6 +18,7 @@ import {
 	type Account,
 	CLOUD_DATABASE,
 	type CloudStatus,
+	casesForgotten,
 	KEYS,
 	type SyncMode,
 } from "../lib/cloud/book.ts";
@@ -164,7 +165,12 @@ export function startCloud(
 		try {
 			server = await chosenServer(kv);
 			const mine = scopedKv(kv, server);
-			for (const key of [KEYS.account, KEYS.status, KEYS.modes])
+			// What is about cases only once the worker forgot those of before
+			// (DEC-051): until then they may be a build before this one's.
+			const ours = await casesForgotten(kv);
+			for (const key of ours
+				? [KEYS.account, KEYS.status, KEYS.modes]
+				: [KEYS.account])
 				all[key] = await mine.get(key);
 		} catch (error) {
 			problem(

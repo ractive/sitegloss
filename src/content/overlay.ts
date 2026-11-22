@@ -399,7 +399,7 @@ export class Overlay {
 	readonly #drafts: SVGGElement;
 	readonly #review: SVGGElement;
 	readonly #temporary: SVGGElement;
-	#annotating = false;
+	#addingMarks = false;
 	#reviewing = false;
 	#marking = false;
 	/** The loaded marks' pins as drawn last, in window coordinates. */
@@ -487,8 +487,8 @@ export class Overlay {
 	}
 
 	/** The toolbar is up: the user is drawing marks. */
-	get annotating(): boolean {
-		return this.#annotating;
+	get addingMarks(): boolean {
+		return this.#addingMarks;
 	}
 
 	/** An AI app's temporary mark is up for its screenshot. */
@@ -501,8 +501,8 @@ export class Overlay {
 		return this.#reviewing;
 	}
 
-	setAnnotating(on: boolean): void {
-		this.#annotating = on;
+	setAddingMarks(on: boolean): void {
+		this.#addingMarks = on;
 		this.#update();
 		this.onChange?.();
 	}
@@ -590,11 +590,11 @@ export class Overlay {
 	}
 
 	#update(): void {
-		const shown = this.#annotating || this.#reviewing || this.#marking;
+		const shown = this.#addingMarks || this.#reviewing || this.#marking;
 		this.layer.hidden = !shown;
-		this.toolbar.hidden = !this.#annotating;
-		this.capture.hidden = !this.#annotating;
-		this.#drafts.style.display = this.#annotating ? "" : "none";
+		this.toolbar.hidden = !this.#addingMarks;
+		this.capture.hidden = !this.#addingMarks;
+		this.#drafts.style.display = this.#addingMarks ? "" : "none";
 		this.reviewBar.hidden = !this.#reviewing;
 		this.#review.style.display = this.#reviewing ? "" : "none";
 		// Stay on top of elements the page appended later.

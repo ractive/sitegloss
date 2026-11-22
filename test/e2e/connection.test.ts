@@ -704,7 +704,7 @@ describe.skipIf(browserBinary === undefined)(
 			expect(await panel.eval(`${byId("connect")}.disabled`)).toBe(true);
 			expect(await panel.eval(`${byId("ai-switch")}.disabled`)).toBe(true);
 			// Without the worker's value the panel blurs: the safe side.
-			await panel.eval(`${byId("annotate")}.click()`);
+			await panel.eval(`${byId("new-case")}.click()`);
 			await until(
 				() => told(tabId),
 				(t) => t.some(([type]) => type === "overlay:show"),

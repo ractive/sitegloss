@@ -2,7 +2,7 @@
 type: iteration
 title: "Iteration 4: AI apps through tab-mcp"
 status: in-progress
-description: "TabMcp in the side panel with a relay setting and the connect dialog, and the tools list_cases, get_case, get_image, load_case, highlight, capture, add_annotation, set_verdict and delete_case."
+description: "TabMcp in the side panel with a relay setting and the connect dialog, and the tools list_cases, get_case, get_image, load_case, highlight, capture, add_mark, set_verdict and delete_case."
 timestamp: 2026-11-04T17:00:00+01:00
 tags: [iteration, mcp]
 ---

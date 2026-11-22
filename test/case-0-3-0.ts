@@ -1,8 +1,8 @@
 /**
  * `src/lib/case.ts` as Sitegloss 0.3.0 shipped it (commit 7b00a15), kept for
- * one question: does the build before a change of the case format still read
- * a file the build after it writes (test/pages.test.ts)? Not edited; below
- * this comment it is that file.
+ * what 0.3.0 makes of a file this build writes (it refuses `sitegloss/2`,
+ * DEC-051) and for cases as 0.3.0 stores them (`test/e2e/store.test.ts`). Not
+ * edited; below this comment it is that file, with 0.3.0's names.
  */
 
 /**
@@ -805,7 +805,7 @@ export function validateCase(value: unknown): Case {
 		numbers.add(number);
 		// Saving names new marks a<number>: another scheme would collide later.
 		if (annotationId !== `a${number}`)
-			fail(`${p}.id`, `must be a${number}, after its number`);
+			fail(`${p}.id`, `must be m${number}, after its number`);
 		const shot = str(a["shot"], `${p}.shot`, 64);
 		if (!shotIds.has(shot)) fail(`${p}.shot`, "names no shot of the case");
 		const crop = str(a["crop"], `${p}.crop`);

@@ -1,5 +1,5 @@
 {
-	"about": "A case as the server holds it (GET /api/v1/teams/{teamId}/cases/{caseId}) and the case.json of its download (GET …/export) in the extension's format sitegloss/1 (DEC-022). The server's caseFileOf (apps/app/src/server/case-file.ts) gives caseJson for server; the extension's mapping of a server case (mergeCase in src/lib/cloud/wire.ts) has to give the same, and its validateCase has to keep it as it is. Mark 1's element and mark 3's start carry a look (DEC-021), with entries the extension's lookOf drops: a custom property, a value that names a URL, a backdrop's false image and out-of-range depth, a sibling at offset 0. caseMdLookLines: the \"- Look:\" lines the extension's caseMarkdown writes in case.md for caseJson, in order. Screenshot sh_cart has a query (DEC-023): the file's s1 carries it as shots[].query, as the server sends it; sh_pay has none and s2 has no query key. caseMdQueryLines: the lines of case.md that name an address with its query (a mark's \"- Page:\" and the screenshot's \"is of\" line, with the query put back before any hash), in order. singlePageServer, singlePageCaseJson, singlePageCaseMdPageLines: a case with one page and two screenshots of it, sh_results with a query and sh_plain without. The server's caseFileOf gives singlePageCaseJson for singlePageServer, as above. singlePageCaseMdPageLines: every line of its case.md that starts with \"- Page:\" or \"Screenshot \", in order: the case's page, plain; mark 1's page with its screenshot's query; the screenshot with a query and what it is of. Mark 2 and screenshot s2, without a query, name no page, as in a single-page case today (DEC-023).",
+	"about": "A case as the server holds it (GET /api/v1/teams/{teamId}/cases/{caseId}) and the case.json of its download (GET …/export) in the extension's format sitegloss/2 (DEC-022, DEC-024). The server's caseFileOf (apps/app/src/server/case-file.ts) gives caseJson for server; the extension's mapping of a server case (mergeCase in src/lib/cloud/wire.ts) has to give the same, and its validateCase has to keep it as it is. Mark 1's element and mark 3's start carry a look (DEC-021), with entries the extension's lookOf drops: a custom property, a value that names a URL, a backdrop's false image and out-of-range depth, a sibling at offset 0. caseMdLookLines: the \"- Look:\" lines the extension's caseMarkdown writes in case.md for caseJson, in order. Screenshot sh_cart has a query (DEC-023): the file's s1 carries it as shots[].query, as the server sends it; sh_pay has none and s2 has no query key. caseMdQueryLines: the lines of case.md that name an address with its query (a mark's \"- Page:\" and the screenshot's \"is of\" line, with the query put back before any hash), in order. singlePageServer, singlePageCaseJson, singlePageCaseMdPageLines: a case with one page and two screenshots of it, sh_results with a query and sh_plain without. The server's caseFileOf gives singlePageCaseJson for singlePageServer, as above. singlePageCaseMdPageLines: every line of its case.md that starts with \"- Page:\" or \"Screenshot \", in order: the case's page, plain; mark 1's page with its screenshot's query; the screenshot with a query and what it is of. Mark 2 and screenshot s2, without a query, name no page, as in a single-page case today (DEC-023).",
 	"server": {
 		"id": "c_vector",
 		"teamId": "t_vector",
@@ -451,7 +451,7 @@
 		]
 	},
 	"caseJson": {
-		"format": "sitegloss/1",
+		"format": "sitegloss/2",
 		"id": "c_vector",
 		"title": "Checkout: two pages, every kind of mark",
 		"createdAt": "2026-11-20T09:00:00.000Z",
@@ -508,9 +508,9 @@
 				"url": "https://shop.example/#/pay"
 			}
 		],
-		"annotations": [
+		"marks": [
 			{
-				"id": "a1",
+				"id": "m1",
 				"number": 1,
 				"shot": "s1",
 				"comment": "Pale text on yellow.",
@@ -524,7 +524,7 @@
 						"height": 40
 					}
 				},
-				"crop": "crops/a1.webp",
+				"crop": "crops/m1.webp",
 				"element": {
 					"tag": "button",
 					"testId": "checkout",
@@ -630,7 +630,7 @@
 				]
 			},
 			{
-				"id": "a3",
+				"id": "m3",
 				"number": 3,
 				"shot": "s2",
 				"comment": "Total differs from the cart.",
@@ -646,7 +646,7 @@
 						"y": 300
 					}
 				},
-				"crop": "crops/a3.webp",
+				"crop": "crops/m3.webp",
 				"element": {
 					"tag": "td",
 					"text": "CHF 45",
@@ -720,7 +720,7 @@
 				}
 			},
 			{
-				"id": "a6",
+				"id": "m6",
 				"number": 6,
 				"shot": "s2",
 				"comment": "No focus ring on Pay.",
@@ -734,7 +734,7 @@
 						"height": 60
 					}
 				},
-				"crop": "crops/a6.webp",
+				"crop": "crops/m6.webp",
 				"element": null,
 				"createdBy": {
 					"id": "u_dana",
@@ -774,7 +774,7 @@
 		"comments": [
 			{
 				"id": "k_1",
-				"mark": "a1",
+				"mark": "m1",
 				"text": "Fixed in pull request #42.",
 				"at": "2026-11-20T10:01:00.000Z",
 				"user": {
@@ -971,7 +971,7 @@
 		"comments": []
 	},
 	"singlePageCaseJson": {
-		"format": "sitegloss/1",
+		"format": "sitegloss/2",
 		"id": "c_single",
 		"title": "Search results in the wrong order",
 		"createdAt": "2026-11-21T09:00:00.000Z",
@@ -1023,9 +1023,9 @@
 				"url": "https://shop.example/search"
 			}
 		],
-		"annotations": [
+		"marks": [
 			{
-				"id": "a1",
+				"id": "m1",
 				"number": 1,
 				"shot": "s1",
 				"comment": "Cheapest is not first.",
@@ -1037,7 +1037,7 @@
 						"y": 20
 					}
 				},
-				"crop": "crops/a1.webp",
+				"crop": "crops/m1.webp",
 				"element": null,
 				"createdBy": {
 					"id": "u_tess",
@@ -1045,7 +1045,7 @@
 				}
 			},
 			{
-				"id": "a2",
+				"id": "m2",
 				"number": 2,
 				"shot": "s2",
 				"comment": "Filter chips overlap.",
@@ -1057,7 +1057,7 @@
 						"y": 20
 					}
 				},
-				"crop": "crops/a2.webp",
+				"crop": "crops/m2.webp",
 				"element": null,
 				"createdBy": {
 					"id": "u_tess",

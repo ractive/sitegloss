@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { startTestRelay } from "@ractive-ch/tab-mcp/testing";
 import type { Case } from "../../src/lib/case.ts";
 import { exportCase } from "../../src/lib/export.ts";
-import { MemoryStore } from "../../src/lib/store.ts";
+import { DB_VERSION, MemoryStore } from "../../src/lib/store.ts";
 import { putMarked, sampleCase } from "../fixtures.ts";
 import {
 	answerInPanel,
@@ -81,7 +81,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		// test run by itself): opened without a version it would have no
 		// stores, the transaction would throw, and this would wait for ever.
 		await h.control.eval(`new Promise((resolve, reject) => {
-			const open = indexedDB.open("sitegloss", 1);
+			const open = indexedDB.open("sitegloss", ${DB_VERSION});
 			open.onupgradeneeded = () => {
 				open.result.createObjectStore("cases", { keyPath: "id" });
 				open.result.createObjectStore("images");
@@ -135,7 +135,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 	}
 
 	/** A page with a saved case of one mark, and that case's id. */
-	async function annotated(title: string) {
+	async function markedCase(title: string) {
 		const { page, tabId } = await h.open("v1");
 		await showToolbar(h, page, tabId);
 		await markElement(page, "h1", "Too long");
@@ -395,7 +395,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 
 	slowTest("a deleted case's outlines leave the page", async () => {
 		await fresh();
-		const { page, tabId, caseId } = await annotated("Outlined");
+		const { page, tabId, caseId } = await markedCase("Outlined");
 		await openPanel();
 		await openCase(caseId);
 		await page.activate();
@@ -413,7 +413,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		"the outlines of a case an AI app loaded leave the page too",
 		async () => {
 			await fresh();
-			const { page, tabId, caseId } = await annotated("Loaded by a tool");
+			const { page, tabId, caseId } = await markedCase("Loaded by a tool");
 			await openPanel();
 			await page.activate();
 			const c = await storedCase(caseId);
@@ -433,7 +433,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 
 	slowTest("a case a tool deleted leaves the page as well", async () => {
 		await fresh();
-		const { page, tabId, caseId } = await annotated("Deleted by a tool");
+		const { page, tabId, caseId } = await markedCase("Deleted by a tool");
 		await openPanel();
 		await page.activate();
 		const c = await storedCase(caseId);
@@ -466,7 +466,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 
 	slowTest("Show says so when the page is busy", async () => {
 		await fresh();
-		const { page, caseId } = await annotated("Busy page");
+		const { page, caseId } = await markedCase("Busy page");
 		await openPanel();
 		await openCase(caseId);
 		await page.activate();
@@ -492,15 +492,15 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			// One mark without an element: "0 of 1 marks found" is this case's.
 			const slow: Case = {
 				...sampleCase("c_slow"),
-				annotations: [
+				marks: [
 					{
-						id: "a1",
+						id: "m1",
 						number: 1,
 						shot: "s1",
 						comment: "Somewhere",
 						author: "user",
 						shape: { kind: "note", at: { x: 1, y: 1 } },
-						crop: "crops/a1.webp",
+						crop: "crops/m1.webp",
 						element: null,
 					},
 				],
@@ -508,11 +508,11 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			// Two on c_next: a case without marks is not drawn (DEC-026).
 			const next: Case = {
 				...sampleCase("c_next"),
-				annotations: [1, 2].map((n) => ({
-					...(slow.annotations[0] as Case["annotations"][number]),
-					id: `a${n}`,
+				marks: [1, 2].map((n) => ({
+					...(slow.marks[0] as Case["marks"][number]),
+					id: `m${n}`,
 					number: n,
-					crop: `crops/a${n}.webp`,
+					crop: `crops/m${n}.webp`,
 				})),
 			};
 			await fresh([slow, next]);
@@ -579,7 +579,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			const b = await h.open("v2");
 			await b.page.activate();
 			await h.control.eval(
-				`chrome.tabs.sendMessage(${a.tabId}, { type: "overlay:show", target: { caseId: "c_news", title: "News", nextAnnotation: 1 } })`,
+				`chrome.tabs.sendMessage(${a.tabId}, { type: "overlay:show", target: { caseId: "c_news", title: "News", nextMark: 1 } })`,
 			);
 			await Bun.sleep(200);
 			await h.control.eval(`globalThis.slow = false`);
@@ -664,7 +664,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		"the page goes on within itself (a single-page app's next route): the panel's numbers are about the page it shows now",
 		async () => {
 			await fresh();
-			const a = await annotated("Route change");
+			const a = await markedCase("Route change");
 			await a.page.activate();
 			await openPanel();
 			await openCase(a.caseId);
@@ -694,7 +694,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		"opening a case draws its marks on the tab in front, and they follow to the next tab",
 		async () => {
 			await fresh();
-			const a = await annotated("Follows the tab");
+			const a = await markedCase("Follows the tab");
 			const b = await h.open("v2");
 			await b.page.activate();
 			await openPanel();
@@ -776,7 +776,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		"a follow that waited for a slow tab leaves the tab now in front alone",
 		async () => {
 			await fresh();
-			const a = await annotated("Slow tab");
+			const a = await markedCase("Slow tab");
 			const b = await h.open("v2");
 			await h.control.eval(
 				`chrome.scripting.executeScript({ target: { tabId: ${b.tabId} }, files: ["content.js"] })`,
@@ -813,7 +813,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		"a draw that fails after another tab came to the front says nothing",
 		async () => {
 			await fresh();
-			const a = await annotated("Failing draw");
+			const a = await markedCase("Failing draw");
 			const b = await h.open("v2");
 			await a.page.activate();
 			await openPanel();
@@ -886,7 +886,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		"a new address within the page (a hash, pushState) keeps the marks: no draw again",
 		async () => {
 			await fresh();
-			const a = await annotated("Same page, new address");
+			const a = await markedCase("Same page, new address");
 			await a.page.activate();
 			await openPanel();
 			await h.control.eval(`globalThis.loads = 0`);
@@ -1008,7 +1008,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			chrome.tabs.sendMessage = no;
 			chrome.scripting.executeScript = no;
 		})()`);
-		await h.control.eval(`${id("annotate")}.click()`);
+		await h.control.eval(`${id("new-case")}.click()`);
 		await h.control.waitFor(
 			`${id("hint")}.textContent.includes("Click the Sitegloss icon")`,
 		);
@@ -1125,14 +1125,14 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			return {
 				...c,
 				page: { ...c.page, url: `${h.base}/v1` },
-				annotations: Array.from({ length: n }, (_, i) => ({
-					id: `a${i + 1}`,
+				marks: Array.from({ length: n }, (_, i) => ({
+					id: `m${i + 1}`,
 					number: i + 1,
 					shot: "s1",
 					comment: `Mark ${i + 1}`,
 					author: "user" as const,
 					shape: { kind: "note" as const, at: { x: 10 + i, y: 10 } },
-					crop: `crops/a${i + 1}.webp`,
+					crop: `crops/m${i + 1}.webp`,
 					element: null,
 				})),
 			};
@@ -1358,7 +1358,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			"the page cleared by something else right after the panel's draw: the panel follows the page",
 			async () => {
 				await fresh();
-				const { page, tabId, caseId } = await annotated(
+				const { page, tabId, caseId } = await markedCase(
 					"Cleared after drawing",
 				);
 				await openPanel();
@@ -1401,7 +1401,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 		/** A saved case of one mark, the panel in it and its marks on the page in front. */
 		async function inCaseWithMarks(title: string) {
 			await fresh();
-			const saved = await annotated(title);
+			const saved = await markedCase(title);
 			// The panel opened the case; start from the list.
 			await h.control.eval(`${back}.hidden || ${back}.click()`);
 			await h.control.waitFor(`!${id("home")}.hidden`);
@@ -1611,14 +1611,14 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			async () => {
 				const { page, tabId, caseId } =
 					await inCaseWithMarks("Picked on the page");
-				const before = (await storedCase(caseId))?.annotations[0];
+				const before = (await storedCase(caseId))?.marks[0];
 				if (before === undefined) throw new Error("no mark");
 				const pin = shadow(
 					`.review [data-review="${before.number}"] [data-number] text`,
 				);
 				const popover = shadow(".popover");
 				const field = shadow(".popover textarea");
-				const row = `document.querySelector('[data-annotation="${before.id}"]')`;
+				const row = `document.querySelector('[data-mark="${before.id}"]')`;
 				await page.waitFor(pin);
 				expect(
 					await h.control.eval<boolean>(`${row}.hasAttribute("data-open")`),
@@ -1634,7 +1634,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				await page.click(shadow('[data-action="mark-done"]'));
 				await until(
 					async () =>
-						(await storedCase(caseId))?.annotations[0]?.comment ===
+						(await storedCase(caseId))?.marks[0]?.comment ===
 						"Changed on the page",
 					"the comment in the case",
 				);
@@ -1669,11 +1669,11 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				const remove = shadow('[data-action="mark-delete"]');
 				await page.click(remove);
 				await page.waitFor(`${remove}.textContent === "Really delete?"`);
-				expect((await storedCase(caseId))?.annotations.length).toBe(1);
+				expect((await storedCase(caseId))?.marks.length).toBe(1);
 				await Bun.sleep(500);
 				await page.click(remove);
 				await until(
-					async () => (await storedCase(caseId))?.annotations.length === 0,
+					async () => (await storedCase(caseId))?.marks.length === 0,
 					"the mark out of the case",
 				);
 				await page.waitFor(
@@ -1690,7 +1690,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			"the page's popover has the mark's commands: Resolve…, Verified, Reopen… (DEC-027)",
 			async () => {
 				const { page, caseId } = await inCaseWithMarks("Commands on the page");
-				const mark = async () => (await storedCase(caseId))?.annotations[0];
+				const mark = async () => (await storedCase(caseId))?.marks[0];
 				const before = await mark();
 				if (before === undefined) throw new Error("no mark");
 				const group = shadow(`.review [data-review="${before.number}"]`);
@@ -1704,7 +1704,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 					page.eval<string[]>(
 						`[...${popover}.querySelectorAll(".commands button")].map((b) => b.textContent)`,
 					);
-				const row = `document.querySelector('[data-annotation="${before.id}"]')`;
+				const row = `document.querySelector('[data-mark="${before.id}"]')`;
 
 				// Resolve…: fixed, with a note.
 				await page.click(pin);
@@ -1771,7 +1771,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			"with no panel showing the case, the page's popover says so and keeps the text",
 			async () => {
 				const { page, caseId } = await inCaseWithMarks("Not without a panel");
-				const before = (await storedCase(caseId))?.annotations[0];
+				const before = (await storedCase(caseId))?.marks[0];
 				if (before === undefined) throw new Error("no mark");
 				await page.click(
 					shadow(`.review [data-review="${before.number}"] [data-number] text`),
@@ -1792,7 +1792,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				);
 				await openPanel();
 				await h.control.waitFor(`document.getElementById("home") !== null`);
-				expect((await storedCase(caseId))?.annotations[0]?.comment).toBe(
+				expect((await storedCase(caseId))?.marks[0]?.comment).toBe(
 					before.comment,
 				);
 				await page.send("Page.close");
@@ -1873,7 +1873,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 				await until(async () => !(await toolbarUp(tabId)), "the toolbar to go");
 				await page.activate();
 				await h.control.waitFor(
-					`${id("annotate")}.textContent === "New case for this page" && !${id("home")}.hidden`,
+					`${id("new-case")}.textContent === "New case for this page" && !${id("home")}.hidden`,
 				);
 				await other.page.send("Page.close");
 				await page.send("Page.close");
@@ -1979,7 +1979,7 @@ describe.skipIf(browserBinary === undefined)("the side panel's page", () => {
 			async () => {
 				const relay = startTestRelay({ pageWaitMs: 0 });
 				await fresh();
-				const { page, tabId, caseId } = await annotated("Pill in a case");
+				const { page, tabId, caseId } = await markedCase("Pill in a case");
 				const panel = await sidePanel();
 				const back = id("back");
 				const toolbarOf = () =>

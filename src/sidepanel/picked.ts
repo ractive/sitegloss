@@ -3,7 +3,7 @@
  * answers, and for which mark. Pure, so the rule can be tested.
  */
 
-import { type Annotation, type Case, markFor } from "../lib/case.ts";
+import { type Case, type Mark, markFor } from "../lib/case.ts";
 import type { MarkRequest } from "../lib/messages.ts";
 
 export interface Showing {
@@ -28,9 +28,9 @@ export interface Showing {
  */
 export function markAsked(
 	showing: Showing,
-	request: Pick<MarkRequest, "caseId" | "annotationId" | "mark">,
+	request: Pick<MarkRequest, "caseId" | "markId" | "mark">,
 	tabId: number | undefined,
-): Annotation | "gone" | "changed" | undefined {
+): Mark | "gone" | "changed" | undefined {
 	const { open, loaded, front } = showing;
 	if (tabId === undefined || open === undefined || open.id !== request.caseId)
 		return undefined;
@@ -40,9 +40,7 @@ export function markAsked(
 	// The page says which mark its popover was opened on (`markKey`): the id
 	// alone is another mark's after the team's sync renumbered (DEC-039).
 	if (request.mark === undefined)
-		return (
-			open.annotations.find((a) => a.id === request.annotationId) ?? "gone"
-		);
-	const now = markFor(open, request.annotationId, request.mark);
+		return open.marks.find((a) => a.id === request.markId) ?? "gone";
+	const now = markFor(open, request.markId, request.mark);
 	return now === "ambiguous" ? "changed" : (now ?? "gone");
 }

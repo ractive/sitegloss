@@ -129,6 +129,24 @@ export interface EngineDeps {
 		rect: Rect,
 		viewportWidth: number,
 	) => Promise<StoredImage>;
+	/**
+	 * Whether the cases and the books are this build's (DEC-051): the case
+	 * store open at its version 2 and the cloud's database past
+	 * `forgetCases`. Until it answers true the engine does nothing: no run,
+	 * no choice, no book read or written, nothing sent. Not given (the
+	 * tests): always.
+	 */
+	casesReady?: () => Promise<boolean>;
+}
+
+/** The engine waits: the cases or the books are not this build's yet (`casesReady`). */
+export class CasesNotReadyError extends Error {
+	constructor() {
+		super(
+			"Sitegloss is still opening its cases; the sync starts once they are open.",
+		);
+		this.name = "CasesNotReadyError";
+	}
 }
 
 /** What each operation needs the user to be allowed to do in the team. */
@@ -283,8 +301,15 @@ export class CloudSync {
 		this.#hash = deps.hash ?? sha256Of;
 	}
 
+	/** `casesReady` said yes: it stays so for this engine. */
+	#ready = false;
+
 	#exclusive<T>(work: () => Promise<T>): Promise<T> {
-		const next = this.#chain.then(work, work);
+		const gated = async () => {
+			await this.#casesReady();
+			return work();
+		};
+		const next = this.#chain.then(gated, gated);
 		this.#chain = next.catch(() => undefined);
 		return next;
 	}
@@ -298,8 +323,20 @@ export class CloudSync {
 		this.#queued ??= this.#exclusive(async () => {
 			this.#queued = undefined;
 			await this.#run();
+		}).catch((error: unknown) => {
+			this.#queued = undefined;
+			// Not yet: a later request runs once the cases are this build's.
+			if (!(error instanceof CasesNotReadyError)) throw error;
 		});
 		return this.#queued;
+	}
+
+	/** Throws `CasesNotReadyError` until `casesReady` said yes once. */
+	async #casesReady(): Promise<void> {
+		if (this.#ready || this.#deps.casesReady === undefined) return;
+		if (!(await this.#deps.casesReady().catch(() => false)))
+			throw new CasesNotReadyError();
+		this.#ready = true;
 	}
 
 	async status(): Promise<CloudStatus> {
@@ -422,7 +459,7 @@ export class CloudSync {
 			for (const c of cases)
 				if (
 					!books.has(c.id) &&
-					(c.annotations.length > 0 || c.lastNumber !== undefined)
+					(c.marks.length > 0 || c.lastNumber !== undefined)
 				)
 					changed.push({
 						...emptyBook(c.id, elsewhere.has(c.id) ? "local" : "undecided"),
@@ -715,7 +752,7 @@ export class CloudSync {
 			// read first, or has no mark yet (not sent until it has one).
 			if (mayKey !== undefined && heldBack(book, c, mayKey)) continue;
 			if (book?.reread !== undefined && blocks(book.reread)) continue;
-			if (book?.shadow === undefined && c.annotations.length === 0) continue;
+			if (book?.shadow === undefined && c.marks.length === 0) continue;
 			waiting++;
 		}
 		return {
@@ -951,7 +988,7 @@ export class CloudSync {
 			// Nothing of it could go at the last look, and nothing changed since.
 			if (heldBack(book, c, mayKey)) continue;
 			// A case without marks is not sent until it has one (as the folder sync).
-			if (book.shadow === undefined && c.annotations.length === 0) continue;
+			if (book.shadow === undefined && c.marks.length === 0) continue;
 			if (book.shadow === undefined && !all) {
 				more = true;
 				continue;
@@ -1176,7 +1213,7 @@ export class CloudSync {
 		// again after a delete).
 		relink(c, next);
 		const shadow = next.shadow as NonNullable<CaseBook["shadow"]>;
-		const marks = new Set(c.annotations.map((a) => a.id));
+		const marks = new Set(c.marks.map((a) => a.id));
 		const shots = new Set(c.shots.map((s) => s.id));
 		for (const [id, wire] of Object.entries(next.marks))
 			if (!marks.has(id)) delete next.marks[id];
@@ -1359,7 +1396,7 @@ export class CloudSync {
 				if (shot !== undefined) wanted.add(shot.image);
 			} else if (op.type === "mark.create") {
 				const id = markOf.get(op.mark.id);
-				const mark = c.annotations.find((a) => a.id === id);
+				const mark = c.marks.find((a) => a.id === id);
 				if (mark !== undefined) wanted.add(mark.crop);
 			}
 		}
@@ -2215,7 +2252,7 @@ export class CloudSync {
 		const announce =
 			given === undefined || newMarks.length > 0 || newShots.length > 0;
 		if (announce) {
-			const marks = new Map(first.value.annotations.map((a) => [a.id, a]));
+			const marks = new Map(first.value.marks.map((a) => [a.id, a]));
 			const shots = new Map(first.value.shots.map((s) => [s.id, s]));
 			await this.#books.put({
 				...known,

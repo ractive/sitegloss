@@ -144,14 +144,14 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		await h.browser.clickIcon(h.extensionId, `${h.base}/v1`);
 
 		const panel = await sidePanel();
-		await panel.waitFor(`document.getElementById("annotate")`);
+		await panel.waitFor(`document.getElementById("new-case")`);
 		await clicked.page.waitFor(HOST);
 		await viewportSettled(clicked.page);
 		// The page's scripts cannot reach into the overlay.
 		expect(await clicked.page.eval(`${HOST}.shadowRoot`)).toBeNull();
 		expect((await capture(clicked.tabId)).ok).toBe(true);
 
-		await panel.click(`document.getElementById("annotate")`);
+		await panel.click(`document.getElementById("new-case")`);
 		await reachOverlay(clicked.page);
 		// The toolbar exists, hidden, from the start: a click on it would go past.
 		await clicked.page.waitFor(`!${shadow(".toolbar")}.hidden`);
@@ -161,22 +161,22 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		const db = await h.control.eval<Db>(READ_DB);
 		const saved = db.cases[0];
 		expect(saved?.title).toBe("From the store package");
-		expect(saved?.annotations[0]?.element?.tag).toBe("button");
-		expect(imagesOf(db, saved?.id ?? "")).toContain("crops/a1.webp");
+		expect(saved?.marks[0]?.element?.tag).toBe("button");
+		expect(imagesOf(db, saved?.id ?? "")).toContain("crops/m1.webp");
 		await panel.waitFor(`document.querySelector("[data-case]")`);
 
 		// The click was for that tab: the panel, still open, may not touch the
 		// other, and says so with a notice above the button it turns off.
 		await other.page.activate();
 		await panel.waitFor(
-			`!document.getElementById("access-notice").hidden && document.getElementById("annotate").disabled`,
+			`!document.getElementById("access-notice").hidden && document.getElementById("new-case").disabled`,
 		);
 		expect(
 			await panel.eval<string>(
 				`document.getElementById("access-notice").textContent`,
 			),
 		).toContain("may not run on this tab");
-		await panel.click(`document.getElementById("annotate")`);
+		await panel.click(`document.getElementById("new-case")`);
 		expect(await inject(other.tabId)).toContain("Cannot access");
 		expect(await other.page.eval<boolean>(`${HOST} === null`)).toBe(true);
 		// Its Allow on all sites asks Chrome for every site, in the click.
@@ -226,10 +226,10 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 		const first = await h.open("v1?opened=1");
 		await h.browser.clickIcon(h.extensionId, url);
 		const panel = await sidePanel();
-		await panel.waitFor(`document.getElementById("annotate")`);
+		await panel.waitFor(`document.getElementById("new-case")`);
 		await first.page.waitFor(HOST);
 		await viewportSettled(first.page);
-		await panel.click(`document.getElementById("annotate")`);
+		await panel.click(`document.getElementById("new-case")`);
 		await reachOverlay(first.page);
 		await first.page.waitFor(`!${shadow(".toolbar")}.hidden`);
 		await markElement(first.page, "[data-truth=tip]", "Say how much");
@@ -302,10 +302,10 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 			`document.getElementById("back").hidden || document.getElementById("back").click()`,
 		);
 		await panel.waitFor(`!document.getElementById("home").hidden`);
-		await panel.waitFor(`document.getElementById("annotate")`);
+		await panel.waitFor(`document.getElementById("new-case")`);
 		await first.page.waitFor(HOST);
 		await viewportSettled(first.page);
-		await panel.click(`document.getElementById("annotate")`);
+		await panel.click(`document.getElementById("new-case")`);
 		await reachOverlay(first.page);
 		await first.page.waitFor(`!${shadow(".toolbar")}.hidden`);
 		await markElement(first.page, "[data-truth=tip]", "Slow to come");
@@ -419,10 +419,10 @@ describe.skipIf(browserBinary === undefined)("the store package", () => {
 			`document.getElementById("back").hidden || document.getElementById("back").click()`,
 		);
 		await panel.waitFor(`!document.getElementById("home").hidden`);
-		await panel.waitFor(`document.getElementById("annotate")`);
+		await panel.waitFor(`document.getElementById("new-case")`);
 		await first.page.waitFor(HOST);
 		await viewportSettled(first.page);
-		await panel.click(`document.getElementById("annotate")`);
+		await panel.click(`document.getElementById("new-case")`);
 		await reachOverlay(first.page);
 		await first.page.waitFor(`!${shadow(".toolbar")}.hidden`);
 		await markElement(first.page, "[data-truth=tip]", "Here");

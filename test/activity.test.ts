@@ -35,7 +35,7 @@ describe("PageActivity", () => {
 		expect(a.defer({ kind: "hide" })).toBe(false); // nothing to wait for
 		a.begin("saving");
 		expect(a.defer({ kind: "hide" })).toBe(true);
-		const target = { caseId: "c_1", title: "One", nextAnnotation: 1 };
+		const target = { caseId: "c_1", title: "One", nextMark: 1 };
 		expect(
 			a.defer({ kind: "show", options: { target, blurForms: true } }),
 		).toBe(true);

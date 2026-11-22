@@ -35,7 +35,7 @@ Severity: **high** breaks a stated security or privacy promise or loses data;
 |---|---|---|---|---|---|
 | CR-01 | high | security | `src/lib/inspect.ts:1083`, `:1143`, `:100` | `get_mark_element` hands its `selector` to `closest` and `querySelector` unchecked, so the selector is an oracle for form state, and an `<option>` is returned with its `value`. | A case's mark is found on a page with a filled form. An AI app steered by injected page text calls `get_mark_element` with `html:has(input[name=iban][value^="CH9"])`: a result means yes, "Nothing around the mark's element matches" means no. A few silent, read-only calls per character spell out a prefilled value; `:checked` tells every radio button, checkbox and chosen option; `selector: "option:checked"` returns `<option value="CH">` outright. DEC-013 and PRIVACY.md promise that no field value leaves the page. |
 | CR-02 | medium | mv3 | `src/content/overlay.ts:376`, `:391`; `src/content/index.ts:174` | A content script orphaned by an update or reload is not taken over: its 500 ms tick puts its overlay back after the new instance removed it, and its window listeners stay. | The toolbar is up with the Box tool on; the extension updates. The user clicks the icon: the new instance removes `#overmark-root`, and within 500 ms the orphan appends its own again. Two toolbars; the orphan's full-window capture layer still takes every pointer event wherever the new one has no tool on, so the page cannot be clicked until it is reloaded, and the reload asks "Leave site?" for drafts that can no longer be saved. |
-| CR-03 | medium | security | `src/worker/questions.ts:26`, `:148`; `src/worker/tools.ts:984` | A question shows the first 4,000 characters of the arguments; `set_summary` takes 20,000, `add_finding` and `add_annotation` 5,000. The user allows text they were not shown. | An AI app steered by page text calls `set_summary` with 3,900 harmless characters and then 16,000 of instructions for the developer's coding agent. The panel shows the harmless start and "…"; the user clicks Allow; the developer's AI app reads the whole summary "first", as the tool description tells it to. |
+| CR-03 | medium | security | `src/worker/questions.ts:26`, `:148`; `src/worker/tools.ts:984` | A question shows the first 4,000 characters of the arguments; `set_summary` takes 20,000, `add_finding` and `add_mark` 5,000. The user allows text they were not shown. | An AI app steered by page text calls `set_summary` with 3,900 harmless characters and then 16,000 of instructions for the developer's coding agent. The panel shows the harmless start and "…"; the user clicks Allow; the developer's AI app reads the whole summary "first", as the tool description tells it to. |
 | CR-04 | low | security | `src/content/index.ts:117`; `src/lib/inspect.ts:1143`, `:1065` | The page check (`isPageUrl`) holds only for marks without an element. For a mark with an element, `selector` may name `html` or `body` on whatever tab is in front. | "Allow on all sites" is on, a case is open, the user switches to another site where one mark scores "probable". `get_mark_element` with `selector: "body"` returns the first 16 KB of that page's markup and text, without a question. |
 | CR-05 | low | security | `src/lib/inspect.ts:96`, `:235` | Only `input`, `textarea` and `select` have an attribute allow-list; every other element keeps all attributes but a deny-list. Typed text that a page mirrors into a wrapper's attribute leaves the page. | An auto-growing text area's wrapper `<div data-replicated-value="what was typed">`, an Angular dev build's `ng-reflect-model`, a custom slider's `aria-valuetext`: all are sent in the markup of the element around the field. |
 | CR-06 | low | security | `src/sidepanel/main.ts:217`; `src/worker/tools.ts:463` | `case:load` and `case:update` send the whole case (summary, comments, findings, user agent) into the content script of every tab the open case follows to; the page needs the marks' shapes, element details, numbers and the title. | With "Allow on all sites" and a case open, every site that comes to the front gets the case's texts into its renderer process. DEC-016 moved the settings out of `chrome.storage.local` because of exactly that reader, a compromised renderer in the content script's world. |
@@ -46,18 +46,18 @@ Severity: **high** breaks a stated security or privacy promise or loses data;
 | CR-11 | low | correctness | `src/lib/export.ts:389`; `src/lib/zip.ts:222` | A file of all cases is read with two walks of the whole central directory per case (three with storing): quadratic in the number of entries. | A 20 MB zip of 65,535 folders, each with a tiny valid `case.json`, makes about 8.6 × 10⁹ header parses: the panel says "Importing…" for tens of minutes, with no way to stop but closing it. |
 | CR-12 | low | correctness | `src/lib/store.ts:174` | `IdbStore` keeps one connection for good: no `onclose`, `onversionchange` or `onblocked`. `kv.ts` handles all three. | Chrome closes the cases' database under a worker that a WebSocket keeps alive for hours (site data cleared, a disk error): every tool and every save fails with `InvalidStateError` until the worker happens to restart. |
 | CR-13 | low | correctness | `src/content/review.ts:98`, `:144` | A load that was replaced clears `#loading` although the load that replaced it, of the same case, is still running; an update meanwhile is then overwritten. | The panel's follow and an AI app's `load_case` load the same case at once; the user resolves a mark in that moment. `update` draws the new version, then the second load finishes and sets the old one: the mark shows as open until the next change. |
-| CR-14 | low | correctness | `src/content/index.ts:79`; `src/worker/tools.ts:871` | The temporary mark of `add_annotation` is a fixed window rectangle; between it and the capture (150 ms to settle, up to 600 ms in the queue) nothing checks that the page stood still. The user's own marks have that check (`#shotMoved`). | The user scrolls, or a lazy image above the element loads, in that moment: the screenshot shows the pin and box beside the element, and the crop is of the wrong place. |
+| CR-14 | low | correctness | `src/content/index.ts:79`; `src/worker/tools.ts:871` | The temporary mark of `add_mark` is a fixed window rectangle; between it and the capture (150 ms to settle, up to 600 ms in the queue) nothing checks that the page stood still. The user's own marks have that check (`#shotMoved`). | The user scrolls, or a lazy image above the element loads, in that moment: the screenshot shows the pin and box beside the element, and the crop is of the wrong place. |
 | CR-15 | low | mv3 | `src/sidepanel/ai.ts:246`; `src/background.ts:65`; `src/worker/connection.ts:204` | An open panel reconnects its port 250 ms after each disconnect. A port without messages does not keep the worker alive, so with AI access off the worker stops and starts about every 30 s, and runs its whole start each time. | Panel open, AI access off, 300 cases, a sync folder: every 30 s the worker reads every case (`Sync.run`), reads every image key (`sweepPending`), messages every tab (`tellTabs`) and rewrites "Last synced". |
 
 ### Plausible, not verified
 
 | Id | Area | Where | Suspected defect | What is missing to be sure |
 |---|---|---|---|---|
-| P-01 | correctness | `src/content/annotator.ts:1474`; `src/lib/save.ts:198` | The worker stops after a save's transaction committed and before its answer. Adding to a case: the retry finds the number taken, renumbers and adds the same mark a second time. A new case: the retry fails with "the screenshot … is missing" though the case is saved. | Whether Chrome ever stops a worker with a pending message answer; it should not within 5 minutes. |
+| P-01 | correctness | `src/content/adding.ts:1474`; `src/lib/save.ts:198` | The worker stops after a save's transaction committed and before its answer. Adding to a case: the retry finds the number taken, renumbers and adds the same mark a second time. A new case: the retry fails with "the screenshot … is missing" though the case is saved. | Whether Chrome ever stops a worker with a pending message answer; it should not within 5 minutes. |
 | P-02 | correctness | `src/lib/sync.ts:320`, `:355` | The worker stops between writing a case's file and recording it: the next run finds a file of that name it does not own and writes `name-2.overmark.zip` beside it. | The same question; the window is one IndexedDB write. |
 | P-03 | mv3 | `src/worker/connection.ts:5` | The relay pings every 25 s and Chrome stops an idle worker after 30 s: 5 s of delay ends the connection, and a waiting question with it; the alarm reconnects within a minute. Chrome's own sample pings every 20 s. | Measured ping jitter of the hosted relay. |
 | P-04 | correctness | `src/content/index.ts:297` | `__overmark` is set before `start()`. If `start()` throws (an XML or SVG document, where `attachShadow` on a non-HTML `div` should throw), every later injection is a no-op and the tab says "Could not reach the page" until reloaded. | Whether `attachShadow` throws there; not run. |
-| P-05 | mv3 | `src/content/annotator.ts:271` | Chrome installs an update when the worker is idle, which it is while the user draws. The drafts of every open toolbar are lost, and the toolbar says so only when a button is pressed ("Extension context invalidated"). | When exactly Chrome applies an update to an extension with open content scripts. |
+| P-05 | mv3 | `src/content/adding.ts:271` | Chrome installs an update when the worker is idle, which it is while the user draws. The drafts of every open toolbar are lost, and the toolbar says so only when a button is pressed ("Extension context invalidated"). | When exactly Chrome applies an update to an extension with open content scripts. |
 | P-06 | mv3 | `scripts/build.ts:122` | Edge Add-ons gives the extension another ID than the Chrome Web Store's key does; the relay's allow list (DEC-006) then needs both. Nothing is tested in Edge. | An Edge build was never loaded. |
 
 ## 2. The high and medium findings
@@ -112,7 +112,7 @@ host again whenever its parent is not the expected one (`:391` to `:396`), which
 true the moment it was removed. So the orphan's toolbar, its marks and, if a tool was
 on, its full-window `.capture.active` layer are back within half a second. Its other
 listeners were never removed either: the capturing `keydown` for Escape
-(`src/content/annotator.ts:257`), `beforeunload` (`:271`), `pagehide`, the scroll and
+(`src/content/adding.ts:257`), `beforeunload` (`:271`), `pagehide`, the scroll and
 resize listeners and the reviewer's interval (`src/content/review.ts:121`).
 
 The end-to-end test (`test/e2e/extension.test.ts:73`) plants an inert `<div
@@ -133,7 +133,7 @@ click the icon, and count the hosts after a second.
 `Questions.ask` cuts the arguments' JSON to `MAX_ARGS = 4000` characters
 (`src/worker/questions.ts:148`) and the panel shows that in a `<pre>`
 (`src/sidepanel/ai.ts:671`). The schemas allow more: `set_summary` 20,000
-(`src/worker/tools.ts:984`), `add_finding` 5,000 (`MAX_FINDING`), `add_annotation`'s
+(`src/worker/tools.ts:984`), `add_finding` 5,000 (`MAX_FINDING`), `add_mark`'s
 comment 5,000 (`:965`), `set_mark_status`'s note 20,000 (`:1032`). What follows the
 cut is written unseen, and it is written where the next AI app is told to read first.
 
@@ -171,7 +171,7 @@ Not findings, but the questions the review was asked:
   all it does is read the store again.
 - **What a page can do to the overlay**: remove, hide or cover it (not preventable);
   see that it is there; fire a synthetic Escape, which commits an open comment
-  (`src/content/annotator.ts:257` does not check `isTrusted`); fire `click` or `input`
+  (`src/content/adding.ts:257` does not check `isTrusted`); fire `click` or `input`
   to force new screenshots. It cannot read or drive the toolbar: the shadow root is
   closed in every build but the test build (`src/content/overlay.ts:265`, fixed at
   build time by `define`), `:host { all: initial !important }` beats page CSS, and no
@@ -215,7 +215,7 @@ Not findings, but the questions the review was asked:
 - **"One state" is not one state any more.** DEC-010 and DEC-011 each replaced
   scattered flags by one object. Both have since grown a second, unmanaged state
   beside it:
-  - `src/content/annotator.ts` has `PageActivity` for the page, and about twenty
+  - `src/content/adding.ts` has `PageActivity` for the page, and about twenty
     private fields for the adding queue (`#ops`, `#queued`, `#failed`, `#added`,
     `#undoing`, `#finishing`, `#leftOut`, `#savingCase`, `#saveCalled`, `#saveForm`,
     `#shots`, `#shown`, `#views`, …). That queue is the most race-prone logic in the
@@ -251,7 +251,7 @@ Not findings, but the questions the review was asked:
 |---|---|---|---|---|
 | 1 | **A lifetime for the content script.** One object that owns every listener (one `AbortController`) and timer, with `dispose()`; `start()` disposes a predecessor and the tick disposes an orphan. | Fixes CR-02; makes the content script testable as "start, dispose, nothing left"; a place for P-04's guard. | Half a day to a day. | Low: additive. |
 | 2 | **One typed, checked message contract in `src/lib/`.** Move `worker/protocol.ts` and the shared constants to `lib/`; a map from request type to answer type, so `sendToTab` and `ask` infer the answer; a parser for `WorkerRequest` like `parseCommand`; the trimmed case for the page (CR-06) defined here. | Fixes CR-06 and CR-07, removes the worker-to-panel import, turns "the comment says it answers `LoadResult`" into a compile error. | One to two days. | Low: types and parsers; the wire format stays. |
-| 3 | **Take the adding queue out of `annotator.ts`.** A class without DOM (`AddQueue`: queued, failed, added, undoing, finishing; `ask` and "take a screenshot" passed in), as `PageActivity` was taken out. | About 350 lines of the hardest logic get unit tests with a fake worker: number taken, case switched, Undo during an add, Done with failures. Today each of those needs a browser. | Two to three days. | Medium: it moves code that reviews have already found races in. Do it with the tests written first against the current behaviour. |
+| 3 | **Take the adding queue out of `adding.ts`.** A class without DOM (`AddQueue`: queued, failed, added, undoing, finishing; `ask` and "take a screenshot" passed in), as `PageActivity` was taken out. | About 350 lines of the hardest logic get unit tests with a fake worker: number taken, case switched, Undo during an add, Done with failures. Today each of those needs a browser. | Two to three days. | Medium: it moves code that reviews have already found races in. Do it with the tests written first against the current behaviour. |
 | 4 | **Put the follow state into one object.** `Follower` in `follow.ts` holding `drawn`, `drawing`, `loadTarget`, `pendingLoad`, `hiddenOn`, `followed` and its `Latest`s, with the tab calls passed in. | The interleavings PR 42's review found become unit tests; `main.ts` loses about 250 lines and its module state. | One to two days. | Medium, and badly timed: this code settled two days ago. Wait until the next change to it. |
 | 5 | **One IndexedDB helper.** `openDb(name, version, upgrade)` with `onclose`, `onversionchange` and `onblocked`, used by `IdbStore` and `kv.ts`; `upgrade` written by `oldVersion`, ready for a version 2. | Fixes CR-12 and removes the copy; a schema change later will not be the first time this is thought about. | Half a day. | Low. |
 
@@ -270,7 +270,7 @@ Not worth doing:
 
 ### What the tests miss
 
-- `src/content/annotator.ts`, `src/sidepanel/main.ts`, `src/background.ts` and
+- `src/content/adding.ts`, `src/sidepanel/main.ts`, `src/background.ts` and
   `src/worker/connection.ts` have no unit tests at all; they are reached only through
   the end-to-end tests, which need a browser and are skipped without one locally.
 - A real orphaned content script (CR-02), and an update while a toolbar is up (P-05).

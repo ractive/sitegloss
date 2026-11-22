@@ -45,7 +45,7 @@ let redraw: (() => void) | undefined;
 export function commentMeta(c: Case, k: CaseComment): string {
 	const who = byline(k.user, k.app) ?? "You";
 	const mark = k.mark
-		? c.annotations.find((a) => a.id === k.mark)?.number
+		? c.marks.find((a) => a.id === k.mark)?.number
 		: undefined;
 	const about =
 		mark !== undefined
@@ -65,7 +65,7 @@ function keyOf(c: Case, context: ThreadContext): string {
 	return JSON.stringify([
 		c.id,
 		c.comments ?? [],
-		c.annotations.map((a) => [a.id, a.number]),
+		c.marks.map((a) => [a.id, a.number]),
 		context,
 		editing?.caseId === c.id ? editing.id : null,
 		armed?.caseId === c.id ? armed.id : null,
@@ -281,7 +281,7 @@ function form(c: Case, actions: ThreadActions): HTMLElement {
 			},
 		},
 		h("option", { value: "" }, "The case"),
-		...[...c.annotations]
+		...[...c.marks]
 			.sort((a, b) => a.number - b.number)
 			.map((a) =>
 				h(

@@ -12,16 +12,17 @@
 
 import { PANEL } from "./browser.ts";
 import {
-	type Annotation,
 	CASE_FORMAT,
 	type Case,
 	type CasePage,
 	casePages,
 	cropImage,
 	type FindingApp,
-	MAX_ANNOTATIONS,
+	MAX_MARKS,
 	MAX_PAGES,
 	MAX_SHOTS,
+	type Mark,
+	markIdOf,
 	nextNumbers,
 	type PageInfo,
 	pageKey,
@@ -38,8 +39,8 @@ import type { RenderedMark } from "./marks.ts";
 import { queryOf } from "./query.ts";
 import type { CaseStore, StoredImage } from "./store.ts";
 
-/** An annotation as the content script sends it: with the crop's rectangle. */
-export type AnnotationDraft = Omit<Annotation, "crop"> & { cropRect: Rect };
+/** A mark as the content script sends it: with the crop's rectangle. */
+export type MarkDraft = Omit<Mark, "crop"> & { cropRect: Rect };
 
 export interface SaveRequest {
 	caseId: string;
@@ -52,7 +53,7 @@ export interface SaveRequest {
 	 * `pendingImage(id)`. The saved case gives them their final ids.
 	 */
 	shots: Shot[];
-	annotations: AnnotationDraft[];
+	marks: MarkDraft[];
 	/** The id the pending screenshots are stored under, when not `caseId`. */
 	imagesFrom?: string;
 	/**
@@ -87,7 +88,7 @@ export const MAX_NUMBER_GAP = 100;
 
 /**
  * A save the content script sent (`case:save`): its marks are the user's,
- * whatever the draft says. Only an AI app's `add_annotation`, in the worker,
+ * whatever the draft says. Only an AI app's `add_mark`, in the worker,
  * stores a mark of an AI app (CR-07). A page adds to a case and makes none:
  * the side panel creates every case (DEC-026).
  */
@@ -99,7 +100,7 @@ export function fromPage(request: SaveRequest): SaveRequest {
 	return {
 		...request,
 		fromPage: true,
-		annotations: request.annotations.map((a) => ({ ...a, author: "user" })),
+		marks: request.marks.map((a) => ({ ...a, author: "user" })),
 	};
 }
 
@@ -149,14 +150,14 @@ export async function saveCase(
 		const c = await store.getCase(request.caseId);
 		if (c !== undefined) checkRoom(c, request);
 	}
-	const lowest = Math.min(...request.annotations.map((a) => a.number));
+	const lowest = Math.min(...request.marks.map((a) => a.number));
 	const screenshots = new Map<string, StoredImage>();
-	const crops = new Map<AnnotationDraft, StoredImage>();
+	const crops = new Map<MarkDraft, StoredImage>();
 	for (const shot of request.shots) {
 		const stored = await store.getImage(from, pendingImage(shot.id));
 		if (stored === undefined)
 			throw new SaveError(`the screenshot ${shot.id} is missing`);
-		const drafts = request.annotations.filter((a) => a.shot === shot.id);
+		const drafts = request.marks.filter((a) => a.shot === shot.id);
 		const others = (request.alsoDrawn ?? [])
 			.slice(0, MAX_ALSO_DRAWN)
 			.filter((m) => m.shot === shot.id && m.number < lowest);
@@ -174,7 +175,7 @@ export async function saveCase(
 			if (c !== undefined) crops.set(d, c);
 		});
 	}
-	for (const draft of request.annotations) {
+	for (const draft of request.marks) {
 		if (!crops.has(draft))
 			throw new SaveError(`mark ${draft.number} names no new screenshot`);
 	}
@@ -229,11 +230,11 @@ export async function saveCase(
 					height: image.height,
 				});
 		}
-		const taken = new Set(current?.annotations.map((a) => a.number));
-		const annotations: Annotation[] = [...(current?.annotations ?? [])];
-		const next = nextNumbers(current).annotation;
-		const highest = next + request.annotations.length - 1 + MAX_NUMBER_GAP;
-		for (const draft of request.annotations) {
+		const taken = new Set(current?.marks.map((a) => a.number));
+		const marks: Mark[] = [...(current?.marks ?? [])];
+		const next = nextNumbers(current).mark;
+		const highest = next + request.marks.length - 1 + MAX_NUMBER_GAP;
+		for (const draft of request.marks) {
 			if (request.fromPage && draft.number > highest)
 				throw new SaveError(
 					`mark ${draft.number} is far above the case's next number, ${next}: a mark from the page is numbered on from it.`,
@@ -244,10 +245,10 @@ export async function saveCase(
 					`mark ${draft.number} exists in the case already: the case changed meanwhile. Adding it again gives it the next free number.`,
 				);
 			taken.add(draft.number);
-			const id = `a${draft.number}`;
+			const id = markIdOf(draft.number);
 			// A new mark's fields, and nothing else of the draft: it is open and
 			// has no findings, whatever the sender put in (CR-07).
-			annotations.push({
+			marks.push({
 				id,
 				number: draft.number,
 				shot: finalIds.get(draft.shot) ?? draft.shot,
@@ -264,7 +265,7 @@ export async function saveCase(
 		}
 		// In the order of their numbers, whatever order they went in: a mark
 		// added again with "Add mark N" can come after a later one (DEC-014).
-		annotations.sort((a, b) => a.number - b.number);
+		marks.sort((a, b) => a.number - b.number);
 		// The list is the pages the screenshots are of (`withPagesOfShots`): a
 		// page that kept no mark (the first page of a case from before the
 		// list stays when its last mark goes) is not written into it now.
@@ -281,7 +282,7 @@ export async function saveCase(
 						? pages
 						: [{ url: here.url, title: here.title, lang: here.lang }],
 				shots,
-				annotations,
+				marks,
 				verdict: current?.verdict ?? null,
 				link: current?.link,
 				importedAt: current?.importedAt,
@@ -302,7 +303,7 @@ export async function saveCase(
 					: {
 							lastNumber: Math.max(
 								current.lastNumber,
-								...annotations.map((a) => a.number),
+								...marks.map((a) => a.number),
 							),
 						}),
 			}),
@@ -329,9 +330,8 @@ export async function numberFree(
 	if (c === undefined) throw new SaveError("The case no longer exists.");
 	return {
 		free:
-			number > (c.lastNumber ?? 0) &&
-			!c.annotations.some((a) => a.number === number),
-		next: nextNumbers(c).annotation,
+			number > (c.lastNumber ?? 0) && !c.marks.some((a) => a.number === number),
+		next: nextNumbers(c).mark,
 	};
 }
 
@@ -358,7 +358,7 @@ export interface AddedAs {
 export async function undoAdd(
 	store: CaseStore,
 	caseId: string,
-	annotationId: string,
+	markId: string,
 	added: AddedAs,
 	now: Date = new Date(),
 ): Promise<{ removed: boolean; next: number }> {
@@ -366,7 +366,7 @@ export async function undoAdd(
 	const saved = await store.updateCase(caseId, (current) => {
 		if (current === undefined)
 			throw new SaveError("The case no longer exists.");
-		const gone = current.annotations.find((a) => a.id === annotationId);
+		const gone = current.marks.find((a) => a.id === markId);
 		if (gone === undefined) return { value: current };
 		const refuse = (why: string) =>
 			new SaveError(
@@ -376,10 +376,10 @@ export async function undoAdd(
 			throw refuse("was resolved since");
 		if (gone.comment !== added.comment || gone.author !== "user")
 			throw refuse("was edited since");
-		if (current.annotations.some((a) => a.number > gone.number))
+		if (current.marks.some((a) => a.number > gone.number))
 			throw refuse("has marks after it");
 		const shot = current.shots.find((s) => s.id === gone.shot);
-		const shared = current.annotations.some(
+		const shared = current.marks.some(
 			(a) => a !== gone && a.shot === gone.shot,
 		);
 		const age = now.getTime() - Date.parse(shot?.capturedAt ?? "");
@@ -391,27 +391,27 @@ export async function undoAdd(
 		)
 			throw refuse("cannot be undone here");
 		removed = true;
-		const annotations = current.annotations.filter((a) => a !== gone);
+		const marks = current.marks.filter((a) => a !== gone);
 		// The page of the screenshot that goes leaves the case with it, when
 		// it was its only one (DEC-038).
 		const value = validateCase(
 			withPagesOfShots({
 				...current,
-				annotations,
+				marks,
 				shots: current.shots.filter((s) => s !== shot),
 				// A mark was stored, so the case is the user's (DEC-026, review of
 				// PR 57): `lastNumber` says so, set below the freed number so that
 				// the number is free again. A case with no mark left gets 0.
 				lastNumber: Math.max(
 					current.lastNumber ?? 0,
-					...annotations.map((a) => a.number),
+					...marks.map((a) => a.number),
 				),
 				updatedAt: now.toISOString(),
 			}),
 		);
 		return { value, deleteImages: [gone.crop, shot.image] };
 	});
-	return { removed, next: nextNumbers(saved).annotation };
+	return { removed, next: nextNumbers(saved).mark };
 }
 
 /** The case can take the request's marks and screenshots, or says why not. */
@@ -419,8 +419,8 @@ function checkRoom(c: Case, request: SaveRequest): void {
 	const full =
 		c.shots.length + request.shots.length > MAX_SHOTS
 			? `${MAX_SHOTS} screenshots`
-			: c.annotations.length + request.annotations.length > MAX_ANNOTATIONS
-				? `${MAX_ANNOTATIONS} marks`
+			: c.marks.length + request.marks.length > MAX_MARKS
+				? `${MAX_MARKS} marks`
 				: undefined;
 	if (full !== undefined)
 		throw new SaveError(

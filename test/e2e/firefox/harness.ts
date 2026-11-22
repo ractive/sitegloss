@@ -16,6 +16,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build, FIREFOX_ID } from "../../../scripts/build.ts";
+import { DB_VERSION } from "../../../src/lib/store.ts";
 import { FfRdp, findFfRdp, findFirefox, freePort, takeLock } from "./ffrdp.ts";
 
 export const ffRdpBinary = findFfRdp();
@@ -193,7 +194,7 @@ export async function startFirefox(
 export interface StoredCase {
 	id: string;
 	title: string;
-	annotations: {
+	marks: {
 		number: number;
 		comment: string;
 		shot: string;
@@ -220,7 +221,7 @@ export function readCase(
 	return h.rdp.eval<StoredCase>(
 		h.panel,
 		`new Promise((resolve, reject) => {
-			const open = indexedDB.open("sitegloss", 1);
+			const open = indexedDB.open("sitegloss", ${DB_VERSION});
 			open.onerror = () => reject(open.error);
 			open.onsuccess = () => {
 				const db = open.result;
@@ -358,7 +359,7 @@ export async function toHome(h: FirefoxHarness): Promise<void> {
 				const visible = (b) => b.offsetParent !== null;
 				const back = [...document.querySelectorAll("button")].find((b) => visible(b) && b.textContent.trim() === "All cases");
 				if (back) { back.click(); return false; }
-				return visible(document.getElementById("annotate"));
+				return visible(document.getElementById("new-case"));
 			})()`,
 		"the panel's Home",
 	);
@@ -367,7 +368,7 @@ export async function toHome(h: FirefoxHarness): Promise<void> {
 /** A new case for the page in front, from the panel's Home, with the toolbar on the page. */
 export async function newCase(h: FirefoxHarness): Promise<void> {
 	await toHome(h);
-	await h.rdp.eval(h.panel, "document.getElementById('annotate').click()");
+	await h.rdp.eval(h.panel, "document.getElementById('new-case').click()");
 	await h.rdp.waitFor(
 		h.page,
 		`document.getElementById("sitegloss-root")?.shadowRoot?.querySelector('[data-action="tool-box"]') !== null && document.getElementById("sitegloss-root") !== null`,

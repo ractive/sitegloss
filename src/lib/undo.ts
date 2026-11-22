@@ -10,7 +10,7 @@
 /** A mark one add stored, and the page that added it. */
 export interface AddedMark {
 	caseId: string;
-	annotationId: string;
+	markId: string;
 	/** Its screenshot's id in the case, and its comment, as the add stored them. */
 	shot: string;
 	comment: string;
@@ -62,7 +62,7 @@ export class AddLedger {
 	/** The mark if this tab and document added it. */
 	find(
 		caseId: string,
-		annotationId: string,
+		markId: string,
 		tabId: number | undefined,
 		documentId: string | undefined,
 	): Promise<AddedMark | undefined> {
@@ -70,7 +70,7 @@ export class AddLedger {
 			result: marks.find(
 				(m) =>
 					m.caseId === caseId &&
-					m.annotationId === annotationId &&
+					m.markId === markId &&
 					tabId !== undefined &&
 					documentId !== undefined &&
 					m.tabId === tabId &&
@@ -89,4 +89,4 @@ export class AddLedger {
 }
 
 const same = (a: AddedMark, b: AddedMark) =>
-	a.caseId === b.caseId && a.annotationId === b.annotationId;
+	a.caseId === b.caseId && a.markId === b.markId;

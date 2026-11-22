@@ -16,6 +16,8 @@ import {
 } from "../src/lib/cloud/auth.ts";
 import {
 	type Account,
+	CASES,
+	CASES_KEY,
 	type CaseBook,
 	type CloudStatus,
 	KEYS,
@@ -277,7 +279,7 @@ describe("syncing from the worker", () => {
 		const other = device("dana", server.api({ id: "u_dana", name: "Dana" }));
 		await other.engine.signedIn(SERVER, await other.api.me());
 		await change(other, "c_1", (c, at) =>
-			withComment(c, "a1", "Dana's words", at),
+			withComment(c, "m1", "Dana's words", at),
 		);
 		await other.engine.request();
 		const seen = data.get(KEYS.cursor) as number;
@@ -290,7 +292,7 @@ describe("syncing from the worker", () => {
 		await cloud.handle({ type: "cloud:run", cursor: seen + 1 });
 		await Bun.sleep(400);
 		await settled();
-		expect((await store.getCase("c_1"))?.annotations[0]?.comment).toBe(
+		expect((await store.getCase("c_1"))?.marks[0]?.comment).toBe(
 			"Dana's words",
 		);
 		// The panels and the folder sync are told of the case.
@@ -382,6 +384,46 @@ describe("syncing from the worker", () => {
 		await signIn();
 		expect(status()?.state).toBe("synced");
 		expect(server.marksOf("c_1")).toHaveLength(1);
+	});
+});
+
+describe("the update to the store's version 2 (DEC-051)", () => {
+	test("while the case store is not at version 2, nothing is forgotten and nothing is sent; then the books of before go in one step and nothing but reads follows", async () => {
+		await signIn();
+		const d = here();
+		await startCase(d, "c_1");
+		await addMark(d, "c_1", "One");
+		await settled();
+		expect(server.marksOf("c_1")).toHaveLength(1);
+		// As a build before this one left it: its book, no marker, and the
+		// store still at version 1 (another context of it holds it open).
+		kv.data.delete(CASES_KEY);
+		let version = 1;
+		store.version = async () => version;
+		await change(d, "c_1", (c, at) => withComment(c, "m1", "Not to go", at));
+		http.state.requests.length = 0;
+		cloud = worker();
+		cloud.request();
+		await Bun.sleep(400);
+		await settled();
+		expect(http.state.requests).toEqual([]);
+		expect(data.has("case:c_1")).toBe(true);
+		expect(kv.data.has(CASES_KEY)).toBe(false);
+		// The store opened at version 2: its upgrade emptied it.
+		version = 2;
+		store.cases.clear();
+		store.images.clear();
+		cloud.request();
+		await Bun.sleep(400);
+		await settled();
+		expect(kv.data.get(CASES_KEY)).toBe(CASES);
+		expect(http.state.requests.filter((r) => !r.startsWith("GET "))).toEqual(
+			[],
+		);
+		// The team's case is back, as the team has it.
+		expect((await store.getCase("c_1"))?.marks.map((a) => a.comment)).toEqual([
+			"One",
+		]);
 	});
 });
 
@@ -642,7 +684,7 @@ describe("each server is kept apart (DEC-041)", () => {
 		expect(modes()).toEqual({ c_prod: "local" });
 		expect(dev.marksOf("c_prod").map((m) => m.comment)).toEqual(["bait"]);
 		expect(
-			(await store.getCase("c_prod"))?.annotations.map((a) => a.comment),
+			(await store.getCase("c_prod"))?.marks.map((a) => a.comment),
 		).toEqual(["For the real team"]);
 		// A note, and no problem: the user chose where the case is.
 		expect(status()?.notes).toEqual([
@@ -663,7 +705,7 @@ describe("each server is kept apart (DEC-041)", () => {
 		expect([...server.cases.keys()]).toEqual(["c_prod"]);
 		// A change to the service's case here stays here.
 		await change(here(), "c_prod", (c, at) =>
-			withComment(c, c.annotations[0]?.id ?? "", "Changed while on dev", at),
+			withComment(c, c.marks[0]?.id ?? "", "Changed while on dev", at),
 		);
 		await settled();
 		expect(dev.marksOf("c_prod").map((m) => m.comment)).toEqual(["bait"]);
@@ -746,7 +788,7 @@ describe("each server is kept apart (DEC-041)", () => {
 		await signIn();
 		expect(server.cases.get("c_gone")?.deleted).toBe(false);
 		// It is the team's, so it is here again.
-		expect((await store.getCase("c_gone"))?.annotations).toHaveLength(1);
+		expect((await store.getCase("c_gone"))?.marks).toHaveLength(1);
 	});
 });
 
@@ -782,9 +824,7 @@ describe("a case kept on this device stays there, whoever names its id (review B
 		expect(modes()).toEqual({ c_private: "local" });
 		expect(comments(server, "c_private")).toEqual(["bait"]);
 		const kept = await store.getCase("c_private");
-		expect(kept?.annotations.map((a) => a.comment)).toEqual([
-			"Not for the team",
-		]);
+		expect(kept?.marks.map((a) => a.comment)).toEqual(["Not for the team"]);
 		expect(status()?.state).toBe("synced");
 		expect(status()?.problems).toEqual([]);
 		expect(status()?.notes?.map((p) => p.text)).toEqual([
@@ -806,9 +846,7 @@ describe("a case kept on this device stays there, whoever names its id (review B
 		expect(modes()).toEqual({ c_private: "synced" });
 		expect(comments(server, "c_private")).toEqual(["Not for the team", "bait"]);
 		expect(
-			(await store.getCase("c_private"))?.annotations
-				.map((a) => a.comment)
-				.sort(),
+			(await store.getCase("c_private"))?.marks.map((a) => a.comment).sort(),
 		).toEqual(["Not for the team", "bait"]);
 		expect(status()?.problems).toEqual([]);
 		expect(status()?.state).toBe("synced");
@@ -831,7 +869,7 @@ describe("a case kept on this device stays there, whoever names its id (review B
 		expect(modes()).toEqual({ c_same: "undecided" });
 		expect(comments(server, "c_same")).toEqual(["bait"]);
 		expect(
-			(await store.getCase("c_same"))?.annotations.map((a) => a.comment),
+			(await store.getCase("c_same"))?.marks.map((a) => a.comment),
 		).toEqual(["Mine, undecided"]);
 		expect(await cloud.handle({ type: "cloud:decide", share: true })).toEqual({
 			ok: true,

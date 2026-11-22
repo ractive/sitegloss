@@ -13,7 +13,7 @@ timestamp: 2026-11-04T17:00:00+01:00
 
 Owner, 2026-11-04, in the planning conversation:
 
-- A Chrome extension for annotating any page (elements, boxes, arrows, freehand,
+- A Chrome extension for marking any page (elements, boxes, arrows, freehand,
   comments), saving named cases, loading a case onto another build of the page, and
   talking it through with an AI app over tab-mcp. Forwarding cases to a team is handled
   elsewhere.
@@ -25,11 +25,11 @@ Owner, 2026-11-04, in the planning conversation:
 - Before/after evidence per check, a backend with share links, and links to Jira and
   GitHub are follow-ups.
 
-## DEC-002: The annotated screenshot is the record; matching is best effort
+## DEC-002: The screenshot with its marks is the record; matching is best effort
 
 Finding an element again across builds cannot be made reliable (generated classes and
 ids, different content, layouts, and the fix itself). A case therefore centres on
-annotated screenshots plus a crop per annotation; element details are hints and the
+screenshots with their marks plus a crop per mark; element details are hints and the
 input of a similarity score (after Similo). The case format is Overmark's own
 (`overmark/1`); the CSS selector is named after the W3C `CssSelector`, and a full W3C
 Web Annotation export waits for a consumer that needs it.
@@ -74,7 +74,7 @@ that to packages for such things. The only runtime dependency is
 The PR #4 review found that `alwaysAllow: true` let one click on "Always allow" wave
 through every later `delete_case` of that AI app, for example one steered by
 instructions hidden in page text. tab-mcp-client 0.10.0 offers "Always allow" for every
-consequential tool of a `TabMcp` or for none, so Overmark turns it off: `add_annotation`,
+consequential tool of a `TabMcp` or for none, so Overmark turns it off: `add_mark`,
 `set_verdict` and `delete_case` ask in the side panel each time. The question names the
 case and the page (an `onConfirm` that adds them to the description, then hands over to
 `confirmInPage`). A per-tool "Always allow" would need a client release that offers it.
@@ -169,7 +169,7 @@ into fields and editors, `[value]`, `[checked]`, `[selected]`, `aria-value*`, `h
 `src` and other `data-*` than a test id, pseudo-elements, namespaces and comments. The
 selector is read as CSS tokenizes it (escapes decoded, any case). A match inside a
 select, a text area or an editor counts as none, and an `option` keeps neither `value`
-nor `selected`. The same rules hold for `add_annotation`'s selector.
+nor `selected`. The same rules hold for `add_mark`'s selector.
 
 The answer follows the same line (the review of PR 45): a page's own style rule whose
 selector says a state (`:checked`, `:hover`, `:has()`, `:empty`, `[checked]`, …) is
@@ -551,7 +551,7 @@ button exports every case at once; the panel's buttons say in a tooltip what the
   150 MB). Otherwise each `<folder>/case.json` is a case, read and checked with the same
   rules as a single case; one bad case, or a case id twice, refuses the whole file with
   a message naming the folder (`In login-button-contrast/: The export lacks
-  crops/a1.webp.`), and nothing is stored. The file may be at most 256 MB, and what it
+  crops/m1.webp.`), and nothing is stored. The file may be at most 256 MB, and what it
   unpacks to is counted for the whole file, not per case: the sizes its cases' entries
   declare are added up before anything is unpacked (an entry never unpacks to more than
   it declares), and what each case did unpack to is added up as it is read; past 256 MB
@@ -761,7 +761,7 @@ there.
 ## DEC-023: A toolbar belongs to the open case or to a new one; All cases closes the case; Verify (owner)
 
 The owner, 2026-11-12: "The goal is to have a tested, user friendly experience to
-annotate a page and then fixing it", checked from three roles: the tester who annotates
+annotate a page and then fixing it", checked from three roles: the tester who marks
 and hands the case over, the developer who fixes on their build, and the tester again
 who verifies each fix. On the flow: "I'd expect that you open a case, you can annotate
 and add marks, stop annotating etc. When you go back to '← All cases', the current case
@@ -802,13 +802,13 @@ fixed, to verify / verified. The details are the
   the others; Hide still hides while adding. A mark's head answers the pointer as one block (a wash), not with an
   underline, which made each line of a comment look like a link of its own.
 - **A Settings view** holds the AI app card and the options. The AI pill opens it and
-  keeps the case open: it closed the case before, which would now also end annotating
+  keeps the case open: it closed the case before, which would now also end marking
   and clear the page.
 - **Verify is stored as additions, never as a new `resolution.kind`.** An older build
   refuses a file with a kind it does not know, and drops fields it does not know. A
   mark's status is derived: open (no `resolution`), fixed and to verify (`kind: fixed`),
   verified (`kind: fixed` with `resolution.verified { at, app? }`), won't fix, can't
-  reproduce. A reopen moves the whole resolution it ends into `annotation.reopens[]`
+  reproduce. A reopen moves the whole resolution it ends into `mark.reopens[]`
   (`note?`, `at`, `app?`, `was`; at most 20, a note at most 2,000 characters), so the
   claimed fix and its note survive. Older cases need no migration: their fixed marks
   are to verify, which is true. A file of this build read by an older one loses
@@ -1042,7 +1042,7 @@ wouldn't have drafts — which is ok I think."
   switch leaves the toolbar on its tab and the marks follow (DEC-022). The panel draws
   a case on the page once it has a mark: an empty one has nothing to show ("0 of 0
   marks found" is not said). `list_cases` and `get_case` show an empty case with zero
-  marks; `add_annotation` adds to a case as before.
+  marks; `add_mark` adds to a case as before.
 - **The owner, 2026-11-14: the button is "New case for this page".** "Annotate this
   page" named what one does next and hid what the click does: it always creates a case,
   also on a page that has one in the list, where it read as "continue". The entries
@@ -1115,7 +1115,7 @@ when creating a mark?"
   and nothing once the case is closed or drawn on another tab. The owner asked for the
   page to change marks; a stricter variant (the page only picks, every change is made in
   the panel) is one line away and is listed in the open questions.
-- The annotator's own faint copies of marks it saved (shown only after a Hide while
+- The mark adder's own faint copies of marks it saved (shown only after a Hide while
   adding) are not clickable: "Add marks" now draws the case's marks (DEC-023).
 - **The owner, the same day: "Would be cool to have the available commands also in the
   overlay of a mark … 'Reopen…', 'Change…', 'Resolve…' etc."** The popover has the
@@ -1416,7 +1416,7 @@ change.
 - **Nothing is migrated.** A case stored before has no `pages`; `casePages` reads its
   pages from `page` and its screenshots' addresses. It gets the list with its next mark.
 - **Every screenshot says which page it is of.** The two that did not are fixed: an AI
-  app's `add_annotation` (the page in front), and an import, which now cuts the query off
+  app's `add_mark` (the page in front), and an import, which now cuts the query off
   the screenshots' and the pages' addresses as it did for `page.url`.
 - **A mark on another page adds that page to the open case.** The toolbar adds to the
   open case on whatever page the tab shows (it always did; a navigation ends the toolbar,
@@ -1552,7 +1552,8 @@ handled elsewhere") and DEC-007's spirit holds: no new runtime dependency.
    Firefox, wrapped in `browser.ts`). The API's types are generated (DEC-040).
    "Version 1 only grows; ignore what you do not know" holds: an unknown field, error
    code or kind of removed thing never fails anything.
-3. **Identity of things.** Ids here stay as they are (`a<number>`, `s<n>`): they say
+3. **Identity of things.** Ids here stay as they are (`m<number>`, `a<number>` before
+   DEC-051, and `s<n>`): they say
    where a thing is on this device. At the server a mark and a screenshot have ids of
    their own (`m_…`, `sh_…`), made once on the device that makes them. Which is which is
    in the sync's own bookkeeping, a new database `sitegloss-cloud` beside `sitegloss-sync`:
@@ -1974,7 +1975,7 @@ Both addresses of the second are known, in one module with the first
   first, so the same marks become one, and sends what the team lacks. A case without a
   book here (made or imported since the sign-in) is the team's as before.
 - **A mark keeps its identity at one server when another renumbers it.** Marks are
-  `a<number>` here, and a server's numbers count while with that server; the other
+  `m<number>` here (`a<number>` before DEC-051), and a server's numbers count while with that server; the other
   servers' books are not told. A book entry whose mark here has another drawing than
   the server's mark is therefore dropped, and the server's mark finds its own again by
   its drawing (`relink`), instead of being deleted and made anew.
@@ -2526,7 +2527,7 @@ siblings", to find the cause of a contrast or alignment issue without building t
   quoted path or query, also behind CSS comments and escapes) — the server drops such a
   value too, as a backstop.
 - **When.** Once per mark, when it is made: the toolbar's marks (`#add` in the
-  annotator) and an AI app's `add_annotation` (`look.ts`'s `withLook`). Never while a
+  mark adder) and an AI app's `add_mark` (`look.ts`'s `withLook`). Never while a
   page's marks are found again: `describeElement`, which the candidates' scan calls
   thousands of times within its time budget, records none of it (tested).
 - **Matching and the fingerprint take no part.** Matching compares the fields it names;
@@ -2734,7 +2735,7 @@ that is kept").
   linear JWT test after its review (its d63a0af); the vectors changed with them, and
   this follows them.
   - **Where a screenshot is made it records `query` beside the plain `url`**: the
-    toolbar's marks and `add_annotation` both through `saveCase`, which takes it from the
+    toolbar's marks and `add_mark` both through `saveCase`, which takes it from the
     address the screenshot was taken on and never from a `query` the sender put on it;
     an import keeps a file's `query` and, for a file whose addresses still have a query
     (from elsewhere), what `keptQuery` keeps of it. `plainUrl` and what it returns do not
@@ -2787,7 +2788,7 @@ that is kept").
   case of several pages (it replaces "On <page>").
 - **AI apps.** `get_case` (each screenshot and mark), `load_case`, `highlight` and
   `get_mark_element` give `address` (the page with its query) beside `page` where the
-  screenshot had a query; `add_annotation` says the address with its kept query. New
+  screenshot had a query; `add_mark` says the address with its kept query. New
   tool **`open_case`**: asks the side panel of the tab's window to open the case, and the
   panel does exactly what a person's clicks do: "← All cases" on the case it shows
   (`leaveCase`: its toolbars end, an untouched new case goes, DEC-026), a click on the
@@ -2829,3 +2830,108 @@ that is kept").
   another host's home page, both links; `test/e2e/open-case.test.ts`: refused with a
   comment half typed, which stays, then the clean switch) and in Firefox (the event
   page's address). The fake server keeps the query as the server does.
+
+## DEC-051: The thing a person adds is a mark, in the code too; the case format is `sitegloss/2`; the update starts with no case (owner)
+
+2026-11-21/22. The owner: the domain word is **mark**, everywhere in the code and its
+language. "No need to support backwards compatibility", and "in descriptions and on the
+webpage you can mention it, but in the domain language of the code, use mark all over."
+Then, 2026-11-22: a mark's id no longer keeps the letter of the old word, and "You can
+also wipe the cases and marks db. No one besides me is using it right now." Every text a
+person sees, the server, its API and its database said "mark" already; the extension's
+inside said "annotation", from before the product was called Sitegloss. The server's
+side of it is its DEC-024.
+
+- **The update wipes the cases in the browser.** A case that was only in this browser,
+  never synced with a team, is gone with it; the owner knows and accepts that. Its file
+  in the folder or Downloads mirror stays (below), but this version cannot open it.
+- **Renamed by meaning, not by a blind replace**: the type `Annotation` is `Mark`
+  (`AnnotationMatch` `MarkMatch`, `AnnotationDraft` `MarkDraft`, `AnnotateTarget`
+  `MarkTarget`, `MAX_ANNOTATIONS` `MAX_MARKS`, `withoutAnnotation` `withoutMark`), a
+  case's `annotations` are its `marks`, `annotationId` is `markId` in every message,
+  `nextAnnotation` is `nextMark`. The content script's toolbar, `annotator.ts` with its
+  `Annotator`, is `adding.ts` with its `MarkAdder`; the overlay's `annotating` is
+  `addingMarks`. The panel's "New case for this page" button is `#new-case` (its action
+  `startNewCase`), a mark in the panel's list is `.mark` with `data-mark`. Names that
+  already said mark and meant something else kept their meaning: where both met, the
+  other one moved (the book's wire ids in `renumber`, a mark found by number in two
+  tools).
+- **The case format is `sitegloss/2`**: the list of marks is `marks`, and a mark's id is
+  `m<number>` (`m1`, `m2`…; it was `a<number>`), made in one place (`markIdOf`): its crop
+  is `crops/m<number>.webp`, and comments and the sync's books name it by that id.
+  Screenshot and case ids keep their forms. This build reads and writes only
+  `sitegloss/2`. A case file of `sitegloss/1` is refused in one sentence, by its
+  format: "This case file is in the old format sitegloss/1; this version of Sitegloss
+  reads sitegloss/2 only." Nothing converts it on import. So a file written before this
+  version (an export someone kept, a mirror file, a download from a sitegloss.dev
+  without its DEC-024) no longer opens in this version; Sitegloss 0.3.1 and older still
+  open it, and refuse a `sitegloss/2` file in turn.
+- **Stored cases are not converted: the store's upgrade empties it** (database version
+  2, `store.ts`): the cases, their images, the delete records and the screenshots of
+  saves that never finished go, in IndexedDB's upgrade transaction, before any
+  connection opens. A failed upgrade aborts and leaves the database as it was, at
+  version 1; the error says what failed by its name only, once in the console, and for
+  ten seconds every call (the panel's list, the folder sync, the cloud sync) gets the
+  same error without opening again. A build before this one cannot open version 2. The
+  cloud's database forgets what it kept about cases (`forgetCases` in `cloud/book.ts`):
+  every server's books, how far the team's changes were read, what waited to be sent,
+  the whole-read and status notes, and the deletes an expired sign-in recorded. It
+  keeps the server chosen, the account and its team, and the tokens; settings and the
+  AI connection are in other databases and stay. Undo (the ledger in `storage.session`)
+  and the drafts on open pages end with the update anyway. So the first run has no
+  case, no book, no cursor and no delete on record: it sends nothing and reads the
+  team's whole state, and every case of the team comes back with `m` ids.
+- **The forgetting happens once, in one place, in one step, and only after the case
+  store is open at version 2.** Only the service worker forgets (`casesReady` in
+  `worker/cloud.ts`): it opens the case store first, and only when that answers version
+  2 does it run `forgetCases`, whose look at the marker (`cases`), removals and marker
+  are one readwrite transaction (`Kv.update`); a second call finds the marker and
+  removes nothing, so nothing written after it is touched. The engine does nothing
+  (no run, no choice, no book read or written, nothing sent) until `casesReady` has
+  said yes once; the panel shows no sync status and no case's sync mode until the
+  marker is there. Two builds running at once are guarded only this far: while one of
+  the build before holds the case store at version 1, this build neither forgets nor
+  syncs, so the old engine keeps its books and its cases as they were; once this
+  build has opened version 2, a build before cannot open the store at all.
+- **The open waits for no one for ever**: a store has at most one open request under
+  way, and every call waits on it for at most five seconds unless its upgrade has begun
+  (IndexedDB fires `blocked` only for the first request in line; the others just wait,
+  so the time counts from each call, not from that event). Then the call fails with a
+  sentence that says what to close; the request stays, so the upgrade runs once the old
+  connection goes, and no request piles up; no failed or pending promise is kept as the
+  store's connection. A connection of this build closes when another context upgrades
+  or deletes the database, as the settings' database does.
+- **The folder and Downloads mirror (DEC-025) leaves files of before alone.** It reads
+  nothing back. A file whose record has no format in its version (written before this
+  version) is moved aside in the records: never written over, never removed, its name
+  still taken. On the first run after the update the store is empty, so nothing is
+  written and nothing removed. When the team's cases come back, each is written to a
+  file of its own beside its old one (`login-2.sitegloss.zip` beside
+  `login.sitegloss.zip`); the old one stays, in `sitegloss/1`, for 0.3.1 and older.
+- **The AI tool `add_annotation` is `add_mark`**, the name sitegloss.dev's MCP server has
+  for its own tool (without a live page); its parameters were `caseId`, `selector` and
+  `comment` already and stay. An "Always allow" given to `add_annotation` does not carry
+  over: the app is asked again (DEC-043 keeps a tool allowed one by one by its name;
+  "Allow all changes" still covers it). Crops are `crops/m<number>.webp` in
+  `get_case` and `get_image`, as at the server.
+- **What keeps the word**: the describing verb where a sentence tells someone who does
+  not know the product what it does (the README's opening, `PRIVACY.md`'s first
+  sentence, the store's listing); the MCP protocol's tool `annotations` (`readOnlyHint`
+  and the rest); W3C's Web Annotation, git's annotated tags, other tools' names; the
+  copies of 0.3.0 under `test/` (its names, as it shipped); and in this log and the
+  design documents, the owner's own words in quotes and the panel's old labels ("Annotate
+  this page", "Stop annotating", "Continue annotating") as they were.
+- Tests: `test/compat-0-3-0.test.ts` (a 0.3.0 browser's data after the update: no
+  operation at all, not even the delete 0.3.0 had on record; the team's cases back with
+  `m` ids; the case only 0.3.0 had is gone), `test/forget-cases.test.ts` (once, in one
+  step, two callers), `test/cloud-worker.test.ts` (nothing forgotten and nothing sent
+  while the store is at version 1), `test/kv-contract.ts` (`update`, also in IndexedDB),
+  `test/sync.test.ts` (the mirror after the update, to a folder and to Downloads),
+  `test/export.test.ts` (a `sitegloss/1` file refused in that sentence),
+  `test/case.test.ts` (an `a<number>` id refused), `test/e2e/store.test.ts` (a database
+  written by 0.3.0's `IdbStore` emptied by the upgrade, an older build's open refused;
+  the blocked open, again after the retry time and from a second context, and the
+  version change), and with a real server
+  `test/cloud-server.test.ts` and `test/e2e/upgrade.test.ts` (a profile of 0.3.0 and a
+  later build opened by this one: nothing sent, the team's cases back in `sitegloss/2`
+  with `m` ids).

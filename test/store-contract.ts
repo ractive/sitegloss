@@ -149,13 +149,13 @@ export const storeContract: Record<
 		async (store) => {
 			await putCase(store, sampleCase("c_1"));
 			await store.putImage("c_1", "shots/s2.webp", image("old"));
-			await store.putImage("c_1", "crops/a3.webp", image("crop"));
+			await store.putImage("c_1", "crops/m3.webp", image("crop"));
 			await store.updateCase("c_1", (c) => ({
 				value: c as Case,
-				deleteImages: ["shots/s2.webp", "crops/a3.webp"],
+				deleteImages: ["shots/s2.webp", "crops/m3.webp"],
 			}));
 			same(await store.getImage("c_1", "shots/s2.webp"), undefined);
-			same(await store.getImage("c_1", "crops/a3.webp"), undefined);
+			same(await store.getImage("c_1", "crops/m3.webp"), undefined);
 			await store.updateCase("c_1", (c) => ({
 				value: c as Case,
 				deleteImages: ["shots/s2.webp"],
@@ -177,7 +177,7 @@ export const storeContract: Record<
 	},
 
 	"deleting a case deletes all its images and nobody else's": async (store) => {
-		const paths = ["crops/a1.webp", "pending/p_a.webp", "shots/s1.webp"];
+		const paths = ["crops/m1.webp", "pending/p_a.webp", "shots/s1.webp"];
 		await putCase(store, sampleCase("c_1"));
 		await putCase(store, sampleCase("c_10"));
 		for (const id of ["c_1", "c_10", "c_0", "c_1-x"])
@@ -219,11 +219,11 @@ export const storeContract: Record<
 		await putCase(store, sampleCase("c_1"));
 		const saved = await store.updateCase("c_1", (current) => ({
 			value: { ...(current ?? sampleCase()), title: "New" },
-			images: new Map([["crops/a1.webp", image()]]),
+			images: new Map([["crops/m1.webp", image()]]),
 		}));
 		same(saved.title, "New");
 		same((await store.getCase("c_1"))?.title, "New");
-		same(await held(store, "c_1", ["crops/a1.webp"]), ["crops/a1.webp"]);
+		same(await held(store, "c_1", ["crops/m1.webp"]), ["crops/m1.webp"]);
 	},
 
 	"updateCase can create a case": async (store) => {
@@ -261,13 +261,13 @@ export const storeContract: Record<
 			await rejects(
 				store.updateCase("c_1", () => ({
 					value: sampleCase("c_2"),
-					images: new Map([["crops/a1.webp", image()]]),
+					images: new Map([["crops/m1.webp", image()]]),
 				})),
 				"cannot become c_2",
 			);
 			same(await store.getCase("c_2"), undefined);
-			same(await held(store, "c_1", ["crops/a1.webp"]), []);
-			same(await held(store, "c_2", ["crops/a1.webp"]), []);
+			same(await held(store, "c_1", ["crops/m1.webp"]), []);
+			same(await held(store, "c_2", ["crops/m1.webp"]), []);
 			same((await store.getCase("c_1"))?.title, "Button contrast");
 		},
 
@@ -277,14 +277,14 @@ export const storeContract: Record<
 			store.updateCase("c_1", (current) => ({
 				value: { ...(current ?? sampleCase("c_1")), title: "New" },
 				images: new Map([
-					["crops/a1.webp", image()],
-					["crops/a2.webp", cannotBeStored],
+					["crops/m1.webp", image()],
+					["crops/m2.webp", cannotBeStored],
 				]),
 			})),
 			"",
 		);
 		same((await store.getCase("c_1"))?.title, "Old");
-		same(await held(store, "c_1", ["crops/a1.webp", "crops/a2.webp"]), []);
+		same(await held(store, "c_1", ["crops/m1.webp", "crops/m2.webp"]), []);
 	},
 
 	"deleteImages deletes only the paths named": async (store) => {
@@ -320,7 +320,7 @@ export const storeContract: Record<
 
 	"replaceCase swaps the case and all its images": async (store) => {
 		await putCase(store, { ...sampleCase("c_1"), title: "Old" });
-		await store.putImage("c_1", "crops/a9.webp", image("old"));
+		await store.putImage("c_1", "crops/m9.webp", image("old"));
 		await store.putImage("c_1", "shots/s1.webp", image("old"));
 		await store.putImage("c_10", "shots/s1.webp", image("other"));
 		await store.replaceCase(
@@ -329,14 +329,14 @@ export const storeContract: Record<
 		);
 		same((await store.getCase("c_1"))?.title, "New");
 		same(await text(store, "c_1", "shots/s1.webp"), "new");
-		same(await held(store, "c_1", ["crops/a9.webp"]), []);
+		same(await held(store, "c_1", ["crops/m9.webp"]), []);
 		same(await text(store, "c_10", "shots/s1.webp"), "other");
 	},
 
 	"a replaceCase that fails keeps the old case and images": async (store) => {
 		await putCase(store, { ...sampleCase("c_1"), title: "Old" });
 		await store.putImage("c_1", "shots/s1.webp", image("old"));
-		await store.putImage("c_1", "crops/a1.webp", image("old"));
+		await store.putImage("c_1", "crops/m1.webp", image("old"));
 		const fresh = { ...sampleCase("c_1"), title: "New" };
 		const badCase = { ...fresh, verdict: (() => "no") as unknown } as Case;
 		await rejects(
@@ -348,13 +348,13 @@ export const storeContract: Record<
 				fresh,
 				new Map([
 					["shots/s1.webp", image("new")],
-					["crops/a1.webp", cannotBeStored],
+					["crops/m1.webp", cannotBeStored],
 				]),
 			),
 			"",
 		);
 		same((await store.getCase("c_1"))?.title, "Old");
 		same(await text(store, "c_1", "shots/s1.webp"), "old");
-		same(await text(store, "c_1", "crops/a1.webp"), "old");
+		same(await text(store, "c_1", "crops/m1.webp"), "old");
 	},
 };

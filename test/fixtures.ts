@@ -1,7 +1,7 @@
 import { CASE_FORMAT, type Case } from "../src/lib/case.ts";
 import type { CaseStore } from "../src/lib/store.ts";
 
-/** A case without shots or annotations. */
+/** A case without shots or marks. */
 export function sampleCase(
 	id = "c_1",
 	updatedAt = "2026-11-04T10:00:00Z",
@@ -20,7 +20,7 @@ export function sampleCase(
 			userAgent: "test",
 		},
 		shots: [],
-		annotations: [],
+		marks: [],
 		verdict: null,
 	};
 }
@@ -47,15 +47,15 @@ export function withOneMark(c: Case): Case {
 				capturedAt: "2026-11-04T10:00:00Z",
 			},
 		],
-		annotations: [
+		marks: [
 			{
-				id: "a1",
+				id: "m1",
 				number: 1,
 				shot: "s1",
 				comment: "Too pale",
 				author: "user",
 				shape: { kind: "note", at: { x: 10, y: 20 } },
-				crop: "crops/a1.webp",
+				crop: "crops/m1.webp",
 				element: null,
 			},
 		],
@@ -75,7 +75,7 @@ function tinyWebp(): Blob {
 /** Store `c` with one mark and its two images. */
 export async function putMarked(store: CaseStore, c: Case): Promise<Case> {
 	const marked = withOneMark(c);
-	for (const path of ["shots/s1.webp", "crops/a1.webp"])
+	for (const path of ["shots/s1.webp", "crops/m1.webp"])
 		await store.putImage(marked.id, path, {
 			blob: tinyWebp(),
 			width: 10,

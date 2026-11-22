@@ -284,7 +284,7 @@ describe.skipIf(browserBinary === undefined)("the sync", () => {
 			20_000,
 		);
 		expect(fresh?.id).toBe(laterCase);
-		expect(fresh?.annotations.map((a) => a.comment)).toEqual(["Fresh worker"]);
+		expect(fresh?.marks.map((a) => a.comment)).toEqual(["Fresh worker"]);
 		expect(await extensionPages()).toEqual([]);
 		await later.page.send("Page.close");
 

@@ -13,7 +13,7 @@ const TAB = 7;
 const toolbar = (caseId: string, visible = true): OverlayState =>
 	({
 		visible,
-		target: { caseId, title: caseId, nextAnnotation: 1 },
+		target: { caseId, title: caseId, nextMark: 1 },
 		drafts: 0,
 		saving: false,
 	}) as unknown as OverlayState;
@@ -57,7 +57,7 @@ describe("open_case and the case the panel shows", () => {
 	test("a mark's form open in the case shown: refused, the typing stays", () => {
 		const s = showing("c_old", (x) => {
 			x.markEdit = {
-				annotationId: "a1",
+				markId: "m1",
 				mode: "comment",
 				text: "half a sen",
 			} as never;

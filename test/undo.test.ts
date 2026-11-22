@@ -23,7 +23,7 @@ function area(): SessionArea & { data: Map<string, unknown> } {
 
 const mark = (n: number, more: Partial<AddedMark> = {}): AddedMark => ({
 	caseId: "c_1",
-	annotationId: `a${n}`,
+	markId: `m${n}`,
 	shot: `s${n}`,
 	comment: `comment ${n}`,
 	tabId: 7,
@@ -35,39 +35,39 @@ describe("AddLedger: Undo only for marks this page added", () => {
 	test("finds a mark from the same tab and document", async () => {
 		const ledger = new AddLedger(area());
 		await ledger.record(mark(3));
-		expect(await ledger.find("c_1", "a3", 7, "doc-a")).toEqual(mark(3));
+		expect(await ledger.find("c_1", "m3", 7, "doc-a")).toEqual(mark(3));
 	});
 
 	test("refuses another tab, another document (the page was reloaded), another case or mark", async () => {
 		const ledger = new AddLedger(area());
 		await ledger.record(mark(3));
-		expect(await ledger.find("c_1", "a3", 8, "doc-a")).toBeUndefined();
-		expect(await ledger.find("c_1", "a3", 7, "doc-b")).toBeUndefined();
+		expect(await ledger.find("c_1", "m3", 8, "doc-a")).toBeUndefined();
+		expect(await ledger.find("c_1", "m3", 7, "doc-b")).toBeUndefined();
 		expect(
-			await ledger.find("c_1", "a3", undefined, undefined),
+			await ledger.find("c_1", "m3", undefined, undefined),
 		).toBeUndefined();
-		expect(await ledger.find("c_2", "a3", 7, "doc-a")).toBeUndefined();
-		expect(await ledger.find("c_1", "a2", 7, "doc-a")).toBeUndefined();
+		expect(await ledger.find("c_2", "m3", 7, "doc-a")).toBeUndefined();
+		expect(await ledger.find("c_1", "m2", 7, "doc-a")).toBeUndefined();
 		// The refusals left it there for its own page.
-		expect(await ledger.find("c_1", "a3", 7, "doc-a")).toBeDefined();
+		expect(await ledger.find("c_1", "m3", 7, "doc-a")).toBeDefined();
 	});
 
 	test("an undo is used once", async () => {
 		const ledger = new AddLedger(area());
 		await ledger.record(mark(3));
 		await ledger.record(mark(4));
-		const found = await ledger.find("c_1", "a3", 7, "doc-a");
+		const found = await ledger.find("c_1", "m3", 7, "doc-a");
 		await ledger.remove(found as AddedMark);
-		expect(await ledger.find("c_1", "a3", 7, "doc-a")).toBeUndefined();
-		expect(await ledger.find("c_1", "a4", 7, "doc-a")).toBeDefined();
+		expect(await ledger.find("c_1", "m3", 7, "doc-a")).toBeUndefined();
+		expect(await ledger.find("c_1", "m4", 7, "doc-a")).toBeDefined();
 	});
 
 	test("a mark added again from another page belongs to that page", async () => {
 		const ledger = new AddLedger(area());
 		await ledger.record(mark(3));
 		await ledger.record(mark(3, { tabId: 9, documentId: "doc-c" }));
-		expect(await ledger.find("c_1", "a3", 7, "doc-a")).toBeUndefined();
-		expect(await ledger.find("c_1", "a3", 9, "doc-c")).toBeDefined();
+		expect(await ledger.find("c_1", "m3", 7, "doc-a")).toBeUndefined();
+		expect(await ledger.find("c_1", "m3", 9, "doc-c")).toBeDefined();
 	});
 
 	test("records made at once are all kept, and the oldest go past the limit", async () => {
@@ -80,13 +80,13 @@ describe("AddLedger: Undo only for marks this page added", () => {
 		);
 		const kept = store.data.get("addedMarks") as AddedMark[];
 		expect(kept).toHaveLength(MAX_REMEMBERED);
-		expect(kept[0]?.annotationId).toBe("a6");
+		expect(kept[0]?.markId).toBe("m6");
 	});
 
 	test("a ledger started again (the worker stopped) reads what was recorded", async () => {
 		const store = area();
 		await new AddLedger(store).record(mark(3));
-		expect(await new AddLedger(store).find("c_1", "a3", 7, "doc-a")).toEqual(
+		expect(await new AddLedger(store).find("c_1", "m3", 7, "doc-a")).toEqual(
 			mark(3),
 		);
 	});

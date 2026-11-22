@@ -161,11 +161,11 @@ describe.skipIf(SERVER === undefined || browserBinary === undefined)(
 			await panel.waitFor(row(demo), 20_000);
 			const db = await panel.eval<Db>(READ_DB);
 			const stored = db.cases.find((c) => c.title === demo) as unknown as Case;
-			expect(stored.annotations.length).toBeGreaterThanOrEqual(5);
+			expect(stored.marks.length).toBeGreaterThanOrEqual(5);
 			expect(stored.pages?.length).toBe(2);
 			expect(stored.importedAt).toBeUndefined();
 			const keys = db.images.map((image) => image.key);
-			for (const a of stored.annotations)
+			for (const a of stored.marks)
 				expect(keys).toContain(`${stored.id}/${a.crop}`);
 			await openCase(panel, demo);
 			expect(

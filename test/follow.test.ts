@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Case } from "../src/lib/case.ts";
-import type { AnnotationMatch } from "../src/lib/messages.ts";
+import type { MarkMatch } from "../src/lib/messages.ts";
 import {
 	canDrawOn,
 	dashDrawn,
@@ -183,11 +183,8 @@ describe("news from a tab's overlay after the icon's click", () => {
 });
 
 describe("none of the case's marks found", () => {
-	const match = (
-		n: number,
-		status: AnnotationMatch["status"],
-	): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	const match = (n: number, status: MarkMatch["status"]): MarkMatch => ({
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "lost" ? 0 : 0.9,
@@ -224,10 +221,10 @@ describe("what a draw found, in a line (DEC-024)", () => {
 	});
 	const match = (
 		n: number,
-		status: AnnotationMatch["status"],
+		status: MarkMatch["status"],
 		sure = status === "found",
-	): AnnotationMatch => ({
-		annotationId: `a${n}`,
+	): MarkMatch => ({
+		markId: `m${n}`,
 		number: n,
 		status,
 		score: status === "lost" ? 0 : 0.9,
@@ -273,18 +270,18 @@ describe("what a draw found, in a line (DEC-024)", () => {
 				...(shotUrl ? { url: shotUrl } : {}),
 			} as Case["shots"][number],
 		],
-		annotations: shapes.map(
+		marks: shapes.map(
 			(shape, i) =>
 				({
-					id: `a${i + 1}`,
+					id: `m${i + 1}`,
 					number: i + 1,
 					shot: "s1",
 					comment: "",
 					author: "user",
 					shape: SHAPES[shape],
-					crop: `crops/a${i + 1}.webp`,
+					crop: `crops/m${i + 1}.webp`,
 					element: null,
-				}) as Case["annotations"][number],
+				}) as Case["marks"][number],
 		),
 	});
 	const HERE = "https://x.ch/kk?tab=2";
@@ -351,8 +348,8 @@ describe("what a draw found, in a line (DEC-024)", () => {
 
 	test("the line is worded from the matches as they are now: none where none was found or there is none yet", () => {
 		const c = caseOf(["element", "element"]);
-		const loaded = (matches: AnnotationMatch[], settling = false) => ({
-			matches: new Map(matches.map((m) => [m.annotationId, m])),
+		const loaded = (matches: MarkMatch[], settling = false) => ({
+			matches: new Map(matches.map((m) => [m.markId, m])),
 			url: HERE,
 			settling,
 		});
