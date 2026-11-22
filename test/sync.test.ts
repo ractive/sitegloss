@@ -1307,10 +1307,12 @@ describe("the sync's database, opened when first used", () => {
 				const state = initialState();
 				const kv = referenceKv();
 				const asked: unknown[] = [];
+				let answered: Promise<string> = Promise.resolve("");
 				const handle = Object.assign(new FakeFolder(), {
-					requestPermission: async (descriptor: unknown) => {
+					requestPermission: (descriptor: unknown) => {
 						asked.push(descriptor);
-						return answer;
+						answered = Promise.resolve(answer);
+						return answered;
 					},
 				});
 				await kv.set({
@@ -1319,15 +1321,18 @@ describe("the sync's database, opened when first used", () => {
 				});
 				const panel = startSync((change) => change(state), kv);
 				await panel.refresh();
-				await Bun.sleep(5);
-				sent.length = 0;
 				state.sync.problem = "Could not ask for access";
+				state.sync.refused = !refused;
 				panel.syncAllow();
 				// Asked before anything is awaited: Chrome asks only during a click.
 				expect(asked).toEqual([{ mode: "readwrite" }]);
-				await until(() => state.sync.refused === refused);
-				await Bun.sleep(5);
-				expect(sent).toEqual([...runs]);
+				// The panel's own handler of the answer runs before this await ends.
+				await answered;
+				expect(state.sync.refused).toBe(refused);
+				// The run a yes asks for is a forced one (the panel's start asks one too).
+				expect(
+					sent.filter((m) => (m as { force?: boolean }).force === true),
+				).toEqual([...runs]);
 				expect(state.sync.problem === undefined).toBe(!refused);
 			} finally {
 				globals["chrome"] = chromeBefore;

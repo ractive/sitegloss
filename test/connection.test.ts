@@ -470,6 +470,19 @@ describe("the worker's connection with client 0.18", () => {
 		await until(() => w.last().grants.length === 0);
 	});
 
+	test("a Disconnect while off is not sent: not connected, try again", async () => {
+		const { w, ids } = await paired(["One"]);
+		w.send({ type: "stop" });
+		await until(() => w.last().state === "disconnected");
+		w.send({ type: "revoke", grantId: ids["One"] });
+		await until(() => grant(w, "One")?.problem !== undefined);
+		expect(grant(w, "One")?.problem).toContain(
+			"Sitegloss is not connected to the relay",
+		);
+		// Its Allow all changes stays: the grant is not gone.
+		expect(grant(w, "One")?.allowAll).toBe(true);
+	});
+
 	test.each([false, true])(
 		"a session the relay ends as rate_limited says why, and tries again only with Keep AI access on (on: %p)",
 		async (keepOn) => {
