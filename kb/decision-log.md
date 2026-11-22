@@ -3145,3 +3145,64 @@ dialog is not shown, and a tool that asks runs unless the page's `onConfirm` ref
   write is only logged, as before.
 - Tests: none added; the existing ones in `test/client.test.ts`, `test/tools.test.ts` and
   `test/connection.test.ts` cover the relay-only registration and Disconnect.
+
+## DEC-057: A mark is looked for, drawn and counted only on its own page (owner)
+
+2026-11-22. The owner, after testing: "On the login screen I added a mark to make the
+logo larger. Now on this page [another page of the same app, with the same logo in its
+header], the logo is also 'marked'. That makes no sense. The URL for sure does not
+match." The panel showed that mark dashed, with Show and "Unsure", while the case's
+other marks said "On another page".
+
+**The cause.** The owner's panel said "1 of 1 marks found on
+app.sitegloss.dev/t/…/settings. 1 of the case's other pages may be here too (dashed).
+11 more are on other pages of the case.": the logo mark, made on the sign-in page, was
+looked for on the settings page, one of the case's pages, found in its header and
+drawn dashed as a look-alike (`otherPage`, DEC-038 and DEC-050). A second path ends
+the same way: on a page that is none of the case's every mark was looked for, and when
+a mark added there made it one of the case's, `Reviewer.update` kept the earlier finds
+without judging them again, so they stayed finds of this page.
+
+The rule now:
+
+- **A mark is the page in front's** when that page has the same path and hash route
+  as the page the mark was made on, whatever the host (`onPageInFront`, `pageInFront`
+  and `pathKey` of DEC-050, unchanged). Only such a mark is looked for, drawn and
+  counted. A mark without an element followed this already.
+- **Every other mark is not looked for**, on a page of the case that is not its own
+  and on a page that is none of the case's alike: no search, nothing drawn, neither
+  found nor lost in any count. The content script reports it `lost` without
+  candidates (`no-element` for a mark drawn on no element); the panel says "On
+  another page" for it, with its "Marked on …" link to open its page. A page that joins or leaves the case (a mark added or deleted) judges
+  the marks again, and a single-page app's next route takes the previous route's marks
+  off and looks for its own.
+- **The look-alike goes:** `otherPage` on a match, "Also on this page?", the panel's
+  "may be here too (dashed)" count, the AI tools' `otherPageNote`. The AI tools say the
+  rule in one sentence: a mark is on the page in front when that page has the same path
+  and hash route as the mark's page, whatever the host; otherwise it is not looked for
+  (`onThisPage` false; lost, or no-element for a mark drawn on no element), and the
+  mark's page is to be opened. `get_mark_element` on another page answers that the mark is not looked for there and names its page.
+- **The floating bar** counts the page in front's marks only ("N of M found", still the
+  open ones and those to verify); with none of them it says "no marks on this page".
+- **No mark of the page in front:** the page shows none, and the case view says "This
+  case has no marks on this page. They are on …" with the case's pages, and "Open the
+  case's page"; "None of this case's marks were found on this page." stays for a page
+  whose own marks were not found.
+
+**What it replaces.** Of DEC-038: "On a page that is none of the case's, every mark is
+looked for as before", and that a mark of another page is "on another page" only on
+one of the case's pages and only when it was not found. Of DEC-050: the content
+script's dashed "Also on this page?" (`#own`), `otherPageNote`, and the repeated "On a
+page that is none of the case's, every mark is looked for as before".
+
+**The price.** A case no longer loads onto the same page under another path (a build
+at `/v2/cart` for a case of `/cart`): its marks are on another page there. The page is
+its path, as everywhere in Sitegloss (DEC-001); the other environment is another host.
+The end-to-end tests that drew a case of `/v1` on `/v2` now draw it on
+`localhost:<port>/v1`, which the test server serves as the next build (`v2.html`,
+`nextBuild` in `test/e2e/harness.ts`).
+
+- Tests: `test/review.test.ts` ("a mark is looked for and drawn only on its own page,
+  also once the page in front joins the case", the report's steps; the single-page
+  app's next route), `test/pages.test.ts`, `test/view.test.ts`, `test/tools.test.ts`.
+  The tests of the look-alike are gone.

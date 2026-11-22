@@ -316,6 +316,32 @@ describe("the overlay's style", () => {
 		);
 		expect(forced).toContain(".ring { stroke: CanvasText; }");
 	});
+
+	test("a dialog's button says the key that presses it: ⌘↵ on macOS, Ctrl+↵ elsewhere", () => {
+		for (const [nav, mac] of [
+			[{ userAgentData: { platform: "macOS" }, platform: "MacIntel" }, true],
+			[{ userAgentData: { platform: "Windows" }, platform: "Win32" }, false],
+			// Firefox and Safari have no client hint.
+			[{ platform: "MacIntel" }, true],
+			[{ platform: "Linux x86_64" }, false],
+			[{ userAgentData: { platform: "" }, platform: "MacIntel" }, true],
+		] as const)
+			expect(o.isMac(nav)).toBe(mac);
+		const doc = window.document as unknown as Document;
+		const at = (mac: boolean) => {
+			const button = doc.createElement("button");
+			button.textContent = "Done";
+			return o.withSaveKey(button, mac);
+		};
+		expect(at(true).textContent).toBe("Done⌘↵");
+		expect(at(true).getAttribute("aria-keyshortcuts")).toBe("Meta+Enter");
+		expect(at(false).textContent).toBe("DoneCtrl+↵");
+		expect(at(false).getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
+		// Out of the button's name, which stays its label.
+		expect(at(false).querySelector(".keys")?.getAttribute("aria-hidden")).toBe(
+			"true",
+		);
+	});
 });
 
 describe("the toolbar's layout is measured, not guessed from the page's width", () => {
