@@ -8,7 +8,7 @@ name: End-to-end tests
 #     run here tested;
 #   - on a release tag, called by release.yml before anything is built or
 #     published: a red run stops the release;
-#   - by hand: Actions → End-to-end tests → Run workflow, on any branch.
+#   - by hand: Actions, "End-to-end tests", "Run workflow", on any branch.
 # A scheduled run's failure is mailed by GitHub to the person who last
 # changed the schedule below (the account that pushed that commit), as their
 # notification settings for Actions say.

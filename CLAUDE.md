@@ -144,24 +144,41 @@ with `kb/design/overview.md` and `kb/iterations/`.
   of its `packages/api/vectors/kept-query.json`, held the same way; so is
   `test/case-file.json` (the server's member download, which `validateCase` and
   case.md have to match).
-- Commands: `bun run verify` (Biome CI, type check, tests) before every commit;
-  `bun run fix` to format; `bun run build`, `bun run zip`.
+- Commands: `bun run verify` (Biome CI, type check, the unit tests and the end-to-end
+  smoke set; about two minutes) before every commit; `bun run fix` to format;
+  `bun run build`, `bun run zip`. The full end-to-end sets are `bun run test:e2e`
+  (Chromium, about six minutes here; `--shard=1/2` and `2/2` split it) and
+  `bun run test:firefox`; run them by hand when a change is about what only a browser
+  shows. CI runs `verify` on every pull request and on main; the full sets run nightly,
+  on a release tag before anything is built, and by hand (`e2e.yml`, DEC-053). The
+  price: a break only a browser shows is found the next night or at the release, not
+  before the commit.
 - Firefox: `bun scripts/build.ts --firefox` (`--test`, `--store --zip`) builds it from the
   same code; `src/lib/browser.ts` holds every difference (the build's define
   `SITEGLOSS_FIREFOX`, never the user agent). `bun scripts/firefox-dev.ts [URL] [--test]`
   runs it in Firefox through ff-rdp; use a debug port of your own (`--port`).
 - End-to-end tests (`test/e2e/`) need Chromium or Chrome for Testing (`CHROME_PATH`, or
   Playwright's Chromium); branded Chrome ignores `--load-extension`. They are skipped
-  without one locally and required in CI.
-- Firefox end-to-end tests (`test/e2e/firefox/`, about a minute): a small suite through
-  the `ff-rdp` CLI (`FF_RDP_PATH`) and Firefox (`FIREFOX_PATH`), headless on a free port;
-  skipped without them locally, required in CI, which pins both. `bun run test` runs them
-  with the rest; a lock lets one run at a time.
+  without one locally and required in CI. Which run is set in one place,
+  `test/e2e/mode.ts` (`SITEGLOSS_E2E=full` for all): a describe is `inFullSet`, or
+  `inBothSets` for the smoke tests in it, whose other tests are `fullTest`s.
+- An end-to-end test only where a real browser is the thing under test (capture
+  pixels, the icon and `activeTab`, the side panel, sender checks, layout, downloads,
+  IndexedDB, the relay, Firefox's event page); a decision is a unit test, and a test
+  that only proves a fix once is no test (DEC-053). The test build's guards are short;
+  a test that must outwait one sleeps `PAST_GUARD_MS`, and one that needs a failure
+  timeout or the searches again sooner sets `testWaits` (`src/lib/test-waits.ts`).
+  Name a test after the behaviour it guards, never after a review or a pull request.
+- Firefox end-to-end tests (`test/e2e/firefox/`, under half a minute): a small suite
+  through the `ff-rdp` CLI (`FF_RDP_PATH`) and Firefox (`FIREFOX_PATH`), headless on a
+  free port; full set only (`bun run test:firefox`), skipped without them locally,
+  required in `e2e.yml`, which pins both; a lock lets one run at a time.
 - Only runtime dependency: `@ractive-ch/tab-mcp-client`. Prefer a few lines of own code
   over a package. No JavaScript from an AI app or server ever runs (fixed tools only).
 - Tests against a real sitegloss.dev server run only with `SITEGLOSS_SERVER` set (and
-  its demo users' password in `SITEGLOSS_PASSWORD`)
-  (`test/cloud-server.test.ts`, `test/e2e/cloud.test.ts`, `test/e2e/firefox/cloud.test.ts`);
+  its demo users' password in `SITEGLOSS_PASSWORD`): `bun run test:server`
+  (`test/cloud-server.test.ts`, `test/e2e/cloud.test.ts`, `test/e2e/firefox/cloud.test.ts`),
+  before every release;
   the rest of the sync is tested against `test/cloud-fake.ts`, which keeps the server's rules.
 - Always the latest versions of Bun, TypeScript, Biome and every dependency, pinned
   exactly.

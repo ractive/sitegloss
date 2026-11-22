@@ -2954,3 +2954,89 @@ destructiveHint`, a relay call still only by `consequentialHint`.
   consequential tool runs for a relay caller is as before.
 - Tests: `test/client.test.ts` (relay only: listed through the relay, not over a served
   port), `test/tools.test.ts` (other callers refused). No new test.
+
+## DEC-053: A smoke set before every commit, the full end-to-end sets nightly and before a release; what deserves an end-to-end test (owner)
+
+2026-11-22. The owner: "check what e2e tests really make sense and which can be dropped
+again, because they've been proven to work. Often I have the feeling you start to add
+gigantic test harnesses for a bug which may get solved, and everything after starts to
+add more and more tests on top because the huge harness is there." And: "consider
+running full e2e tests maybe only nightly or on a new release". An audit of every test
+(2026-11-22) found that the harness itself is cheap (a Chrome launch, the build and the
+control page take about 0.6 s a file); the time went to waiting on clocks (the
+extension's own guards and timeouts sat out at full length, about a hundred fixed
+sleeps, a helper that ran out its 8 s without failing, Firefox's 35 s), and a quarter of
+the end-to-end tests proved again through a browser what a unit test written for the
+same review already asserted.
+
+- **The sets.** `bun run verify` (before every commit, and CI on every pull request and
+  on main) is Biome, the type check, the unit tests and a **smoke set** of end-to-end
+  tests, each across a boundary only a browser has: the overlay injected and shown, marks
+  drawn and saved with real screenshots, Add marks, a case drawn on the tab in front and
+  following it, the relay with a real MCP client, a closed side panel handing a question
+  to a notification, the worker stopped by Chrome coming back, the store package's host
+  access, install warning and icon click, the IndexedDB contract, export and import, Sync
+  to Downloads. The **full sets**, every Chromium test (`bun run test:e2e`) and the
+  Firefox tests (`bun run test:firefox`), run in `e2e.yml`: every night on main, unless
+  main is still the commit the last green run tested; on a release tag, before
+  `release.yml` builds anything, so a red run releases and publishes nothing; and by
+  hand. The tests against a real server (`bun run test:server`) run before every
+  release, by hand: no workflow has a server.
+- **The price.** A break that only a browser shows is found the next night or at the
+  release, not before the commit. A change that is about what only a browser shows
+  (layout, capture, the side panel, Firefox) runs the full set by hand before it is
+  merged.
+- **One switch.** `SITEGLOSS_E2E=full` (`test/e2e/mode.ts`) runs every end-to-end test;
+  without it only the smoke set runs. A describe is `inFullSet`, or `inBothSets` for the
+  smoke tests in it, whose other tests are `fullTest`s; the Firefox and the real-server
+  describes are of the full set. Every test runs in the full set, none in neither.
+- **A nightly failure reaches the owner** as GitHub's notice of a failed scheduled run: it
+  goes to the account that last changed the workflow's schedule (whoever pushed that
+  commit, here the owner's), by e-mail and on the web as that account's notification
+  settings for Actions say. A failed run is retried the next night as long as main has
+  not had a green run.
+- **What deserves an end-to-end test**: a behaviour of the browser itself (real capture
+  pixels and scale, the icon click and `activeTab`, installation warnings and host
+  access, the side panel opening and closing, `sender` checks, `pushState` and reloads,
+  layout and the top layer, downloads and the offscreen document, IndexedDB, the relay
+  and an MCP client, Firefox's event page). A decision is a unit test, also when a review
+  found the bug; a test whose only purpose is to prove once that a fix worked is not
+  kept. A new harness, or a knob in one, for a single finding is a sign the test belongs
+  lower. A test is named after the behaviour it guards, never after a review, a pull
+  request or a finding: the commit says where it came from.
+- **The test build's clocks** (`scripts/build.ts --test` only, the define as before): the
+  guards against a click that comes too soon are 100 ms (Delete's and the back button's
+  double click, a yes to a question, Disconnect's confirm, a notification's button), and
+  the delays short (Keep AI access on's retries, the Downloads sync's quiet time, a page
+  standing still, a busy page asked again). The waits after which Sitegloss calls
+  something failed stay real unless a test sets its own in the context it drives
+  (`globalThis.siteglossTestWaits`, `src/lib/test-waits.ts`: the toolbars' end, a page's
+  answer, Chrome's capture, the panel's searches again and its look after a route
+  change): a short timeout in every test would fail a real but slow capture. Firefox's
+  test profile stops an idle event page after 3 s (`extensions.background.idle.timeout`)
+  and the test build keeps it alive every second; without the keepalive the idle test
+  fails. A test that outwaits a guard sleeps `PAST_GUARD_MS`. No package carries the
+  waits hook (`test/build.test.ts`). Chrome's two captures a second are no knob.
+- **What was removed, and why.** Each end-to-end test dropped was checked against the
+  test said to cover it, and kept where that test did not assert the same; where one
+  assert was missing, the unit test got it first. The full Chromium set runs 37 tests
+  fewer (230 to 193): 30 that a unit test or a sibling end-to-end test already asserted,
+  and 7 merged into another with the same setup; `upgrade.test.ts` and `thread.test.ts`,
+  which no workflow ran, went too. About 45 unit tests that repeated another, or the
+  tab-mcp library's own suite, went too, two that could not fail now assert what they
+  say, and the six slow unit tests take an injected wait or a fake clock (the unit suite
+  from 66 s to about 21 s). The tests of
+  relays before 0.10.2 stay: client 0.19 and 0.20 still talk to such a relay, so that code
+  is not dead.
+- **The 0.3.0 copies went with the wipe** (DEC-051): nobody runs a released extension
+  yet, and the update empties the stored cases, so a 0.3.0 browser beside this build
+  protects no one. `test/compat/v0.3.0`, `compat-0-3-0.test.ts`, `case-0-3-0.ts` (which was
+  0.2.0's case module), `e2e/upgrade.test.ts`, `e2e/thread.test.ts` and `e2e/cloud-steps.ts`
+  are gone. What they held that still matters stays tested: the store's upgrade empties a
+  database of version 1 (`e2e/store.test.ts`, now with plain IndexedDB), after it the sync
+  sends nothing and only reads (`cloud-worker.test.ts`), and what is forgotten
+  (`forget-cases.test.ts`). DEC-051's list of tests names some of the files that went.
+- Tests: `test/workflows.test.ts` (CI runs `verify` and no full set; the full sets run
+  nightly, by hand and before a release is built; one Chrome for Testing; the nightly
+  skip), `test/delete.test.ts` (Delete's two clicks, pulled out of `main.ts` for it),
+  `test/browser.test.ts` (Firefox's keepalive within its idle time).

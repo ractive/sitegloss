@@ -49,7 +49,9 @@ desktop Firefox only (153 or later).
 
 ## What a release does
 
-`release.yml` builds the Firefox store zip (`bun scripts/build.ts --firefox --store --zip`)
+`release.yml` first runs the full end-to-end sets, the Firefox tests among them
+(`e2e.yml`, DEC-053); a red run stops it. Then it builds the Firefox store zip
+(`bun scripts/build.ts --firefox --store --zip`)
 and `sitegloss-<version>-source.zip` (`git archive` of the built commit), attests every zip
 and attaches them to the release. The job `publish-firefox` then waits for the owner's
 approval and calls `firefox-extension-publish.yml` of ractive/release-workflows. It checks
