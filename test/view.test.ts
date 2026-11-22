@@ -346,7 +346,7 @@ describe("a mark's status and actions", () => {
 			finding(id).querySelector(
 				'[data-finding-action="delete"]',
 			) as unknown as HTMLButtonElement;
-		expect(button("f_1").textContent).toBe("Delete");
+		expect(button("f_1").textContent).toBe("Delete finding");
 		expect(button("f_2").textContent).toBe("Really delete?");
 		button("f_1").click();
 		expect(deleted).toEqual(["m1:f_1"]);
@@ -427,7 +427,7 @@ describe("a mark's status and actions", () => {
 			row(markId).querySelector(
 				'[data-finding="f_1"] [data-finding-action="delete"]',
 			) as unknown as HTMLButtonElement;
-		expect(button("m1").textContent).toBe("Delete");
+		expect(button("m1").textContent).toBe("Delete finding");
 		expect(button("m1").hasAttribute("data-armed")).toBe(false);
 		expect(button("m2").textContent).toBe("Really delete?");
 		expect(button("m2").hasAttribute("data-armed")).toBe(true);
@@ -442,7 +442,7 @@ describe("a mark's status and actions", () => {
 			noActions,
 		);
 		expect(action("m1", "delete").textContent).toBe("Really delete?");
-		expect(action("m2", "delete").textContent).toBe("Delete");
+		expect(action("m2", "delete").textContent).toBe("Delete mark");
 	});
 
 	test("Show sits in a mark's head, where the page can show the mark", () => {
@@ -899,20 +899,24 @@ describe("Verify (DEC-023)", () => {
 			"Verified",
 			"Won't fix",
 		]);
-		expect(actionsOf("m1")).toEqual(["Resolve…", "Edit comment", "Delete"]);
+		expect(actionsOf("m1")).toEqual([
+			"Resolve…",
+			"Edit comment",
+			"Delete mark",
+		]);
 		expect(actionsOf("m2")).toEqual([
 			"Verified",
 			"Reopen…",
 			"Change…",
 			"Edit comment",
-			"Delete",
+			"Delete mark",
 		]);
 		for (const id of ["m3", "m4"])
 			expect(actionsOf(id)).toEqual([
 				"Reopen…",
 				"Change…",
 				"Edit comment",
-				"Delete",
+				"Delete mark",
 			]);
 		const strong = (id: string) =>
 			[...row(id).querySelectorAll(".mark-actions .strong")].map(
@@ -2631,7 +2635,7 @@ describe("what stays between renders", () => {
 		expect(el("case-hint").textContent).toBe("3 of 5 marks found");
 		expect(el("case-hint").hidden).toBe(false);
 		render(caseState(c), noActions);
-		expect(el("delete-case").textContent).toBe("Delete");
+		expect(el("delete-case").textContent).toBe("Delete case");
 		expect(el("delete-case").hasAttribute("data-armed")).toBe(false);
 		expect(el("case-hint").hidden).toBe(true);
 	});

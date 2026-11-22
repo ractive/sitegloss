@@ -1765,7 +1765,7 @@ function markActions(
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
-			armed ? "Really delete?" : "Delete",
+			armed ? "Really delete?" : "Delete mark",
 		),
 	);
 }
@@ -2194,7 +2194,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	holdDelete(armed && sync.mayDelete ? p.deleteButton : undefined);
 	p.deleteButton.disabled = !sync.mayDelete;
 	p.deleteButton.textContent = !armed
-		? "Delete"
+		? "Delete case"
 		: sync.kind === "synced"
 			? "Really delete for the team?"
 			: "Really delete?";
@@ -2714,7 +2714,7 @@ function findingsList(
 								...(armed === f.id ? { "data-armed": true } : {}),
 								onclick: () => actions.deleteFinding(c, a, f.id),
 							},
-							armed === f.id ? "Really delete?" : "Delete",
+							armed === f.id ? "Really delete?" : "Delete finding",
 						),
 					),
 				),
