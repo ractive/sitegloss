@@ -971,7 +971,7 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 		expect(() => validateCase(file)).toThrow("case.marks[0].reopens[0].note");
 	});
 
-	test("caseCounts: open, to verify, verified, closed", () => {
+	test("caseCounts: open, to verify, verified, dismissed", () => {
 		const c = withMarks();
 		const [first] = c.marks as [Mark];
 		c.marks = [1, 2, 3, 4, 5].map((n) => ({
@@ -988,13 +988,13 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 			open: 1,
 			toVerify: 1,
 			verified: 1,
-			closed: 2,
+			dismissed: 2,
 		});
 		expect(caseCounts({ ...c, marks: [] })).toEqual({
 			open: 0,
 			toVerify: 0,
 			verified: 0,
-			closed: 0,
+			dismissed: 0,
 		});
 	});
 });

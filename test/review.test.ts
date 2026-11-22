@@ -344,7 +344,7 @@ describe("a loaded case that changes", () => {
 		};
 	}
 
-	test("a closed mark is drawn settled, no longer counted, its candidate kept", async () => {
+	test("a dismissed mark is drawn settled, no longer counted, its candidate kept", async () => {
 		doc.body.innerHTML = PAGE;
 		const c = twoMarks();
 		await reviewer.load(c);
@@ -398,7 +398,7 @@ describe("a loaded case that changes", () => {
 		expect(
 			(overlay.items as unknown as { status: string }[]).map((i) => i.status),
 		).toEqual(["verified", "verified"]);
-		expect(bar()).toContain("all verified or closed");
+		expect(bar()).toContain("all verified or dismissed");
 	});
 
 	test("a deleted mark leaves; another case is not touched", async () => {

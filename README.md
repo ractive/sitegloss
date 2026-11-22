@@ -154,8 +154,8 @@ user agent. What differs from Chrome and Edge:
    (as far as the screen allows; page zoom is counted). Sitegloss looks for each mark's element and draws the mark on it again,
    moved and scaled with the element: solid when found, dashed when probable or unsure.
    Its colour is its status: the pink of the screenshot while it is open, indigo when it
-   is fixed and to verify, green once verified, grey when closed without a fix (verified
-   and closed ones faded); a white edge under every stroke keeps it visible on any page.
+   is fixed and to verify, green once verified, grey when dismissed (won't fix, can't
+   reproduce; verified and dismissed ones faded); a white edge under every stroke keeps it visible on any page.
    A mark drawn on a large container can land a little off when that
    container changed its size. A mark without an element goes where it was, dashed.
    Show scrolls to a mark; Next candidate tries the next best element. The screenshots
@@ -165,9 +165,9 @@ user agent. What differs from Chrome and Edge:
    fix; Can't reproduce; with an optional note). The tester, where the fix is deployed, then
    clicks Verified on a fix that holds, or Reopen… with a note on what is still wrong;
    the claimed fix and its note stay in the mark's history. The status chips under the
-   case's bar (Open, To verify, Verified, Closed) count the marks and filter the list:
+   case's bar (Open, To verify, Verified, Dismissed) count the marks and filter the list:
    the developer works through Open, the tester through To verify. On a loaded page a
-   mark to verify is drawn in full in indigo; a verified one is drawn green and a closed
+   mark to verify is drawn in full in indigo; a verified one is drawn green and a dismissed
    one grey, both faded, and no longer counted. A mark can also have its comment
    edited, or be deleted. A deleted mark's number is not given again, and its pin
    stays on screenshots that other marks share.

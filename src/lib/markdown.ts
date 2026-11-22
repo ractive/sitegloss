@@ -188,14 +188,14 @@ function status(a: Mark): string[] {
 	return lines;
 }
 
-/** `2 open, 1 fixed (to verify), 1 verified, 1 closed`; the groups with marks. */
+/** `2 open, 1 fixed (to verify), 1 verified, 1 dismissed`; the groups with marks. */
 function countsLine(c: Case): string {
 	const n = caseCounts(c);
 	const parts = [
 		n.open ? `${n.open} open` : "",
 		n.toVerify ? `${n.toVerify} fixed (to verify)` : "",
 		n.verified ? `${n.verified} verified` : "",
-		n.closed ? `${n.closed} closed` : "",
+		n.dismissed ? `${n.dismissed} dismissed` : "",
 	].filter(Boolean);
 	return `- Marks: ${parts.length > 0 ? parts.join(", ") : "none"}`;
 }

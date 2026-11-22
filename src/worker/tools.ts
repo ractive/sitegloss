@@ -878,7 +878,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		name: "list_cases",
 		title: "List cases",
 		description:
-			"List the saved cases: id, title, its first pages and how many it has (url is the first; get_case lists them all), its marks by status (open, toVerify: fixed and waiting to be verified, verified, closed: won't fix or can't reproduce), the start of the summary for the developer, closed: true for a closed case, last change. Newest first.",
+			"List the saved cases: id, title, its first pages and how many it has (url is the first; get_case lists them all), its marks by status (open, toVerify: fixed and waiting to be verified, verified, dismissed: won't fix or can't reproduce), the start of the summary for the developer, closed: true for a closed case, last change. Newest first.",
 		inputSchema: {
 			type: "object",
 			properties: {},

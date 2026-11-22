@@ -3041,6 +3041,42 @@ same review already asserted.
   skip), `test/delete.test.ts` (Delete's two clicks, pulled out of `main.ts` for it),
   `test/browser.test.ts` (Firefox's keepalive within its idle time).
 
+## DEC-054: The marks of won't fix and can't reproduce are "dismissed"; the pin's pink is `#e0185c` (owner)
+
+2026-11-22. The owner: "do it", to a change made in the server of sitegloss.dev at the
+same time. "Closed" meant two things: a case filed away (DEC-046), and the group of the
+mark statuses `wontfix` and `cantreproduce`, so a case in the list could read "2 closed"
+while it was open.
+
+- **"Closed" means only the case.** The group is **dismissed**: the chip and the filter
+  "Dismissed", the counts "2 dismissed" (the panel's list and the import prompt, the
+  case's bar, case.md's `- Marks:` line), "All marks are verified or dismissed." under
+  the chips, "all verified or dismissed" on the page's bar, the key `dismissed` in
+  `list_cases`' `marks` and its description. The two statuses keep their names and
+  labels; the other groups keep theirs.
+- **In the code too**: `StatusGroup` `dismissed`, `STATUS_COLOUR.dismissed`, the tokens
+  `--st-dismissed` and `--st-dismissed-bg`, `[data-group="dismissed"]`. The list of
+  closed cases keeps its `data-group="closed"`: it is the case's word, and it no longer
+  picks up the dismissed marks' tone by accident.
+- **What keeps "closed"**: the case (`closed` in the case, in the case file `sitegloss/2`,
+  in `get_case` and `list_cases`, `set_case_status`), a panel, a popover, a tab, a port,
+  a stream, a shadow root. The case file has no group word; nothing in it changed. The
+  v1 API keeps its wire names (the server's DEC-004): its `CaseCounts.closed` counts the
+  dismissed marks, and the extension does not read it. Earlier entries in this log keep
+  the word as they had it.
+- **The pin's pink is `#e0185c`** (4.71:1 against white), for the strokes, boxes and
+  arrows too (one colour, `MARK_COLOUR`): `#e5195f` was 4.53:1 by the formula, so close
+  to the 4.5:1 a small bold number needs that a rendering difference decided it. The
+  icons, the logo and the store's pictures were not drawn again. Measured once in
+  Chromium (a loaded case, computed styles): the pin's fill `rgb(224, 24, 92)`, its
+  number `rgb(255, 255, 255)`, no opacity on the way: 4.71:1. The 4.45:1 the server's
+  check reported does not come from the extension's colours: its pins were pure white on
+  the pure pink before as well (4.53:1). 4.45:1 is what a number of `#fdfdfd`, or the pink
+  at 98 % over white, would give; a pin read from a screenshot's pixels can be off too,
+  as screenshots are stored as WebP at quality 0.85.
+- Tests: `test/contrast.test.ts` (the open stroke and pin 4.71:1), the rest renamed in
+  place. No new test.
+
 ## DEC-056: tab-mcp client 0.21.0 changes nothing for Sitegloss (owner)
 
 2026-11-22. The owner approved the bump of `@ractive-ch/tab-mcp-client` from 0.20.0 to

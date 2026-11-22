@@ -33,7 +33,7 @@ const GREEN: [number, number, number] = [0, 170, 80];
 const ORANGE: [number, number, number] = [240, 150, 0];
 const PLAIN: [number, number, number] = [0, 160, 0];
 const SECRET: [number, number, number] = [200, 0, 160];
-const MARK: [number, number, number] = [229, 25, 95];
+const MARK: [number, number, number] = [224, 24, 92];
 
 inFullSet("marks and their screenshots", () => {
 	let h: Harness;

@@ -17,6 +17,10 @@ timestamp: 2026-11-13T01:00:00+01:00
 ---
 # UX review, November 2026
 
+> Note (2026-11-22): DEC-054 renamed the mark group "closed" (won't fix, can't
+> reproduce) to "dismissed": its names, its tokens (`--st-dismissed`) and the
+> `list_cases` key. The old names below are history; this review is kept as written.
+
 The brief is [iteration 17](../iterations/iteration-17-ux-rework.md); the owner's decisions
 there are fixed. This document settles everything else, so the four PRs can be built
 without further questions. Where a point was open, the choice and its reason are in

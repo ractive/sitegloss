@@ -89,7 +89,7 @@ is what a case is about, and finding the element again is a best-effort extra:
 The look (DEC-024): the side panel is paper with ink on it, in light and dark, from one
 token block in `style.css`; amber is a view's one action that starts drawing, the other
 main actions are ink, and a mark's colour is its status (open, to verify, verified,
-closed). The marks list has a margin with each mark's pin on a rail: the pin's colour is
+dismissed). The marks list has a margin with each mark's pin on a rail: the pin's colour is
 the status, its fill the match. The page's overlay has one fixed
 look on every page and in both schemes: ink bars with a white ring, every stroke over a
 white casing, solid when the mark's element is found and dashed when it is unsure.
@@ -306,7 +306,7 @@ loading is searched for again.
 
 | Tool | What it does | Asks first |
 |---|---|---|
-| `list_cases` | Cases with title, pages, their marks by status (`open`, `toVerify`, `verified`, `closed`), the start of the summary for the developer | no |
+| `list_cases` | Cases with title, pages, their marks by status (`open`, `toVerify`, `verified`, `dismissed`: won't fix or can't reproduce), the start of the summary for the developer | no |
 | `get_case` | A case's pages and summary, its screenshots with their pages, marks with their page, status, resolution (`verified`, `by`), reopens and findings (`own` for the caller's), element details and crops | no |
 | `get_image` | One screenshot or crop, scaled to at most 1568 px | no |
 | `load_case` | Loads a case onto the tab in front and reports what was found | no |

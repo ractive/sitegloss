@@ -221,7 +221,7 @@ inBothSets("adding marks to a case", () => {
 			"shots/s3.webp",
 		]);
 		// Mark 2's pin is on mark 3's screenshot too, as one save would show it.
-		const MARK: [number, number, number] = [229, 25, 95];
+		const MARK: [number, number, number] = [224, 24, 92];
 		expect(
 			await countColour(h.control, "Straight in", "shots/s3.webp", MARK),
 		).toBeGreaterThan(

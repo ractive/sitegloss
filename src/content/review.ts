@@ -1165,7 +1165,7 @@ export class Reviewer {
 
 	#renderBar(): void {
 		const doc = this.overlay.doc;
-		// Verified and closed marks are drawn, faded, but no longer counted;
+		// Verified and dismissed marks are drawn, faded, but no longer counted;
 		// open ones and those to verify are what to look at.
 		const active = this.#entries.filter((e) => {
 			const status = markStatus(e.mark);
@@ -1186,7 +1186,7 @@ export class Reviewer {
 		count.className = "count";
 		count.textContent =
 			active.length === 0 && this.#entries.length > 0
-				? "all verified or closed"
+				? "all verified or dismissed"
 				: `${found} of ${active.length} found${toVerify > 0 ? ` · ${toVerify} to verify` : ""}`;
 		const sep = doc.createElement("span");
 		sep.className = "sep";

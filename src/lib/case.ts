@@ -626,7 +626,7 @@ export const STATUS_GROUPS = [
 	"open",
 	"toVerify",
 	"verified",
-	"closed",
+	"dismissed",
 ] as const;
 export type StatusGroup = (typeof STATUS_GROUPS)[number];
 
@@ -634,22 +634,27 @@ export const GROUP_OF: Record<MarkStatus, StatusGroup> = {
 	open: "open",
 	fixed: "toVerify",
 	verified: "verified",
-	wontfix: "closed",
-	cantreproduce: "closed",
+	wontfix: "dismissed",
+	cantreproduce: "dismissed",
 };
 
 export const GROUP_LABEL: Record<StatusGroup, string> = {
 	open: "Open",
 	toVerify: "To verify",
 	verified: "Verified",
-	closed: "Closed",
+	dismissed: "Dismissed",
 };
 
 export type CaseCounts = Record<StatusGroup, number>;
 
-/** How many marks are open, to verify, verified and closed. */
+/** How many marks are open, to verify, verified and dismissed. */
 export function caseCounts(c: Case): CaseCounts {
-	const counts: CaseCounts = { open: 0, toVerify: 0, verified: 0, closed: 0 };
+	const counts: CaseCounts = {
+		open: 0,
+		toVerify: 0,
+		verified: 0,
+		dismissed: 0,
+	};
 	for (const a of c.marks) counts[GROUP_OF[markStatus(a)]]++;
 	return counts;
 }
