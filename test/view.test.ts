@@ -3462,9 +3462,20 @@ describe("the AI app", () => {
 			) as unknown as HTMLButtonElement
 		).click();
 		expect(answers).toEqual([true, false]);
-		// Answered: gone, and the box takes no room.
-		showKeepOnQuestion(box, false, answer);
+		// Taken away while one of its buttons has the focus: the focus goes
+		// to the switch, not to the page's start.
+		(
+			box.querySelector(
+				'[data-answer="not-now"]',
+			) as unknown as HTMLButtonElement
+		).focus();
+		showKeepOnQuestion(box, false, answer, el("ai-switch"));
 		expect(box.childElementCount).toBe(0);
+		expect(window.document.activeElement === (el("ai-switch") as unknown)).toBe(
+			true,
+		);
+		// The sentence it stands in for while asked is there to be hidden.
+		expect(el("keep-on-note").textContent).toContain("AI access stays on");
 	});
 
 	const ai = (change: Partial<PanelState["ai"]>) => (s: PanelState) => {

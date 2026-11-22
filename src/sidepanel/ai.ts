@@ -34,10 +34,14 @@ import { DEFAULT_RELAY, relayProblem } from "../worker/settings.ts";
 import {
 	ALLOW_DELAY_MS,
 	armed,
-	asksKeepOn,
 	cardView,
 	confirms,
 	hasNewGrant,
+	type KeepOnAsk,
+	keepOnAskStarts,
+	keepOnChosen,
+	NOT_ASKING,
+	nextKeepOnAsk,
 	pairedSince,
 	SWITCH_WAIT_MS,
 	type SwitchIntent,
@@ -89,7 +93,7 @@ export const KEEP_ON_QUESTION =
 /** Where this browser keeps the answer: its own storage, not a case, not synced. */
 const KEEP_ON_ASKED = "sitegloss.keepOnAsked";
 
-/** Whether this browser answered the question, or set Keep AI access on by hand. */
+/** Whether this browser answered the question, or set Keep AI access on by hand (or had it on). */
 export function keepOnAnswered(): boolean {
 	try {
 		return localStorage.getItem(KEEP_ON_ASKED) !== null;
@@ -100,7 +104,7 @@ export function keepOnAnswered(): boolean {
 
 /** The answer kept: the question does not come again. */
 export function rememberKeepOnAnswer(
-	answer: "keep" | "not-now" | "by-hand",
+	answer: "kept-on" | "not-now" | "unticked",
 ): void {
 	try {
 		localStorage.setItem(KEEP_ON_ASKED, answer);
@@ -113,14 +117,20 @@ export function rememberKeepOnAnswer(
  * The question in `box` while `asking`, nothing otherwise. Drawn once: the
  * box is a status region, which would say it again on every redraw. It
  * takes no focus and scrolls nothing; neither button is the amber one.
+ * Taken away while one of its buttons has the focus, the focus goes to
+ * `focusAfter` (the switch it was about), not to the page's start.
  */
 export function showKeepOnQuestion(
 	box: HTMLElement,
 	asking: boolean,
 	answer: (keep: boolean) => void,
+	focusAfter?: HTMLElement,
 ): void {
 	if (!asking) {
-		if (box.childElementCount > 0) box.replaceChildren();
+		if (box.childElementCount === 0) return;
+		const held = box.contains(document.activeElement);
+		box.replaceChildren();
+		if (held) focusAfter?.focus();
 		return;
 	}
 	if (box.childElementCount > 0) return;
@@ -273,23 +283,35 @@ export async function startAi(
 	let pairing = false;
 	/** The user asked to add another AI app (with apps paired already). */
 	let addingApp = false;
-	/** The person just turned AI access on and is asked whether to keep it on (DEC-059). */
-	let askingKeepOn = false;
+	/** Whether to keep AI access on: due after the person turned it on, shown once it is on (DEC-059). */
+	let keepOnAsk: KeepOnAsk = NOT_ASKING;
 	const keepOnBox = byId("keep-on-ask");
-	/** AI access turned on by the person: ask once, where `asksKeepOn` says so. */
+	const keepOnNote = byId("keep-on-note");
+	/** AI access turned on by the person: asked once it is on, where `asksKeepOn` says so. */
 	const turnedOn = (way: TurnedOn) => {
-		if (current !== undefined && asksKeepOn(way, current, keepOnAnswered()))
-			askingKeepOn = true;
+		if (current !== undefined)
+			keepOnAsk = keepOnAskStarts(way, current, keepOnAnswered(), Date.now());
+	};
+	/** It did not come on (Firefox's consent refused): nothing to ask. */
+	const notTurnedOn = () => {
+		keepOnAsk = NOT_ASKING;
+		if (current) showCard(current);
 	};
 	const answerKeepOn = (keep: boolean) => {
-		rememberKeepOnAnswer(keep ? "keep" : "not-now");
-		askingKeepOn = false;
+		// "Not now" is the answer at once; "Keep it on" once keep-on is really
+		// on (`keepOnChosen`): a refused consent leaves it unanswered.
+		if (!keep) rememberKeepOnAnswer("not-now");
+		keepOnAsk = NOT_ASKING;
+		// The question goes now, in the click, before a consent prompt can
+		// take the focus: its button had it, so the switch gets it.
+		if (current) showCard(current);
 		// Exactly what ticking it does, Firefox's consent step included.
 		if (keep && !keepOn.checked) keepOn.click();
-		if (current) showCard(current);
-		// The question is gone: the focus to the switch it was about.
-		aiSwitch.focus();
 	};
+	// Answered in another panel of this browser: gone here too.
+	window.addEventListener("storage", (e) => {
+		if (e.key === KEEP_ON_ASKED && current) showCard(current);
+	});
 	/** The apps paired when "+ Add another AI app" was clicked. */
 	let knownGrants: ReadonlySet<string> = new Set();
 	/** While the pairing box shows: the apps paired before it did. */
@@ -551,7 +573,7 @@ export async function startAi(
 	byId<HTMLButtonElement>("ai-button").addEventListener("click", () => {
 		if (current !== undefined && cardView(current, false).turnOn) {
 			turnedOn("pill");
-			turnOn({ type: "connect" });
+			turnOn({ type: "connect" }, notTurnedOn);
 		}
 		showSettings();
 		// After the render that shows the Settings view.
@@ -560,14 +582,12 @@ export async function startAi(
 
 	byId<HTMLButtonElement>("connect").addEventListener("click", () => {
 		turnedOn("button");
-		turnOn({ type: "connect" });
+		turnOn({ type: "connect" }, notTurnedOn);
 	});
 
-	byId<HTMLButtonElement>("stop-ai").addEventListener("click", () => {
-		// Turned off: the question about keeping it on goes, unanswered.
-		askingKeepOn = false;
-		send({ type: "stop" });
-	});
+	byId<HTMLButtonElement>("stop-ai").addEventListener("click", () =>
+		send({ type: "stop" }),
+	);
 
 	aiSwitch.addEventListener("change", () => {
 		const intent = { on: aiSwitch.checked, until: Date.now() + SWITCH_WAIT_MS };
@@ -577,13 +597,11 @@ export async function startAi(
 		if (aiSwitch.checked)
 			turnOn({ type: "connect" }, () => {
 				switchIntent = undefined;
+				keepOnAsk = NOT_ASKING;
 				if (current) showCard(current);
 				else aiSwitch.checked = false;
 			});
-		else {
-			askingKeepOn = false;
-			send({ type: "stop" });
-		}
+		else send({ type: "stop" });
 		// No state that matches the flip: the switch shows the state again.
 		setTimeout(() => {
 			if (switchIntent === intent && current) showCard(current);
@@ -605,9 +623,10 @@ export async function startAi(
 	);
 
 	keepOn.addEventListener("change", () => {
-		// Set by hand: that is the answer too.
-		if (!keepOnAnswered()) rememberKeepOnAnswer("by-hand");
-		askingKeepOn = false;
+		// Set by hand: that is the answer too. Unticked, at once; ticked, once
+		// keep-on is really on (`keepOnChosen` in showCard).
+		if (!keepOn.checked && !keepOnAnswered()) rememberKeepOnAnswer("unticked");
+		keepOnAsk = NOT_ASKING;
 		if (current) showCard(current);
 		if (keepOn.checked)
 			turnOn({ type: "keep-on", on: true }, () => {
@@ -885,9 +904,12 @@ export async function startAi(
 		// And with the app being added connecting: the box has done its job.
 		if (addingApp && hasNewGrant(knownGrants, a)) addingApp = false;
 		const view = cardView(a, addingApp);
-		// Kept on meanwhile (by hand, or by the answer), or taken over: not asked.
-		if (a.keepOn || a.replaced !== undefined) askingKeepOn = false;
-		showKeepOnQuestion(keepOnBox, askingKeepOn, answerKeepOn);
+		// Keep-on really on, by the answer, by hand or from before: answered.
+		if (keepOnChosen(keepOnAnswered(), a)) rememberKeepOnAnswer("kept-on");
+		keepOnAsk = nextKeepOnAsk(keepOnAsk, a, keepOnAnswered(), Date.now());
+		showKeepOnQuestion(keepOnBox, keepOnAsk.asking, answerKeepOn, aiSwitch);
+		// While asked, the sentence under the checkbox would say the same.
+		keepOnNote.hidden = keepOnAsk.asking;
 		// The pairing box showed and an app is paired since: say what now.
 		// (A connection that drops meanwhile does not end that: the app may
 		// be listed only once Sitegloss is connected again.)

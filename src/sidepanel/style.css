@@ -2558,7 +2558,7 @@ button.tile-add:hover:not(:disabled) {
 .keep-on-ask:not(:empty) {
 	display: grid;
 	gap: var(--s2);
-	margin: 0 0 var(--s3);
+	margin: var(--s2) 0 var(--s3);
 	padding: var(--s3);
 	border: 1px solid var(--rule);
 	border-radius: var(--r-control);

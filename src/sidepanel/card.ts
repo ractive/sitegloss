@@ -177,3 +177,71 @@ export function asksKeepOn(
 		way !== "by-itself" && !a.keepOn && !answered && a.replaced === undefined
 	);
 }
+
+/** How long a person's turning on may take to connect and still be asked about. */
+export const KEEP_ON_ASK_WAIT_MS = 60_000;
+
+/**
+ * The question's course (DEC-059): due once the person turned AI access on
+ * (`pending`), shown only once it is really on, gone whenever it is not.
+ */
+export interface KeepOnAsk {
+	/** Turned on by the person, not on yet: whether it was seen connecting, and until when it may come on. */
+	pending?: { seenActive: boolean; until: number };
+	/** The question shows. */
+	asking: boolean;
+}
+
+export const NOT_ASKING: KeepOnAsk = { asking: false };
+
+/** The person turned AI access on `way`: the question is due, where `asksKeepOn` says so. */
+export function keepOnAskStarts(
+	way: TurnedOn,
+	a: Pick<AiState, "keepOn" | "replaced">,
+	answered: boolean,
+	now: number,
+): KeepOnAsk {
+	return asksKeepOn(way, a, answered)
+		? {
+				pending: { seenActive: false, until: now + KEEP_ON_ASK_WAIT_MS },
+				asking: false,
+			}
+		: NOT_ASKING;
+}
+
+/**
+ * The question after the state `a`: shown once AI access is connected after
+ * the person's own turning on; gone when it is not on (it never came on,
+ * the attempt failed, it went off, the session ended), when keep-on is on,
+ * when the connection is taken over, and once this browser answered (in
+ * another panel too).
+ */
+export function nextKeepOnAsk(
+	ask: KeepOnAsk,
+	a: Pick<AiState, "state" | "retrying" | "keepOn" | "replaced">,
+	answered: boolean,
+	now: number,
+): KeepOnAsk {
+	if (a.keepOn || a.replaced !== undefined || answered) return NOT_ASKING;
+	if (ask.asking) return a.state === "connected" ? ask : NOT_ASKING;
+	const p = ask.pending;
+	if (p === undefined) return ask;
+	if (a.state === "connected") return { asking: true };
+	if (now > p.until) return NOT_ASKING;
+	if (a.state === "connecting" || a.state === "reconnecting" || a.retrying)
+		return p.seenActive
+			? ask
+			: { asking: false, pending: { ...p, seenActive: true } };
+	// Off: before the worker took the command up it is still to come; after
+	// it was seen connecting, the attempt failed.
+	return p.seenActive ? NOT_ASKING : ask;
+}
+
+/**
+ * Whether the answer is to be kept now: keep-on is really on (the box
+ * ticked, or "Keep it on", went through: Firefox's consent given, the
+ * worker took it), and nothing was kept yet. "Not now" and unticking by
+ * hand are kept at once.
+ */
+export const keepOnChosen = (answered: boolean, a: Pick<AiState, "keepOn">) =>
+	!answered && a.keepOn;
