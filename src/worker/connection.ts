@@ -150,9 +150,12 @@ async function restrictStorage(): Promise<void> {
 }
 
 /** Tell every tab's overlay, whatever a tab answers. */
-async function tellTabs(news: ContentRequest): Promise<void> {
+async function tellTabs(
+	news: ContentRequest,
+	which: chrome.tabs.QueryInfo = {},
+): Promise<void> {
 	try {
-		for (const { id } of await chrome.tabs.query({}))
+		for (const { id } of await chrome.tabs.query(which))
 			if (id !== undefined)
 				chrome.tabs.sendMessage(id, news).catch(() => undefined);
 	} catch {
@@ -774,6 +777,19 @@ export class Connection {
 
 	// --- The side panels ---
 
+	/** Whether a side panel of window `windowId` is open and on screen. */
+	panelShown(windowId: number): boolean {
+		return [...this.#panels].some((p) => p.windowId === windowId && p.visible);
+	}
+
+	/** The pages of the window: their review bar gives way to the panel. */
+	#tellPanel(windowId: number): void {
+		void tellTabs(
+			{ type: "overlay:panel", open: this.panelShown(windowId) },
+			{ windowId },
+		);
+	}
+
 	/**
 	 * A side panel's port, its sender already checked, with the messages it
 	 * sent before the connection had started.
@@ -804,8 +820,10 @@ export class Connection {
 		port.onDisconnect.addListener(() => {
 			this.#panels.delete(panel);
 			if (panel.pairing) this.#pairingOff();
-			if (panel.windowId !== undefined)
+			if (panel.windowId !== undefined) {
 				this.#questions.panelClosed(panel.windowId);
+				this.#tellPanel(panel.windowId);
+			}
 		});
 		this.#send(panel);
 	}
@@ -814,9 +832,11 @@ export class Connection {
 		switch (command.type) {
 			case "hello":
 				panel.windowId = command.windowId;
+				this.#tellPanel(command.windowId);
 				return;
 			case "visible":
 				panel.visible = command.visible;
+				if (panel.windowId !== undefined) this.#tellPanel(panel.windowId);
 				// Hidden: the questions it alone showed go out as notifications.
 				if (!command.visible && panel.windowId !== undefined)
 					this.#questions.panelClosed(panel.windowId);
@@ -1180,10 +1200,7 @@ export class Connection {
 			panelInFocus: async (windowId) => {
 				// Open is not enough: it has to be on screen, not covered by
 				// another extension's panel for the tab.
-				if (
-					![...this.#panels].some((p) => p.windowId === windowId && p.visible)
-				)
-					return false;
+				if (!this.panelShown(windowId)) return false;
 				return (await chrome.windows.get(windowId)).focused;
 			},
 			notify: async (id, text) => {

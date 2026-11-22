@@ -964,3 +964,34 @@ describe("filling in the code on the relay's pairing page, in the worker, with t
 		}
 	});
 });
+
+describe("the side panel on screen, for the pages' review bar", () => {
+	test("a window's pages hear when its panel comes on screen and when it goes", async () => {
+		const tabs = (globals["chrome"] as { tabs: Record<string, unknown> }).tabs;
+		const { query, sendMessage } = tabs;
+		const told: [number, unknown][] = [];
+		tabs["query"] = async (q: { windowId?: number }) =>
+			q.windowId === 7 ? [{ id: 70 }] : [];
+		tabs["sendMessage"] = async (id: number, m: unknown) =>
+			void told.push([id, m]);
+		try {
+			const w = await startWorker(memoryKv({}));
+			expect(w.connection.panelShown(7)).toBe(false);
+			w.send({ type: "hello", windowId: 7 });
+			await until(() => told.length === 1);
+			expect(w.connection.panelShown(7)).toBe(true);
+			expect(w.connection.panelShown(8)).toBe(false);
+			// Covered by another extension's panel: as good as closed.
+			w.send({ type: "visible", visible: false });
+			await until(() => told.length === 2);
+			expect(w.connection.panelShown(7)).toBe(false);
+			expect(told).toEqual([
+				[70, { type: "overlay:panel", open: true }],
+				[70, { type: "overlay:panel", open: false }],
+			]);
+		} finally {
+			tabs["query"] = query;
+			tabs["sendMessage"] = sendMessage;
+		}
+	});
+});

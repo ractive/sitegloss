@@ -50,6 +50,8 @@ export type ContentRequest =
 	| { type: "page:info" }
 	/** The side panel's "Blur form fields" changed (`OverlayState`). */
 	| { type: "overlay:settings"; blurForms: boolean }
+	/** The side panel of the tab's window came on screen, or went: the review bar gives way to it. */
+	| { type: "overlay:panel"; open: boolean }
 	/**
 	 * Find the case's elements on this page and draw its marks (`LoadResult`, or
 	 * `{ error }`; `{ error, busy: true }` while the page is busy). Two loads of the case close
@@ -254,7 +256,9 @@ export type WorkerRequest =
 	/** The toolbar's Undo: take out the mark it just added (`UndoResult`, save.ts `undoAdd`). */
 	| { type: "case:undo-add"; caseId: string; markId: string }
 	/** Remove the pending screenshots of a save that was given up. */
-	| { type: "images:discard"; caseId: string; shotIds: string[] };
+	| { type: "images:discard"; caseId: string; shotIds: string[] }
+	/** Whether the side panel of the tab's window is on screen (`{ open }`). */
+	| { type: "panel:open" };
 
 /**
  * The one-off messages the service worker answers. Nothing about the AI
@@ -262,7 +266,14 @@ export type WorkerRequest =
  */
 export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	WorkerRequest["type"]
->(["capture", "case:save", "case:number", "case:undo-add", "images:discard"]);
+>([
+	"capture",
+	"case:save",
+	"case:number",
+	"case:undo-add",
+	"images:discard",
+	"panel:open",
+]);
 
 export function isWorkerRequest(message: unknown): message is WorkerRequest {
 	return (

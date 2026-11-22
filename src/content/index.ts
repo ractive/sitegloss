@@ -22,6 +22,7 @@ import type {
 	InspectResult,
 	LoadReplacedAnswer,
 	Released,
+	WorkerRequest,
 } from "../lib/messages.ts";
 import { PageActivity } from "./activity.ts";
 import { MarkAdder, pageInfo } from "./adding.ts";
@@ -203,6 +204,14 @@ function start(): void {
 		// Nobody may be listening (side panel closed): that is fine.
 		chrome.runtime.sendMessage(message).catch(() => {});
 	};
+	// The panel may be on screen already: then the review bar waits.
+	const asked: WorkerRequest = { type: "panel:open" };
+	chrome.runtime
+		.sendMessage(asked)
+		.then((answer: { open?: boolean } | undefined) => {
+			if (answer?.open === true) overlay.setPanelOpen(true);
+		})
+		.catch(() => {});
 	chrome.runtime.onMessage.addListener(
 		(message: ContentRequest, sender, sendResponse) => {
 			if (sender.id !== chrome.runtime.id) return false;
@@ -242,6 +251,9 @@ function start(): void {
 				case "overlay:settings":
 					adder.setBlurForms(message.blurForms);
 					sendResponse(state());
+					break;
+				case "overlay:panel":
+					overlay.setPanelOpen(message.open);
 					break;
 				case "page:captured":
 					adder.captured();

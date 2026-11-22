@@ -1242,7 +1242,9 @@ export class Reviewer {
 			hide = doc.createElement("button");
 			hide.type = "button";
 			hide.dataset["action"] = "review-hide";
-			hide.textContent = "Hide";
+			// The panel's words; and how to get them back (the panel's draw).
+			hide.textContent = "Hide marks";
+			hide.title = `Take the marks off this page. Open the case in Sitegloss's ${PANEL} to bring them back.`;
 			hide.addEventListener("click", () => this.clear());
 			bar.replaceChildren(ring(doc), text, hide);
 			return;

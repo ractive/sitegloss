@@ -404,24 +404,18 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		expect<string | undefined>(bar.dataset["fit"]).toBe("rows");
 	});
 
-	test("the review bar's place under a toolbar at the top follows the toolbar's height", () => {
+	test("the review bar gives way to the marks being added and to the side panel", () => {
+		overlay.setReviewing(true);
+		expect(overlay.reviewBar.hidden).toBe(false);
 		overlay.setAddingMarks(true);
-		withRoomFrom("");
-		const bar = overlay.toolbar;
-		let height = 40;
-		Object.defineProperty(bar, "offsetHeight", {
-			configurable: true,
-			get: () => height,
-		});
-		overlay.fitToolbar();
-		const under = () => overlay.layer.style.getPropertyValue("--under-toolbar");
-		// One row: where it was, 16 + 40 + 8.
-		expect(under()).toBe("64px");
-		// The status on a row of its own: the bar starts below that row too.
-		height = 63;
-		overlay.fitToolbar();
-		expect(under()).toBe("87px");
+		expect(overlay.reviewBar.hidden).toBe(true);
 		overlay.setAddingMarks(false);
+		expect(overlay.reviewBar.hidden).toBe(false);
+		overlay.setPanelOpen(true);
+		expect(overlay.reviewBar.hidden).toBe(true);
+		overlay.setPanelOpen(false);
+		expect(overlay.reviewBar.hidden).toBe(false);
+		overlay.setReviewing(false);
 	});
 
 	test("a wider page lays it out again", () => {

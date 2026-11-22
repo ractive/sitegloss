@@ -331,6 +331,11 @@ async function handle(
 				height: image.height,
 			} satisfies CaptureResult;
 		}
+		case "panel:open": {
+			const windowId = sender.tab?.windowId;
+			const c = await ready.catch(() => undefined);
+			return { open: windowId !== undefined && c?.panelShown(windowId) };
+		}
 		case "case:save": {
 			const from = request.request.imagesFrom;
 			if (from !== undefined && !isSafeId(from)) throw new Error("invalid id");

@@ -118,7 +118,11 @@ user agent. What differs from Chrome and Edge:
    those an AI app drew; with a mark not in the case yet the panel stays and says so,
    and a second click leaves without it. A new case starts there, with "New case for
    this page". Closing the side panel leaves marks and toolbar on the page; opening it again
-   opens the case the page shows. A case can span several pages: go on to the next page
+   opens the case the page shows. Marks drawn while the side panel is closed (by an AI
+   app, or left when it closed) have a bar at the top right of the page with the case's
+   title and how many of the page's marks were found; its "Hide marks" takes them off,
+   and opening the case in the side panel brings them back. The bar gives way while
+   marks are added and while the side panel is open in that window. A case can span several pages: go on to the next page
    of what you are testing, click "Add marks" again, and the marks you draw there go into
    the same case, which lists its pages with their marks and opens each with a click.
    A page is its path (and its hash route, `#/cart`), in whatever environment; in a

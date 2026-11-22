@@ -215,8 +215,6 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	box-shadow: ${SHADOW};
 	pointer-events: auto; max-width: min(440px, calc(100vw - 32px));
 }
-/* Under a toolbar at the top, whatever its height (fitToolbar measures it): it would cover the toolbar's last buttons, or its status row. */
-.toolbar.top:not([hidden]) ~ .reviewbar { top: var(--under-toolbar, 64px); }
 /* The count says what the bar is for: a long title gives way. */
 .reviewbar .text { display: flex; gap: 8px; min-width: 0; }
 .reviewbar .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: ${L.barMuted}; }
@@ -435,6 +433,8 @@ export class Overlay {
 	readonly #temporary: SVGGElement;
 	#addingMarks = false;
 	#reviewing = false;
+	/** The side panel of this window is on screen: it shows the case. */
+	#panelOpen = false;
 	#marking = false;
 	/** The loaded marks' pins as drawn last, in window coordinates. */
 	#pins: { number: number; x: number; y: number; r: number }[] = [];
@@ -547,6 +547,11 @@ export class Overlay {
 		this.onChange?.();
 	}
 
+	setPanelOpen(on: boolean): void {
+		this.#panelOpen = on;
+		this.#update();
+	}
+
 	/**
 	 * The loaded mark whose pin is at this point of the window, the one drawn
 	 * last first: for the layer that takes the pointer while a tool is on.
@@ -629,7 +634,10 @@ export class Overlay {
 		this.toolbar.hidden = !this.#addingMarks;
 		this.capture.hidden = !this.#addingMarks;
 		this.#drafts.style.display = this.#addingMarks ? "" : "none";
-		this.reviewBar.hidden = !this.#reviewing;
+		// The review bar is for marks drawn with the panel closed: not over
+		// the marks being added, nor beside the panel, which says it all.
+		this.reviewBar.hidden =
+			!this.#reviewing || this.#addingMarks || this.#panelOpen;
 		this.#review.style.display = this.#reviewing ? "" : "none";
 		// Stay on top of elements the page appended later.
 		if (shown && this.host.nextElementSibling !== null) this.#place(true);
@@ -659,12 +667,6 @@ export class Overlay {
 			bar.dataset["fit"] = fit;
 			if (this.#toolbarFits(fit === "")) break;
 		}
-		// The review bar's place under a toolbar at the top: 16 px above the
-		// toolbar, its one or two rows, 8 px between the two.
-		this.layer.style.setProperty(
-			"--under-toolbar",
-			`${16 + bar.offsetHeight + 8}px`,
-		);
 	}
 
 	/** One row that does not overflow (`beside`), or no button on a second row. */
