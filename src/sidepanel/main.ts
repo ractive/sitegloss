@@ -17,7 +17,6 @@ import {
 	cleanTitle,
 	linkProblem,
 	MARK_CHANGED,
-	MAX_COMMENT,
 	MAX_LINK,
 	type Mark,
 	markFor,
@@ -88,6 +87,7 @@ import {
 } from "./follow.ts";
 import { isUntouched, mayHold, newCase, type TabAnswer } from "./fresh.ts";
 import { CaseHints } from "./hints.ts";
+import { markChange } from "./mark-change.ts";
 import {
 	linkStep,
 	markTargets,
@@ -2555,62 +2555,33 @@ function answerMark(
 	}
 	const done = (why: string | undefined) =>
 		answer(why === undefined ? { ok: true } : { ok: false, error: why });
-	const now = new Date().toISOString();
-	switch (request.type) {
-		case "mark:picked":
-			update((s) => {
-				// Its row shows, whatever the list was filtered by.
-				s.markFilter = undefined;
-				s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
-			});
-			answer({ ok: true });
-			return false;
-		case "mark:comment":
-			if (request.text.length > MAX_COMMENT) {
-				answer({ ok: false, error: "That comment is too long." });
-				return false;
-			}
-			void changeMark(c, a, (current, id) => ({
-				value: withComment(current, id, request.text, now),
-			})).then(done);
-			return true;
-		case "mark:resolve":
-			void changeMark(c, a, (current, id) => ({
-				value: withChoice(current, id, request.kind, request.note, now),
-			})).then(done);
-			return true;
-		case "mark:verify":
-			void changeMark(c, a, (current, id) => ({
-				value: withVerified(current, id, undefined, now),
-			})).then(done);
-			return true;
-		case "mark:reopen":
-			// The developer reads it first: a reopen says why, here as in the panel.
-			if (request.note.trim() === "") {
-				answer({ ok: false, error: "Say what is still wrong." });
-				return false;
-			}
-			void changeMark(c, a, (current, id) => ({
-				// Opened meanwhile: the form stays, and says why.
-				value: withReopen(
-					current,
-					id,
-					{ note: request.note, refuseOpen: true },
-					now,
-				),
-			})).then(done);
-			return true;
-		case "mark:delete":
-			if (deleting.has(a.id)) {
-				answer({ ok: false, error: "That mark is being deleted." });
-				return false;
-			}
-			deleting.add(a.id);
-			void changeMark(c, a, (current, id) => withoutMark(current, id, now))
-				.then(done)
-				.finally(() => deleting.delete(a.id));
-			return true;
+	if (request.type === "mark:picked") {
+		update((s) => {
+			// Its row shows, whatever the list was filtered by.
+			s.markFilter = undefined;
+			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
+		});
+		answer({ ok: true });
+		return false;
 	}
+	const made = markChange(request, new Date().toISOString());
+	if ("error" in made) {
+		answer({ ok: false, error: made.error });
+		return false;
+	}
+	if (request.type !== "mark:delete") {
+		void changeMark(c, a, made.change).then(done);
+		return true;
+	}
+	if (deleting.has(a.id)) {
+		answer({ ok: false, error: "That mark is being deleted." });
+		return false;
+	}
+	deleting.add(a.id);
+	void changeMark(c, a, made.change)
+		.then(done)
+		.finally(() => deleting.delete(a.id));
+	return true;
 }
 
 // The top bar's AI pill opens the Settings view, where the AI app card is;
