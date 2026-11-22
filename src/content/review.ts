@@ -20,6 +20,7 @@ import {
 	type Case,
 	MARK_CHANGED,
 	MAX_COMMENT,
+	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
 	type Mark,
 	type MarkStatus,
@@ -894,6 +895,17 @@ export class Reviewer {
 					),
 				);
 			}
+			// A picture of what the screenshot does not show (DEC-058): the
+			// panel's dialog, never a paste on the page.
+			// Apart from the status's commands, which are the panel's.
+			const addImage =
+				(mark.images?.length ?? 0) < MAX_MARK_IMAGES
+					? button(
+							"Add another image…",
+							"mark-add-image",
+							() => void this.#addImage(open),
+						)
+					: undefined;
 			const remove = button(
 				"Delete mark",
 				"mark-delete",
@@ -905,6 +917,7 @@ export class Reviewer {
 				field,
 				problem,
 				row("commands", ...commands),
+				...(addImage === undefined ? [] : [row("row", addImage)]),
 				row(
 					"row",
 					remove,
@@ -992,6 +1005,24 @@ export class Reviewer {
 		const open = this.#open;
 		if (open === undefined || open.busy) return;
 		if (await this.#keep(open)) this.#closeMark();
+	}
+
+	/**
+	 * "Add another image…": a comment typed is stored first, then the panel
+	 * is asked to open its dialog for the mark, and the popover goes.
+	 */
+	async #addImage(open: OpenMark): Promise<void> {
+		const now = this.#openMark();
+		if (now === undefined || now.open !== open || open.busy) return;
+		if (!(await this.#keep(open))) return;
+		if (
+			await this.#request(open, {
+				type: "mark:add-image",
+				caseId: now.c.id,
+				markId: now.mark.id,
+			})
+		)
+			this.#closeMark();
 	}
 
 	/** Delete mark: asked twice, as in the panel; the mark leaves the case. */

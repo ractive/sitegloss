@@ -4,7 +4,7 @@ import type { MarkRequest } from "../src/lib/messages.ts";
 import { markChange } from "../src/sidepanel/mark-change.ts";
 import { sampleCase, withOneMark } from "./fixtures.ts";
 
-type Command = Exclude<MarkRequest, { type: "mark:picked" }>;
+type Command = Exclude<MarkRequest, { type: "mark:picked" | "mark:add-image" }>;
 const ids = { caseId: "c_1", markId: "m1" };
 
 /** The case after the popover's command, as the panel stores it. */

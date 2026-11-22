@@ -17,6 +17,7 @@ import {
 	casePages,
 	cleanTitle,
 	MARK_CHANGED,
+	MAX_MARK_IMAGES,
 	type Mark,
 	markFor,
 	markKey,
@@ -2704,6 +2705,24 @@ function answerMark(
 			s.markFilter = undefined;
 			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
 		});
+		answer({ ok: true });
+		return false;
+	}
+	// The page's "Add another image…": the dialog opens here, over the
+	// panel, with the mark's row open under it (DEC-058).
+	if (request.type === "mark:add-image") {
+		if ((a.images?.length ?? 0) >= MAX_MARK_IMAGES) {
+			answer({
+				ok: false,
+				error: `Mark ${a.number} holds ${MAX_MARK_IMAGES} images, the most a mark may have.`,
+			});
+			return false;
+		}
+		update((s) => {
+			s.markFilter = undefined;
+			s.picked = { caseId: c.id, markId: a.id, at: Date.now() };
+		});
+		void showAddImages(c, a);
 		answer({ ok: true });
 		return false;
 	}
