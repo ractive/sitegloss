@@ -48,6 +48,7 @@ import {
 } from "../lib/case.ts";
 import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
+import { caseSites } from "../lib/site.ts";
 import {
 	type CloudActions,
 	caseSync,
@@ -62,6 +63,12 @@ import { markTargets, shortAddress } from "./mark-link.ts";
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
 import { openAt, pageHosts } from "./page-hosts.ts";
 import { holdClickedInPlace } from "./scroll-anchor.ts";
+import {
+	openAtFirst,
+	type SiteGroup,
+	siteGroups,
+	whereText,
+} from "./site-groups.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
 import {
@@ -266,14 +273,10 @@ export function pagePath(url: string): string {
 	return shortPath(url, /^https?:\/\//.test(pageKey(url)));
 }
 
-/** `shop.example/cart and 2 more pages`: a case's pages in the list. */
+/** `sitegloss.dev, 8 pages`: where a case is, in its card's name (DEC-067). */
 export function pagesLine(c: Case): string {
-	const [first, ...rest] = casePages(c);
-	const more =
-		rest.length === 0
-			? ""
-			: ` and ${rest.length} more page${rest.length === 1 ? "" : "s"}`;
-	return `${shortUrl(first?.url ?? c.page.url)}${more}`;
+	const { where, pages } = whereText(c);
+	return pages === undefined ? where : `${where}, ${pages}`;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -467,16 +470,19 @@ function renderSaved(
 
 // --- home ----------------------------------------------------------------------
 
-/** "shop.example/cart · 8 pages": where the case is; the address is cut, the count stays. */
+/**
+ * "sitegloss.dev · 8 pages": where the case is, its sites and its number of
+ * pages (DEC-067); the sites are cut, the count stays.
+ */
 function whereLine(c: Case): HTMLElement {
-	const pages = casePages(c);
+	const { where, pages } = whereText(c);
 	return h(
 		"span",
 		{ class: "card-where" },
-		h("span", { class: "where-url" }, shortUrl(pages[0]?.url ?? c.page.url)),
-		pages.length > 1
-			? h("span", { class: "where-more" }, ` · ${pages.length} pages`)
-			: null,
+		h("span", { class: "where-url" }, where),
+		pages === undefined
+			? null
+			: h("span", { class: "where-more" }, ` · ${pages}`),
 	);
 }
 
@@ -1138,13 +1144,24 @@ interface CaseParts {
 	counts: HTMLElement;
 	/** The facts' rows that come and go with what they hold. */
 	teamRow: HTMLElement;
-	/** The pages of a case that has several, under their own heading (DEC-065). */
+	/**
+	 * The pages of a case that has several, under the heading "Site" or
+	 * "Sites", each site a heading that opens and closes its own list
+	 * (DEC-065, DEC-067).
+	 */
 	pagesSection: HTMLElement;
-	/** "Pages 12": the heading, which opens and closes the list. */
-	pagesToggle: HTMLButtonElement;
-	pagesCount: HTMLElement;
-	/** The one page of a case that has one, among the facts. */
+	sitesHeading: HTMLElement;
+	/** The sites' headings and lists, in `groupsBox`; the groups they were drawn for. */
+	groups: GroupParts[];
+	groupsBox: HTMLElement;
+	siteGroups: SiteGroup[];
+	/** The case's page in the tab in front, as last drawn: which site starts open. */
+	front: CasePage | undefined;
+	/** The one page of a case that has one, among the facts, and its site beside it. */
 	pageRow: HTMLElement;
+	siteRow: HTMLElement;
+	siteLabel: HTMLElement;
+	siteText: HTMLElement;
 	/** "Current page" and its row, above the heading: also there while the list is closed. */
 	currentPage: HTMLElement;
 	currentRow: HTMLUListElement;
@@ -1166,8 +1183,6 @@ interface CaseParts {
 	linkFormOpen: boolean;
 	/** The case's address, a link where it is a web page. */
 	page: HTMLButtonElement;
-	/** The case's pages, where it has several (DEC-038). */
-	pages: HTMLUListElement;
 	pagesKey: string;
 	/** The action hint last written (`caseHintSeq`). */
 	hintSeq: number;
@@ -1260,34 +1275,79 @@ function holdDelete(button: HTMLElement | undefined): void {
 	};
 }
 
-/**
- * The list of pages opened or closed by the person, per case, this session
- * (DEC-063). Not chosen: open up to `PAGES_SHOWN` pages, closed for more, and
- * open where the tab shows none of the case's pages. A choice wins over
- * that, so the list does not open again by itself at the next render
- * (DEC-064's review).
- */
-const openPages = new Map<string, boolean>();
-
-/** Up to this many pages, the list starts open. */
-const PAGES_SHOWN = 3;
+/** A site's heading, which opens and closes its list of pages (DEC-067). */
+interface GroupParts {
+	name: string;
+	head: HTMLElement;
+	toggle: HTMLButtonElement;
+	count: HTMLElement;
+	list: HTMLUListElement;
+}
 
 /**
- * The list of pages under its heading, open or closed as "Comments" and
- * "Screenshots" are (DEC-065); `noneHere`: the tab shows none of the case's
- * pages, and the list is open so the person sees where to go.
+ * The sites' lists opened or closed by the person, per case and site, this
+ * session (DEC-063, DEC-067). Not chosen: `openAtFirst`. A choice wins over
+ * that, so a list does not open again by itself at the next render (DEC-064's
+ * review).
  */
-function foldPages(p: CaseParts, noneHere: boolean): void {
-	const count = p.pages.children.length;
-	const open =
-		openPages.get(p.current.id) ?? (count <= PAGES_SHOWN || noneHere);
-	p.pagesSection.hidden = count === 0;
-	p.pageRow.hidden = count > 0;
-	// Closed by itself with the focus in it: the focus goes to the heading.
-	if (!open && p.pages.contains(document.activeElement)) p.pagesToggle.focus();
-	p.pages.hidden = !open;
-	p.pagesToggle.setAttribute("aria-expanded", String(open));
-	p.pagesCount.textContent = String(count);
+const openSites = new Map<string, boolean>();
+
+const siteChoice = (caseId: string, name: string): string =>
+	`${caseId}\n${name}`;
+
+/**
+ * Each site's list under its heading, open or closed as "Comments" and
+ * "Screenshots" are (DEC-065, DEC-067).
+ */
+function foldPages(p: CaseParts): void {
+	const several = p.groups.length > 0;
+	p.pagesSection.hidden = !several;
+	p.pageRow.hidden = several;
+	const first = openAtFirst(p.siteGroups, p.front);
+	p.groups.forEach((g, i) => {
+		const open =
+			openSites.get(siteChoice(p.current.id, g.name)) ?? first[i] ?? true;
+		// Closed by itself with the focus in it: the focus goes to its heading.
+		if (!open && g.list.contains(document.activeElement)) g.toggle.focus();
+		g.list.hidden = !open;
+		g.toggle.setAttribute("aria-expanded", String(open));
+	});
+}
+
+/** A site's heading and its list: "› sitegloss.dev 12", the same control as "Comments 4". */
+function groupParts(p: CaseParts, name: string, index: number): GroupParts {
+	const list: HTMLUListElement = h("ul", {
+		class: "case-pages",
+		id: `case-site-pages-${index}`,
+		hidden: true,
+	});
+	const count = h("span", { class: "count" });
+	const toggle: HTMLButtonElement = h(
+		"button",
+		{
+			type: "button",
+			class: "thread-toggle pages-toggle",
+			id: `case-site-toggle-${index}`,
+			"aria-controls": list.id,
+			"aria-expanded": "false",
+			onclick: () => {
+				const open = toggle.getAttribute("aria-expanded") === "true";
+				openSites.set(siteChoice(p.current.id, name), !open);
+				foldPages(p);
+			},
+		},
+		h("span", { class: "chevron", "aria-hidden": "true" }),
+		h("bdi", { class: "site-name" }, name),
+		" ",
+		count,
+	);
+	return {
+		name,
+		head: h("h3", { class: "site-head" }, toggle),
+		toggle,
+		count,
+		list,
+	};
 }
 
 // The case's menu closes on a press outside it.
@@ -1552,25 +1612,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		},
 		"Share with team",
 	);
-	const pagesCount = h("span", { class: "count" });
-	const pagesToggle: HTMLButtonElement = h(
-		"button",
-		{
-			type: "button",
-			class: "thread-toggle pages-toggle",
-			id: "case-pages-toggle",
-			"aria-controls": "case-pages",
-			"aria-expanded": "false",
-			onclick: () => {
-				const open = pagesToggle.getAttribute("aria-expanded") === "true";
-				openPages.set(created.current.id, !open);
-				foldPages(created, false);
-			},
-		},
-		h("span", { class: "chevron", "aria-hidden": "true" }),
-		"Pages ",
-		pagesCount,
-	);
 	const created: CaseParts = {
 		current: c,
 		title,
@@ -1589,12 +1630,19 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		pagesSection: h("section", {
 			class: "pages-section",
 			id: "case-pages-section",
-			"aria-labelledby": "case-pages-toggle",
+			"aria-labelledby": "case-sites-heading",
 			hidden: true,
 		}),
-		pagesToggle,
-		pagesCount,
+		// "Site" or "Sites": the section's name, not a control (DEC-067).
+		sitesHeading: h("h2", { id: "case-sites-heading" }, "Site"),
+		groups: [],
+		groupsBox: h("div", { class: "site-groups", id: "case-pages" }),
+		siteGroups: [],
+		front: undefined,
 		pageRow: h("div", { class: "fact" }),
+		siteRow: h("div", { class: "fact", id: "case-site", hidden: true }),
+		siteLabel: h("dt", {}, "Site"),
+		siteText: h("dd", {}),
 		currentPage: h("div", { class: "current-page", hidden: true }),
 		currentRow: h("ul", {
 			class: "case-pages",
@@ -1627,7 +1675,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		renameHint,
 		renameOpen: false,
 		meta: h("p", { class: "case-meta" }, page, about),
-		pages: h("ul", { class: "case-pages", id: "case-pages", hidden: true }),
 		pagesKey: "",
 		hintSeq: 0,
 		team: h(
@@ -1770,14 +1817,15 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	created.deleteButton.setAttribute("role", "menuitem");
 	created.teamRow.append(h("dt", {}, "Team"), h("dd", {}, created.team));
 	created.pageRow.append(h("dt", {}, "Page"), h("dd", {}, created.meta));
+	created.siteRow.append(created.siteLabel, created.siteText);
 	created.currentPage.append(
 		h("p", { class: "label", id: "case-current-label" }, "Current page"),
 		created.currentRow,
 	);
 	created.pagesSection.append(
 		created.currentPage,
-		h("h2", {}, pagesToggle),
-		created.pages,
+		created.sitesHeading,
+		created.groupsBox,
 	);
 	const fact = (label: string, ...value: (Node | string)[]) =>
 		h("div", { class: "fact" }, h("dt", {}, label), h("dd", {}, ...value));
@@ -1791,14 +1839,16 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.counts,
 		created.leaving,
 		created.saved,
-		// A case's several pages: a heading that opens and closes its list,
-		// the list at the panel's full width (DEC-065).
+		// A case's several pages under "Site" or "Sites": each site a heading
+		// that opens and closes its list, at the panel's full width (DEC-065,
+		// DEC-067).
 		created.pagesSection,
 		// The case's facts, one quiet block of label and value.
 		h(
 			"dl",
 			{ class: "case-facts", id: "case-facts" },
 			created.pageRow,
+			created.siteRow,
 			created.teamRow,
 			fact("Link", created.linkRow),
 			fact("Made at", h("span", {}, created.madeAt, ", ", created.madeOn)),
@@ -2674,17 +2724,19 @@ function pageChooser(
  * under the title, its path: titles of one app repeat. Every row is two lines
  * whatever it holds and whichever page is in front, so the list never moves;
  * what does not fit is cut by the style sheet, and the tooltip has it whole.
+ * The rows stand under their sites (DEC-067), a page marked on two in both.
  */
 function renderPages(
 	p: CaseParts,
 	c: Case,
-	pages: ReturnType<typeof casePages>,
+	groups: SiteGroup[],
 	tabUrl: string | undefined,
 	byPage: PageFilter,
 	actions: Actions,
 ): void {
 	// The page whose marks are drawn on the tab in front, whatever its host (DEC-050).
 	const here = tabUrl ? pageInFront(c, tabUrl) : undefined;
+	const pages = groups.flatMap((g) => g.pages);
 	// Counted once for all the pages, not once per page.
 	const counts = marksByPage(c);
 	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
@@ -2699,7 +2751,10 @@ function renderPages(
 		return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 	})();
 	const key = JSON.stringify([
-		pages.map((page) => [page.url, page.title, marksOn(page.url)]),
+		groups.map((g) => [
+			g.name,
+			g.pages.map((page) => [page.url, page.title, marksOn(page.url)]),
+		]),
 		here?.url ?? null,
 		byPage.page?.url ?? null,
 		[...hostsOf.entries()],
@@ -2710,7 +2765,7 @@ function renderPages(
 	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
 	// the title it was on), in the same row.
 	const at = document.activeElement as HTMLElement | null;
-	const list = [p.pages, p.currentRow].find(
+	const list = [...p.groups.map((g) => g.list), p.currentRow].find(
 		(ul) => at !== null && ul.contains(at),
 	);
 	const focused =
@@ -2723,6 +2778,8 @@ function renderPages(
 						: ".page-name",
 				}
 			: undefined;
+	// The page in front is said once, in the first list it is in.
+	let said = false;
 	// `current`: the row above the heading, which its label names.
 	const row = (page: (typeof pages)[number], current = false) => {
 		const marks = marksOn(page.url);
@@ -2743,6 +2800,8 @@ function renderPages(
 			: whole;
 		const nameClass = `page-name${title ? "" : " cut-start"}`;
 		const filtered = byPage.page?.url === page.url;
+		const sayCurrent = front && !current && !said;
+		if (sayCurrent) said = true;
 		return h(
 			"li",
 			{
@@ -2757,7 +2816,7 @@ function renderPages(
 							type: "button",
 							class: `link ${nameClass}`,
 							title: tooltip,
-							...(front && !current ? { "aria-current": "page" } : {}),
+							...(sayCurrent ? { "aria-current": "page" } : {}),
 							onclick: () => actions.openPage(p.current, target),
 						},
 						name,
@@ -2776,7 +2835,22 @@ function renderPages(
 				: null,
 		);
 	};
-	p.pages.replaceChildren(...pages.map((page) => row(page)));
+	// A site's heading and list are made again only when the sites change.
+	if (
+		groups.length !== p.groups.length ||
+		groups.some((g, i) => g.name !== p.groups[i]?.name)
+	) {
+		p.groups = groups.map((g, i) => groupParts(p, g.name, i));
+		p.groupsBox.replaceChildren(...p.groups.flatMap((g) => [g.head, g.list]));
+	}
+	p.siteGroups = groups;
+	p.sitesHeading.textContent = groups.length > 1 ? "Sites" : "Site";
+	groups.forEach((g, i) => {
+		const parts = p.groups[i];
+		if (parts === undefined) return;
+		parts.count.textContent = String(g.pages.length);
+		parts.list.replaceChildren(...g.pages.map((page) => row(page)));
+	});
 	// The page in front, said above the heading: there while the list is closed.
 	const current = pages.find((page) => page.url === here?.url);
 	p.currentPage.hidden = current === undefined;
@@ -2830,19 +2904,24 @@ function renderCase(state: PanelState, actions: Actions): void {
 	renderPages(
 		p,
 		c,
-		several ? pages : [],
+		several ? siteGroups(c) : [],
 		state.tab?.url,
 		pageFilter(c, state.markPage, state.tab?.url),
 		actions,
 	);
-	// The tab shows none of the case's pages: the list is open (DEC-063).
+	// The site of the page in front starts open; all of them where the tab
+	// shows none of the case's pages (DEC-063, DEC-067).
 	const tabUrl = state.tab?.url;
-	const noneInTab =
-		several &&
-		tabUrl !== undefined &&
-		isWebPage(tabUrl) &&
-		pageInFront(c, tabUrl) === undefined;
-	foldPages(p, noneInTab);
+	p.front =
+		tabUrl !== undefined && isWebPage(tabUrl)
+			? pageInFront(c, tabUrl)
+			: undefined;
+	foldPages(p);
+	// A case of one page: its site beside its address.
+	const sites = several ? [] : caseSites(c);
+	p.siteRow.hidden = sites.length === 0;
+	p.siteLabel.textContent = sites.length > 1 ? "Sites" : "Site";
+	p.siteText.textContent = sites.join(", ");
 	// The status counts under the title, as the bar and chips count them.
 	const n = c.marks.length;
 	p.counts.textContent =

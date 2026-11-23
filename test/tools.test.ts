@@ -351,6 +351,7 @@ describe("tools", () => {
 				url: "https://www.example.com/kk",
 				pages: ["https://www.example.com/kk"],
 				pageCount: 1,
+				sites: ["example.com"],
 				marks: { open: 2, toVerify: 0, verified: 0, dismissed: 0 },
 				summary: null,
 				updatedAt: "2026-11-04T10:00:00Z",
@@ -358,6 +359,7 @@ describe("tools", () => {
 		]);
 		const result = await call("get_case", { caseId: "c_1" });
 		const view = json(result);
+		expect(view.sites).toEqual(["example.com"]);
 		expect(view.marks.map((m: { mark: number }) => m.mark)).toEqual([1, 2]);
 		expect(view.marks[0].element.name).toBe("Prämien berechnen");
 		expect(result.content.map((c) => c.type)).toEqual([
@@ -382,6 +384,7 @@ describe("tools", () => {
 				url: "https://www.example.com/kk",
 				pages: ["https://www.example.com/kk"],
 				pageCount: 1,
+				sites: ["example.com"],
 				marks: { open: 0, toVerify: 0, verified: 0, dismissed: 0 },
 				summary: null,
 				updatedAt: "2026-11-04T10:00:00Z",

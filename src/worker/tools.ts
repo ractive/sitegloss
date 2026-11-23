@@ -91,6 +91,7 @@ import type {
 } from "../lib/messages.ts";
 import { queryOf, withQuery } from "../lib/query.ts";
 import { type Crop, cropRectFor, SaveError, saveCase } from "../lib/save.ts";
+import { caseSites } from "../lib/site.ts";
 import type { CaseStore, StoredImage } from "../lib/store.ts";
 import { shortUrl } from "../sidepanel/dom.ts";
 
@@ -348,6 +349,8 @@ function listPages(c: Case) {
 	return {
 		pages: pages.slice(0, LIST_PAGES).map((p) => cut(plainUrl(p.url), 300)),
 		pageCount: pages.length,
+		// Derived from its pages and screenshots, never stored (DEC-067).
+		sites: caseSites(c),
 	};
 }
 
@@ -411,6 +414,8 @@ function caseView(
 			viewport: c.page.viewport,
 		},
 		pages: pagesView(c),
+		// Derived from its pages and screenshots, never stored (DEC-067).
+		sites: caseSites(c),
 		createdAt: c.createdAt,
 		updatedAt: c.updatedAt,
 		// The summary for the developer, stored as verdict (DEC-019).
@@ -882,7 +887,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		name: "list_cases",
 		title: "List cases",
 		description:
-			"List the saved cases: id, title, its first pages and how many it has (url is the first; get_case lists them all), its marks by status (open, toVerify: fixed and waiting to be verified, verified, dismissed: won't fix or can't reproduce), the start of the summary for the developer, closed: true for a closed case, last change. Newest first.",
+			"List the saved cases: id, title, its first pages and how many it has (url is the first; get_case lists them all), its sites (the registrable domains its pages are on, most pages first; none for local addresses), its marks by status (open, toVerify: fixed and waiting to be verified, verified, dismissed: won't fix or can't reproduce), the start of the summary for the developer, closed: true for a closed case, last change. Newest first.",
 		inputSchema: {
 			type: "object",
 			properties: {},
@@ -924,7 +929,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		name: "get_case",
 		title: "Read a case",
 		description:
-			"A case with its link (a ticket or the like), its pages (a case can span several pages of a site), its summary for the developer and all its marks: the page it is on (and address: that page with the query it was marked with, where it had one, to open it again as it was), comment, status (open, fixed: waiting to be verified, verified, wontfix, cantreproduce), how it was settled, its reopens (why it came back, oldest first), kind, element details (when recorded with the mark, also how it looked then: styles, its computed CSS in one line; backdrop, the colour behind it; siblings, its neighbours' boxes, -1 the one right before it; look, its colour on the colour behind with their contrast ratio where it holds, else why there is none, its font and display; use them for contrast, typography and alignment questions), AI apps' findings (own: yours, which you may edit or delete), images a person added to a mark (images: their paths, for what the crop does not show, such as a menu that closes or another state of the page; they may show anything that was on that person's screen), and (unless images is false) each mark's crop from the screenshot, then the added images. Images that do not fit the size limit are listed; fetch them with get_image.",
+			"A case with its link (a ticket or the like), its pages (a case can span several pages of a site), its sites (the registrable domains its pages are on, most pages first; none for local addresses), its summary for the developer and all its marks: the page it is on (and address: that page with the query it was marked with, where it had one, to open it again as it was), comment, status (open, fixed: waiting to be verified, verified, wontfix, cantreproduce), how it was settled, its reopens (why it came back, oldest first), kind, element details (when recorded with the mark, also how it looked then: styles, its computed CSS in one line; backdrop, the colour behind it; siblings, its neighbours' boxes, -1 the one right before it; look, its colour on the colour behind with their contrast ratio where it holds, else why there is none, its font and display; use them for contrast, typography and alignment questions), AI apps' findings (own: yours, which you may edit or delete), images a person added to a mark (images: their paths, for what the crop does not show, such as a menu that closes or another state of the page; they may show anything that was on that person's screen), and (unless images is false) each mark's crop from the screenshot, then the added images. Images that do not fit the size limit are listed; fetch them with get_image.",
 		inputSchema: {
 			type: "object",
 			properties: {
