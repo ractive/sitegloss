@@ -1,12 +1,13 @@
+import { type Case, GROUP_OF, markStatus, markUrl } from "./case.ts";
+
 /*
  * What a person pastes into their AI app to have it work on a case through
  * the service's MCP server (DEC-069). A copy of the web app's
  * `caseInstructions` (`apps/app/src/lib/agent-instructions.ts` in
  * sitegloss.dev, DEC-030 there), kept in step by hand: no test can read the
  * other repository. Where they differ, on purpose:
- * - `LIVE_PAGE`, the one line of the extension's own (which connection does
- *   what, as the web app's AI app page says it); the web app's text lacks it
- *   until the service takes it;
+ * - the `Contents:` line comes from the case in this browser's store
+ *   (`contentsOf`), not from the server's marks; the same words;
  * - only the case's template: the one for a single mark (`markInstructions`)
  *   is not copied, the panel offers none;
  * - the hidden characters are found by code point, not by a regular
@@ -26,6 +27,63 @@ export interface CaseRef {
 	url: string;
 	/** The MCP server's address. */
 	mcpUrl: string;
+	/** What the case holds now. */
+	contents?: CaseContents;
+}
+
+/** How many marks wait, and the addresses of the pages the open ones are on. */
+export interface CaseContents {
+	open: number;
+	toVerify: number;
+	pages: string[] | null;
+}
+
+/** The contents of a case, from its marks. */
+export function contentsOf(c: Case): CaseContents {
+	const pages = new Set<string>();
+	let open = 0;
+	let toVerify = 0;
+	for (const mark of c.marks) {
+		const group = GROUP_OF[markStatus(mark)];
+		if (group === "toVerify") toVerify++;
+		if (group !== "open") continue;
+		open++;
+		pages.add(pageAddress(markUrl(c, mark)));
+	}
+	return { open, toVerify, pages: [...pages] };
+}
+
+/** A page's address for reading: host and path, as local as it is, cut to a sane length. */
+export function pageAddress(url: string): string {
+	try {
+		const parsed = new URL(url);
+		const path = parsed.pathname === "/" ? "" : parsed.pathname;
+		return textStart(`${parsed.host}${path}`, 120);
+	} catch {
+		return textStart(url, 120);
+	}
+}
+
+/** The line that says what is in the case: open marks, those to verify, the pages. */
+function contentsLine(contents: CaseContents): string {
+	const { open, toVerify, pages } = contents;
+	const marks = (n: number) => `${n} mark${n === 1 ? "" : "s"}`;
+	const says = [
+		open === 0 ? "no open mark" : `${marks(open)} open`,
+		...(toVerify > 0 ? [`${toVerify} waiting to be verified`] : []),
+	].join(", ");
+	if (!pages || pages.length === 0) return `Contents: ${says}`;
+	if (pages.length === 1)
+		return `Contents: ${says}, on ${quoted(pages[0] ?? "", 150)}`;
+	const hosts = [...new Set(pages.map((page) => page.split("/")[0] ?? page))];
+	const sites =
+		hosts.length === 1
+			? `of ${quoted(hosts[0] ?? "", 80)}`
+			: `of ${hosts.length} sites (${hosts
+					.slice(0, 3)
+					.map((host) => quoted(host, 80))
+					.join(", ")}${hosts.length > 3 ? ", …" : ""})`;
+	return `Contents: ${says}, on ${pages.length} pages ${sites}`;
 }
 
 /**
@@ -75,25 +133,22 @@ const DATA_END = "(End of what the case says.)";
 
 const TITLE_LIMIT = 200;
 
-/** The extension's own line: which of the two connections does what. */
-const LIVE_PAGE =
-	"Reading the live page (an element's HTML and CSS, the marks drawn on it) is the Sitegloss extension's own AI app connection: its side panel's AI app card says how to connect it. The MCP server has the case as it is stored, and no browser.";
-
 /** For the whole case: every open mark. */
 export function caseInstructions(ref: CaseRef): string {
 	return [
 		`Work on the Sitegloss case with the id ${ref.id}:`,
 		ref.url,
 		"",
-		`Use the Sitegloss MCP server (${ref.mcpUrl}). If its tools are missing, add it (in Claude Code: claude mcp add --transport http sitegloss ${ref.mcpUrl}), then stop and ask me to sign in: in Claude Code I run /mcp and choose sitegloss, and /reload-plugins if the tools still do not show.`,
-		LIVE_PAGE,
+		`Use the Sitegloss tools you have: the server's (${ref.mcpUrl}) or the extension's own AI app connection. If you have neither, add the server (in Claude Code: claude mcp add --transport http sitegloss ${ref.mcpUrl}), then stop and ask me to sign in: in Claude Code I run /mcp and choose sitegloss, and /reload-plugins if the tools still do not show.`,
+		"Reading the live page (an element's HTML and CSS, the marks drawn on it) is only the extension's connection: its side panel's AI app card says how to connect it. The server has the case as it is stored, and no browser.",
 		"",
 		DATA_START,
 		`Title: ${quoted(ref.title.trim() ? ref.title : "Untitled case", TITLE_LIMIT)}`,
+		...(ref.contents ? [contentsLine(ref.contents)] : []),
 		DATA_END,
 		"",
 		`1. Read the case (get_case with the id ${ref.id}): the summary first, then each open mark with its crop and element details.`,
-		"2. Fix each open mark in this repository. Where a mark is unclear or not about this code, leave it open and ask in a comment on that mark.",
+		"2. Fix each open mark in the code it belongs to; if that is another repository or place you can reach, fix it there and say where. Where a mark is unclear, or about something you cannot reach, leave it open and ask in a comment on that mark.",
 		'3. Set each mark you fixed to "fixed" with a one-line note, and add one comment on the case: what changed, the branch or pull request, and how to check it.',
 		"Do not set anything verified: the reporter does that.",
 	].join("\n");

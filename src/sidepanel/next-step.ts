@@ -18,7 +18,7 @@
  * `apps/app/src/lib/next-step.ts`), kept in step by hand.
  */
 
-import { caseInstructions } from "../lib/agent-instructions.ts";
+import { caseInstructions, contentsOf } from "../lib/agent-instructions.ts";
 import {
 	assigneeOf,
 	type Case,
@@ -419,6 +419,7 @@ export async function copyStep(
 					title: c.title,
 					url: where.link,
 					mcpUrl: where.mcp,
+					contents: contentsOf(c),
 				});
 	try {
 		await write(text);

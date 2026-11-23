@@ -4036,6 +4036,16 @@ hand-back) will need from this block: `Where`'s team branch gains the assignee, 
 outside the mail. The API needs the assignee and the case's state first; the block needs
 no new place in the panel.
 
+Changed on 2026-11-23, after an AI app's feedback on the text it received (the owner
+accepted it: "yes, change the template"), the same words as the web app's: (1) inside
+the quoted block a `Contents:` line says how many marks are open, how many wait to be
+verified and the pages the open ones are on (host and path, cut; several: their number
+and the sites); (2) step 2 says "fix it in the code it belongs to, in another repository
+or place you can reach too, and say where", where it assumed every mark was a defect of
+the repository the AI app was in; (3) either connection will do, the server's or the
+extension's own, and the server is added only if there is neither. The line on the live
+page (`LIVE_PAGE`) is now the web app's too.
+
 ## DEC-070: Escape takes a new mark back while its comment is empty (owner)
 
 2026-11-23. The dialog that opens as a mark is drawn got "Cancel" where it said "Delete

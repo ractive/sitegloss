@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { caseInstructions } from "../src/lib/agent-instructions.ts";
+import { caseInstructions, contentsOf } from "../src/lib/agent-instructions.ts";
 import type { Case, Mark, Resolution } from "../src/lib/case.ts";
 import type { CloudStatus } from "../src/lib/cloud/book.ts";
 import {
@@ -280,13 +280,48 @@ describe("the instructions for an AI app", () => {
 		expect(text).toContain(
 			"claude mcp add --transport http sitegloss https://app.sitegloss.dev/api/mcp",
 		);
-		expect(text).toContain(
-			"is the Sitegloss extension's own AI app connection",
-		);
+		expect(text).toContain("the extension's own AI app connection");
+		expect(text).toContain("If you have neither, add the server");
+		expect(text).toContain("and no browser");
+		expect(text).toContain("in the code it belongs to");
+		expect(text).toContain("say where");
 		expect(text).toContain("leave it open and ask in a comment on that mark");
 		expect(text).toContain('Set each mark you fixed to "fixed"');
 		expect(text).toContain("add one comment on the case");
 		expect(text).toContain("Do not set anything verified");
+	});
+
+	test("a case without a summary names its open marks and pages inside the quoted data", () => {
+		const lines = caseInstructions({
+			...ref,
+			contents: {
+				open: 2,
+				toVerify: 1,
+				pages: ["a.example/x", "b.example"],
+			},
+		}).split("\n");
+		const at = lines.findIndex((l) => l.startsWith("Contents: "));
+		expect(lines[at]).toBe(
+			'Contents: 2 marks open, 1 waiting to be verified, on 2 pages of 2 sites ("a.example", "b.example")',
+		);
+		expect(lines[at + 1]).toBe("(End of what the case says.)");
+		expect(
+			lines.filter((l) => l === "(End of what the case says.)"),
+		).toHaveLength(1);
+	});
+
+	test("an address is cut to host and path, and long ones to a sane length", () => {
+		const long = `https://shop.example/${"p".repeat(8000)}?q=1`;
+		const c = {
+			marks: [{ id: 1, shot: "s1" }],
+			shots: [{ id: "s1", url: long }],
+			page: { url: long },
+		} as unknown as Parameters<typeof contentsOf>[0];
+		const pages = contentsOf(c).pages;
+		expect(pages).toHaveLength(1);
+		expect(pages?.[0]?.startsWith("shop.example/ppp")).toBe(true);
+		expect(pages?.[0]?.length).toBeLessThanOrEqual(121);
+		expect(pages?.[0]).not.toContain("?");
 	});
 
 	test("the title is quoted as data on one line, between the lines that say so", () => {
