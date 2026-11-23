@@ -289,6 +289,93 @@ in other environments, alone or with an AI app the user connects.
 - **Privacy policy:** the page at `ractive.ch/sitegloss/privacy/` has to be the current
   `PRIVACY.md` (changed 21 November 2026) before the version is submitted.
 
+**For version 0.4.0 (DEC-049 to DEC-070), to enter by hand before it is published:**
+
+- **Before anything: the hosted service must run the highlight first.** The service in
+  production has to be a version that knows a mark's `highlight` (service DEC-040,
+  [sitegloss.dev#48](https://github.com/ractive/sitegloss.dev/pull/48)) BEFORE 0.4.0
+  reaches users. The extension sends a highlight with the `mark.create` only
+  (`src/lib/cloud/wire.ts:379`). A server that does not know the field stores a plain box:
+  the team's copy has no text, and a teammate (browser or web app) sees a box. The
+  maker's own copy is not damaged: when the server's answer has no `highlight`, a mark
+  that has one here keeps it, since it is taken from the server only for a mark without
+  one (`wire.ts:1802-1807`, on `ended.highlight === undefined`; a mark new here from the
+  server: `wire.ts:1841`, `highlightIn`, which gives none for an absent field). It is
+  never sent again (`mark.patch` has no `highlight`; test `cloud-wire.test.ts:790`), so
+  the server stays without it for good: a highlight made before the service is updated
+  is a box for the team for ever, unless the mark is deleted and made again. Whether a
+  server of the older build refuses the unknown field instead of dropping it was not
+  checked from here (the API's schema is not strict, so it most likely drops it).
+- **No new permission.** `git diff v0.3.1..origin/main -- scripts/build.ts`: the
+  `permissions` (`activeTab`, `alarms`, `identity`, `notifications`, `offscreen`,
+  `scripting`, `sidePanel`, `storage`, `unlimitedStorage`), `optional_permissions`
+  (`downloads`), `optional_host_permissions` (`<all_urls>`), `commands`, the absence of
+  `content_scripts` and `host_permissions`, the absence of a `content_security_policy`
+  and the key are all as in 0.3.1, for Chrome and Edge and for Firefox. Nothing to
+  justify anew, and no new permission warning: the update is not held back for users to
+  approve. The new pairing script (`pairing.js`, DEC-044) is a file in the package that
+  the existing `scripting` permission injects, not a manifest entry.
+- **Two changes of the manifest that are not permissions:**
+  1. **`web_accessible_resources`** (new, DEC-064): `field/*` for `<all_urls>`. It is the
+     comment field of the dialogs Sitegloss draws on the marked page, an extension page
+     in a frame, so that the page's own scripts cannot read what the user types. In
+     Chrome and Edge with `use_dynamic_url: true`: the page's address changes with every
+     browser session, so a site cannot try the fixed address of Sitegloss's store id to
+     find out that it is installed. The page does nothing without the port the content
+     script hands it. If the dashboard asks (Edge: Notes for certification), say this.
+  2. **`minimum_chrome_version` 116 to 130** (Chrome and Edge): 130 is the first that has
+     `use_dynamic_url`. Users of an older Chrome or Edge are not offered the update and
+     stay on 0.3.1; it is not a prompt to anyone.
+  - Firefox: the same `web_accessible_resources` without `use_dynamic_url` (Firefox gives
+    each install an address of its own). `strict_min_version` stays 153.0, and the data
+    collection declaration stays as it was.
+- **Description,** add (short, one paragraph before the one on exporting):
+  "Select text on the page with the Highlight tool and write a note on it; Sitegloss
+  finds the text again on the fixed page. A case that spans pages is grouped by site.
+  The open case says what comes next: send it to whoever fixes it (copy its link, or the
+  instructions for your AI app), verify the fixes, close it. Verify opens the next mark
+  that waits to be checked, the case's id can be copied from the top bar, and Escape
+  takes back a mark whose note is still empty. A glow on the AI button shows when your AI
+  app is talking. Pictures of a mark open at their size in a window of their own."
+  (The panel's other changes, DEC-058 to DEC-065, are changes of look and of what a
+  mark's images do; the images (DEC-058) were not in the 0.3.1 listing either: add "Add
+  pictures to a mark: paste, choose or drop; they are re-encoded, so their metadata is
+  gone" if the listing does not have it.)
+- **Notes for the reviewer (Edge: Notes for certification):**
+  - New bundled library `tldts` 7.5.5 (MIT, with `tldts-core`; in `LICENSES.txt`) with the
+    public suffix list as data inside the package: it groups a case's pages by site
+    (`app.dev.sitegloss.dev` is `sitegloss.dev`). No network: the list is not fetched and
+    is not updated; a new list needs a new version. It is in the side panel and the
+    background worker only, not in the script that runs in web pages (a build test
+    checks it).
+  - The client library for the relay, `@ractive-ch/tab-mcp-client`, 0.18.1 to 0.23.0. It
+    is data only, as before: its new WebMCP mirror (on by default there) is switched off
+    here (`webmcp: false`, DEC-068), so nothing is registered with the browser's WebMCP,
+    and no code is loaded with `import()`.
+  - Remote code: still none. The hosted service and the relay send data only.
+  - New pages of the extension: `viewer/` (a mark's pictures at their size, in a tab of
+    its own) and `field/` (the comment field, in a frame on the marked page; see the
+    `web_accessible_resources` above). Both are in the package and load nothing from
+    outside.
+  - The Highlight tool selects text through the layer Sitegloss draws on the page; the
+    page's own scripts can see the selection change, as with any selection. Text in form
+    fields and editors is never taken.
+  - The hand-over buttons ("Copy link", "Copy for your AI app", copy the case's id) write
+    to the clipboard in the click, with no `clipboardWrite` permission and nothing read.
+    The instructions text is built into the package.
+- **Data usage:** the categories stay as they are. Under *Collected*, *Website content*,
+  add the text the user selects with the Highlight tool (at most 500 characters, up to 32
+  characters of the page's text before and after it, and the boxes of its lines); it is
+  stored in the browser and, for a user who signed in, goes to their team with the mark
+  (and to the AI app that reads the case). Text typed into fields and editors is never
+  taken. Nothing else leaves the browser for the first time: the site grouping is
+  computed in the browser and stored nowhere; what is copied to the clipboard (a link,
+  the AI app instructions, a case's id) goes nowhere by itself.
+- **Privacy policy:** `PRIVACY.md` is changed in this version's pull request (the
+  Highlight text goes to the team; what Copy writes to the clipboard; changed 23 November
+  2026). The page at `ractive.ch/sitegloss/privacy/` has to be that `PRIVACY.md` before
+  the version is submitted.
+
 **Remote code:** No. All code is in the package; the connection to the relay carries
 data only, and no tool runs code an AI app sends. The same holds for sitegloss.dev: the
 extension exchanges data with its API and runs nothing it sends.
