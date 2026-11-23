@@ -4158,3 +4158,57 @@ its review). This is the extension's side of step 2; step 1 is DEC-069.
   show no assignee and have no My cases. An assignment made here and not sent yet is
   left unsent by an older build the browser is taken back to (it is an unknown field
   there), and sent when this build is back.
+
+## DEC-072: AI access that went off by itself says why
+
+2026-11-23. The owner asked: "Why did AI access turn off; is it because I switched to
+another macOS user?" The code's answer: the relay ends a session no AI app used for a long
+time (`idle`) or an old one (`expired`); without Keep AI access on nothing connects again
+(`sessionOnAfter`, DEC-015). A browser restart or an update or reload of Sitegloss clears
+`chrome.storage.session`, the session's "on" flag, so AI access is off after it too (DEC-015,
+DEC-059). Switching to another macOS user is not among the causes; the browser of the other
+user is another browser. The panel said only "AI access is off · paired apps stay paired" and
+"Not connected", and `endedProblem` deliberately has no words for `idle` and `expired`.
+
+- **What is shown.** In the AI card's state line and the status (the pill's tooltip and the
+  status text), one sentence each, with the way back:
+  - idle: "AI access went off because no AI app used it for a while. Paired apps stay paired.
+    Turn it on again, or tick “Keep AI access on”."
+  - expired: "AI access went off because a connection ends after a long time. Paired apps stay
+    paired. Turn it on again, or tick “Keep AI access on”."
+  - restart: "AI access was on before the browser or Sitegloss restarted, so it is off now.
+    Paired apps stay paired. Turn it on again, or tick “Keep AI access on”."
+
+  The status has "Not connected: " before it. It is information (DEC-024): `problemOf` says
+  nothing of it, so no red line under the top bar; the pill keeps "AI off". It shows only
+  while AI access is off with nothing wrong now: not while connecting, retrying, taken over
+  or with a problem of the last connect. The state line is a live region: its text is
+  assigned only when it changes, so a redraw does not read the sentence again.
+- **What is kept.** A record `{ reason, at }` in the worker's settings database (`kv`, DEC-016),
+  so it outlives a stopped worker and a browser restart: no page content, no AI app. It is
+  written when the relay ends an idle or old session without Keep AI access on, and when a
+  worker starts as a restart. It is forgotten when AI access is on again (connected, the
+  Turn on command, Keep AI access on ticked), when the person stops it (in memory at
+  once, the store after the disconnect) and when the relay is changed. A takeover needs no
+  clearing: it happens while connected, when no record exists, and a takeover's own words
+  win over a record. A record older than 7 days is not shown and is removed at start (`at`
+  is for that): a sentence about last week helps nobody. At start a record is not read
+  either while the session is on or Keep AI access on holds.
+- **How a restart is told.** The smallest honest way: a second flag, `aiWasOn`, written in
+  the one place the session's flag is written (`#setSessionOn`), after it. A worker that
+  starts with `aiWasOn` true and the session's flag gone, with no stop of the person's, no
+  Keep AI access on and no takeover, was on when the browser or Sitegloss restarted: it
+  records `restart` and clears the flag, so one restart is told once. A worker that was only
+  stopped by the browser keeps the session's flag, so it says nothing. The reason cannot say
+  whether it was the browser or Sitegloss (an update, a reload) that restarted; it says both.
+- **A failed store write** is accepted: the memory holds, a console warning is logged. A
+  failed removal could bring an old sentence back after the next start; the rules above
+  (not read with the session on or keep-on, gone after 7 days) cover the visible cases.
+- **Unchanged.** Keep AI access on ticked: nothing is recorded, it reconnects as before. No
+  new permission, the manifest is untouched, Chrome and Firefox alike. The connection's
+  behaviour, the alarm and the session's flag are as before.
+- Tests: `test/went-off.test.ts` (the reasons, the sentences, age, nothing for a stop, a
+  takeover, keep-on or a live state), `test/connection.test.ts` (idle and expired through the
+  Connection with a test relay that ends them: record, store, forgotten on connect, nothing
+  with keep-on; a restart, kept over a second start, forgotten on connect, Stop, ticking
+  keep-on and a change of relay; nothing after a stop; a stale record).

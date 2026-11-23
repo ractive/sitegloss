@@ -7,6 +7,7 @@
  */
 
 import type { AiState } from "../worker/protocol.ts";
+import { wentOffText } from "../worker/went-off.ts";
 
 export type CardStatus = "off" | "connecting" | "retrying" | "waiting" | "on";
 
@@ -17,6 +18,22 @@ const STATUS_TEXT: Record<CardStatus, string> = {
 	waiting: "On · no AI app paired yet",
 	on: "Connected",
 };
+
+/**
+ * Why AI access went off by itself, as a sentence (DEC-072): only when it is
+ * off with nothing wrong now (no problem, no takeover, no try waiting).
+ */
+export function wentOffSentence(
+	a: Pick<AiState, "state" | "retrying" | "problem" | "replaced" | "wentOff">,
+): string | undefined {
+	return a.wentOff !== undefined &&
+		a.state === "disconnected" &&
+		!a.retrying &&
+		a.problem === undefined &&
+		a.replaced === undefined
+		? wentOffText(a.wentOff)
+		: undefined;
+}
 
 /** The card's status for the worker's state. */
 export function cardStatus(a: AiState): CardStatus {
@@ -54,7 +71,10 @@ export function cardView(a: AiState, adding: boolean): CardView {
 	return {
 		status,
 		stateText:
-			status === "on" ? `Connected · ${names.join(", ")}` : STATUS_TEXT[status],
+			status === "on"
+				? `Connected · ${names.join(", ")}`
+				: ((status === "off" ? wentOffSentence(a) : undefined) ??
+					STATUS_TEXT[status]),
 		switchOn: status !== "off",
 		turnOn: status === "off",
 		pairing,
