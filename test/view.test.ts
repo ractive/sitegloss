@@ -23,6 +23,7 @@ let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
 let ago: (iso: string, now?: number) => string;
 let webAppNote: (state: PanelState) => string | undefined;
 let TALKING_AFTER_MS: number;
+let holdTalkingFor: (ms: number) => void;
 let pagePath: (url: string) => string;
 let noneFoundText: (
 	c: Case,
@@ -59,6 +60,7 @@ beforeAll(async () => {
 		webAppNote,
 		noneFoundText,
 		TALKING_AFTER_MS,
+		holdTalkingFor,
 		pagePath,
 	} = await import("../src/sidepanel/view.ts"));
 	({ ago } = await import("../src/sidepanel/cloud-view.ts"));
@@ -2266,9 +2268,10 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		expect(row?.textContent).toContain("shop.example/cart · 2 pages");
+		// The site and the number of pages (DEC-067).
+		expect(row?.textContent).toContain("Site: shop.example · 2 pages");
 		expect(row?.getAttribute("aria-label")).toContain(
-			"on shop.example/cart and 1 more page",
+			"on the site shop.example, 2 pages",
 		);
 		expect(
 			window.document.querySelector(
@@ -2314,11 +2317,14 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		// The one link of a case of one page gives way to the list.
 		expect(el("open-page").hidden).toBe(true);
-		// The list is under its own heading, which opens and closes it, and
-		// not in a column of the facts (DEC-065); two pages: open.
+		// The list is under "Site" and its site's heading, which opens and
+		// closes it, and not in a column of the facts (DEC-065, DEC-067); one
+		// site: open.
 		expect(el("case-pages-section").hidden).toBe(false);
-		expect(el("case-pages-toggle").textContent).toBe("Pages 2");
-		expect(el("case-pages-toggle").getAttribute("aria-expanded")).toBe("true");
+		expect(el("case-sites-heading").textContent).toBe("Site");
+		expect(el("case-site-toggle-0").textContent).toBe("shop.example 2");
+		expect(el("case-site-toggle-0").getAttribute("aria-expanded")).toBe("true");
+		expect(el("case-site-pages-0").hidden).toBe(false);
 		expect(el("case-pages").closest(".case-facts")).toBeNull();
 		expect(
 			[...el("case-facts").querySelectorAll(".fact")]
@@ -2331,8 +2337,9 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(opened).toEqual([PAY, CART]);
 
 		// One row per page whatever the host (DEC-063): the payment page marked
-		// on shop.example and listed on staging is one row, its hosts under
-		// it, the last marked first; one without a title by its path.
+		// on shop.example and listed on staging is one row; one without a
+		// title by its path. Under the heading "shop.example" its host line
+		// names only what the heading does not: the other host (DEC-067).
 		const other = "https://staging.shop.example/checkout/pay";
 		render(
 			caseState({
@@ -2343,7 +2350,7 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		expect(pages()).toEqual([
 			"Your cart2 marks/cart",
-			"/checkout/pay1 markshop.example, staging.shop.example",
+			"/checkout/pay1 markstaging.shop.example",
 		]);
 		// A click opens it where it was last marked: the tab shows another host.
 		expect(
@@ -2351,7 +2358,7 @@ describe("a case of several pages (DEC-038)", () => {
 		).toBe(`${PAY}\nOpens in a new tab; the case's marks are drawn there`);
 	});
 
-	test("more than three pages: the heading starts closed, the choice is remembered, also where the tab shows none (DEC-063, DEC-065)", () => {
+	test("one site: its list starts open however many pages it has; the choice is remembered, also where the tab shows none (DEC-065, DEC-067)", () => {
 		const base = flow("c_many");
 		const urls = ["a", "b", "c", "d", "e"].map(
 			(x) => `https://shop.example/${x}`,
@@ -2370,13 +2377,13 @@ describe("a case of several pages (DEC-038)", () => {
 			caseState(c, (s) => {
 				s.tab = { id: 1, url, title: "", size: undefined };
 			});
-		const toggle = () => el<HTMLButtonElement>("case-pages-toggle");
+		const toggle = () => el<HTMLButtonElement>("case-site-toggle-0");
 		render(at("http://localhost:3000/c"), noActions);
-		expect(toggle().textContent).toBe("Pages 5");
-		expect(toggle().getAttribute("aria-expanded")).toBe("false");
-		// Closed as "Comments" is (DEC-065); the page in front is said above
-		// the heading, named by its label and not by a second aria-current.
-		expect(el("case-pages").hidden).toBe(true);
+		expect(toggle().textContent).toBe("shop.example 5");
+		expect(toggle().getAttribute("aria-expanded")).toBe("true");
+		expect(el("case-site-pages-0").querySelectorAll("li").length).toBe(5);
+		// The page in front is said above the heading too, named by its label
+		// and not by a second aria-current.
 		const current = () =>
 			[...el("case-current-page").querySelectorAll(".page-name")].map(
 				(x) => x.textContent,
@@ -2384,18 +2391,15 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(current()).toEqual(["Page 3"]);
 		expect(el("case-current-page").parentElement?.hidden).toBe(false);
 		expect(el("case-current-page").querySelector("[aria-current]")).toBeNull();
+		// Closed as "Comments" is: no row of it shows.
 		toggle().click();
-		expect(toggle().getAttribute("aria-expanded")).toBe("true");
-		expect(el("case-pages").hidden).toBe(false);
-		expect(el("case-pages").querySelectorAll("li").length).toBe(5);
-		// Remembered for the case, also when the tab moves on.
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		expect(el("case-site-pages-0").hidden).toBe(true);
+		// Remembered for the case and site, also when the tab moves on, and
+		// where the tab shows none of the case's pages, render after render.
 		render(at("http://localhost:3000/d"), noActions);
-		expect(el("case-pages").hidden).toBe(false);
+		expect(el("case-site-pages-0").hidden).toBe(true);
 		expect(current()).toEqual(["Page 4"]);
-		toggle().click();
-		expect(el("case-pages").hidden).toBe(true);
-		// Closed by the person: it stays closed, also where the tab shows
-		// none of the case's pages, render after render (DEC-064's review).
 		render(at("https://shop.example/elsewhere"), noActions);
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
 		render(at("https://shop.example/elsewhere"), noActions);
@@ -2407,46 +2411,110 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 	});
 
-	test("with no choice made, the pages list is open where the tab shows none of the case's pages (DEC-063)", () => {
-		const base = flow("c_many_none");
-		const urls = ["a", "b", "c", "d", "e"].map(
-			(x) => `https://shop.example/${x}`,
-		);
+	test("several sites: each a heading of its own, the page in front's open, all where the tab shows none; local pages apart (DEC-067)", () => {
+		const base = flow("c_sites");
+		const urls = [
+			"https://www.comparis.ch/a",
+			"https://www.comparis.ch/b",
+			"https://ractive.ch/x",
+			"https://shop.example/c",
+			"http://localhost:3000/local",
+		];
 		const c: Case = {
 			...base,
+			page: { ...base.page, url: urls[0] as string, title: "A" },
 			pages: urls.map((url, i) => ({
 				url,
 				title: `Page ${i + 1}`,
 				lang: "en",
 			})),
-			shots: urls.map((url, i) => shot(`s${i + 1}`, url, 1280)),
+			// Page /x was marked on comparis.ch too: it is under both.
+			shots: [
+				...urls.map((url, i) => shot(`s${i + 1}`, url, 1280)),
+				shot("s6", "https://comparis.ch/x", 1280),
+			],
 			marks: urls.map((_, i) => mark(i + 1, `s${i + 1}`)),
 		};
-		render(
+		const at = (url: string) =>
 			caseState(c, (s) => {
-				s.tab = {
-					id: 1,
-					url: "https://shop.example/elsewhere",
-					title: "",
-					size: undefined,
-				};
-			}),
+				s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		const heads = () =>
+			[...el("case-pages").querySelectorAll(".pages-toggle")].map((t) => [
+				t.textContent,
+				t.getAttribute("aria-expanded"),
+			]);
+		render(at("https://ractive.ch/elsewhere"), noActions);
+		expect(el("case-sites-heading").textContent).toBe("Sites");
+		// Most pages first, then by name; the local page in a group of its own.
+		expect(heads()).toEqual([
+			["comparis.ch 3", "true"],
+			["ractive.ch 1", "true"],
+			["shop.example 1", "true"],
+			["Local addresses 1", "true"],
+		]);
+		const rows = (i: number) =>
+			[...el(`case-site-pages-${i}`).querySelectorAll(".page-name")].map(
+				(x) => x.textContent,
+			);
+		expect(rows(0)).toEqual(["Page 1", "Page 2", "Page 3"]);
+		expect(rows(1)).toEqual(["Page 3"]);
+		expect(rows(3)).toEqual(["Page 5"]);
+		// The tab on /x: the sites it is under are open, the others closed;
+		// it is said once to a screen reader, though it is in two lists.
+		el("case-site-pages-2").querySelector<HTMLElement>(".page-name")?.focus();
+		render(at("https://ractive.ch/x"), noActions);
+		expect(heads().map(([, open]) => open)).toEqual([
+			"true",
+			"true",
+			"false",
+			"false",
+		]);
+		expect(el("case-pages").querySelectorAll("[aria-current]").length).toBe(1);
+		// A list that closed by itself hands the focus to its heading.
+		expect(document.activeElement?.id).toBe("case-site-toggle-2");
+		// A row under a site's heading does not name that site again, nor
+		// another site, which has the row under its own heading.
+		expect(el("case-site-pages-1").querySelector(".page-hosts")).toBeNull();
+		// A choice holds for that case and site.
+		el<HTMLButtonElement>("case-site-toggle-3").click();
+		render(at("https://www.comparis.ch/a"), noActions);
+		expect(heads().map(([, open]) => open)).toEqual([
+			"true",
+			"false",
+			"false",
+			"true",
+		]);
+		// The sites' order changes (ractive.ch gets the most pages): each
+		// heading is kept, only moved, and the one with the focus keeps it.
+		el<HTMLButtonElement>("case-site-toggle-1").focus();
+		const more = ["y", "z", "w"].map((x) => `https://ractive.ch/${x}`);
+		render(
+			caseState(
+				{
+					...c,
+					pages: [
+						...(c.pages ?? []),
+						...more.map((url) => ({ url, title: url, lang: "en" })),
+					],
+					shots: [
+						...c.shots,
+						...more.map((url, i) => shot(`s${i + 7}`, url, 1280)),
+					],
+				},
+				(s) => {
+					s.tab = {
+						id: 1,
+						url: "https://www.comparis.ch/a",
+						title: "",
+						size: undefined,
+					};
+				},
+			),
 			noActions,
 		);
-		expect(
-			el<HTMLButtonElement>("case-pages-toggle").getAttribute("aria-expanded"),
-		).toBe("true");
-		// The tab moves to a page of the case: the list closes by itself, and
-		// a focus that was in it goes to the heading, not to nowhere.
-		el("case-pages").querySelector<HTMLElement>(".page-name")?.focus();
-		render(
-			caseState(c, (s) => {
-				s.tab = { id: 1, url: urls[1] as string, title: "", size: undefined };
-			}),
-			noActions,
-		);
-		expect(el("case-pages").hidden).toBe(true);
-		expect(document.activeElement?.id).toBe("case-pages-toggle");
+		expect(heads()[0]?.[0]).toBe("ractive.ch 4");
+		expect(document.activeElement?.id).toBe("case-site-toggle-1");
 	});
 
 	test("the marks by page: this page follows the tab, any page from the list or the menu, combined with the status chips, which count what it leaves", () => {
@@ -4075,6 +4143,9 @@ describe("the AI app", () => {
 		const c = sampleCase("c_talk");
 		const on = { active: true, connected: true, apps: 1 };
 		const talking = () => "talking" in el("ai-button").dataset;
+		// The real hold is seconds long (TALKING_AFTER_MS): not sat out here.
+		const HOLD = 60;
+		holdTalkingFor(HOLD);
 		render(caseState(c, ai({ ...on, status: "Connected: Claude" })), noActions);
 		expect(talking()).toBe(false);
 		const name = () => el("ai-button").textContent;
@@ -4091,7 +4162,7 @@ describe("the AI app", () => {
 		);
 		// A moment after the call: still on, then off.
 		expect(talking()).toBe(true);
-		await Bun.sleep(TALKING_AFTER_MS + 50);
+		await Bun.sleep(HOLD + 50);
 		expect(talking()).toBe(false);
 		// The connection drops while the glow is on: it goes at once, not a
 		// moment after, beside a dot that is no longer green.
@@ -4123,6 +4194,8 @@ describe("the AI app", () => {
 			noActions,
 		);
 		expect(talking()).toBe(false);
+		// The hold as shipped, for whatever renders a talking chip after this.
+		holdTalkingFor(TALKING_AFTER_MS);
 	});
 
 	test("its connection shows in the case view too; no Stop in the top bar, the pill leads to the switch (DEC-061)", () => {
@@ -5095,10 +5168,17 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 					f.querySelector("dd")?.textContent,
 				];
 			});
-		expect(facts.map(([label]) => label)).toEqual(["Page", "Link", "Made at"]);
+		// A case of one page: its site beside its address (DEC-067).
+		expect(facts.map(([label]) => label)).toEqual([
+			"Page",
+			"Site",
+			"Link",
+			"Made at",
+		]);
 		expect(el("case-pages-section").hidden).toBe(true);
 		expect(facts[0]?.[1]).toContain("www.example.com/kk");
-		expect(facts[2]?.[1]).toContain(
+		expect(facts[1]?.[1]).toBe("example.com");
+		expect(facts[3]?.[1]).toContain(
 			`${c.page.viewport.width}×${c.page.viewport.height}, `,
 		);
 		expect(el("case-counts").textContent).toBe("1 mark: 1 open");

@@ -301,6 +301,10 @@ describe("build", () => {
 			expect(text).toContain("@ractive-ch/tab-mcp-client\n\nMIT License");
 			expect(text).toContain("@cfworker/json-schema\n\nMIT License");
 			expect(text).toContain("Copyright (c) 2020 Jeremy Danyow");
+			// The public suffix list, for the sites (DEC-067).
+			expect(text).toContain(
+				"tldts\n\nCopyright (c) 2017 Thomas Parisot, 2018 Rémi Berson",
+			);
 			expect(text).not.toContain("CDN build");
 		}
 	});
@@ -413,6 +417,9 @@ describe("build", () => {
 		expect(mitText("x", "Copyright\n\nMIT License\n\nText")).toBe(
 			"MIT License\n\nText",
 		);
+		const bare =
+			'Copyright (c) 2017 A\n\nPermission is hereby granted, free of charge, to any person\n\nTHE SOFTWARE IS PROVIDED "AS IS"';
+		expect(mitText("x", bare)).toBe(bare);
 		expect(() => mitText("x", "Apache License 2.0")).toThrow(
 			"no MIT licence text for x",
 		);
@@ -472,7 +479,7 @@ describe("the sitegloss.dev API's types (DEC-039)", () => {
 		expect(await Bun.file(TYPES).text()).toBe(await typesOf(SPEC));
 	}, 60_000);
 
-	test("the generator is a dev dependency: the build holds no code of it, and no package but the client", async () => {
+	test("the generator is a dev dependency: the build holds no code of it, and no package but the client and the suffix list", async () => {
 		const pkg = (await Bun.file(
 			join(import.meta.dir, "..", "package.json"),
 		).json()) as {
@@ -481,6 +488,7 @@ describe("the sitegloss.dev API's types (DEC-039)", () => {
 		};
 		expect(Object.keys(pkg.dependencies)).toEqual([
 			"@ractive-ch/tab-mcp-client",
+			"tldts",
 		]);
 		expect(pkg.devDependencies["openapi-typescript"]).toMatch(
 			/^\d+\.\d+\.\d+$/,
@@ -497,5 +505,18 @@ describe("the sitegloss.dev API's types (DEC-039)", () => {
 		// The sync is in the worker, in its own words.
 		expect(worker).toContain("sitegloss-cloud");
 		expect(worker).not.toContain("openapi-typescript");
+		// The public suffix list is the panel's and the worker's, never in the
+		// script that runs in every web page (DEC-067). `xn--p1ai` (.рф) is an
+		// entry of the list's data, whichever code reaches it.
+		const LIST = "xn--p1ai";
+		expect(worker).toContain(LIST);
+		const panelCode = await Promise.all(
+			[...new Bun.Glob("sidepanel/*.js").scanSync({ cwd: outdir })].map((f) =>
+				Bun.file(join(outdir, f)).text(),
+			),
+		);
+		expect(panelCode.some((t) => t.includes(LIST))).toBe(true);
+		const content = await Bun.file(join(outdir, "content.js")).text();
+		expect(content).not.toContain(LIST);
 	}, 60_000);
 });
