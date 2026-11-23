@@ -2,7 +2,9 @@
  * The open case's next step, drawn (DEC-069): under the counts, one quiet
  * line and the panel's own buttons, no colour of its own. A region with a
  * name; its sentence is announced when it changes, never on a render that
- * leaves it as it was. What a copy did is said under it.
+ * leaves it as it was. What a copy did is said under it. Both live regions
+ * stay rendered while empty (out of sight, not `hidden`), so that a reader
+ * hears what is written into them.
  */
 
 import { h } from "./dom.ts";
@@ -76,7 +78,6 @@ export function nextStepParts(): StepParts {
 			id: "next-step",
 			"aria-label": "Next step",
 			tabindex: "-1",
-			hidden: true,
 		},
 		text,
 		row,
@@ -85,8 +86,12 @@ export function nextStepParts(): StepParts {
 	return { el, text, row, note, key: "", act: () => undefined };
 }
 
+/** Out of sight but rendered: a live region a reader keeps listening to. */
+const away = (el: HTMLElement, out: boolean) =>
+	el.classList.toggle("visually-hidden", out);
+
 /**
- * Draw `step` (none: the block is hidden). `act` carries out an action, as
+ * Draw `step` (none: the block is out of sight). `act` carries out an action, as
  * the panel's other place for it does; `off` names the actions that cannot
  * be taken now, with why, as their other place says it.
  */
@@ -98,18 +103,22 @@ export function renderNextStep(
 	off: Partial<Record<StepAction, string>> = {},
 ): void {
 	p.act = act;
-	p.el.hidden = step === undefined;
+	away(p.el, step === undefined);
 	const text = step?.text ?? "";
 	// The same words are not written again: a live region would say them again.
 	if (p.text.textContent !== text) p.text.textContent = text;
 	const shown = step === undefined ? undefined : note;
 	if (p.note.textContent !== (shown ?? "")) p.note.textContent = shown ?? "";
-	p.note.hidden = shown === undefined;
+	away(p.note, shown === undefined);
 	const actions = step?.actions ?? [];
 	const key = JSON.stringify(actions.map((a) => [a, off[a] ?? null]));
 	if (key === p.key) return;
 	p.key = key;
-	const had = p.row.contains(document.activeElement);
+	// The button that has the focus, by its action: a click that changed the
+	// step keeps the focus on it, or in the block.
+	const active = document.activeElement as HTMLElement | null;
+	const had = active !== null && p.row.contains(active);
+	const pressed = had ? active.dataset["step"] : undefined;
 	p.row.replaceChildren(
 		...actions.map((action) => {
 			const why = off[action];
@@ -128,7 +137,12 @@ export function renderNextStep(
 		}),
 	);
 	p.row.hidden = actions.length === 0;
-	// A click that changed the step keeps the focus in the block.
 	if (had)
-		(p.row.querySelector<HTMLElement>("button:not(:disabled)") ?? p.el).focus();
+		(
+			p.row.querySelector<HTMLElement>(
+				`button[data-step="${pressed}"]:not(:disabled)`,
+			) ??
+			p.row.querySelector<HTMLElement>("button:not(:disabled)") ??
+			p.el
+		).focus();
 }

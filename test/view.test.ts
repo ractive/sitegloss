@@ -5950,7 +5950,7 @@ describe("what comes next on the open case (DEC-069)", () => {
 
 		// Closed: no block at all.
 		render(caseState({ ...settled, closed: { at: AT } }), actions);
-		expect(el("next-step").hidden).toBe(true);
+		expect(el("next-step").classList.contains("visually-hidden")).toBe(true);
 	});
 
 	test("its sentence is written once, not again on a render that leaves it as it was", () => {
@@ -5976,14 +5976,13 @@ describe("what comes next on the open case (DEC-069)", () => {
 		const c = withOneMark(sampleCase());
 		const state = caseState(c, (s) => {
 			signedIn(s, { c_1: "synced" });
-			s.cloud.status = {
-				state: "synced",
-				problems: [],
-				undecided: 0,
-				waiting: 0,
-				lastSyncedAt: "2026-11-05T10:00:00Z",
+			s.cloud.atTeam = { c_1: "t_1" };
+			s.copied = {
+				caseId: "c_1",
+				what: "copy-link",
+				text: "Link copied.",
+				at: 1,
 			};
-			s.copied = { caseId: "c_1", text: "Link copied.", at: 1 };
 		});
 		render(
 			state,
@@ -5997,5 +5996,9 @@ describe("what comes next on the open case (DEC-069)", () => {
 		expect(done).toEqual(["link c_1", "ai c_1"]);
 		expect(el("next-step-note").textContent).toBe("Link copied.");
 		expect(el("next-step-note").getAttribute("role")).toBe("status");
+		// The step moved on (no link any more): what the copy did is not said.
+		state.cloud.atTeam = {};
+		render(state, noActions);
+		expect(el("next-step-note").textContent).toBe("");
 	});
 });

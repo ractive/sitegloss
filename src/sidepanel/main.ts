@@ -4,7 +4,6 @@
  * view.ts draws it (DEC-011).
  */
 
-import { caseInstructions } from "../lib/agent-instructions.ts";
 import {
 	BROWSER,
 	FIREFOX,
@@ -106,7 +105,7 @@ import {
 	type PendingShow,
 	tryShow,
 } from "./mark-link.ts";
-import { AI_COPIED, COPY_FAILED, linkCopied, whereIs } from "./next-step.ts";
+import { type Copied, copyStep, firstToVerify, whereIs } from "./next-step.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
@@ -1187,31 +1186,16 @@ function followHint(): (text: CaseHint | undefined) => void {
 const COPIED_MS = 8000;
 
 /**
- * The next step's copies (DEC-069): the case's address in the web app, or
- * the instructions for an AI app with it. Offered only where the team has
- * the case, so the address opens; the clipboard is written in the click.
+ * The next step's copies (DEC-069), written to the clipboard in the click;
+ * what it did is said in the block for `COPIED_MS`, while the step offers it.
  */
-async function copyStep(c: Case, what: "link" | "ai"): Promise<void> {
-	const where = whereIs(state.cloud, c);
-	if (where.kind !== "team" || where.link === undefined) return;
-	const text =
-		what === "link"
-			? where.link
-			: caseInstructions({
-					id: c.id,
-					title: c.title,
-					url: where.link,
-					mcpUrl: where.mcp,
-				});
-	let said: string;
-	try {
-		await navigator.clipboard.writeText(text);
-		said = what === "link" ? linkCopied(where.team) : AI_COPIED;
-	} catch {
-		said = COPY_FAILED;
-	}
+async function copyFromStep(c: Case, what: Copied["what"]): Promise<void> {
+	const done = await copyStep(c, whereIs(state.cloud, c), what, (text) =>
+		navigator.clipboard.writeText(text),
+	);
+	if (done === undefined) return;
 	const at = Date.now();
-	update((s) => (s.copied = { caseId: c.id, text: said, at }));
+	update((s) => (s.copied = { caseId: c.id, ...done, at }));
 	setTimeout(() => {
 		if (state.copied?.at === at) update((s) => (s.copied = undefined));
 	}, COPIED_MS);
@@ -2038,14 +2022,21 @@ const actions: Actions = {
 	setCaseClosed: (caseId, closed) =>
 		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
 
-	copyCaseLink: (c) => void copyStep(c, "link"),
-	copyForAiApp: (c) => void copyStep(c, "ai"),
+	copyCaseLink: (c) => void copyFromStep(c, "copy-link"),
+	copyForAiApp: (c) => void copyFromStep(c, "copy-ai"),
 
 	startVerifying(c) {
-		const first = [...c.marks]
-			.sort((x, y) => x.number - y.number)
-			.find((a) => markStatus(a) === "fixed");
-		if (first === undefined) return;
+		// The case as it is now, and only while it is the one open.
+		const now = state.current;
+		if (now?.id !== c.id) return;
+		const first = firstToVerify(now);
+		if (first === undefined) {
+			// Verified meanwhile (by the team, an AI app): say so, filter nothing.
+			if (state.markFilter?.group === "toVerify")
+				actions.filterMarks(c.id, undefined);
+			caseHintWriter()("No mark waits to be checked any more.");
+			return;
+		}
 		// As a status chip and a picked pin: those marks, on every page, the first open.
 		actions.filterMarks(c.id, "toVerify");
 		actions.filterPage(c.id, undefined);

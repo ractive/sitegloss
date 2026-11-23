@@ -2,7 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { caseInstructions } from "../src/lib/agent-instructions.ts";
 import type { Case, Mark, Resolution } from "../src/lib/case.ts";
 import type { CloudStatus } from "../src/lib/cloud/book.ts";
-import { nextStep, type Where, whereIs } from "../src/sidepanel/next-step.ts";
+import {
+	AI_COPIED,
+	COPY_FAILED,
+	copyStep,
+	firstToVerify,
+	linkCopied,
+	nextStep,
+	type Where,
+	whereIs,
+} from "../src/sidepanel/next-step.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import { sampleCase, withOneMark } from "./fixtures.ts";
 
@@ -104,28 +113,35 @@ describe("where the case is, as this browser knows it", () => {
 		});
 	});
 
-	test("the team's: its link only once the team has it for certain", () => {
-		// The last sync ended with nothing waiting after the case last changed.
-		expect(whereIs(cloud({ status: synced() }), c)).toEqual(TEAM_HAS);
-		// Changed since, or still waiting: not known to be there.
-		const late = { status: synced({ lastSyncedAt: "2026-11-04T09:00:00Z" }) };
-		expect(whereIs(cloud(late), c)).toEqual({ kind: "sending", why: "next" });
-		const waiting = { status: synced({ waiting: 1 }) };
-		expect(whereIs(cloud(waiting), c)).toEqual({
+	test("the team's: its link only where the sync knows the server has it, in this team", () => {
+		expect(whereIs(cloud({ atTeam: { c_1: "t_1" } }), c)).toEqual(TEAM_HAS);
+		// A case of the team before a switch: not this team's link.
+		expect(whereIs(cloud({ atTeam: { c_1: "t_0" } }), c)).toEqual({
 			kind: "sending",
 			why: "next",
 		});
-		// A mark that came from the server: the team has the case, whatever the sync is at.
-		const theirs = {
+		// Synced to the last change, by the status: still not the sync's word on this case.
+		expect(whereIs(cloud({ status: synced() }), c)).toEqual({
+			kind: "sending",
+			why: "next",
+		});
+	});
+
+	test("an imported case whose marks name their makers gets no link", () => {
+		// The sync has not seen it (no mode: it counts as the team's), and
+		// its marks carry createdBy from the file.
+		const imported: Case = {
 			...c,
+			importedAt: AT,
 			marks: c.marks.map((a) => ({
 				...a,
 				createdBy: { id: "u_dana", name: "Dana" },
 			})),
 		};
-		expect(
-			whereIs(cloud({ status: { ...synced(), state: "offline" } }), theirs),
-		).toEqual(TEAM_HAS);
+		expect(whereIs(cloud({ status: synced() }), imported)).toEqual({
+			kind: "sending",
+			why: "next",
+		});
 	});
 
 	test("not sent yet: why, as the sync says it", () => {
@@ -145,7 +161,7 @@ describe("where the case is, as this browser knows it", () => {
 
 	test("a team from a server that names no slug: no link", () => {
 		const { slug: _none, ...bare } = TEAM;
-		const c2 = whereIs(cloud({ status: synced() }, { teams: [bare] }), c);
+		const c2 = whereIs(cloud({ atTeam: { c_1: "t_1" } }, { teams: [bare] }), c);
 		expect(c2).toMatchObject({ kind: "team", link: undefined });
 	});
 });
@@ -156,7 +172,7 @@ describe("the next step for the case", () => {
 	test("no marks: add some; nothing more to offer while adding", () => {
 		const c = sampleCase();
 		expect(step(c, here)).toEqual({
-			text: "Mark what is wrong on the page.",
+			text: "Draw on the page and say what is wrong.",
 			actions: ["add-marks"],
 		});
 		expect(step(c, here, true)?.actions).toEqual([]);
@@ -182,7 +198,7 @@ describe("the next step for the case", () => {
 
 	test("the team has it, marks open: hand it over", () => {
 		expect(step(withMarks("open", "open", "verified"), TEAM_HAS)).toEqual({
-			text: "2 marks are open. Send the case to whoever fixes them.",
+			text: "Send the case to whoever fixes the open marks.",
 			actions: ["copy-link", "copy-ai"],
 		});
 	});
@@ -190,33 +206,41 @@ describe("the next step for the case", () => {
 	test("the team does not have it yet: no link, and why", () => {
 		const c = withMarks("open");
 		expect(step(c, { kind: "sending", why: "syncing" })).toEqual({
-			text: "1 mark is open. It is being sent to the team; its link works once it is there.",
+			text: "It is being sent to the team; its link works once it is there.",
 			actions: [],
 		});
 		expect(step(c, { kind: "signed-out" })).toEqual({
-			text: "1 mark is open. Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases.",
+			text: "Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases.",
 			actions: [],
 		});
 	});
 
-	test("marks fixed: verify them; the link too while others are open", () => {
-		expect(step(withMarks("fixed", "open"), TEAM_HAS)).toEqual({
-			text: "1 mark is fixed and waits to be checked on the page that has the fix.",
-			actions: ["verify", "copy-link"],
-		});
+	test("marks fixed: verify them; while others are open, both are said and both offered", () => {
+		const check = "Check the fixed marks on the page that has the fix.";
 		expect(step(withMarks("fixed", "fixed"), TEAM_HAS)).toEqual({
-			text: "2 marks are fixed and wait to be checked on the page that has the fix.",
+			text: check,
 			actions: ["verify"],
 		});
-		// Not the team's yet: verifying still is; sharing where it may be.
+		expect(step(withMarks("fixed", "open"), TEAM_HAS)).toEqual({
+			text: `${check} Send the case to whoever fixes the open marks.`,
+			actions: ["verify", "copy-link", "copy-ai"],
+		});
 		expect(
-			step(withMarks("fixed", "open"), { kind: "sending", why: "next" })
-				?.actions,
-		).toEqual(["verify"]);
+			step(withMarks("fixed", "open"), { kind: "sending", why: "offline" }),
+		).toEqual({
+			text: `${check} It is not with the team yet: the server cannot be reached, and Sitegloss tries again by itself.`,
+			actions: ["verify"],
+		});
 		expect(
 			step(withMarks("fixed", "open"), { kind: "browser", share: "may" })
 				?.actions,
 		).toEqual(["verify", "share"]);
+	});
+
+	test("Start verifying goes to the lowest-numbered mark to verify", () => {
+		const c = withMarks("open", "fixed", "fixed");
+		expect(firstToVerify(c)?.number).toBe(2);
+		expect(firstToVerify(withMarks("open", "verified"))).toBeUndefined();
 	});
 
 	test("every mark settled: close it, where the role lets", () => {
@@ -233,6 +257,40 @@ describe("the next step for the case", () => {
 		const c = { ...withMarks("open"), closed: { at: AT } };
 		expect(step(c, TEAM_HAS)).toBeUndefined();
 		expect(step({ ...sampleCase(), closed: { at: AT } }, here)).toBeUndefined();
+	});
+});
+
+describe("the copies", () => {
+	const c = withMarks("open");
+	test("the link and the instructions go to the clipboard, and say for whom", async () => {
+		const written: string[] = [];
+		const write = async (text: string) => void written.push(text);
+		expect(await copyStep(c, TEAM_HAS, "copy-link", write)).toEqual({
+			what: "copy-link",
+			text: linkCopied(TEAM.name),
+		});
+		expect(await copyStep(c, TEAM_HAS, "copy-ai", write)).toEqual({
+			what: "copy-ai",
+			text: AI_COPIED,
+		});
+		expect(written[0]).toBe(LINK);
+		expect(written[1]).toStartWith(
+			"Work on the Sitegloss case with the id c_1:",
+		);
+	});
+
+	test("a clipboard that refuses: said; and nothing is copied where the server lacks the case", async () => {
+		const refuse = () => Promise.reject(new Error("NotAllowedError"));
+		expect(await copyStep(c, TEAM_HAS, "copy-link", refuse)).toEqual({
+			what: "copy-link",
+			text: COPY_FAILED,
+		});
+		let called = false;
+		const write = async () => void (called = true);
+		expect(
+			await copyStep(c, { kind: "sending", why: "next" }, "copy-ai", write),
+		).toBeUndefined();
+		expect(called).toBe(false);
 	});
 });
 

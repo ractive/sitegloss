@@ -1,12 +1,21 @@
 /*
  * What a person pastes into their AI app to have it work on a case through
- * the service's MCP server (DEC-069). The words are the web app's
- * (`apps/app/src/lib/agent-instructions.ts` in sitegloss.dev, DEC-030 there):
- * its case page copies the same text, so a change to one is made to the
- * other. One line is the extension's own: which connection does what, as the
- * web app's AI app page says it. What the case holds (its title) was written
- * by others, and the person pastes it with their own authority: it is quoted
- * as data between two lines that say so, on one line, cut and escaped.
+ * the service's MCP server (DEC-069). A copy of the web app's
+ * `caseInstructions` (`apps/app/src/lib/agent-instructions.ts` in
+ * sitegloss.dev, DEC-030 there), kept in step by hand: no test can read the
+ * other repository. Where they differ, on purpose:
+ * - `LIVE_PAGE`, the one line of the extension's own (which connection does
+ *   what, as the web app's AI app page says it); the web app's text lacks it
+ *   until the service takes it;
+ * - only the case's template: the one for a single mark (`markInstructions`)
+ *   is not copied, the panel offers none;
+ * - the hidden characters are found by code point, not by a regular
+ *   expression: Biome's formatter turns that expression's escapes into the
+ *   invisible characters themselves. The same characters either way.
+ * What the case holds (its title) was written by others, and the person
+ * pastes it with their own authority: it is quoted as data between two lines
+ * that say so, on one line, cut and escaped. The id and the addresses are
+ * the server's and this browser's own.
  */
 
 /** The case the instructions are about. */

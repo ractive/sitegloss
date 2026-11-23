@@ -1918,7 +1918,11 @@ function renderStep(
 	});
 	const off: Partial<Record<StepAction, string>> = {};
 	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;
-	const copied = state.copied?.caseId === c.id ? state.copied.text : undefined;
+	// What a copy did, while the step still offers that copy.
+	const copied =
+		state.copied?.caseId === c.id && step?.actions.includes(state.copied.what)
+			? state.copied.text
+			: undefined;
 	renderNextStep(
 		p.next,
 		step,
