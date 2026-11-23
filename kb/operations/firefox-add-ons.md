@@ -123,6 +123,27 @@ To enter or check by hand before that version is published:
 - **Listing and privacy policy:** as in the Chrome Web Store runbook (the new
   `PRIVACY.md`, changed 21 November 2026).
 
+## For version 0.4.0 (DEC-049 to DEC-070)
+
+- **No new permission, and the data collection declaration is unchanged** (nothing
+  required; website content and browsing activity optional). The text a user selects with
+  the Highlight tool is website content; it goes to the team with the mark, after the
+  same consent at "Sign in", like a mark's recorded look in 0.3.1. `strict_min_version`
+  stays 153.0.
+- **New in the manifest:** `web_accessible_resources` with `field/*` for `<all_urls>`
+  (DEC-064): the comment field of the page's dialogs, an extension page in a frame, so
+  that the page cannot read what is typed. Firefox gives each install an address of its
+  own, so there is no `use_dynamic_url` here. Say so in the notes for the reviewers.
+- **Notes to the reviewers,** add: the bundled library `tldts` 7.5.5 (MIT) with the
+  public suffix list as data, no network (it is in `LICENSES.txt`; the source archive
+  builds it from `bun.lock`); the client library 0.23.0 with its WebMCP mirror off
+  (`webmcp: false`); new extension pages `viewer/` and `field/`; the buttons that copy a
+  link, instructions or an id write to the clipboard in the click, with no permission.
+  The Highlight tool was not driven by hand in Firefox, and only a Chromium test covers it (DEC-066): try it in a Firefox
+  build before submitting.
+- **Listing and privacy policy:** as in the Chrome Web Store runbook (the new
+  `PRIVACY.md`, changed 23 November 2026).
+
 # Citations
 
 - [Extension Workshop: Source code submission](https://extensionworkshop.com/documentation/publish/source-code-submission/)
