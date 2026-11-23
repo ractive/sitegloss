@@ -4174,9 +4174,17 @@ function renderAi({ ai }: PanelState): void {
 
 /**
  * How long the chip keeps saying an app talks after its last call ended:
- * most calls take a blink, and the glow has to be seen.
+ * most calls take a blink, and the glow has to be seen (four breaths; the
+ * owner: "pulse 2 times more").
  */
-export const TALKING_AFTER_MS = 2500;
+export const TALKING_AFTER_MS = 5000;
+let talkingAfter = TALKING_AFTER_MS;
+
+/** A shorter hold, for a test that would otherwise sit it out. */
+export function holdTalkingFor(ms: number): void {
+	talkingAfter = ms;
+}
+
 let talkingUntil: ReturnType<typeof setTimeout> | undefined;
 
 /**
@@ -4195,7 +4203,7 @@ function showTalking(working: boolean): void {
 	talkingUntil = setTimeout(() => {
 		talkingUntil = undefined;
 		delete aiButton.dataset["talking"];
-	}, TALKING_AFTER_MS);
+	}, talkingAfter);
 }
 
 // The test build's guards and delays below are short (DEC-053): its clicks

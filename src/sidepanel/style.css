@@ -723,49 +723,84 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 }
 
 /*
- * An AI app is talking (DEC-063): while its call runs and a moment after,
- * the whole button glows in the connection's green. (First only the dot
- * pulsed, 8 px of it: the owner did not see it.) The halo is a layer of its
- * own whose opacity breathes, which costs no repaint; it stays inside the 8 px
- * the bar has above the button; nothing moves and nothing changes size. Only
- * on a connection that is up: a red or grey dot has no green beside it.
+ * An AI app is talking (DEC-063): while its call runs and a while after,
+ * the button wears the many-coloured ring that AI buttons have come to wear
+ * (the owner), with a soft halo of the same colours that breathes. The ring
+ * and the halo are layers behind the button: it keeps its size, nothing
+ * moves, and only the halo's opacity is animated, which costs no repaint.
+ * The halo is the ring's size, blurred 3 px: its visible reach stays within
+ * the 8 px the bar has above the button. Only on a
+ * connection that is up: a red or grey dot has no glow beside it.
  */
 :where(#bar)[data-ai="connected"] .ai-pill[data-talking] {
+	--ai-glow: linear-gradient(
+		90deg,
+		#2fd4c0,
+		#4c7dff,
+		#a14dff,
+		#ff4da0,
+		#ff9838,
+		#ffd746
+	);
+
 	position: relative;
-	border-color: var(--st-verified);
+	border-color: transparent;
 }
 
+/*
+ * The ring: the gradient behind the button, 2 px larger all round; the
+ * button's own fill covers its inside, so no mask is needed.
+ */
+:where(#bar)[data-ai="connected"] .ai-pill[data-talking]::before {
+	content: "";
+	position: absolute;
+	z-index: -1;
+	inset: -3px;
+	border-radius: calc(var(--r-control) + 2px);
+	background: var(--ai-glow);
+	pointer-events: none;
+}
+
+/* The halo: the same colours, blurred, behind the button. */
 :where(#bar)[data-ai="connected"] .ai-pill[data-talking]::after {
 	content: "";
 	position: absolute;
-	inset: -1px;
-	border-radius: inherit;
-	box-shadow:
-		0 0 0 3px color-mix(in srgb, var(--st-verified) 50%, transparent),
-		0 0 5px 3px color-mix(in srgb, var(--st-verified) 70%, transparent);
+	z-index: -1;
+	inset: -3px;
+	border-radius: calc(var(--r-control) + 2px);
+	background: var(--ai-glow);
+	filter: blur(3px);
 	pointer-events: none;
 	animation: talking 0.6s ease-in-out infinite alternate;
 }
 
-/* The keyboard's ring stays readable outside the halo. */
+/*
+ * With the keyboard's focus on it, the halo goes and the ring stays: the
+ * focus outline, outside the ring, has plain paper behind it and not a
+ * blur of colours close to its own.
+ */
 :where(#bar)[data-ai="connected"] .ai-pill[data-talking]:focus-visible {
 	outline-offset: 4px;
 }
 
+:where(#bar)[data-ai="connected"] .ai-pill[data-talking]:focus-visible::after {
+	display: none;
+}
+
 @keyframes talking {
 	from {
-		opacity: 0.15;
+		opacity: 0.2;
 	}
 	to {
-		opacity: 1;
+		opacity: 0.95;
 	}
 }
 
-/* Without motion: the halo, steady, for the same time. */
+/* Without motion: the ring and the halo, steady, for the same time. */
 @media (prefers-reduced-motion: reduce) {
 	:where(#bar)[data-ai="connected"] .ai-pill[data-talking]::after {
 		animation: none;
-		opacity: 0.7;
+		opacity: 0.6;
 	}
 }
 
@@ -3163,9 +3198,14 @@ button.copy {
 		border-color: ButtonText;
 	}
 
-	/* Shadows are dropped here: the talking button says it by its edge. */
+	/* Colours of its own are dropped here: the talking button says it by its edge. */
 	:where(#bar)[data-ai="connected"] .ai-pill[data-talking] {
 		border-color: Highlight;
+	}
+
+	:where(#bar)[data-ai="connected"] .ai-pill[data-talking]::before,
+	:where(#bar)[data-ai="connected"] .ai-pill[data-talking]::after {
+		display: none;
 	}
 
 	.switch input {
