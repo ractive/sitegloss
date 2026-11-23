@@ -935,7 +935,10 @@ export async function startAi(
 			beforePairing ??= new Set(a.grants.map((g) => g.grantId));
 		else if (a.state === "connected") beforePairing = undefined;
 		byId("ai-state").dataset["state"] = view.status;
-		byId("ai-state-text").textContent = view.stateText;
+		// Only when it changes: a live region says it again at every assignment.
+		const stateText = byId("ai-state-text");
+		if (stateText.textContent !== view.stateText)
+			stateText.textContent = view.stateText;
 		// Also while connecting or retrying, so the user can stop it.
 		const shown = switchShown(view.switchOn, switchIntent, Date.now());
 		switchIntent = shown.intent;

@@ -65,22 +65,31 @@ describe("why AI access went off by itself (DEC-072)", () => {
 		expect(wentOffAtStart({ ...s, replaced: true })).toBe(false);
 	});
 
+	test("a record older than a week is not read back", () => {
+		const week = 7 * 24 * 3600 * 1000;
+		expect(wentOffOf({ reason: "idle", at: 0 }, week)).toEqual({
+			reason: "idle",
+			at: 0,
+		});
+		expect(wentOffOf({ reason: "idle", at: 0 }, week + 1)).toBeUndefined();
+	});
+
 	test("the stored record is read back only when whole", () => {
-		expect(wentOffOf({ reason: "idle", at: 5 })).toEqual({
+		expect(wentOffOf({ reason: "idle", at: 5 }, 6)).toEqual({
 			reason: "idle",
 			at: 5,
 		});
-		expect(wentOffOf({ reason: "user", at: 5 })).toBeUndefined();
+		expect(wentOffOf({ reason: "user", at: 5 }, 6)).toBeUndefined();
 		expect(wentOffOf({ reason: "idle" })).toBeUndefined();
 		expect(wentOffOf(undefined)).toBeUndefined();
 	});
 
+	const wayBack =
+		"Paired apps stay paired. Turn it on again, or tick \u201cKeep AI access on\u201d.";
 	const sentences = {
-		idle: "AI access went off because no AI app used it for a while. Turn it on again; Keep AI access on keeps it on.",
-		expired:
-			"AI access went off because the connection had been on for its longest time. Turn it on again; Keep AI access on keeps it on.",
-		restart:
-			"AI access was on before the browser or Sitegloss restarted, so it is off now. Turn it on again; Keep AI access on keeps it on.",
+		idle: `AI access went off because no AI app used it for a while. ${wayBack}`,
+		expired: `AI access went off because a connection ends after a long time. ${wayBack}`,
+		restart: `AI access was on before the browser or Sitegloss restarted, so it is off now. ${wayBack}`,
 	};
 
 	test.each(Object.entries(sentences))(

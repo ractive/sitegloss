@@ -432,7 +432,18 @@ export class Connection {
 		const stopped = session[SESSION_STOPPED] === true;
 		const sessionOn = !stopped && session[SESSION_ON] === true;
 		// It was on, and the session's flag is gone: a restart ended it (DEC-072).
-		let wentOff = wentOffOf(await kv.get(WENT_OFF_KEY).catch(() => undefined));
+		// A record shows only while AI access is off: not with the session on or
+		// Keep AI access on (a failed removal may have left one), and not a
+		// stale one (a week); those are removed.
+		const stored = await kv.get(WENT_OFF_KEY).catch(() => undefined);
+		const keptOn = !stopped && settings.keepOn;
+		let wentOff = sessionOn || keptOn ? undefined : wentOffOf(stored);
+		if (stored !== undefined && wentOff === undefined)
+			await kv
+				.remove(WENT_OFF_KEY)
+				.catch((error: unknown) =>
+					console.warn("Sitegloss: forgetting why AI access is off", error),
+				);
 		const restarted = wentOffAtStart({
 			wasOn: (await kv.get(WAS_ON_KEY).catch(() => undefined)) === true,
 			sessionOn,
@@ -659,7 +670,6 @@ export class Connection {
 			"replaced",
 			({ detail: { sibling } }) => {
 				void this.#setReplaced({ sibling });
-				void this.#setWentOff(undefined);
 				void this.#setSessionOn(false);
 				this.#changed();
 			},
@@ -742,6 +752,7 @@ export class Connection {
 
 	async #setSessionOn(on: boolean): Promise<void> {
 		this.#sessionOn = on;
+		await chrome.storage.session.set({ [SESSION_ON]: on });
 		// Kept beside the session's flag, which a restart clears: the two
 		// together tell a restart from a worker that was only stopped.
 		await this.#kv
@@ -749,7 +760,6 @@ export class Connection {
 			.catch((error: unknown) =>
 				console.warn("Sitegloss: saving that AI access is on", error),
 			);
-		await chrome.storage.session.set({ [SESSION_ON]: on });
 		await this.#syncAlarm();
 	}
 
@@ -814,6 +824,8 @@ export class Connection {
 		// AI access was on for the relay before: this one connects with
 		// "Keep AI access on", or on the user's click.
 		await this.#setSessionOn(false);
+		// About the relay before.
+		await this.#setWentOff(undefined);
 		this.#mcp = next;
 		this.#watch(next);
 		// Its statechange is no longer heard: a question for the relay
@@ -934,7 +946,9 @@ export class Connection {
 				// remembers the stop over it, so a new worker keeps it too (CR-08).
 				const wasOn = this.#settings.keepOn;
 				this.#settings = { ...this.#settings, keepOn: false };
-				await this.#setWentOff(undefined);
+				// Forgotten here at once; the store follows the disconnect.
+				const hadReason = this.#wentOff !== undefined;
+				this.#wentOff = undefined;
 				const failed = await stopFirst(
 					() => {
 						this.#keep.stop();
@@ -948,6 +962,12 @@ export class Connection {
 						session: () => this.#setSessionOn(false),
 					},
 				);
+				if (hadReason)
+					await this.#kv
+						.remove(WENT_OFF_KEY)
+						.catch((error: unknown) =>
+							console.warn("Sitegloss: forgetting why AI access is off", error),
+						);
 				await this.#syncAlarm();
 				this.#changed();
 				const problem = stopProblem(failed);

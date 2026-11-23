@@ -22,11 +22,19 @@ export const WENT_OFF_KEY = "aiWentOff";
 /** Whether AI access was on for the session when the worker last wrote it: `restart` is told by it. */
 export const WAS_ON_KEY = "aiWasOn";
 
-export function wentOffOf(value: unknown): WentOff | undefined {
+/** A record older than this says nothing a person needs: it is not shown, and removed at start. */
+export const WENT_OFF_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The record as stored, when whole and not older than a week at `now`. */
+export function wentOffOf(
+	value: unknown,
+	now: number = Date.now(),
+): WentOff | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
 	const { reason, at } = value as Partial<WentOff>;
 	return (reason === "idle" || reason === "expired" || reason === "restart") &&
-		typeof at === "number"
+		typeof at === "number" &&
+		now - at <= WENT_OFF_MAX_AGE_MS
 		? { reason, at }
 		: undefined;
 }
@@ -60,11 +68,12 @@ export function wentOffAtStart(s: {
 	return s.wasOn && !s.sessionOn && !s.stopped && !s.keepOn && !s.replaced;
 }
 
-/** What the panel says of a reason: the way back is the same for each. */
-const WAY_BACK = "Turn it on again; Keep AI access on keeps it on.";
+/** What the panel says of a reason: the pairing stays, and the way back is the same for each. */
+const WAY_BACK =
+	"Paired apps stay paired. Turn it on again, or tick \u201cKeep AI access on\u201d.";
 const SENTENCE: Record<WentOffReason, string> = {
 	idle: `AI access went off because no AI app used it for a while. ${WAY_BACK}`,
-	expired: `AI access went off because the connection had been on for its longest time. ${WAY_BACK}`,
+	expired: `AI access went off because a connection ends after a long time. ${WAY_BACK}`,
 	restart: `AI access was on before the browser or Sitegloss restarted, so it is off now. ${WAY_BACK}`,
 };
 
