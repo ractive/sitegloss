@@ -28,8 +28,31 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** The team's cases, newest change first */
+		/**
+		 * The team's cases, newest change first
+		 * @description Each case with its marks counted, where it stands (state) and whose turn it is (turn). With mine=true only the caller's cases (DEC-042): the open ones where it is their turn, that is, those assigned to them that are new or in progress, and those they started that are empty, to verify or settled, or that have open marks and nobody assigned. The rule is isMine in the API package, its cases vectors/case-state.json. A server from before ignores mine and lists every case.
+		 */
 		get: operations["listCases"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/v1/teams/{teamId}/members": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The team's members, to assign a case to
+		 * @description Every member of the team, the longest-standing first: the id case.patch's assignee takes and the name they go by. No e-mail address. Any member may read it (DEC-042).
+		 */
+		get: operations["listMembers"];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -204,6 +227,10 @@ export interface components {
 			importedAt: components["schemas"]["Timestamp"] | null;
 			closed: components["schemas"]["Stamp"] | null;
 			createdBy: components["schemas"]["UserRef"] | null;
+			/** @description The member of the team the case is assigned to: whose turn it is while marks are open. null: nobody. Always sent by a server that knows assignees (DEC-042), null for nobody; absent from a server from before, which a client reads as "not told", not as "nobody". Set with case.patch's assignee by anyone who may change the case. When the person leaves the team the case reads as assigned to nobody. A person, never an e-mail address. */
+			assignee?: components["schemas"]["UserRef"] | null;
+			/** @description Who assigned the case to its assignee, and when (at): a Stamp, set by the server from the caller. Absent while nobody is assigned. */
+			assignedBy?: components["schemas"]["Stamp"];
 			createdAt: components["schemas"]["Timestamp"];
 			updatedAt: components["schemas"]["Timestamp"];
 			rev: number;
@@ -241,6 +268,10 @@ export interface components {
 			importedAt: components["schemas"]["Timestamp"] | null;
 			closed: components["schemas"]["Stamp"] | null;
 			createdBy: components["schemas"]["UserRef"] | null;
+			/** @description The member of the team the case is assigned to: whose turn it is while marks are open. null: nobody. Always sent by a server that knows assignees (DEC-042), null for nobody; absent from a server from before, which a client reads as "not told", not as "nobody". Set with case.patch's assignee by anyone who may change the case. When the person leaves the team the case reads as assigned to nobody. A person, never an e-mail address. */
+			assignee?: components["schemas"]["UserRef"] | null;
+			/** @description Who assigned the case to its assignee, and when (at): a Stamp, set by the server from the caller. Absent while nobody is assigned. */
+			assignedBy?: components["schemas"]["Stamp"];
 			createdAt: components["schemas"]["Timestamp"];
 			updatedAt: components["schemas"]["Timestamp"];
 			rev: number;
@@ -251,6 +282,17 @@ export interface components {
 		CaseList: {
 			cases: components["schemas"]["CaseSummary"][];
 		};
+		/**
+		 * @description Where a case stands, worked out from its marks and whether it is closed, never stored (DEC-042; the rule is caseState in the API package, its cases vectors/case-state.json). empty: no marks, not closed. new: marks, at least one open, none fixed, verified or dismissed yet. in progress: at least one open mark and at least one fixed, verified or dismissed. to verify: no open mark, at least one fixed and waiting to be verified. settled: every mark verified or dismissed, not closed. closed: the case is closed. A client that meets a value it does not know works it out from the marks itself.
+		 * @enum {string}
+		 */
+		CaseState:
+			| "empty"
+			| "new"
+			| "in progress"
+			| "to verify"
+			| "settled"
+			| "closed";
 		CaseSummary: {
 			id: components["schemas"]["Id"];
 			teamId: string;
@@ -264,11 +306,22 @@ export interface components {
 			importedAt: components["schemas"]["Timestamp"] | null;
 			closed: components["schemas"]["Stamp"] | null;
 			createdBy: components["schemas"]["UserRef"] | null;
+			/** @description The member of the team the case is assigned to: whose turn it is while marks are open. null: nobody. Always sent by a server that knows assignees (DEC-042), null for nobody; absent from a server from before, which a client reads as "not told", not as "nobody". Set with case.patch's assignee by anyone who may change the case. When the person leaves the team the case reads as assigned to nobody. A person, never an e-mail address. */
+			assignee?: components["schemas"]["UserRef"] | null;
+			/** @description Who assigned the case to its assignee, and when (at): a Stamp, set by the server from the caller. Absent while nobody is assigned. */
+			assignedBy?: components["schemas"]["Stamp"];
 			createdAt: components["schemas"]["Timestamp"];
 			updatedAt: components["schemas"]["Timestamp"];
 			rev: number;
 			counts: components["schemas"]["CaseCounts"];
+			state?: components["schemas"]["CaseState"];
+			turn?: components["schemas"]["CaseTurn"];
 		};
+		/**
+		 * @description Whose turn it is (DEC-042): assignee in new and in progress while the case has one (nobody while it has none: it is unassigned); reporter (who started the case) in empty, to verify and settled; nobody in closed.
+		 * @enum {string}
+		 */
+		CaseTurn: "assignee" | "reporter" | "nobody";
 		ChangeEvent: {
 			cursor: number;
 		};
@@ -405,6 +458,9 @@ export interface components {
 			};
 			teams: components["schemas"]["TeamMembership"][];
 		};
+		MemberList: {
+			members: components["schemas"]["TeamMember"][];
+		};
 		/** @description An image to add to a mark. id: the client's, unique in the case (the case file names it `images/<id>.webp`). image: a WebP uploaded first with PUT …/blobs/{sha256}; the server takes the size it measured at upload. at: when it was added, believed only in a case that came in from a file, where the image is then stored as imported, naming no person; otherwise the server's time and the caller. */
 		NewMarkImage: {
 			id: components["schemas"]["Id"];
@@ -440,6 +496,8 @@ export interface components {
 					summary?: string | null;
 					pages?: components["schemas"]["Page"][];
 					lastNumber?: number;
+					/** @description Assigns the case: the user id of a member of the team, or null for nobody. Left out, the assignee stays as it is, so a client that does not know assignees changes nothing about it. Needs case:update, as the case's other fields. Someone who is not a member of the team (or no such user) refuses the operation with invalid. The server stamps who assigned it and when (assignedBy). The same assignee again changes nothing. Ignored by a server from before DEC-042. */
+					assignee?: components["schemas"]["Id"] | null;
 					via?: components["schemas"]["AppRef"];
 			  }
 			| {
@@ -700,6 +758,11 @@ export interface components {
 			user?: components["schemas"]["UserRef"];
 			app?: components["schemas"]["AppRef"];
 		};
+		/** @description A member of the team: the user id a case is assigned with (case.patch's assignee) and the name they go by. Never an e-mail address. */
+		TeamMember: {
+			id: string;
+			name: string;
+		};
 		TeamMembership: {
 			id: string;
 			name: string;
@@ -770,7 +833,9 @@ export interface operations {
 	};
 	listCases: {
 		parameters: {
-			query?: never;
+			query?: {
+				mine?: boolean;
+			};
 			header?: never;
 			path: {
 				teamId: string;
@@ -786,6 +851,55 @@ export interface operations {
 				};
 				content: {
 					"application/json": components["schemas"]["CaseList"];
+				};
+			};
+			/** @description No valid access token. */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+			/** @description The token's scope or the caller's role does not allow it. */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+			/** @description No such team, case or image, or not one of the caller's. */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiError"];
+				};
+			};
+		};
+	};
+	listMembers: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				teamId: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description The members. */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MemberList"];
 				};
 			};
 			/** @description No valid access token. */

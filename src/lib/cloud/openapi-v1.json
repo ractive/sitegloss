@@ -48,6 +48,79 @@
 			"get": {
 				"operationId": "listCases",
 				"summary": "The team's cases, newest change first",
+				"description": "Each case with its marks counted, where it stands (state) and whose turn it is (turn). With mine=true only the caller's cases (DEC-042): the open ones where it is their turn, that is, those assigned to them that are new or in progress, and those they started that are empty, to verify or settled, or that have open marks and nobody assigned. The rule is isMine in the API package, its cases vectors/case-state.json. A server from before ignores mine and lists every case.",
+				"security": [
+					{
+						"oauth": ["cases:read"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "mine",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The cases.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CaseList"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No valid access token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The token's scope or the caller's role does not allow it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such team, case or image, or not one of the caller's.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/teams/{teamId}/members": {
+			"get": {
+				"operationId": "listMembers",
+				"summary": "The team's members, to assign a case to",
+				"description": "Every member of the team, the longest-standing first: the id case.patch's assignee takes and the name they go by. No e-mail address. Any member may read it (DEC-042).",
 				"security": [
 					{
 						"oauth": ["cases:read"]
@@ -65,11 +138,11 @@
 				],
 				"responses": {
 					"200": {
-						"description": "The cases.",
+						"description": "The members.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/CaseList"
+									"$ref": "#/components/schemas/MemberList"
 								}
 							}
 						}
@@ -833,6 +906,21 @@
 							}
 						]
 					},
+					"assignee": {
+						"description": "The member of the team the case is assigned to: whose turn it is while marks are open. null: nobody. Always sent by a server that knows assignees (DEC-042), null for nobody; absent from a server from before, which a client reads as \"not told\", not as \"nobody\". Set with case.patch's assignee by anyone who may change the case. When the person leaves the team the case reads as assigned to nobody. A person, never an e-mail address.",
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserRef"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"assignedBy": {
+						"description": "Who assigned the case to its assignee, and when (at): a Stamp, set by the server from the caller. Absent while nobody is assigned.",
+						"$ref": "#/components/schemas/Stamp"
+					},
 					"createdAt": {
 						"$ref": "#/components/schemas/Timestamp"
 					},
@@ -1026,6 +1114,21 @@
 							}
 						]
 					},
+					"assignee": {
+						"description": "The member of the team the case is assigned to: whose turn it is while marks are open. null: nobody. Always sent by a server that knows assignees (DEC-042), null for nobody; absent from a server from before, which a client reads as \"not told\", not as \"nobody\". Set with case.patch's assignee by anyone who may change the case. When the person leaves the team the case reads as assigned to nobody. A person, never an e-mail address.",
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserRef"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"assignedBy": {
+						"description": "Who assigned the case to its assignee, and when (at): a Stamp, set by the server from the caller. Absent while nobody is assigned.",
+						"$ref": "#/components/schemas/Stamp"
+					},
 					"createdAt": {
 						"$ref": "#/components/schemas/Timestamp"
 					},
@@ -1087,6 +1190,18 @@
 					}
 				},
 				"required": ["cases"]
+			},
+			"CaseState": {
+				"type": "string",
+				"enum": [
+					"empty",
+					"new",
+					"in progress",
+					"to verify",
+					"settled",
+					"closed"
+				],
+				"description": "Where a case stands, worked out from its marks and whether it is closed, never stored (DEC-042; the rule is caseState in the API package, its cases vectors/case-state.json). empty: no marks, not closed. new: marks, at least one open, none fixed, verified or dismissed yet. in progress: at least one open mark and at least one fixed, verified or dismissed. to verify: no open mark, at least one fixed and waiting to be verified. settled: every mark verified or dismissed, not closed. closed: the case is closed. A client that meets a value it does not know works it out from the marks itself."
 			},
 			"CaseSummary": {
 				"type": "object",
@@ -1171,6 +1286,21 @@
 							}
 						]
 					},
+					"assignee": {
+						"description": "The member of the team the case is assigned to: whose turn it is while marks are open. null: nobody. Always sent by a server that knows assignees (DEC-042), null for nobody; absent from a server from before, which a client reads as \"not told\", not as \"nobody\". Set with case.patch's assignee by anyone who may change the case. When the person leaves the team the case reads as assigned to nobody. A person, never an e-mail address.",
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/UserRef"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"assignedBy": {
+						"description": "Who assigned the case to its assignee, and when (at): a Stamp, set by the server from the caller. Absent while nobody is assigned.",
+						"$ref": "#/components/schemas/Stamp"
+					},
 					"createdAt": {
 						"$ref": "#/components/schemas/Timestamp"
 					},
@@ -1184,6 +1314,12 @@
 					},
 					"counts": {
 						"$ref": "#/components/schemas/CaseCounts"
+					},
+					"state": {
+						"$ref": "#/components/schemas/CaseState"
+					},
+					"turn": {
+						"$ref": "#/components/schemas/CaseTurn"
 					}
 				},
 				"required": [
@@ -1203,6 +1339,11 @@
 					"rev",
 					"counts"
 				]
+			},
+			"CaseTurn": {
+				"type": "string",
+				"enum": ["assignee", "reporter", "nobody"],
+				"description": "Whose turn it is (DEC-042): assignee in new and in progress while the case has one (nobody while it has none: it is unassigned); reporter (who started the case) in empty, to verify and settled; nobody in closed."
 			},
 			"ChangeEvent": {
 				"type": "object",
@@ -1725,6 +1866,18 @@
 				},
 				"required": ["user", "teams"]
 			},
+			"MemberList": {
+				"type": "object",
+				"properties": {
+					"members": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/TeamMember"
+						}
+					}
+				},
+				"required": ["members"]
+			},
 			"NewMarkImage": {
 				"type": "object",
 				"properties": {
@@ -1872,6 +2025,17 @@
 								"type": "integer",
 								"minimum": 0,
 								"maximum": 99999
+							},
+							"assignee": {
+								"description": "Assigns the case: the user id of a member of the team, or null for nobody. Left out, the assignee stays as it is, so a client that does not know assignees changes nothing about it. Needs case:update, as the case's other fields. Someone who is not a member of the team (or no such user) refuses the operation with invalid. The server stamps who assigned it and when (assignedBy). The same assignee again changes nothing. Ignored by a server from before DEC-042.",
+								"anyOf": [
+									{
+										"$ref": "#/components/schemas/Id"
+									},
+									{
+										"type": "null"
+									}
+								]
 							},
 							"via": {
 								"$ref": "#/components/schemas/AppRef"
@@ -2694,6 +2858,19 @@
 				},
 				"required": ["at"],
 				"description": "Who did something, and when: the person (set by the server from the caller's login, never taken from a client) and the AI app they acted through. Written in words: `Dana via Claude Code`."
+			},
+			"TeamMember": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name"],
+				"description": "A member of the team: the user id a case is assigned with (case.patch's assignee) and the name they go by. Never an e-mail address."
 			},
 			"TeamMembership": {
 				"type": "object",
