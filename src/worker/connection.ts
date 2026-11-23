@@ -88,6 +88,14 @@ import {
 	INSTRUCTIONS,
 	type TabBridge,
 } from "./tools.ts";
+import {
+	WAS_ON_KEY,
+	WENT_OFF_KEY,
+	type WentOff,
+	wentOffAfter,
+	wentOffAtStart,
+	wentOffOf,
+} from "./went-off.ts";
 
 /** Wakes the worker while AI access is on, should the connection be down. */
 export const ALARM = "sitegloss-ai";
@@ -312,6 +320,8 @@ export class Connection {
 	#settings: Settings;
 	/** AI access is on for this browser session (without "Keep AI access on"). */
 	#sessionOn: boolean;
+	/** Why AI access went off by itself, until it is on again (DEC-072). */
+	#wentOff: WentOff | undefined;
 	#relay: string;
 	#relayNote: string | undefined;
 	#mcp: TabMcp;
@@ -363,6 +373,7 @@ export class Connection {
 		storage: CachedSecretStorage,
 		settings: Settings,
 		sessionOn: boolean,
+		wentOff?: WentOff,
 	) {
 		this.#deps = deps;
 		this.#kv = kv;
@@ -370,6 +381,7 @@ export class Connection {
 		this.#storage = storage;
 		this.#settings = settings;
 		this.#sessionOn = sessionOn;
+		this.#wentOff = wentOff;
 		this.#questions = new Questions(this.#questionsHost());
 		this.#keep = new KeepOn(
 			() => this.#settings.keepOn && this.#settings.replaced === undefined,
@@ -418,12 +430,31 @@ export class Connection {
 		]);
 		// A Stop in this browser session holds, whatever was stored before it.
 		const stopped = session[SESSION_STOPPED] === true;
+		const sessionOn = !stopped && session[SESSION_ON] === true;
+		// It was on, and the session's flag is gone: a restart ended it (DEC-072).
+		let wentOff = wentOffOf(await kv.get(WENT_OFF_KEY).catch(() => undefined));
+		const restarted = wentOffAtStart({
+			wasOn: (await kv.get(WAS_ON_KEY).catch(() => undefined)) === true,
+			sessionOn,
+			stopped,
+			keepOn: settings.keepOn,
+			replaced: settings.replaced !== undefined,
+		});
+		if (restarted) {
+			wentOff = { reason: "restart", at: Date.now() };
+			await kv
+				.set({ [WENT_OFF_KEY]: wentOff, [WAS_ON_KEY]: false })
+				.catch((error: unknown) =>
+					console.warn("Sitegloss: saving why AI access is off", error),
+				);
+		}
 		const connection = new Connection(
 			deps,
 			kv,
 			storage,
 			stopped ? { ...settings, keepOn: false } : settings,
-			!stopped && session[SESSION_ON] === true,
+			sessionOn,
+			wentOff,
 		);
 		connection.#showBadge();
 		connection.#watchTabs();
@@ -613,6 +644,12 @@ export class Connection {
 					void this.#setReplaced(undefined);
 				}
 				const on = sessionOnAfter(detail, this.#settings.keepOn);
+				const off = wentOffAfter(detail, this.#settings.keepOn);
+				if (off !== undefined)
+					void this.#setWentOff({ reason: off, at: Date.now() });
+				// On again, or the person's own stop: nothing to explain.
+				else if (detail.state === "connected" || detail.reason === "user")
+					void this.#setWentOff(undefined);
 				if (on !== undefined) void this.#setSessionOn(on);
 				this.#changed();
 			},
@@ -622,6 +659,7 @@ export class Connection {
 			"replaced",
 			({ detail: { sibling } }) => {
 				void this.#setReplaced({ sibling });
+				void this.#setWentOff(undefined);
 				void this.#setSessionOn(false);
 				this.#changed();
 			},
@@ -689,8 +727,28 @@ export class Connection {
 		await chrome.storage.session.set({ [SESSION_STOPPED]: on });
 	}
 
+	/** Remember (or forget) why AI access went off by itself; the store may fail, the memory holds. */
+	async #setWentOff(wentOff: WentOff | undefined): Promise<void> {
+		if (wentOff === undefined && this.#wentOff === undefined) return;
+		this.#wentOff = wentOff;
+		this.#changed();
+		try {
+			if (wentOff === undefined) await this.#kv.remove(WENT_OFF_KEY);
+			else await this.#kv.set({ [WENT_OFF_KEY]: wentOff });
+		} catch (error) {
+			console.warn("Sitegloss: saving why AI access is off", error);
+		}
+	}
+
 	async #setSessionOn(on: boolean): Promise<void> {
 		this.#sessionOn = on;
+		// Kept beside the session's flag, which a restart clears: the two
+		// together tell a restart from a worker that was only stopped.
+		await this.#kv
+			.set({ [WAS_ON_KEY]: on })
+			.catch((error: unknown) =>
+				console.warn("Sitegloss: saving that AI access is on", error),
+			);
 		await chrome.storage.session.set({ [SESSION_ON]: on });
 		await this.#syncAlarm();
 	}
@@ -865,6 +923,7 @@ export class Connection {
 				// access is on for the session once connected ("connected").
 				await this.#setReplaced(undefined);
 				await this.#setStopped(false);
+				await this.#setWentOff(undefined);
 				this.#connect();
 				this.#changed();
 				return;
@@ -875,6 +934,7 @@ export class Connection {
 				// remembers the stop over it, so a new worker keeps it too (CR-08).
 				const wasOn = this.#settings.keepOn;
 				this.#settings = { ...this.#settings, keepOn: false };
+				await this.#setWentOff(undefined);
 				const failed = await stopFirst(
 					() => {
 						this.#keep.stop();
@@ -898,6 +958,7 @@ export class Connection {
 				if (FIREFOX && command.on && !(await this.#consented())) return;
 				await this.#setKeepOn(command.on);
 				if (command.on) await this.#setStopped(false);
+				if (command.on) await this.#setWentOff(undefined);
 				if (command.on) this.#keep.connect();
 				else this.#keep.stop();
 				this.#changed();
@@ -1291,6 +1352,7 @@ export class Connection {
 			...(replaced !== undefined
 				? { replaced: { sibling: replaced.sibling } }
 				: {}),
+			...(this.#wentOff !== undefined ? { wentOff: this.#wentOff.reason } : {}),
 			...(this.#lastCall !== undefined ? { lastCall: this.#lastCall } : {}),
 			...(this.#running.size > 0 ? { running: this.#running.size } : {}),
 			questions: this.#questions.list,

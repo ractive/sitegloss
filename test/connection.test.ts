@@ -514,6 +514,48 @@ describe("the worker's connection with client 0.18", () => {
 		},
 	);
 
+	test("a restart while AI access was on says so, until the person turns it on again or off", async () => {
+		const first = await paired([]);
+		expect(await first.kv.get("aiWasOn")).toBe(true);
+		// The browser restarted: the worker is new and the session's flag gone.
+		session.clear();
+		const w = await startWorker(first.kv);
+		workers.push(w);
+		expect(w.last()?.wentOff ?? w.connection.state.wentOff).toBe("restart");
+		expect(w.connection.state.state).toBe("disconnected");
+		// Kept: another worker start (the flag stays gone) tells the same.
+		const again = await startWorker(first.kv);
+		workers.push(again);
+		expect(again.connection.state.wentOff).toBe("restart");
+		// On again: forgotten, here and in the store.
+		w.send({ type: "connect" });
+		await until(() => w.last().state === "connected");
+		expect(w.last().wentOff).toBeUndefined();
+		expect(await first.kv.get("aiWentOff")).toBeUndefined();
+		// A worker that was only stopped (the flag still there) says nothing.
+		const stopped = await startWorker(first.kv);
+		workers.push(stopped);
+		expect(stopped.connection.state.wentOff).toBeUndefined();
+		w.send({ type: "stop" });
+		await until(() => w.last().state === "disconnected");
+		expect(w.last().wentOff).toBeUndefined();
+	});
+
+	test("a restart with Keep AI access on, or after the person's stop, says nothing", async () => {
+		const first = await paired([]);
+		first.w.send({ type: "stop" });
+		await until(() => first.w.last().state === "disconnected");
+		session.clear();
+		const afterStop = await startWorker(first.kv);
+		workers.push(afterStop);
+		expect(afterStop.connection.state.wentOff).toBeUndefined();
+		await first.kv.set({ aiWasOn: true, keepAiOn: true });
+		session.clear();
+		const kept = await startWorker(first.kv);
+		workers.push(kept);
+		expect(kept.connection.state.wentOff).toBeUndefined();
+	});
+
 	test("Stop AI access with Keep AI access on turns that off, here and in the store, and nothing connects again", async () => {
 		const { w, kv } = await paired([]);
 		w.send({ type: "keep-on", on: true });

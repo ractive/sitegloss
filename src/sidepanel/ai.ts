@@ -48,6 +48,7 @@ import {
 	stillPaired,
 	switchShown,
 	type TurnedOn,
+	wentOffSentence,
 } from "./card.ts";
 import { byId, h } from "./dom.ts";
 import { copyText, startSetup } from "./setup.ts";
@@ -205,9 +206,15 @@ export function statusText(a: AiState): string {
 		`Not connected: ${a.problem}${a.retrying ? " Trying again…" : ""}`;
 	const replaced =
 		a.replaced && "Not connected: Sitegloss's connection is in use elsewhere.";
+	// Information, not a problem (`problemOf` says nothing of it): why it went off.
+	const wentOff = wentOffSentence(a);
 	return (
-		[a.relayNote, replaced ?? problem].filter(Boolean).join(" ") ||
-		"Not connected"
+		[
+			a.relayNote,
+			replaced ?? problem ?? (wentOff && `Not connected: ${wentOff}`),
+		]
+			.filter(Boolean)
+			.join(" ") || "Not connected"
 	);
 }
 
