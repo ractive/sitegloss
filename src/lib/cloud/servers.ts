@@ -26,6 +26,20 @@ export const DEVELOPMENT_SERVERS: readonly string[] = [
 ];
 export const DEVELOPMENT_SERVER = DEVELOPMENT_SERVERS[0] as string;
 
+declare const SITEGLOSS_DEV_SERVER: boolean | undefined;
+
+/**
+ * Whether the server chooser offers the development server: the development
+ * build and the test builds do, the builds that go to people (`--store`, and
+ * whatever is packed with `--zip`, so the release's four) do not. The build's
+ * define decides, as for the Firefox and the test build (`browser.ts`);
+ * without it (the unit tests) it is offered. Only a signpost: the development
+ * server creates no accounts for anybody (service DEC-044), and its address
+ * typed under "Another address…" works as ever.
+ */
+export const DEV_SERVER_OFFERED: boolean =
+	typeof SITEGLOSS_DEV_SERVER === "undefined" || SITEGLOSS_DEV_SERVER;
+
 /** The server unless the user chose another. */
 export const DEFAULT_SERVER = PRODUCTION_SERVER;
 

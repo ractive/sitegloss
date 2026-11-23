@@ -31,7 +31,8 @@ choose `dist/`. Click the Sitegloss icon on a tab (or press Alt+Shift+O) to open
 panel there.
 
 `bun run zip` packs `sitegloss-<version>.zip` for sharing; unzip it and load the folder
-the same way.
+the same way. A zip, like a store build, leaves "Development server" out of the
+server chooser.
 
 For Firefox (see [In Firefox](#in-firefox)), `bun scripts/build.ts --firefox` builds
 `dist-firefox/`; in Firefox open `about:debugging`, This Firefox, "Load Temporary Add-on…"
@@ -434,7 +435,8 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
   and "Sign out" always. Signing out stops the sync and keeps the cases, on this device
   only.
 - "Server" there chooses where to sign in, while nobody is signed in: Sitegloss
-  itself (app.sitegloss.dev, unless you choose otherwise), its development server, or
+  itself (app.sitegloss.dev, unless you choose otherwise), its development server (only in
+  the development build loaded unpacked, not in the store builds or the release's zips), or
   another address (https, or plain http on this computer). When it is not Sitegloss
   itself, the Team section says so. Each server has its own account, team and
   sync: a case synced with one is on this device only as far as another goes, until

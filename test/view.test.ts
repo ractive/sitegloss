@@ -10,6 +10,7 @@ import { Window } from "happy-dom";
 import type { Case, Mark } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
+import { serverChooser } from "../src/sidepanel/cloud-view.ts";
 import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
@@ -2370,8 +2371,19 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		// The site and the number of pages (DEC-067).
-		expect(row?.textContent).toContain("Site: shop.example · 2 pages");
+		// The site, a line right under the title, and the number of pages in
+		// the line where they were (DEC-067).
+		const sites = row?.querySelector(".card-sites");
+		expect(sites?.textContent).toBe("Site: shop.example");
+		expect(
+			(row?.querySelector(".card-head")?.nextElementSibling === sites) === true,
+		).toBe(true);
+		expect(
+			[...(sites?.childNodes ?? [])]
+				.filter((n) => n.nodeType === 3)
+				.map((n) => n.textContent),
+		).toEqual(["shop.example"]);
+		expect(row?.querySelector(".card-where")?.textContent).toBe("2 pages");
 		expect(row?.getAttribute("aria-label")).toContain(
 			"on the site shop.example, 2 pages",
 		);
@@ -3093,6 +3105,30 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		field.blur();
 		pick("production");
 		expect(set.at(-1)).toBe("");
+	});
+
+	test("a build that goes to people does not offer the development server; whoever is set to it still sees it", () => {
+		const names = (server: string, offer: boolean) =>
+			[
+				...serverChooser(
+					{ server, signingIn: false } as Parameters<typeof serverChooser>[0],
+					offer,
+				).querySelectorAll("option"),
+			].map((o) => o.textContent);
+		const all = [
+			"Sitegloss (app.sitegloss.dev)",
+			"Development server",
+			"Another address…",
+		];
+		expect(names("https://app.sitegloss.dev", true)).toEqual(all);
+		expect(names("https://app.sitegloss.dev", false)).toEqual([
+			"Sitegloss (app.sitegloss.dev)",
+			"Another address…",
+		]);
+		// Set to the development server: it stays named, in either build.
+		expect(names("https://app.dev.sitegloss.dev", false)).toEqual(all);
+		// Self-hosting stays.
+		expect(names("http://localhost:3200", false)).toContain("Another address…");
 	});
 
 	test("a server that is not the service is said in words, beside the account and before signing in", () => {
@@ -4035,10 +4071,10 @@ describe("the summary for the developer", () => {
 		const none = window.document.querySelector('[data-case="c_none"]');
 		expect(none?.querySelector(".card-summary")).toBeNull();
 		expect(none?.getAttribute("aria-label")).not.toContain("summary");
-		// The summary is the case's content: right under its title, before
-		// the facts (DEC-064).
+		// The summary is the case's content: under the title and its sites
+		// line, before the facts (DEC-064, DEC-067).
 		expect(
-			card?.querySelector(".card-head")?.nextElementSibling?.className,
+			card?.querySelector(".card-sites")?.nextElementSibling?.className,
 		).toBe("card-summary");
 	});
 

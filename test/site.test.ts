@@ -117,34 +117,41 @@ describe("past the list's 200 pages", () => {
 	});
 });
 
-describe("a case's card says its sites and its number of pages", () => {
+describe("a case's card says its sites under the title and its pages last", () => {
 	test("one site, several pages", () => {
 		expect(
 			whereText(
 				caseOn(["https://app.sitegloss.dev/a", "https://sitegloss.dev/b"]),
 			),
-		).toEqual({ where: "Site: sitegloss.dev", pages: "2 pages" });
+		).toEqual({ sites: "sitegloss.dev", label: "Site: ", pages: "2 pages" });
 	});
 
-	test("two or three sites are named, more counted", () => {
+	test("two or three sites are named with a centred dot, more counted", () => {
 		expect(
 			whereText(caseOn(["https://comparis.ch/a", "https://ractive.ch/b"])),
-		).toEqual({ where: "Sites: comparis.ch, ractive.ch", pages: "2 pages" });
+		).toEqual({
+			sites: "comparis.ch · ractive.ch",
+			label: "Sites: ",
+			pages: "2 pages",
+		});
 		expect(sitesText(["a.ch", "b.ch", "c.ch", "d.ch"])).toBe(
-			"a.ch, b.ch and 2 more sites",
+			"a.ch · b.ch and 2 more sites",
 		);
 	});
 
-	test("one page on a site says the site and the page's address; local addresses only say the address or the host", () => {
+	test("one page on a site says the site and the page's address; local addresses say their first page's host", () => {
 		expect(whereText(caseOn(["https://app.sitegloss.dev/pricing"]))).toEqual({
-			where: "Site: sitegloss.dev",
+			sites: "sitegloss.dev",
+			label: "Site: ",
 			pages: "app.sitegloss.dev/pricing",
 		});
 		expect(whereText(caseOn(["http://localhost:3000/a"]))).toEqual({
-			where: "localhost:3000/a",
+			sites: "localhost:3000",
+			label: "On: ",
+			pages: "localhost:3000/a",
 		});
 		expect(
 			whereText(caseOn(["http://localhost:3000/a", "http://localhost:3000/b"])),
-		).toEqual({ where: "localhost:3000", pages: "2 pages" });
+		).toEqual({ sites: "localhost:3000", label: "On: ", pages: "2 pages" });
 	});
 });
