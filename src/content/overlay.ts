@@ -660,8 +660,57 @@ export class Overlay {
 			| { id: number; x: number; y: number; from: BarPlace; moved: boolean }
 			| undefined;
 		let swallow = false;
+		const win = this.doc.defaultView;
+		// The pointer is followed on the window, not by capturing it at the
+		// press: a captured pointer's click goes to the bar and not to the
+		// button pressed, so a press on the pill did nothing. It is captured
+		// only once it has moved, which is a drag and no press.
+		let following: AbortController | undefined;
+		/** The press is over, however it ended: nothing is left on the window. */
+		const stop = () => {
+			following?.abort();
+			following = undefined;
+			bar.classList.remove("dragging");
+			drag = undefined;
+		};
+		const move = (e: PointerEvent) => {
+			// Only the person's own pointer: the page's scripts can send events too.
+			if (!e.isTrusted || drag === undefined || e.pointerId !== drag.id) return;
+			// No button is down: the release never arrived (a menu, another
+			// window). A hover is no drag.
+			if (e.buttons === 0) return stop();
+			const dx = e.clientX - drag.x;
+			const dy = e.clientY - drag.y;
+			if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+			if (!drag.moved) {
+				try {
+					bar.setPointerCapture?.(e.pointerId);
+				} catch {
+					// The pointer ended meanwhile: the drag goes on without it.
+				}
+			}
+			drag.moved = true;
+			bar.classList.add("dragging");
+			this.setBarPlace({
+				right: drag.from.right - dx,
+				top: drag.from.top + dy,
+			});
+		};
+		const end = (e: PointerEvent) => {
+			if (!e.isTrusted || drag === undefined || e.pointerId !== drag.id) return;
+			const moved = drag.moved;
+			stop();
+			if (!moved) return;
+			// The click that ends a drag is no press of what is under it.
+			swallow = true;
+			setTimeout(() => {
+				swallow = false;
+			}, 0);
+			this.onBarMoved?.(this.#barPlace);
+		};
 		bar.addEventListener("pointerdown", (e) => {
-			if (e.button !== 0) return;
+			// One pointer at a time: a second finger is no second drag.
+			if (e.button !== 0 || !e.isPrimary) return;
 			const target = e.target as Element | null;
 			const button = target?.closest("button");
 			// The bar's buttons are pressed, not dragged; the pill and the
@@ -672,6 +721,8 @@ export class Overlay {
 				!button.classList.contains("grip")
 			)
 				return;
+			// A press whose release was lost is over now.
+			stop();
 			drag = {
 				id: e.pointerId,
 				x: e.clientX,
@@ -679,35 +730,22 @@ export class Overlay {
 				from: this.#barPlace,
 				moved: false,
 			};
-			bar.setPointerCapture?.(e.pointerId);
+			following = new AbortController();
+			const options = { capture: true, signal: following.signal };
+			win?.addEventListener("pointermove", move, options);
+			win?.addEventListener("pointerup", end, options);
+			win?.addEventListener("pointercancel", end, options);
+			// The window lost the focus or a menu opened: the release may never come.
+			// (Of the window itself: an element's blur passes here too.)
+			win?.addEventListener(
+				"blur",
+				(event) => {
+					if (event.target === win) stop();
+				},
+				options,
+			);
+			win?.addEventListener("contextmenu", stop, options);
 		});
-		bar.addEventListener("pointermove", (e) => {
-			if (drag === undefined || e.pointerId !== drag.id) return;
-			const dx = e.clientX - drag.x;
-			const dy = e.clientY - drag.y;
-			if (!drag.moved && Math.hypot(dx, dy) < 4) return;
-			drag.moved = true;
-			bar.classList.add("dragging");
-			this.setBarPlace({
-				right: drag.from.right - dx,
-				top: drag.from.top + dy,
-			});
-		});
-		const end = (e: PointerEvent) => {
-			if (drag === undefined || e.pointerId !== drag.id) return;
-			bar.classList.remove("dragging");
-			if (drag.moved) {
-				// The click that ends a drag is no press of what is under it.
-				swallow = true;
-				setTimeout(() => {
-					swallow = false;
-				}, 0);
-				this.onBarMoved?.(this.#barPlace);
-			}
-			drag = undefined;
-		};
-		bar.addEventListener("pointerup", end);
-		bar.addEventListener("pointercancel", end);
 		bar.addEventListener(
 			"click",
 			(e) => {

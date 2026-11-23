@@ -1491,21 +1491,42 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	min-width: 0;
 }
 
-/* "Pages 12": the label is the disclosure of the list (DEC-063). */
-.case-facts .pages-toggle {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	min-height: 0;
-	padding: 0;
-	font: inherit;
-	color: var(--ink-2);
-	white-space: nowrap;
+/*
+ * "Pages 12" (DEC-065): a heading that opens and closes its list, as
+ * "Comments" is, and the list under it at the panel's full width.
+ */
+.pages-section {
+	display: grid;
+	gap: var(--s2);
+	padding-top: var(--s2);
+	border-top: 1px solid var(--rule);
 }
 
-.case-facts .pages-toggle .count {
-	font-weight: 600;
-	color: var(--ink);
+.pages-section > h2 {
+	margin: 0;
+}
+
+.pages-section .case-pages {
+	font-size: 12px;
+	line-height: 17px;
+}
+
+/* The page in front, above the heading: there while the list is closed. */
+.current-page {
+	display: grid;
+	gap: 2px;
+}
+
+.current-page > .label {
+	margin: 0;
+	font-size: 12px;
+	line-height: 17px;
+	color: var(--ink-2);
+}
+
+/* Under the shown section, whose heading has its own height, the facts sit closer to their rule. */
+.pages-section:not([hidden]) + .case-facts {
+	padding-top: var(--s2);
 }
 
 /* The title as a field while it is renamed. */
@@ -3228,17 +3249,12 @@ ol.comments {
 }
 
 /* A disclosure's arrow: right when closed, down when open. */
-:is(.thread-toggle, .pages-toggle) > .chevron {
+.thread-toggle > .chevron {
 	margin-top: 0;
 }
 
-:is(.thread-toggle, .pages-toggle)[aria-expanded="true"] > .chevron {
+.thread-toggle[aria-expanded="true"] > .chevron {
 	transform: rotate(45deg);
-}
-
-.pages-toggle > .chevron {
-	width: 6px;
-	height: 6px;
 }
 
 .mark-thread > button[data-action="mark-comment-open"] {
