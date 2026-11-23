@@ -2585,6 +2585,7 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 			void Promise.resolve(actions.verifyMark(c, a)).then(
 				(why) => {
 					if (why !== undefined) undo();
+					else undo.done();
 				},
 				() => undo(),
 			);
@@ -2599,11 +2600,21 @@ const ARRIVED_MS = 1100;
 /** The row the last Verify opened, while its cue runs. */
 let arrived: { caseId: string; markId: string; at: number } | undefined;
 
+let arrivedTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** The cue and the line after a Verify end with the case view (no replay on coming back). */
+function clearCue(): void {
+	arrived = undefined;
+	verifyLine = undefined;
+	clearTimeout(arrivedTimer);
+}
+
 /** The cue on a row: `data-arrived` for what is left of `ARRIVED_MS`; the style sheet starts its animations `elapsed` in. */
 function cueRow(row: HTMLElement, elapsed: number): void {
 	row.setAttribute("data-arrived", "");
 	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
-	setTimeout(() => {
+	clearTimeout(arrivedTimer);
+	arrivedTimer = setTimeout(() => {
 		row.removeAttribute("data-arrived");
 		row.style.removeProperty("--cue-elapsed");
 	}, ARRIVED_MS - elapsed);
@@ -2631,42 +2642,62 @@ const rowOf = (markId: string) =>
  * the mark as verified and closes. The returned function
  * puts the row back as it was (a Verify that was not saved).
  */
-function verifying(caseId: string, markId: string): () => void {
+function verifying(
+	caseId: string,
+	markId: string,
+): (() => void) & { done: () => void } {
 	const key = `${caseId}:${markId}`;
 	const wasOpen = openMarks.has(key);
 	openMarks.delete(key);
-	const li = rowOf(markId);
-	if (!li) return () => {};
-	const status = li.dataset["status"] ?? "";
-	const pill = li.querySelector<HTMLElement>(".pill");
+	/** The row, only while the case on screen is the one pressed in (mark ids are per case). */
+	const rowHere = () =>
+		parts?.current.id === caseId ? rowOf(markId) : undefined;
+	const li = rowHere();
+	// `data-status` stays the stored truth; the row says "verified" by its own marker.
+	const pill = li?.querySelector<HTMLElement>(".pill");
 	const pillText = pill?.textContent ?? "";
-	li.setAttribute("data-verifying", "");
-	li.dataset["status"] = "verified";
-	if (pill) {
-		pill.setAttribute("data-status", "verified");
-		pill.textContent = PILL.verified ?? "";
-	}
-	const timer = setTimeout(() => {
-		if (li.hasAttribute("data-verifying")) setOpen(caseId, li, false);
+	li?.setAttribute("data-verifying", "");
+	if (pill) pill.textContent = PILL.verified ?? "";
+	let settled = false;
+	const close = setTimeout(() => {
+		if (li?.hasAttribute("data-verifying")) setOpen(caseId, li, false);
 	}, VERIFY_CLOSE_MS);
-	return () => {
-		clearTimeout(timer);
+	let giveUp: ReturnType<typeof setTimeout> | undefined;
+	const undo = (said?: string) => {
+		if (settled) return;
+		settled = true;
+		clearTimeout(close);
+		clearTimeout(giveUp);
 		if (verifiedNow?.markId === markId && verifiedNow.caseId === caseId)
 			verifiedNow = undefined;
-		if (wasOpen) openMarks.add(key);
-		// The row may have been drawn anew meanwhile: the one on screen now.
-		const now = rowOf(markId);
-		if (now?.hasAttribute("data-verifying")) {
+		const now = rowHere();
+		// Put back only a row still marked as verifying, or one the stored case
+		// still has to verify: a redraw that shows it truly verified stays.
+		if (
+			now &&
+			(now.hasAttribute("data-verifying") || now.dataset["status"] === "fixed")
+		) {
 			now.removeAttribute("data-verifying");
-			now.dataset["status"] = status;
 			const pillNow = now.querySelector<HTMLElement>(".pill");
-			if (pillNow) {
-				pillNow.setAttribute("data-status", status);
-				pillNow.textContent = pillText;
+			if (pillNow) pillNow.textContent = pillText;
+			if (wasOpen) {
+				openMarks.add(key);
+				setOpen(caseId, now, true);
 			}
+			if (said !== undefined && parts) sayAfterVerify(parts.hint, caseId, said);
 		}
-		if (now && wasOpen) setOpen(caseId, now, true);
 	};
+	// No answer at all: the row does not stay "verified" for good.
+	giveUp = setTimeout(
+		() => undo("Not saved: the Verify got no answer."),
+		VERIFIED_WAIT_MS,
+	);
+	return Object.assign(() => undo(), {
+		done: () => {
+			settled = true;
+			clearTimeout(giveUp);
+		},
+	});
 }
 
 /** A smooth scroll within about a panel's height, a jump beyond (sixty marks are not scrolled through). */
@@ -3349,7 +3380,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 		caseView.replaceChildren(h("p", { class: "meta" }, "Loading…"));
 		return;
 	}
-	if (parts?.current.id !== c.id) parts = createParts(c, actions);
+	if (parts?.current.id !== c.id) {
+		clearCue();
+		parts = createParts(c, actions);
+	}
 	const p = parts;
 	p.current = c;
 	// The summary: what the store has, unless the user typed another.
@@ -4791,6 +4825,7 @@ export function render(state: PanelState, actions: Actions): void {
 		renderCase(state, actions);
 	} else {
 		parts = undefined;
+		clearCue();
 		holdDelete(undefined);
 		caseView.replaceChildren();
 	}

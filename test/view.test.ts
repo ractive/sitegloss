@@ -3,6 +3,7 @@ import {
 	beforeAll,
 	describe,
 	expect,
+	jest,
 	setSystemTime,
 	test,
 } from "bun:test";
@@ -1288,7 +1289,8 @@ describe("Verify closes its mark (DEC-061)", () => {
 		) as unknown as HTMLButtonElement;
 		verify.click();
 		expect(row("m1").hasAttribute("data-verifying")).toBe(true);
-		expect(row("m1").getAttribute("data-status")).toBe("verified");
+		// The stored truth stays in data-status; the press has its own marker.
+		expect(row("m1").getAttribute("data-status")).toBe("fixed");
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(row("m1").hasAttribute("data-verifying")).toBe(false);
@@ -1342,6 +1344,128 @@ describe("Verify closes its mark (DEC-061)", () => {
 		render(caseState(last), actions);
 		expect(cued()).toBe(0);
 		expect(line()).toBe("That was the last mark to verify.");
+	});
+
+	describe("a Verify that is not saved or not answered puts back only what is still its own", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const mk = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const later = async () => {
+			for (let i = 0; i < 4; i++) await Promise.resolve();
+		};
+		const press = (c: Case, answer: Promise<string | undefined>): Actions => {
+			const actions = actionsWith({ verifyMark: () => answer });
+			render(caseState(c), actions);
+			(
+				row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+			).click();
+			(
+				row("m1").querySelector(
+					'[data-mark-action="verify"]',
+				) as unknown as HTMLButtonElement
+			).click();
+			return actions;
+		};
+
+		test("another case on screen meanwhile: its row is left alone", async () => {
+			const a: Case = {
+				...sampleCase("c_undo_a"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			const b: Case = {
+				...sampleCase("c_undo_b"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			let fail: (why: string) => void = () => {};
+			const actions = press(
+				a,
+				new Promise((resolve) => {
+					fail = resolve;
+				}),
+			);
+			render(caseState(b), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			fail("Not saved: no.");
+			await later();
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+		});
+
+		test("no answer: after the wait the row is put back and says so, once; a late answer changes nothing", async () => {
+			const c: Case = {
+				...sampleCase("c_undo_wait"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			jest.useFakeTimers();
+			try {
+				let late: (why: string | undefined) => void = () => {};
+				press(
+					c,
+					new Promise((resolve) => {
+						late = resolve;
+					}),
+				);
+				expect(row("m1").hasAttribute("data-verifying")).toBe(true);
+				expect(row("m1").querySelector(".pill")?.textContent).toBe("Verified");
+				jest.advanceTimersByTime(5050);
+				expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+				expect(row("m1").querySelector(".pill")?.textContent).toBe("To verify");
+				expect(row("m1").hasAttribute("data-open")).toBe(true);
+				expect(doc.getElementById("case-hint")?.textContent).toBe(
+					"Not saved: the Verify got no answer.",
+				);
+				late("Not saved: too late.");
+				await later();
+				expect(row("m1").hasAttribute("data-open")).toBe(true);
+				expect(doc.getElementById("case-hint")?.textContent).toBe(
+					"Not saved: the Verify got no answer.",
+				);
+			} finally {
+				jest.useRealTimers();
+			}
+		});
+
+		test("a redraw already shows the mark verified: a refused write does not reopen it", async () => {
+			const c: Case = {
+				...sampleCase("c_undo_truth"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			let fail: (why: string) => void = () => {};
+			const actions = press(
+				c,
+				new Promise((resolve) => {
+					fail = resolve;
+				}),
+			);
+			render(
+				caseState({
+					...c,
+					updatedAt: "2026-11-15T09:00:00Z",
+					marks: [
+						mk(1, { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } }),
+						mk(2, fixed),
+					],
+				}),
+				actions,
+			);
+			fail("Not saved: changed meanwhile.");
+			await later();
+			expect(row("m1").getAttribute("data-status")).toBe("verified");
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+			expect(row("m1").querySelector(".pill")?.textContent).toBe("Verified");
+		});
 	});
 
 	test("a Verify not saved takes no focus later from a field the person moved to (DEC-064's review)", () => {

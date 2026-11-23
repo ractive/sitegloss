@@ -2383,6 +2383,16 @@ ol.marks {
  * a second, drawn once on the node the Verify opened. Opacity and transform
  * only; the highlight has a border, so that forced colours show it too.
  */
+.mark[data-verifying],
+.mark[data-verifying] .pill {
+	--tone: var(--st-verified);
+	--tint: var(--st-verified-bg);
+}
+
+.mark[data-verifying] .pill::before {
+	content: "✓" / "";
+}
+
 .mark[data-verifying] .body {
 	animation: verify-close 160ms ease-in forwards;
 }
