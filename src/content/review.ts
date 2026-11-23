@@ -43,6 +43,7 @@ import {
 	translateHighlight,
 	translateShape,
 } from "../lib/case.ts";
+import { clipMark } from "../lib/clip.ts";
 import {
 	cssSelector,
 	type DescribeContext,
@@ -51,7 +52,7 @@ import {
 } from "../lib/element.ts";
 import { boundsOfRects } from "../lib/highlight.ts";
 import { backdropOf } from "../lib/look.ts";
-import { isDarkGround } from "../lib/marks.ts";
+import { badgeRadius, isDarkGround, pinPosition } from "../lib/marks.ts";
 import { clearTextCache, type MatchStatus } from "../lib/match.ts";
 import type {
 	CandidateInfo,
@@ -74,6 +75,7 @@ import {
 	rangeLines,
 	scrollToMiddle,
 } from "./text-range.ts";
+import { UNCUT, Visibility } from "./visible.ts";
 
 interface Entry {
 	mark: Mark;
@@ -270,6 +272,8 @@ export class Reviewer {
 	/** The mark whose popover is open (DEC-027). */
 	#open: OpenMark | undefined;
 	readonly #ask: AskPanel;
+	/** What of the window each mark's element shows through (DEC-075). */
+	readonly #visibility: Visibility;
 	/** How often the page is looked at without a scroll: 500 ms, unless a unit test gives its own. */
 	readonly #tickMs: number;
 	/**
@@ -301,6 +305,7 @@ export class Reviewer {
 		this.overlay = overlay;
 		this.#ask = ask;
 		this.#tickMs = options.tickMs ?? 500;
+		this.#visibility = new Visibility(overlay.doc, overlay.host);
 		overlay.onPick = (number) => this.pick(number);
 		const doc = overlay.doc;
 		// Capture phase: scrolling inside a container moves elements too.
@@ -1477,6 +1482,7 @@ export class Reviewer {
 			items.push(item);
 			if (entry.mark.id === this.#open?.markId) open = item;
 		};
+		this.#visibility.begin();
 		for (const entry of this.#entries) {
 			if (entry.match.status === "no-element") {
 				const item = this.#whereItWas(entry.mark);
@@ -1487,15 +1493,24 @@ export class Reviewer {
 			if (el === undefined || !el.isConnected) continue;
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 && r.height === 0) continue;
-			add(
-				entry,
-				this.#onElement(entry, {
-					x: r.x,
-					y: r.y,
-					width: r.width,
-					height: r.height,
-				}),
-			);
+			const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
+			// Only where its element shows: not over a head its pane scrolled
+			// it under, nor anywhere while nothing of it shows (DEC-075).
+			const view = this.#visibility.viewOf(el, rect, this.#changes);
+			if (view === null) continue;
+			const item = this.#onElement(entry, rect);
+			if (view === UNCUT) {
+				add(entry, item);
+				continue;
+			}
+			const clipped = clipMark({
+				element: rect,
+				bounds: shapeBounds(item.shape),
+				pin: pinPosition(item),
+				radius: badgeRadius(item.shape),
+				view,
+			});
+			if (clipped !== null) add(entry, { ...item, ...clipped });
 		}
 		this.overlay.renderReview(items);
 		// The popover follows its mark; a mark off the page leaves it where it is.
