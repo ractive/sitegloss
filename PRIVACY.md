@@ -38,6 +38,9 @@ Sitegloss stores in your browser, on your computer:
   before it is kept, which removes its metadata (camera, place, time) and its file name.
   Sitegloss reads the clipboard only when you paste into its side panel, and asks for no
   clipboard permission; the page being marked never sees these images;
+- what you copy with the side panel's Copy buttons (a case's id, its link, the instructions
+  for an AI app, a folder's path): written to the clipboard when you click, which
+  other programs on your computer can read; Sitegloss sends it nowhere;
 - its settings, and where it syncs to;
 - if you sign in to sitegloss.dev: your name and e-mail address there, your teams, the
   tokens that keep you signed in, and what the service last had of each case.
@@ -92,7 +95,9 @@ Only in four cases, all started by you:
    addresses, titles and languages of the pages, the window size and the browser's user
    agent, the marks with their comments, statuses, notes, element details (an arrow's
    two ends too; for the marked element also how it looked: its computed styles, the
-   colour behind it and its neighbours' boxes) and AI findings, the case's thread of
+   colour behind it and its neighbours' boxes; for a mark made with the Highlight tool,
+   the text you selected, the words right around it and the boxes of its lines) and AI
+   findings, the case's thread of
    comments and whether it is closed, and the screenshots, crops and images added to
    marks. The members of the
    team you choose can see and change them, in the extension and on the website; the
@@ -201,4 +206,4 @@ at most 30 days.
 Jean-Pierre Bergamin, <https://ractive.ch>, james@ractive.ch.
 Source code: <https://github.com/ractive/sitegloss>.
 
-Last changed: 22 November 2026.
+Last changed: 23 November 2026.
