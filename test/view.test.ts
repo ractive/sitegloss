@@ -4260,7 +4260,8 @@ describe("the AI app", () => {
 		expect(el("ai-status").textContent).toBe("Connected: Claude");
 		// The owner: Stop goes; the switch in the AI view stops AI access.
 		expect(el("stop-ai")).toBeNull();
-		expect(el("bar").querySelectorAll("button").length).toBe(2);
+		// Back, the case's id to copy, and the AI pill: no Stop among them.
+		expect(el("bar").querySelectorAll("button").length).toBe(3);
 		expect(el("ai-switch").closest("label")?.title).toContain(
 			"stops that at once",
 		);
@@ -4926,7 +4927,25 @@ describe("the top bar and Settings (DEC-023)", () => {
 		);
 		// In the top bar, before the AI pill.
 		expect(el("back").parentElement).toBe(el("bar"));
-		expect(el("back").nextElementSibling).toBe(el("ai-button"));
+		// Then the case's id to copy and its spoken word, then the AI pill.
+		// (Compared as booleans: a failed comparison of two elements prints the whole page.)
+		expect(el("back").nextElementSibling === el("copy-case-id")).toBe(true);
+		expect(el("bar").lastElementChild === el("ai-button")).toBe(true);
+		// The open case's id is there to copy, named with it; not on Home.
+		expect(el("copy-case-id").hidden).toBe(false);
+		expect(el("copy-case-id").title).toContain("c_");
+		expect(el("copy-case-id").getAttribute("aria-label")).toBe(
+			"Copy this case's id",
+		);
+		// A refusal shows the id to copy by hand; another case forgets it.
+		el("copy-case-id").click();
+		expect(el("copy-case-failed").hidden).toBe(false);
+		expect(el("copy-case-shown").textContent).toBe("c_top");
+		render(caseState(sampleCase("c_other")), noActions);
+		expect(el("copy-case-failed").hidden).toBe(true);
+		render(initialState(), noActions);
+		expect(el("copy-case-id").hidden).toBe(true);
+		render(caseState(sampleCase("c_top")), actions);
 		el("back").click();
 		expect(called).toEqual(["close"]);
 	});

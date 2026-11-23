@@ -203,6 +203,68 @@ const allSites = byId<HTMLInputElement>("all-sites");
 const aiStatus = byId<HTMLSpanElement>("ai-status");
 const aiLabel = byId<HTMLSpanElement>("ai-label");
 const backLabel = byId<HTMLSpanElement>("back-label");
+const copyId = byId<HTMLButtonElement>("copy-case-id");
+const copyIdSaid = byId<HTMLElement>("copy-case-said");
+
+const copyIdFailed = byId<HTMLDivElement>("copy-case-failed");
+const copyIdShown = byId<HTMLElement>("copy-case-shown");
+
+/** How long the copy button says that it copied. */
+const COPIED_ID_MS = 1600;
+let copiedIdUntil: ReturnType<typeof setTimeout> | undefined;
+
+/** The copy button as before a press: no tick, no refusal, nothing said. */
+function forgetCopiedId(): void {
+	clearTimeout(copiedIdUntil);
+	copyId.removeAttribute("data-copied");
+	copyIdSaid.textContent = "";
+	copyIdFailed.hidden = true;
+}
+
+/**
+ * The open case's id on the clipboard, from the bar (the owner: to tell an
+ * AI app "check Sitegloss case …"). Its id alone: a title can be anything.
+ * A refusal shows the id under the bar, selected, to copy by hand; that
+ * stays until the next press or another case.
+ */
+function renderCopyId(id: string | undefined): void {
+	copyId.hidden = id === undefined;
+	if (copyId.dataset["copies"] === (id ?? "")) return;
+	copyId.dataset["copies"] = id ?? "";
+	// What was said was said of the case before.
+	forgetCopiedId();
+	if (id === undefined) return;
+	const name = "Copy this case's id";
+	copyId.setAttribute("aria-label", name);
+	copyId.title = `${name}, to name the case to your AI app: ${id}`;
+	copyId.onclick = () => {
+		const say = (ok: boolean) => {
+			// Another case since the press: its answer is not this one's.
+			if (copyId.dataset["copies"] !== id) return;
+			forgetCopiedId();
+			// Asked a moment later, so that the same words are said again.
+			queueMicrotask(() => {
+				copyIdSaid.textContent = ok
+					? "Case id copied"
+					: `Copying did not work. The case's id is ${id}`;
+			});
+			if (!ok) {
+				copyIdShown.textContent = id;
+				copyIdFailed.hidden = false;
+				document.getSelection()?.selectAllChildren(copyIdShown);
+				return;
+			}
+			copyId.setAttribute("data-copied", "");
+			copiedIdUntil = setTimeout(forgetCopiedId, COPIED_ID_MS);
+		};
+		const clipboard = globalThis.navigator?.clipboard;
+		if (clipboard === undefined) return say(false);
+		clipboard.writeText(id).then(
+			() => say(true),
+			() => say(false),
+		);
+	};
+}
 const aiButton = byId<HTMLButtonElement>("ai-button");
 const aiAction = byId<HTMLSpanElement>("ai-action");
 const aiCall = byId<HTMLParagraphElement>("ai-call");
@@ -4360,6 +4422,7 @@ function renderBack(state: PanelState, actions: Actions): void {
 		act();
 	};
 	back.hidden = !state.settings && !onCase;
+	renderCopyId(onCase && !state.settings ? state.current?.id : undefined);
 	if (state.settings) {
 		backLabel.textContent = "Back";
 		back.setAttribute(
