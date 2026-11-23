@@ -3866,3 +3866,78 @@ latest. (DEC-067 is taken by the panel's pages grouped by site, which is on a br
   changes for a user: the mirror was off before, by the old default (DEC-062).
 - **Not reached:** several `TabMcp` of one app in a page now tell the tab-mcp browser
   extension one list of AI apps. Sitegloss has one, and not in a page.
+
+## DEC-069: What comes next on the open case, and the hand-over's small part
+
+2026-11-23. The owner, on 22 November: the panel should tell the user the next step once
+marking is done, copy the share link from the extension, and copy the instructions for
+the AI agent there too. On 23 November: "Yesterday we also discussed the flow of a case
+and that we should help the user do the next step. So when the PO or the tester tested
+things, how will he proceed? How will he hand this over to a dev? Or when the dev or AI
+agent is done, how is it handed back to a PO? [...] I think this also never appeared,
+even if we discussed it multiple times."
+
+One block on the open case, directly under the counts: one sentence on where the case
+stands and the one or two buttons that move it on. Quiet: a line of text and the panel's
+small buttons, no colour or banner of its own. No change to the service's API or the case
+format. The rule is one pure function (`nextStep` in `src/sidepanel/next-step.ts`); the
+block is drawn by `next-step-view.ts`.
+
+| The case | It says | It offers |
+|---|---|---|
+| Closed | (no block) | |
+| No marks | Mark what is wrong on the page. | Add marks (not while adding: the tool bar's button is Done then) |
+| Every mark settled | Every mark is settled. | Close case, where the role lets |
+| Marks fixed, to verify | N marks are fixed and wait to be checked on the page that has the fix. | Start verifying; Copy link while marks are open and the team has the case (Share with team where it is only here and may be shared) |
+| Open marks, only in this browser, may be shared | It is only in this browser. Share it so whoever fixes it can open it. | Share with team |
+| ... and the role may not share | It is only in this browser. Your role in "T" does not let you share it: export it to send it as a file. | Export… |
+| ... nobody signed in, or no team chosen | It is only in this browser. Export it to send it as a file, or sign in (choose a team) under Team in the list of cases to share it. | Export… |
+| Open marks, the sign-in ran out | N marks are open. Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases. | nothing |
+| Open marks, the team's, not known to be sent | N marks are open. It is being sent / not with the team yet: the server cannot be reached / Team says why / It goes to the team with the next sync; its link works once it is there. | nothing |
+| Open marks, the team has it | N marks are open. Send the case to whoever fixes them. | Copy link; Copy for your AI app |
+
+Decided, and why:
+
+- **Settled and to verify come before sharing.** Closing a settled case and verifying a
+  fix are the same whether the case is the team's or this browser's; the brief's table
+  put them only under "Shared".
+- **Whether the team has the case is said only where it is certain.** The panel does not
+  read the sync's books per case (they may be large), so it knows only the sync's state
+  as the worker wrote it. The team has it when a mark carries the server's record of who
+  made it (`createdBy`, set only from the server), or when the last sync ended "synced"
+  with nothing waiting and no problem with this case after the case last changed here.
+  Otherwise no link is offered: an address that does not open yet is worse than none.
+  The cost: right after a change to a case made here, until the sync has run, the block
+  says the link works once the case is there, although it may already.
+- **Copy link** copies `<server>/t/<team slug>/cases/<case id>`, the address the web app
+  gives a member. The panel had no such address before: the slug, which the server always
+  sent with the teams, is now kept in the panel's account (`slug`). What it says: "Link
+  copied. It opens the case for the members of "T". For someone outside the team, use
+  Share… on the case's page in the web app."
+- **Copy for your AI app** copies the web app's case template word for word
+  (`caseInstructions` in sitegloss.dev's `apps/app/src/lib/agent-instructions.ts`),
+  copied into `src/lib/agent-instructions.ts`, with one line of the extension's own: that
+  reading the live page is the extension's AI app connection and the MCP server has the
+  case as stored, as the web app's AI app page says it. The two files have to be kept in
+  step by hand; the service's copy lacks that line. The hidden-character filter is
+  written as a code-point test, not a regular expression: Biome's formatter turns the
+  escapes of the original into the invisible characters themselves.
+- **"Start verifying", not "Verify".** A mark's own Verify settles it; a second button of
+  the same name that only filters and scrolls would be taken for "verify all". It shows
+  the marks to verify on every page, opens the first by number and brings it into view,
+  as a pin clicked on the page does.
+- **The same actions as their other places.** Add marks is the tool bar's `addMarks` and
+  is off (with its title) where that one is; Share with team is the Team row's
+  `cloudShare`; Export… is the menu's `exportCase`; Close case is the footer's
+  `setCaseClosed`. Those places stay as they were.
+- **Keyboard and screen reader.** The block is a `section` named "Next step"; its
+  sentence is an `aria-live` paragraph written only when its words change; what a copy
+  did is a `role="status"` line under the buttons, for eight seconds. A click that
+  changes the step keeps the focus in the block.
+
+What step 2 (an assignee, the case's states, "my cases", a mail on hand-over and
+hand-back) will need from this block: `Where`'s team branch gains the assignee, and
+`nextStep` a row per hand-over state (open and assigned to someone: say to whom, offer
+"Hand over…"; all fixed: "Hand back to" the reporter); "Copy link" stays as the way
+outside the mail. The API needs the assignee and the case's state first; the block needs
+no new place in the panel.
