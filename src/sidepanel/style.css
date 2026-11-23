@@ -1270,6 +1270,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 /* One line each: what does not fit is cut. */
 .case-card .title,
 .case-card .where-url,
+.case-card .card-sites,
 .case-card .card-summary {
 	min-width: 0;
 	overflow: hidden;
@@ -1285,6 +1286,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 }
 
 .case-card .card-where,
+.case-card .card-sites,
 .case-card .card-date,
 .case-card .card-chips {
 	color: var(--ink-2);
@@ -1298,8 +1300,10 @@ ul.cases [data-case]:hover:not(:disabled) {
 	white-space: pre;
 }
 
-.case-card .where-more {
-	flex: none;
+/* The sites, a line under the title; a hidden word before them is for a screen reader. */
+.case-card .card-sites {
+	display: block;
+	position: relative;
 }
 
 /*

@@ -7,6 +7,7 @@
  */
 
 import {
+	DEV_SERVER_OFFERED,
 	DEVELOPMENT_SERVER,
 	PRODUCTION_SERVER,
 	serverKind,
@@ -208,7 +209,10 @@ function button(
  * field is left). Folded away: whoever never opens it signs in to the
  * service and is never asked. Only while nobody is signed in.
  */
-function serverChooser(cloud: Cloud): HTMLElement {
+export function serverChooser(
+	cloud: Cloud,
+	offerDevelopment: boolean = DEV_SERVER_OFFERED,
+): HTMLElement {
 	const kind = serverKind(cloud.server);
 	const input: HTMLInputElement = h("input", {
 		type: "url",
@@ -252,7 +256,11 @@ function serverChooser(cloud: Cloud): HTMLElement {
 			}),
 		},
 		option("production", serverLabel(PRODUCTION_SERVER)),
-		option("development", serverLabel(DEVELOPMENT_SERVER)),
+		// Not in a build that goes to people; whoever is set to it still sees
+		// it, so the choice shows what it is.
+		...(offerDevelopment || kind === "development"
+			? [option("development", serverLabel(DEVELOPMENT_SERVER))]
+			: []),
 		option("other", "Another address…"),
 	);
 	select.value = kind;

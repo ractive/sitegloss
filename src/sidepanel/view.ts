@@ -364,14 +364,17 @@ export function pagePath(url: string): string {
 	return shortPath(url, /^https?:\/\//.test(pageKey(url)));
 }
 
-/** `sitegloss.dev, 8 pages`: where a case is, in its card's name (DEC-067). */
+/** `the site sitegloss.dev, 8 pages`: where a case is, in its card's name (DEC-067). */
 export function pagesLine(c: Case): string {
-	const { where, pages } = whereText(c);
-	// Spoken after "on": the card's "Site: …" label reads as "the site …".
-	const spoken = where
-		.replace(/^Sites: /, "the sites ")
-		.replace(/^Site: /, "the site ");
-	return pages === undefined ? spoken : `${spoken}, ${pages}`;
+	const { sites, label, pages } = whereText(c);
+	// Spoken after "on".
+	const where =
+		sites === undefined
+			? undefined
+			: label === "On: "
+				? sites
+				: `${label === "Site: " ? "the site " : "the sites "}${sites.replaceAll(" · ", ", ")}`;
+	return where === undefined ? pages : `${where}, ${pages}`;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -566,18 +569,28 @@ function renderSaved(
 // --- home ----------------------------------------------------------------------
 
 /**
- * "sitegloss.dev · 8 pages": where the case is, its sites and its number of
- * pages (DEC-067); the sites are cut, the count stays.
+ * The case's sites, a line right under its title (DEC-067): the names alone,
+ * "comparis.ch · ractive.ch"; the word before them is for a screen reader.
+ * No line for a case without a page.
  */
+function sitesLine(c: Case): HTMLElement | null {
+	const { sites, label } = whereText(c);
+	return sites === undefined
+		? null
+		: h(
+				"span",
+				{ class: "card-sites" },
+				h("span", { class: "visually-hidden" }, label),
+				sites,
+			);
+}
+
+/** "15 pages", or the only page's address: the card's line of pages. */
 function whereLine(c: Case): HTMLElement {
-	const { where, pages } = whereText(c);
 	return h(
 		"span",
 		{ class: "card-where" },
-		h("span", { class: "where-url" }, where),
-		pages === undefined
-			? null
-			: h("span", { class: "where-more" }, ` · ${pages}`),
+		h("span", { class: "where-url" }, whereText(c).pages),
 	);
 }
 
@@ -688,7 +701,8 @@ function caseItem(
 					? h("span", { class: "tag device-only" }, "This device only")
 					: null,
 			),
-			// The summary is the case's own words: under the title, in the
+			sitesLine(c),
+			// The summary is the case's own words: under the sites, in the
 			// text's colour, apart from the facts (DEC-064).
 			summary ? h("span", { class: "card-summary" }, summary) : null,
 			whereLine(c),

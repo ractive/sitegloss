@@ -309,6 +309,29 @@ describe("build", () => {
 		}
 	});
 
+	test("only the development build's panel offers the development server (DEC-041)", async () => {
+		const panelText = async (options: Parameters<typeof build>[0]) => {
+			const outdir = mkdtempSync(join(tmpdir(), "sitegloss-devserver-"));
+			try {
+				await build({ outdir, ...options });
+				let text = "";
+				for await (const file of new Bun.Glob("sidepanel/**/*.js").scan(outdir))
+					text += await Bun.file(join(outdir, file)).text();
+				return text;
+			} finally {
+				rmSync(outdir, { recursive: true, force: true });
+			}
+		};
+		// The chooser reads one constant, the build's define; the label stays in
+		// the code of every build (a stored development server is named).
+		const dev = await panelText({ minify: false });
+		const store = await panelText({ minify: false, store: true });
+		const zipped = await panelText({ minify: false, forPeople: true });
+		expect(dev).toContain("DEV_SERVER_OFFERED = true");
+		expect(store).toContain("DEV_SERVER_OFFERED = false");
+		expect(zipped).toContain("DEV_SERVER_OFFERED = false");
+	});
+
 	test("a package has no test switch left for a page to answer", async () => {
 		// Nor can one be built as a test build.
 		await expect(
