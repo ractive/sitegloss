@@ -915,6 +915,34 @@ export interface Case {
 	 * not sent: what is sent names the app (DEC-046). Never in a file.
 	 */
 	deletedVia?: { id: string; app: FindingApp }[];
+	/**
+	 * Who started the case, in a case synced with a team: the reporter, as
+	 * the server records it (DEC-071). None: not known (a case only in this
+	 * browser, or not back from the server yet).
+	 */
+	createdBy?: UserRef;
+	/**
+	 * Who the case is assigned to, as the server last said (DEC-071): `null`
+	 * nobody; none: not told (a case only in this browser, a server from
+	 * before). The server's record, shown and kept, never sent: what is sent
+	 * is `assign`.
+	 */
+	assignee?: UserRef | null;
+	/** Who assigned it, and when: the server's stamp, while it has an assignee. */
+	assignedBy?: Stamp;
+	/**
+	 * An assignment made in this browser and not taken by the server yet
+	 * (DEC-071): `to` the member, `null` nobody. Sent as `case.patch`'s
+	 * `assignee` with the next sync, and gone once the server's copy says
+	 * it. This browser's note, never in a file.
+	 */
+	assign?: { to: UserRef | null; at: string };
+	/**
+	 * The server refused the last assignment made here (DEC-071): why, in
+	 * words for the person. Said in the case until the next assignment.
+	 * This browser's note, never in a file.
+	 */
+	assignRefused?: { text: string; at: string };
 }
 
 /** The longest case title. */
@@ -1700,6 +1728,11 @@ const CASE_KEYS = new Set([
 	"via",
 	"createdVia",
 	"deletedVia",
+	"createdBy",
+	"assignee",
+	"assignedBy",
+	"assign",
+	"assignRefused",
 ]);
 const SHOT_KEYS = new Set([
 	"id",
@@ -1961,6 +1994,40 @@ export function validateCase(value: unknown): Case {
 						};
 					}),
 				}),
+		// The hand-over (DEC-071): the server's records, and what waits to go.
+		...createdByOf(o["createdBy"], "case.createdBy"),
+		...(o["assignee"] === undefined
+			? {}
+			: { assignee: person(o["assignee"], "case.assignee") ?? null }),
+		...(o["assignedBy"] === undefined || o["assignedBy"] === null
+			? {}
+			: { assignedBy: stampOf(o["assignedBy"], "case.assignedBy") }),
+		...(o["assign"] === undefined ? {} : { assign: assignOf(o["assign"]) }),
+		...(o["assignRefused"] === undefined
+			? {}
+			: {
+					assignRefused: {
+						text: str(
+							obj(o["assignRefused"], "case.assignRefused")["text"],
+							"case.assignRefused.text",
+							1000,
+						),
+						at: str(
+							obj(o["assignRefused"], "case.assignRefused")["at"],
+							"case.assignRefused.at",
+							64,
+						),
+					},
+				}),
+	};
+}
+
+/** An assignment waiting to be sent (`Case.assign`). */
+function assignOf(value: unknown): { to: UserRef | null; at: string } {
+	const o = obj(value, "case.assign");
+	return {
+		to: person(o["to"], "case.assign.to") ?? null,
+		at: str(o["at"], "case.assign.at", 64),
 	};
 }
 
@@ -2994,6 +3061,39 @@ export function withoutCaseComment(
 			...(left.length > 0 ? { comments: left } : {}),
 			...(deletedVia.length > 0 ? { deletedVia } : {}),
 		},
+		now,
+		app,
+	);
+}
+
+/**
+ * Who the case is assigned to as this browser shows it (DEC-071): the
+ * assignment waiting to be sent, else the server's record; `null` nobody;
+ * `undefined` not known.
+ */
+export const assigneeOf = (c: Case): UserRef | null | undefined =>
+	c.assign !== undefined ? c.assign.to : c.assignee;
+
+/**
+ * The case assigned to `to` (`null`: nobody), waiting to be sent with the
+ * next sync (DEC-071); by `app`, when an AI app did it. The same as shown
+ * changes nothing. A pick is kept as `assign` even when it is the record
+ * here again: the record may be older than what the server has (an
+ * assignment sent and not read back yet), and only the sync, which knows
+ * what the server has, may decide there is nothing to send.
+ */
+export function withAssigned(
+	c: Case,
+	to: UserRef | null,
+	now: string,
+	app?: FindingApp,
+): Case {
+	const same = (a: UserRef | null | undefined) =>
+		a !== undefined && (a?.id ?? null) === (to?.id ?? null);
+	if (same(assigneeOf(c))) return c;
+	const { assign: _a, assignRefused: _r, ...rest } = c;
+	return changedBy(
+		{ ...rest, assign: { to: to && { id: to.id, name: to.name }, at: now } },
 		now,
 		app,
 	);

@@ -4052,6 +4052,149 @@ asked whether Escape should discard a new mark while its comment is empty; the o
   a page's script could close the dialog with a made-up key; now it could have taken a
   mark back with one.
 
+## DEC-071: A case is handed over: its assignee, its state, whose turn it is, My cases
+
+2026-11-23. The owner, on 22 November: "I think it could make sense if a case had a
+status like open, assigned, closed." On 23 November, on the flow: "when the PO or the
+tester tested things, how will he proceed? How will he hand this over to a dev? Or when
+the dev or AI agent is done, how is it handed back to a PO?" Answering the lead's
+proposal (one assignee per case, the state worked out from the marks, "my cases", a mail
+both ways): "Yes. [...] I also want to filter for 'my cases' in the extension", with the
+flow described "on the website, the web app and the extension". The contract between
+service and extension is one document; the service's side is its DEC-042 (pull request
+ractive/sitegloss.dev#54; the API types here are from its document as of 7a9247b, after
+its review). This is the extension's side of step 2; step 1 is DEC-069.
+
+- **The rule is the server's, copied.** `src/lib/case-state.ts` has `caseState`,
+  `caseTurn` and `isMine` as the service's `packages/api/src/v1/case-state.ts` has
+  them, and `test/case-state.json` is a byte copy of its vectors (17 states, 24 turns,
+  36 answers for "mine"), held as `pageKey`'s are. `caseTurn` takes, as the server's
+  does since its second review, whether the reporter is a member of the team
+  (`reporterHere`, default true): the reporter's turn is nobody's once they left or
+  when none is on record. Here that is read from the members list. The state is worked out from the
+  marks here, never stored and never read from the server: a case here has all its
+  marks. The list's `state` and `turn` that the API sends with `GET …/cases` are not
+  used, because the extension syncs through `changes` and never lists cases.
+- **The case keeps the server's records as given.** `createdBy` (the reporter),
+  `assignee` (`null`: nobody; absent: not told, a server from before) and `assignedBy`
+  (a stamp) come from the server's case and are stored, exported and imported as they
+  came. They are never sent back. What is sent is `assign`, an assignment made in this
+  browser (by the person, or by their AI app, whose name goes with it as `via`): the
+  next sync sends it as a `case.patch` of its own that says only `assignee`, a member's
+  id or `null`, and it goes once the server is known to have it (the operation was
+  taken, or the server's copy says the same). Offline it waits, as every change of a
+  case does, and the block says so. The shadow keeps the server's assignee id beside
+  its other fields, so a patch is sent only while the two differ; a pick is kept as
+  `assign` even when it is the record here again (that record may be older than what
+  the server took), so only the sync decides there is nothing to send; once the book's
+  shadow says that assignee (the operation was applied or a duplicate, or nothing had
+  to be sent), the sync drops it and the case's record says that assignee. **Refused**
+  (the person left the team, the role does not allow it): its own operation, so the
+  title, summary, link and marks are never held back by it; the waiting assignment is
+  dropped, the server's record shows again, and the case says why in its block,
+  `assignRefused`, this browser's note: "Gone is not in the team any more, so the case
+  was not assigned to them." only where the server said the operation was invalid and
+  the person is not among the members as last listed; otherwise "The server did not
+  take the assignment to Dana: <its reason>". It is said while marks are open, until
+  the next assignment here or until the server's hand-over is another one (someone
+  assigned the case since). **To another
+  team**: sharing a case with a team other than the one it was of drops what the first
+  team said of it and any assignment waiting for it; the new team's server says its
+  own. A `case.patch` that names no assignee, as every other
+  change does, leaves it at the server (tested against the fake, which now keeps the
+  server's rule: a member or nobody, stamped from the caller).
+- **Files.** `assign` is this browser's note and never in a file, in or out (as `via`).
+  An import keeps the file's records for a case that is not here, the records of the
+  case it replaces for one that is, and none for a copy (another case, which nobody
+  started or was given yet). A crafted file's `assignee` is only ever shown: nothing
+  sends it.
+- **The members.** `GET …/members` (id and name) is asked for with the account's teams
+  (at most every ten minutes, and at once for a team just chosen) and stored beside the
+  account (`members`), so the Assign menu works offline from the last list. A server
+  from before answers 404: no members, stored as none. **That is how a server that
+  assigns cases is told from one that does not**: without members nothing about
+  assignees shows (no Assign, no My cases, no "Assigned to" on cards, no turn in the
+  tools); every case there would read as unassigned. Signing out forgets them.
+- **Cases synced before this version** have no reporter and no assignee here, and the
+  changes feed does not bring them again for a case nobody changed. Once per team and
+  start, where the server assigns cases, every synced book whose shadow has no
+  `assignee` is read again whole (as `#readThreadsOnce` does for the thread, DEC-046),
+  at most 25 a run (`HAND_OVER_READS`), so the sync is not held for a whole team at
+  once; the next runs take the rest.
+  Until then the case's hand-over is not known (`handOverKnown`): it is in nobody's My
+  cases, and its block says nothing about whose turn it is. A team's case whose
+  reporter is not on record is nobody's either (an earlier draft took it for the
+  person's own, which put every old case under everybody's My cases).
+- **The next step block** (DEC-069) in the team's case, once the server told the
+  assignee, in the service's words (`apps/app/src/lib/next-step.ts` on its branch),
+  counts included: "2 marks are open: assign the case to whoever fixes them." with
+  Assign (for whoever may change the case, `case:update`, while the members are known)
+  and the copies; without the right "2 marks are open, and nobody is on it yet."; the
+  assignee "It is assigned to you: 2 marks are open." with Copy for your AI app; anyone
+  else "Dana is on it: 2 marks are open." with Copy link. Fixed: the reporter "Every
+  open mark is fixed: check them and verify." with Start verifying; the others "Every
+  open mark is fixed: Tess checks them and verifies." Settled: "Every mark is settled:
+  close the case." or "... Tess closes the case." A reporter who left the team (or none
+  on record): "Every open mark is fixed, and whoever started the case is no longer in
+  the team: check them and verify." for whoever may settle marks (`mark:update`), the
+  same without the instruction for the others; settled likewise with "close the case"
+  for whoever may close. The panel's one addition: while marks are open and others
+  wait to be verified, the reporter reads "Check the fixed marks on the page that has
+  the fix." before the open marks' sentence. An assignment waiting to be sent adds "The
+  change goes to the team with the next sync." or, offline, "The change waits here
+  until the server can be reached." A case only in this browser, one not at the server
+  yet, or one whose hand-over is not known reads as before (DEC-069).
+- **Assign is a menu button** ("Assign", "Reassign" where someone has it, a chevron
+  pointing down, as the owner asked of a menu on 23 November): the person looking first
+  as "You", the others by name, then "Nobody"; radio items, the one who has it checked;
+  arrows and Tab as the case's "…" menu; Escape (on the menu or its button) closes it
+  with the focus back on the button, and a press anywhere outside it closes it, as the
+  "…" menu's capturing `pointerdown` does. Offered with open marks only: once
+  they are fixed the turn is the reporter's whoever is assigned, and a reopened mark
+  makes it the assignee's again.
+- **My cases** is a chip above the list of cases, as the open case's status chips
+  filter its marks: "My cases" with its count; on, it is filled in the text's colour
+  with a tick (`aria-pressed`), off a quiet chip with an edge. Mine: the team's open
+  cases where it is the person's turn (`isMine`), and every open case kept only in this
+  browser, which nobody else has. Only for someone signed in with a team chosen whose
+  server assigns cases; otherwise no chip and nothing about assignees. It narrows the
+  list under "Cases" and hides the Closed group (nobody's turn); the cases under "This
+  page" stay, they are about the tab, and the count takes them in: with the person's
+  one case there, the list says "No other case waits for you." A press keeps the focus
+  on the chip, and a redraw of the list keeps it on the card that had it; a card (or
+  the Closed group's heading) that leaves the list hands it to the chip. **Kept for the panel's session** (`sessionStorage`): the panel touches
+  no storage of the extension's (a test holds it), and keeping a view filter across
+  browser restarts through the worker was not worth a message of its own; a reopened
+  panel shows every case.
+- **The cards** say the state as one quiet badge before the counts where it adds to
+  them: "New" and "In progress" (whether anything was settled yet). "To verify" and
+  "Settled" said what the counts beside them say ("2 to verify"), so they are left
+  out, as for an empty case ("No marks yet") and a closed one (its own tag); and, in the team's case with open marks
+  once the server told, who has them after the date ("Assigned to Dana", "Assigned to
+  you", "Nobody assigned"). The card's name for a screen reader says both.
+- **The AI app's tools.** `list_cases` gives every case's `state`, and in the team's
+  case `turn`, `assignee` and `startedBy`; it takes `mine`. `get_case` gives the same and
+  `assignedBy`, or `assignmentNotSentYet`. `assign_case` takes `me`, a member's id or a
+  name only one member has, or `null`; it asks first, as every changing tool, and the
+  question names who gets it ("Assign to: Dana.", "Assign to: nobody.") or says, by
+  the same checks in the same order as the call, why it will be refused, in one short
+  sentence (the members' list goes to the app only); it refuses a
+  case only in this browser, a role without `case:update` and a name that is no member
+  (with the members to choose from), and goes through the sync. The instructions tell
+  the flow in three sentences, in step with the service's MCP server.
+- **The flow in the panel's words**: the empty list (signed out, or where the server
+  assigns cases) and the Team section before signing in say "With a team, a case is handed over. Assign it to whoever fixes its open
+  marks: it is under My cases for them, and the case says what is theirs to do. When
+  every open mark is fixed, it is back under My cases for whoever started it, to check
+  the fixes, verify them and close the case." No new screen.
+- **What a released extension does with it.** 0.3.1 and 0.4.0 know none of the fields:
+  their sync builds a case from the fields they name and never sends `assignee`, so the
+  server keeps it whatever they change; 0.4.0 keeps the case-level fields of a file as
+  unknown ones (DEC-066) and writes them out again. Nothing is lost at the server; they
+  show no assignee and have no My cases. An assignment made here and not sent yet is
+  left unsent by an older build the browser is taken back to (it is an unknown field
+  there), and sent when this build is back.
+
 ## DEC-072: AI access that went off by itself says why
 
 2026-11-23. The owner asked: "Why did AI access turn off; is it because I switched to

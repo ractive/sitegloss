@@ -27,6 +27,7 @@ import {
 	type PageInfo,
 	validateCase,
 	viewportAt,
+	withAssigned,
 	withCaseComment,
 	withCaseCommentText,
 	withChoice,
@@ -773,6 +774,17 @@ async function refreshTab(): Promise<void> {
 
 /** The panel has not read the tab in front yet. */
 let firstRead = true;
+
+/**
+ * Where "My cases" is kept (DEC-071): the panel's own session storage, so
+ * a reload keeps it; the panel touches no storage of the extension's.
+ */
+const MINE_KEY = "sitegloss:mine";
+try {
+	if (sessionStorage.getItem(MINE_KEY) === "1") state.mine = true;
+} catch {
+	// No session storage: the filter starts off.
+}
 
 /** A toolbar's case being checked by `adopt`. */
 let adopting: string | undefined;
@@ -2028,6 +2040,20 @@ const actions: Actions = {
 		),
 	setCaseClosed: (caseId, closed) =>
 		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
+
+	// Through the sync, as every change of the case (DEC-071): it waits here
+	// while the server cannot be reached, and the block says so.
+	assignCase: (caseId, to) =>
+		void changeThread(caseId, (c, now) => withAssigned(c, to, now)),
+
+	showMine(on) {
+		update((s) => (s.mine = on));
+		try {
+			sessionStorage.setItem(MINE_KEY, on ? "1" : "0");
+		} catch {
+			// Kept for this panel only.
+		}
+	},
 
 	copyCaseLink: (c) => void copyFromStep(c, "copy-link"),
 	copyForAiApp: (c) => void copyFromStep(c, "copy-ai"),

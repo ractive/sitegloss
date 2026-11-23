@@ -143,7 +143,8 @@ with `kb/design/overview.md` and `kb/iterations/`.
   `keptQuery` in `src/lib/query.ts`, the server's too: `test/kept-query.json` is a copy
   of its `packages/api/vectors/kept-query.json`, held the same way; so is
   `test/case-file.json` (the server's member download, which `validateCase` and
-  case.md have to match).
+  case.md have to match), and `test/case-state.json` (where a case stands and whose
+  turn it is, `src/lib/case-state.ts`, DEC-071).
 - Commands: `bun run verify` (Biome CI, type check, the unit tests and the end-to-end
   smoke set; about two minutes) before every commit; `bun run fix` to format;
   `bun run build`, `bun run zip`. The full end-to-end sets are `bun run test:e2e`

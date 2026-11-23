@@ -14,6 +14,7 @@ import {
 } from "../lib/browser.ts";
 import {
 	appLabel,
+	assigneeOf,
 	byline,
 	type Case,
 	type CasePage,
@@ -48,12 +49,14 @@ import {
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
+import { reporterHere } from "../lib/case-state.ts";
 import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
 import { caseSites, siteOf } from "../lib/site.ts";
 import {
 	type CloudActions,
 	caseSync,
+	HAND_OVER_NOTE,
 	hostOf,
 	renderCloudBanner,
 	renderCloudSection,
@@ -62,6 +65,14 @@ import {
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
+import {
+	type CardHandOver,
+	cardHandOver,
+	mineTest,
+	NO_OTHER_MINE,
+	NONE_MINE,
+	teamAssigns,
+} from "./my-cases.ts";
 import { nextStep, type StepAction, whereIs } from "./next-step.ts";
 import {
 	nextStepParts,
@@ -104,6 +115,10 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	copyForAiApp(c: Case): void;
 	/** The next step's "Start verifying": the marks to verify, the first one open. */
 	startVerifying(c: Case): void;
+	/** The next step's Assign menu: the case to a member, or to nobody (DEC-071). */
+	assignCase(caseId: string, to: UserRef | null): void;
+	/** "My cases" in the list of cases, on or off (DEC-071). */
+	showMine(on: boolean): void;
 	/** "New case for this page": a new case, stored at once and opened (DEC-026). */
 	startNewCase(): void;
 	openCase(id: string): void;
@@ -575,13 +590,17 @@ function caseBand(c: Case): HTMLElement {
 	return band;
 }
 
-/** "25 open", "6 to verify", …: a chip per status with marks, each with its sign. */
-function caseChips(c: Case): HTMLElement {
+/**
+ * "25 open", "6 to verify", …: a chip per status with marks, each with its
+ * sign; before them the case's state as one quiet badge (DEC-071).
+ */
+function caseChips(c: Case, state: string | undefined): HTMLElement {
 	const n = caseCounts(c);
 	const groups = STATUS_GROUPS.filter((g) => n[g] > 0);
 	return h(
 		"span",
 		{ class: "card-chips" },
+		state === undefined ? null : h("span", { class: "card-state" }, state),
 		...(groups.length === 0
 			? [h("span", { class: "none" }, "No marks yet")]
 			: groups.map((g) =>
@@ -608,11 +627,19 @@ function summaryStart(c: Case): string | undefined {
  * The card's name, in one sentence: title, state, counts, where, when. Of the
  * summary only that there is one: the whole would be read on every card.
  */
-function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
+function cardName(
+	c: Case,
+	deviceOnly: boolean,
+	team: boolean,
+	hand: CardHandOver,
+): string {
 	const count = c.marks.length;
 	const counts = marksText(c);
 	const state = [
-		c.closed !== undefined ? "closed" : undefined,
+		c.closed !== undefined ? "closed" : hand.state?.toLowerCase(),
+		hand.assignee
+			?.replace(/^Assigned/, "assigned")
+			.replace(/^Nobody/, "nobody"),
 		team ? "shared with the team" : undefined,
 		deviceOnly ? "on this device only" : undefined,
 	].filter(Boolean);
@@ -627,8 +654,9 @@ function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
 function caseItem(
 	c: Case,
 	actions: Actions,
-	deviceOnly = false,
-	team = false,
+	deviceOnly: boolean,
+	team: boolean,
+	hand: CardHandOver,
 ): HTMLLIElement {
 	const summary = summaryStart(c);
 	return h(
@@ -641,7 +669,7 @@ function caseItem(
 				class: "case-card",
 				"data-case": c.id,
 				...(c.closed !== undefined ? { "data-closed": true } : {}),
-				"aria-label": cardName(c, deviceOnly, team),
+				"aria-label": cardName(c, deviceOnly, team, hand),
 				title: `Open “${c.title}” and show its marks on the page in this tab`,
 				onclick: () => actions.openCase(c.id),
 			},
@@ -664,8 +692,16 @@ function caseItem(
 			// text's colour, apart from the facts (DEC-064).
 			summary ? h("span", { class: "card-summary" }, summary) : null,
 			whereLine(c),
-			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
-			caseChips(c),
+			h(
+				"span",
+				{ class: "card-date" },
+				formatDate(c.updatedAt),
+				// Who has its open marks (DEC-071), where the team's case says.
+				hand.assignee === undefined
+					? null
+					: h("span", { class: "card-assignee" }, ` · ${hand.assignee}`),
+			),
+			caseChips(c, hand.state),
 		),
 	);
 }
@@ -678,8 +714,13 @@ function renderCases(state: PanelState, actions: Actions): void {
 	const url = state.tab?.url ?? "";
 	const local = (c: Case) => caseSync(state.cloud, c.id).kind === "local";
 	const team = (c: Case) => caseSync(state.cloud, c.id).kind === "synced";
+	const mine = mineTest(state.cloud);
+	const card = (c: Case) =>
+		caseItem(c, actions, local(c), team(c), cardHandOver(c, state.cloud));
 	const key = JSON.stringify([
 		url,
+		// The filter, and who it is for (DEC-071).
+		mine === undefined ? null : [state.mine, state.cloud.account?.userId],
 		state.cases.map((c) => [
 			c.id,
 			c.updatedAt,
@@ -687,10 +728,30 @@ function renderCases(state: PanelState, actions: Actions): void {
 			c.verdict,
 			caseSync(state.cloud, c.id).kind,
 			c.closed !== undefined,
+			cardHandOver(c, state.cloud),
+			mine?.(c) ?? null,
 		]),
 	]);
 	if (key === casesKey) return;
 	casesKey = key;
+	// What has the focus in the lists, by what it is: the same control after
+	// they are drawn again (a press of My cases, a teammate's change).
+	// A card (or the Closed group's heading) that leaves the list hands it to
+	// My cases, else to the list's heading: never to the page's body.
+	const active = document.activeElement as HTMLElement | null;
+	const inLists =
+		active !== null &&
+		(casesList.contains(active) || hereCases.contains(active));
+	const focused: string[] | undefined = !inLists
+		? undefined
+		: active.id === "my-cases"
+			? ["#my-cases"]
+			: active.dataset["case"] !== undefined
+				? // A case's id is a safe id (letters, digits, _ and -): no quoting.
+					[`[data-case="${active.dataset["case"]}"]`, "#my-cases"]
+				: active.closest("#closed-cases > summary") !== null
+					? ["#closed-cases > summary", "#my-cases"]
+					: undefined;
 	// The page's own cases stand under "This page" (the owner): going on with
 	// the case a page has is what is done most, a second case for it rarely.
 	// Only on the same page of the same site as one of its screenshots
@@ -707,7 +768,12 @@ function renderCases(state: PanelState, actions: Actions): void {
 	const closed = state.cases.filter(
 		(c) => c.closed !== undefined && !own.includes(c),
 	);
-	const other = open.filter((c) => !own.includes(c));
+	const others = open.filter((c) => !own.includes(c));
+	// "My cases" (DEC-071): the list narrowed to them, while it is on. Its
+	// count is all of them, the one under "This page" too.
+	const mineOnly = mine !== undefined && state.mine;
+	const other = mineOnly ? others.filter(mine) : others;
+	const mineCount = mine === undefined ? 0 : open.filter(mine).length;
 	const one = own.length === 1 ? own[0] : undefined;
 	here.hidden = own.length === 0;
 	hereText.textContent =
@@ -718,13 +784,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 				: `This page already has ${own.length} cases. Open one to go on with its marks, or start a new one.`;
 	hereCases.replaceChildren(
 		...(own.length > 0
-			? [
-					h(
-						"ul",
-						{ class: "cases", "data-group": "here" },
-						...own.map((c) => caseItem(c, actions, local(c), team(c))),
-					),
-				]
+			? [h("ul", { class: "cases", "data-group": "here" }, ...own.map(card))]
 			: []),
 	);
 	// One case: opening it is the view's one amber button, a new case steps
@@ -743,24 +803,90 @@ function renderCases(state: PanelState, actions: Actions): void {
 	newCaseButton.classList.toggle("primary", own.length === 0);
 	casesHeading.textContent = own.length > 0 ? "Other cases" : "Cases";
 	casesList.replaceChildren(
+		...(mine === undefined || state.cases.length === 0
+			? []
+			: [mineFilter(state.mine, mineCount, actions)]),
 		state.cases.length === 0
 			? h(
-					"p",
+					"div",
 					{ class: "empty" },
-					"No cases yet. Start one with “New case for this page”, or import a case someone sent you.",
+					...emptyList(state.cloud).map((t) => h("p", {}, t)),
 				)
 			: other.length === 0
 				? h(
 						"p",
 						{ class: "empty" },
-						open.length === 0 ? "No open cases." : "No cases for other pages.",
+						mineOnly
+							? mineCount > 0
+								? NO_OTHER_MINE
+								: NONE_MINE
+							: open.length === 0
+								? "No open cases."
+								: "No cases for other pages.",
 					)
 				: h(
 						"ul",
 						{ class: "cases", "data-group": "other" },
-						...other.map((c) => caseItem(c, actions, local(c), team(c))),
+						...other.map(card),
 					),
-		...(closed.length === 0 ? [] : [closedGroup(closed, actions, local, team)]),
+		// Closed cases are nobody's turn: not under My cases.
+		...(closed.length === 0 || mineOnly ? [] : [closedGroup(closed, card)]),
+	);
+	if (focused !== undefined) {
+		const next = focused
+			.map(
+				(selector) =>
+					casesList.querySelector<HTMLElement>(selector) ??
+					hereCases.querySelector<HTMLElement>(selector),
+			)
+			.find((el) => el !== null);
+		if (next) next.focus();
+		else {
+			casesHeading.tabIndex = -1;
+			casesHeading.focus();
+		}
+	}
+}
+
+/**
+ * What the empty list says (DEC-071): how to begin, and how a case goes
+ * from whoever finds what is wrong to whoever fixes it and back.
+ */
+export const EMPTY_LIST = [
+	"No cases yet. Start one with “New case for this page”, or import a case someone sent you.",
+	HAND_OVER_NOTE,
+];
+
+/** The empty list's words: the hand-over only where it can happen, or before signing in. */
+const emptyList = (cloud: PanelState["cloud"]): string[] =>
+	cloud.account === undefined || teamAssigns(cloud)
+		? EMPTY_LIST
+		: EMPTY_LIST.slice(0, 1);
+
+/** "My cases" and how many (DEC-071): a chip to press, as the open case's status chips are. */
+function mineFilter(on: boolean, count: number, actions: Actions): HTMLElement {
+	return h(
+		"div",
+		{
+			class: "chips cases-filter",
+			role: "group",
+			"aria-label": "Filter the cases",
+		},
+		h(
+			"button",
+			{
+				type: "button",
+				class: "chip",
+				id: "my-cases",
+				"aria-pressed": String(on),
+				title: on
+					? "Show every case again"
+					: "Show only the cases where it is your turn: assigned to you with open marks, or started by you and waiting for you to hand them over, check them or close them",
+				onclick: () => actions.showMine(!on),
+			},
+			"My cases",
+			h("span", { class: "n" }, String(count)),
+		),
 	);
 }
 
@@ -770,9 +896,7 @@ let closedOpen = false;
 /** The closed cases, folded by default (DEC-046). */
 function closedGroup(
 	closed: Case[],
-	actions: Actions,
-	local: (c: Case) => boolean,
-	team: (c: Case) => boolean,
+	card: (c: Case) => HTMLLIElement,
 ): HTMLElement {
 	const group = h(
 		"details",
@@ -790,11 +914,7 @@ function closedGroup(
 			"Closed ",
 			h("span", { class: "count" }, String(closed.length)),
 		),
-		h(
-			"ul",
-			{ class: "cases", "data-group": "closed" },
-			...closed.map((c) => caseItem(c, actions, local(c), team(c))),
-		),
+		h("ul", { class: "cases", "data-group": "closed" }, ...closed.map(card)),
 	);
 	return group;
 }
@@ -2013,9 +2133,20 @@ function renderStep(
 	mayClose: boolean,
 	actions: Actions,
 ): void {
+	const me = state.cloud.account?.userId;
+	const members = state.cloud.members;
+	// Who may change the case may assign it, when the team's members are known.
+	const mayAssign =
+		members !== undefined &&
+		members.length > 0 &&
+		(teamOf(state.cloud)?.permissions.includes("case:update") ?? false);
 	const step = nextStep(c, whereIs(state.cloud, c), {
 		adding: p.adding,
 		mayClose,
+		...(me === undefined ? {} : { me }),
+		mayAssign,
+		mayVerify: teamOf(state.cloud)?.permissions.includes("mark:update") ?? true,
+		reporterHere: reporterHere(c, members),
 	});
 	const off: Partial<Record<StepAction, string>> = {};
 	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;
@@ -2045,9 +2176,19 @@ function renderStep(
 					return actions.startVerifying(now);
 				case "close":
 					return actions.setCaseClosed(now.id, true);
+				case "assign":
+					return;
 			}
 		},
 		off,
+		mayAssign && me !== undefined
+			? {
+					members,
+					current: assigneeOf(c) ?? null,
+					me,
+					pick: (to) => actions.assignCase(p.current.id, to),
+				}
+			: undefined,
 	);
 }
 

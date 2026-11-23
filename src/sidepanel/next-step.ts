@@ -10,10 +10,23 @@
  * its link: an address that does not open yet is worse than none. Nothing
  * of the case itself counts as proof (a file's marks name their makers too).
  * The counts stand right above it, so the sentence does not repeat them.
+ *
+ * In the team's case it also says who has it and whose turn it is
+ * (DEC-071): the open marks are the assignee's to fix, the fixed ones the
+ * reporter's (who started the case) to verify, a settled case the
+ * reporter's to close; in the service's words (sitegloss.dev's
+ * `apps/app/src/lib/next-step.ts`), kept in step by hand.
  */
 
 import { caseInstructions } from "../lib/agent-instructions.ts";
-import { type Case, caseCounts, type Mark, markStatus } from "../lib/case.ts";
+import {
+	assigneeOf,
+	type Case,
+	caseCounts,
+	type Mark,
+	markStatus,
+	type UserRef,
+} from "../lib/case.ts";
 import { caseSync, teamOf } from "./cloud-view.ts";
 import type { PanelState } from "./state.ts";
 
@@ -27,7 +40,9 @@ export type StepAction =
 	| "copy-link"
 	| "copy-ai"
 	| "verify"
-	| "close";
+	| "close"
+	/** The Assign menu: the team's members, and Nobody (DEC-071). */
+	| "assign";
 
 export interface NextStep {
 	text: string;
@@ -46,8 +61,18 @@ export type Where =
 	| { kind: "signed-out" }
 	/** The team's, and the sync does not know the server to have it (yet). */
 	| { kind: "sending"; why: "syncing" | "offline" | "problem" | "next" }
-	/** The server has it in the team chosen: `link` is its page in the web app, `mcp` the MCP server. */
-	| { kind: "team"; team: string; link: string | undefined; mcp: string };
+	/**
+	 * The server has it in the team chosen: `link` is its page in the web
+	 * app, `mcp` the MCP server. `offline`: the server cannot be reached now
+	 * (what changes here waits).
+	 */
+	| {
+			kind: "team";
+			team: string;
+			link: string | undefined;
+			mcp: string;
+			offline?: true;
+	  };
 
 /** The case's page in the web app, as the web app makes it for a member. */
 export function caseAddress(
@@ -97,6 +122,7 @@ export function whereIs(cloud: Cloud, c: Case): Where {
 					? undefined
 					: caseAddress(server, team.slug, c.id),
 			mcp: mcpAddress(server),
+			...(cloud.status?.state === "offline" ? { offline: true as const } : {}),
 		};
 	}
 	const status = cloud.status;
@@ -170,16 +196,92 @@ function forOpen(where: Where): NextStep {
 	}
 }
 
+const marksAre = (n: number) =>
+	`${n} mark${n === 1 ? "" : "s"} ${n === 1 ? "is" : "are"} open`;
+
+/**
+ * For the open marks of the team's case whose assignee the server told
+ * (DEC-071): who has them and what is the viewer's to do, in the service's
+ * words. `me`: the viewer.
+ */
+function forAssignee(
+	where: Extract<Where, { kind: "team" }>,
+	assignee: UserRef | null,
+	me: string,
+	open: number,
+	mayAssign: boolean,
+): NextStep {
+	const copies: StepAction[] =
+		where.link === undefined ? [] : ["copy-link", "copy-ai"];
+	const menu: StepAction[] = mayAssign ? ["assign"] : [];
+	const are = marksAre(open);
+	if (assignee === null)
+		return mayAssign
+			? {
+					text: `${are}: assign the case to whoever fixes them.`,
+					actions: [...menu, ...copies],
+				}
+			: { text: `${are}, and nobody is on it yet.`, actions: copies };
+	if (assignee.id === me)
+		return {
+			text: `It is assigned to you: ${are}.`,
+			actions: [
+				...(where.link === undefined ? [] : ["copy-ai" as const]),
+				...menu,
+			],
+		};
+	return {
+		text: `${assignee.name} is on it: ${are}.`,
+		actions: [
+			...(where.link === undefined ? [] : ["copy-link" as const]),
+			...menu,
+		],
+	};
+}
+
+/** Said where the reporter's turn is nobody's: they left the team (DEC-071, the service's words). */
+const GONE = "and whoever started the case is no longer in the team";
+
+/** What the block says of an assignment made here that the server does not have yet (DEC-071). */
+export const assignWaits = (where: Where): string =>
+	where.kind === "team" && where.offline
+		? "The change waits here until the server can be reached."
+		: "The change goes to the team with the next sync.";
+
 /**
  * The next step for case `c` at `where`; `undefined`: none (a closed case).
  * `adding`: the toolbar adds to it on the tab in front, so Add marks is in
  * hand already. `mayClose`: the role lets the user close it. Fixed marks and
  * open ones are both said, each with its actions: Start verifying first.
+ *
+ * In the team's case, with `me` (who is signed in) and once the server told
+ * who has it (`handOverKnown`): whose turn it is (DEC-071), in the service's
+ * words. `mayAssign`: the role lets them change the case and the team's
+ * members are known, so the Assign menu is offered with the open marks.
+ * `mayVerify`: the role lets them settle marks. `reporterHere`: whoever
+ * started the case is a member of the team (`reporterHere` in
+ * case-state.ts); if not, their turn is nobody's and whoever may takes it.
+ * The panel's own addition: while marks are open and others wait to be
+ * verified, the reporter reads "Check the fixed marks ..." first.
  */
 export function nextStep(
 	c: Case,
 	where: Where,
-	{ adding, mayClose }: { adding: boolean; mayClose: boolean },
+	{
+		adding,
+		mayClose,
+		me,
+		mayAssign = false,
+		mayVerify = true,
+		reporterHere = true,
+	}: {
+		adding: boolean;
+		mayClose: boolean;
+		me?: string;
+		mayAssign?: boolean;
+		mayVerify?: boolean;
+		reporterHere?: boolean;
+	},
 ): NextStep | undefined {
 	if (c.closed !== undefined) return undefined;
 	if (c.marks.length === 0)
@@ -187,6 +289,76 @@ export function nextStep(
 			text: "Draw on the page and say what is wrong.",
 			actions: adding ? [] : ["add-marks"],
 		};
+	const n = caseCounts(c);
+	const assignee = assigneeOf(c);
+	if (where.kind !== "team" || me === undefined || assignee === undefined)
+		return untold(c, where, mayClose);
+	// An assignment that waits to be sent says so; one the server refused
+	// says why, until the next one (`Case.assignRefused`).
+	const waits =
+		c.assign !== undefined
+			? ` ${assignWaits(where)}`
+			: c.assignRefused !== undefined && n.open > 0
+				? ` ${c.assignRefused.text}`
+				: "";
+	const reporter = reporterHere ? c.createdBy : undefined;
+	const mine = reporter !== undefined && reporter.id === me;
+	const open =
+		n.open === 0
+			? undefined
+			: forAssignee(where, assignee, me, n.open, mayAssign);
+	const step = ((): NextStep => {
+		if (open !== undefined)
+			// Fixed marks wait too: whoever checks them reads that first.
+			return n.toVerify > 0 && (mine || (reporter === undefined && mayVerify))
+				? {
+						text: `Check the fixed marks on the page that has the fix. ${open.text}`,
+						actions: ["verify", ...open.actions],
+					}
+				: open;
+		if (n.toVerify > 0)
+			return reporter === undefined
+				? mayVerify
+					? {
+							text: `Every open mark is fixed, ${GONE}: check them and verify.`,
+							actions: ["verify"],
+						}
+					: { text: `Every open mark is fixed, ${GONE}.`, actions: [] }
+				: mine
+					? {
+							text: "Every open mark is fixed: check them and verify.",
+							actions: ["verify"],
+						}
+					: {
+							text: `Every open mark is fixed: ${reporter.name} checks them and verifies.`,
+							actions: [],
+						};
+		return reporter === undefined
+			? mayClose
+				? {
+						text: `Every mark is settled, ${GONE}: close the case.`,
+						actions: ["close"],
+					}
+				: { text: `Every mark is settled, ${GONE}.`, actions: [] }
+			: mine
+				? {
+						text: "Every mark is settled: close the case.",
+						actions: mayClose ? ["close"] : [],
+					}
+				: {
+						text: `Every mark is settled: ${reporter.name} closes the case.`,
+						actions: [],
+					};
+	})();
+	return { text: `${step.text}${waits}`, actions: step.actions };
+}
+
+/**
+ * The step where whose turn it is is not known (DEC-069 as it was): a case
+ * only in this browser, one not at the server yet, or one whose server
+ * told no assignee.
+ */
+function untold(c: Case, where: Where, mayClose: boolean): NextStep {
 	const n = caseCounts(c);
 	if (n.open === 0 && n.toVerify === 0)
 		return {
