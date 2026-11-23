@@ -2325,6 +2325,23 @@ export function afterVerify(
 	return { markId: next?.id ?? verified };
 }
 
+/**
+ * The row a Verify opens next, in the list as it is drawn now: the one known at
+ * the click while it still waits there (a filtered list has dropped the verified
+ * mark, and nothing can be counted from it), else the next by the list. None
+ * when nothing waits: the rows after the verified one first, then round to the
+ * ones before it, since going through them all is what a Verify after a Verify is.
+ */
+export function opensAfterVerify(
+	order: readonly { id: string; status: string }[],
+	verified: string,
+	known: string | undefined,
+): string | undefined {
+	const kept = order.find((m) => m.id === known && m.status === "fixed")?.id;
+	const to = kept ?? afterVerify(order, verified)?.markId;
+	return to === verified ? undefined : to;
+}
+
 const reopenButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton("Reopen…", "reopen", REOPEN_TITLE, () =>
 		actions.editMark(c, a, "reopen"),
@@ -3401,9 +3418,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
 			verifiedNow = undefined;
 		const v = verifiedNow;
+		// Only a focus that the Verify left behind is moved: nowhere (its button
+		// went with the redraw) or still in its row. A field or a button of
+		// another row, which the person went to meanwhile, is theirs.
 		const focusHere = (() => {
 			const at = document.activeElement;
-			return at === null || at === document.body || marks.contains(at);
+			if (at === null || at === document.body) return true;
+			const row = at.closest<HTMLElement>("li.mark");
+			return (
+				row !== null && marks.contains(row) && row.dataset["mark"] === v?.markId
+			);
 		})();
 		if (
 			v?.caseId === c.id &&
@@ -3427,12 +3451,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 				// verifying a row of them is one press each (the owner). The
 				// one known at the click, which a filtered list still has
 				// when the verified mark has left it; else the list as it is.
-				const known = order.find(
-					(m) => m.id === v.next && m.status === "fixed",
-				)?.id;
-				const to = known ?? afterVerify(order, v.markId)?.markId;
+				const to = opensAfterVerify(order, v.markId, v.next);
 				const row =
-					to !== undefined && to !== v.markId
+					to !== undefined
 						? marks.querySelector<HTMLElement>(
 								`li.mark[data-mark="${quoted(to)}"]`,
 							)
@@ -3445,7 +3466,14 @@ function renderCase(state: PanelState, actions: Actions): void {
 					row.scrollIntoView?.({ block: "nearest" });
 					// Its head, not its Verify: a second Enter must not verify it unseen.
 					head(to as string)?.focus({ preventScroll: true });
-				} else head(v.markId)?.focus({ preventScroll: true });
+				}
+				// Nothing waits: the verified row's head; where a filter has
+				// taken that row away, the list's first control, not nowhere.
+				else
+					(
+						head(v.markId) ??
+						marks.querySelector<HTMLElement>("button:not([disabled])")
+					)?.focus({ preventScroll: true });
 			}
 		}
 		if (picked !== undefined) {
