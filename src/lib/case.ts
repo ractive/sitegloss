@@ -169,6 +169,13 @@ const finiteRect = (v: unknown): v is Rect => {
 	);
 };
 
+/** Whether `r` lies inside `box`, give or take 4 px (the server's tolerance). */
+const within = (r: Rect, box: Rect): boolean =>
+	r.x >= box.x - 4 &&
+	r.y >= box.y - 4 &&
+	r.x + r.width <= box.x + box.width + 4 &&
+	r.y + r.height <= box.y + box.height + 4;
+
 /**
  * A highlight within what a case and the server keep, or none: all of it or
  * nothing, and the mark kept either way, as the server does (an extra, like
@@ -194,7 +201,10 @@ export function highlightWithin(
 		!Array.isArray(rects) ||
 		rects.length < 1 ||
 		rects.length > HIGHLIGHT_LIMITS.rects ||
-		!rects.every(finiteRect)
+		!rects.every(finiteRect) ||
+		// Each a box of its own, inside the shape's (4 px of tolerance): the
+		// server's rule too.
+		!rects.every((r) => r.width > 0 && r.height > 0 && within(r, shape.rect))
 	)
 		return undefined;
 	return {

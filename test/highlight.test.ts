@@ -258,6 +258,9 @@ describe("what a case keeps of a highlight", () => {
 				rects: Array.from({ length: 41 }, () => highlight.rects[0]),
 			},
 			{ ...highlight, rects: [{ x: 1, y: 2 }] },
+			// An empty box, and one outside the shape's.
+			{ ...highlight, rects: [{ x: 210, y: 140, width: 0, height: 22 }] },
+			{ ...highlight, rects: [{ x: 210, y: 300, width: 58, height: 22 }] },
 			"wekend",
 		];
 		for (const h of outside) {

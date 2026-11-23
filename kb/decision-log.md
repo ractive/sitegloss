@@ -3738,7 +3738,8 @@ The service's side is its DEC-040; the format both build to is one contract.
 - **The format.** A highlight is no new kind of shape: a mark with shape `box` (the box
   round the text's lines) and an optional `highlight`: `text` (whitespace collapsed, 1 to
   500 characters), `before` and `after` (at most 32 each, the text right around it in its
-  element), `rects` (1 to 40 line boxes, in the shape's coordinates). Its element is the
+  element), `rects` (1 to 40 line boxes, in the shape's coordinates, each with a width and
+  a height above zero and inside the shape's box, 4 px of tolerance). Its element is the
   nearest element that holds all of the selection. Outside the limits the highlight is
   dropped and the mark kept, here as at the server. A version that does not know the
   field sees a box with the same comment.
