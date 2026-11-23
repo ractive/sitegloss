@@ -1984,6 +1984,22 @@ Both addresses of the second are known, in one module with the first
   not asked anything while the second is chosen, its tokens go nowhere else, and
   back at the first the case goes on with the marks it had.
 
+**The development server is not offered in a build that goes to people** (owner,
+2026-11-23: "there's no way to connect the extension to the dev environment [...] It
+obviously should only be possible for me."). The chooser still has "Sitegloss" and
+"Another address…" there, and "Development server" only in the development build (the
+one loaded unpacked) and the test builds. A build knows by the define
+`SITEGLOSS_DEV_SERVER`, set in `scripts/build.ts` as `SITEGLOSS_FIREFOX` and
+`SITEGLOSS_TEST_BUILD` are: false for `--store` (Chrome and Firefox) and for anything
+packed with `--zip`, which is what the release's four zips are (the unpacked one with the
+fixed key too: it goes to people), true otherwise; without the define (unit tests) it is
+offered. (Not the manifest's `key`: the Firefox builds have none, and the release's
+unpacked zip has it.) What does not change: somebody already set to the development server
+keeps working and still sees it named, in the choice and in the Team section's note; the
+address typed under "Another address…" works as ever, self-hosting included; the lock is on
+the server, which creates no accounts (service DEC-044), so this takes only the signpost
+away. A local `bun run zip` therefore also leaves the option out.
+
 ## DEC-042: One MCP address for every installation, tab-mcp client 0.18 (owner)
 
 2026-11-20. The hosted relay `tab-mcp.ractive.ch` moved to relay 0.12.0, which has one
@@ -3944,6 +3960,20 @@ the display. The page filter's menu does not group by site (the web's does).
 - **The build test checks the list's data** (`xn--p1ai`), not an option's name: in the worker and
   the panel, never in `content.js`.
 - `CLAUDE.md` names `tldts` beside the tab-mcp client, and where it may be loaded.
+
+**The sites are a line under the title; the card's last line keeps the pages**
+(owner, 2026-11-23, about the web app's card, which now has it: "Make the 'Sites:
+comparis.ch, ractive.ch' a subtitle below the title. I think for the eye it's easier to pick
+up the sites than reading the titles. Or maybe even just 'comparis.ch | ractive.ch', with
+this centred dot in between instead of the pipe."). The panel's card says it the same way:
+right under the title, in the secondary text style, the names alone joined by " · "
+("sitegloss.dev"; "comparis.ch · ractive.ch"; more than three, "comparis.ch · ractive.ch and
+2 more sites"); a case on local addresses only says its first page's host; no line without a
+page. A screen reader hears "Site: ", "Sites: " or "On: " before it (a hidden word; the
+card's name says "on the site …"), which the card does not show. Where "Site: … · n pages"
+stood, only the pages: "15 pages", or the only page's address. The summary for the developer
+and the state badge and assignee (DEC-071) keep their places; the grouping inside an open
+case does not change.
 
 ## DEC-069: What comes next on the open case, and the hand-over's small part
 
