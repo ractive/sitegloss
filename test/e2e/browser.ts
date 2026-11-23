@@ -62,9 +62,21 @@ export function findBrowser(): string | undefined {
 	return undefined;
 }
 
+/**
+ * How long a CDP command, an attach included, or an event waited for has to
+ * come. Chrome does not answer every command: an input event it routed to a
+ * frame that is removed before the frame took it gets no answer at all (an
+ * Escape whose keydown closes the dialog its field's frame is in, and its
+ * keyup). Past this the command fails and says which it was and where, well
+ * before the test's own time runs out.
+ */
+export const ANSWER_MS = 20_000;
+
 type Pending = {
 	resolve: (v: Record<string, unknown>) => void;
 	reject: (e: Error) => void;
+	method: string;
+	timer: ReturnType<typeof setTimeout>;
 };
 
 type Listener = (
@@ -79,19 +91,24 @@ interface Transport {
 	close(): void;
 }
 
-type Connect = (receive: (message: string) => void) => Transport;
+/** `closed` is called once Chrome's end is gone, with what happened. */
+type Connect = (
+	receive: (message: string) => void,
+	closed: (why: string) => void,
+) => Transport;
 
 const webSocket =
 	(ws: WebSocket): Connect =>
-	(receive) => {
+	(receive, closed) => {
 		ws.addEventListener("message", (e) => receive(String(e.data)));
+		ws.addEventListener("close", () => closed("the CDP connection closed"));
 		return { send: (message) => ws.send(message), close: () => ws.close() };
 	};
 
 /** `--remote-debugging-pipe`: Chrome reads fd 3 and writes fd 4, each message ends in NUL. */
 const pipe =
 	(toChrome: number, fromChrome: number): Connect =>
-	(receive) => {
+	(receive, closed) => {
 		const writer = Bun.file(toChrome).writer();
 		void (async () => {
 			const decoder = new TextDecoder();
@@ -102,6 +119,7 @@ const pipe =
 				text = messages.pop() ?? "";
 				for (const message of messages) receive(message);
 			}
+			closed("Chrome closed its CDP pipe");
 		})();
 		return {
 			send(message) {
@@ -278,9 +296,13 @@ export class Browser {
 	readonly #transport: Transport;
 	readonly #pending = new Map<number, Pending>();
 	readonly #listeners = new Set<Listener>();
+	/** The target of each session `attach` opened. */
+	readonly #sessions = new Map<string, string>();
 	#nextId = 0;
 	/** The profile outlives this browser (`launchIn`). */
 	#keep = false;
+	/** Why Chrome can answer no more (it exited, the connection closed). */
+	#gone: string | undefined;
 
 	/** Where Chrome's own settings save downloads (see `newProfile`). */
 	get downloads(): string {
@@ -290,25 +312,64 @@ export class Browser {
 	private constructor(proc: ChromeProcess, profile: string, connect: Connect) {
 		this.#proc = proc;
 		this.#profile = profile;
-		this.#transport = connect((message) => {
-			const msg = JSON.parse(message) as {
-				id?: number;
-				result?: Record<string, unknown>;
-				error?: { message: string };
-				method?: string;
-				params?: Record<string, unknown>;
-				sessionId?: string;
-			};
-			if (msg.id !== undefined) {
-				const p = this.#pending.get(msg.id);
-				this.#pending.delete(msg.id);
-				if (msg.error) p?.reject(new Error(msg.error.message));
-				else p?.resolve(msg.result ?? {});
-			} else if (msg.method !== undefined) {
-				for (const l of this.#listeners)
-					l(msg.method, msg.params ?? {}, msg.sessionId);
-			}
-		});
+		this.#transport = connect(
+			(message) => {
+				const msg = JSON.parse(message) as {
+					id?: number;
+					result?: Record<string, unknown>;
+					error?: { message: string };
+					method?: string;
+					params?: Record<string, unknown>;
+					sessionId?: string;
+				};
+				if (msg.id !== undefined) {
+					const p = this.#pending.get(msg.id);
+					this.#pending.delete(msg.id);
+					if (p !== undefined) clearTimeout(p.timer);
+					if (msg.error) p?.reject(new Error(msg.error.message));
+					else p?.resolve(msg.result ?? {});
+				} else if (msg.method !== undefined) {
+					for (const l of this.#listeners)
+						l(msg.method, msg.params ?? {}, msg.sessionId);
+				}
+			},
+			(why) => this.#lost(why),
+		);
+		void proc.exited.then((code) => this.#lost(`Chrome exited (${code})`));
+	}
+
+	/** Chrome is gone: every command still waiting fails now, and every later one at once. */
+	#lost(why: string): void {
+		if (this.#gone !== undefined) return;
+		this.#gone = why;
+		for (const p of this.#pending.values()) {
+			clearTimeout(p.timer);
+			p.reject(new Error(`CDP ${p.method}: ${why}`));
+		}
+		this.#pending.clear();
+	}
+
+	/** The target a session is on, as the failure of a command to it says it. */
+	async #describe(sessionId: string | undefined): Promise<string> {
+		if (sessionId === undefined) return "the browser";
+		const targetId = this.#sessions.get(sessionId);
+		if (targetId === undefined) return `session ${sessionId}`;
+		if (this.#gone !== undefined) return `target ${targetId} (${this.#gone})`;
+		const info = await this.#command(
+			"Target.getTargets",
+			{ filter: [{}] },
+			undefined,
+			2000,
+		).then(
+			(r) =>
+				(r as { targetInfos: TargetInfo[] }).targetInfos.find(
+					(t) => t.targetId === targetId,
+				),
+			() => undefined,
+		);
+		return info === undefined
+			? `target ${targetId} (no longer there)`
+			: `the ${info.type} ${info.url} (target ${targetId})`;
 	}
 
 	/**
@@ -402,12 +463,37 @@ export class Browser {
 		);
 	}
 
+	/** A CDP command; one with no answer within `ANSWER_MS` fails, naming it and its target. */
 	send(
 		method: string,
 		params: Record<string, unknown> = {},
 		sessionId?: string,
 	): Promise<Record<string, unknown>> {
+		return this.#command(method, params, sessionId, ANSWER_MS);
+	}
+
+	#command(
+		method: string,
+		params: Record<string, unknown>,
+		sessionId: string | undefined,
+		timeoutMs: number,
+	): Promise<Record<string, unknown>> {
+		if (this.#gone !== undefined)
+			return Promise.reject(new Error(`CDP ${method}: ${this.#gone}`));
 		const id = ++this.#nextId;
+		const answer = new Promise<Record<string, unknown>>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				this.#pending.delete(id);
+				void this.#describe(sessionId).then((target) =>
+					reject(
+						new Error(
+							`CDP ${method} to ${target} got no answer in ${timeoutMs} ms`,
+						),
+					),
+				);
+			}, timeoutMs);
+			this.#pending.set(id, { resolve, reject, method, timer });
+		});
 		this.#transport.send(
 			JSON.stringify({
 				id,
@@ -416,14 +502,38 @@ export class Browser {
 				...(sessionId ? { sessionId } : {}),
 			}),
 		);
-		return new Promise((resolve, reject) =>
-			this.#pending.set(id, { resolve, reject }),
-		);
+		return answer;
 	}
 
-	/** The next event `method` (optionally for one session). */
-	event(method: string, sessionId?: string): Promise<Record<string, unknown>> {
-		return this.waitForEvent(method, sessionId).promise;
+	/** The next event `method` (optionally for one session), within `timeoutMs`. */
+	async event(
+		method: string,
+		sessionId?: string,
+		timeoutMs = ANSWER_MS,
+	): Promise<Record<string, unknown>> {
+		const next = this.waitForEvent(method, sessionId);
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			return await Promise.race([
+				next.promise,
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(
+						() =>
+							void this.#describe(sessionId).then((target) =>
+								reject(
+									new Error(
+										`no CDP event ${method} from ${target} in ${timeoutMs} ms`,
+									),
+								),
+							),
+						timeoutMs,
+					);
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+			next.cancel();
+		}
 	}
 
 	/** The next event `method`, and a way to stop waiting for it. */
@@ -473,6 +583,7 @@ export class Browser {
 			targetId,
 			flatten: true,
 		})) as { sessionId: string };
+		this.#sessions.set(sessionId, targetId);
 		const page = new Page(this, sessionId, targetId);
 		if (SLOW > 1)
 			// Not every target has the Emulation domain: as fast as it is then.
@@ -557,9 +668,9 @@ export class Page {
 		return this.#browser.send(method, params, this.sessionId);
 	}
 
-	/** The next event `method` of this page. */
-	event(method: string): Promise<Record<string, unknown>> {
-		return this.#browser.event(method, this.sessionId);
+	/** The next event `method` of this page, within `timeoutMs`. */
+	event(method: string, timeoutMs?: number): Promise<Record<string, unknown>> {
+		return this.#browser.event(method, this.sessionId, timeoutMs);
 	}
 
 	async goto(url: string, timeoutMs = 15_000): Promise<void> {
