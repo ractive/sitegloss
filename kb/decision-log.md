@@ -3701,3 +3701,21 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
     its first window at its default 1280×800, which a real browser does not.)
   - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
 
+
+## DEC-065: "Pages" is a heading that opens and closes its list, and the list is flush left
+
+2026-11-23. The owner, on the panel as merged: "Keep the list of sites left aligned and
+let the 'Pages' title bar be collapsible like '> Comments' and '> Screenshots'". The
+list of a case's pages sat in the second column of the facts block, beside the label
+"Pages", so a third of the panel's width was empty on its left.
+
+- A case with several pages has a section of its own in the case's head, before the
+  facts: the heading "Pages 12" is the control (the same look and behaviour as
+  "Comments"), and the list is under it at the panel's full width.
+- The heading is there from two pages on. Not chosen by the person: open up to three
+  pages, closed for more, open where the tab shows none of the case's pages. A choice
+  holds for the case, this session (DEC-063, DEC-064's review).
+- Closed is closed: the heading alone. DEC-063's "closed, it still shows the page in
+  front" is gone: a closed list that keeps one row does not read as closed, and the page
+  in front is still said by "This page" in the marks' filter and by each mark's page.
+- A case with one page keeps its address among the facts, under the label "Page".

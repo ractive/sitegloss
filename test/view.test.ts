@@ -2314,13 +2314,17 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		// The one link of a case of one page gives way to the list.
 		expect(el("open-page").hidden).toBe(true);
-		// The list is under the Pages label: no "2 pages" above it (DEC-061).
-		// Two pages: no disclosure, the label alone (DEC-063).
-		expect(el("case-pages-toggle").hidden).toBe(true);
+		// The list is under its own heading, which opens and closes it, and
+		// not in a column of the facts (DEC-065); two pages: open.
+		expect(el("case-pages-section").hidden).toBe(false);
+		expect(el("case-pages-toggle").textContent).toBe("Pages 2");
+		expect(el("case-pages-toggle").getAttribute("aria-expanded")).toBe("true");
+		expect(el("case-pages").closest(".case-facts")).toBeNull();
 		expect(
-			el("case-pages").closest(".fact")?.querySelector("dt > span")
-				?.textContent,
-		).toBe("Pages");
+			[...el("case-facts").querySelectorAll(".fact")]
+				.filter((f) => !(f as unknown as HTMLElement).hidden)
+				.map((f) => f.querySelector("dt")?.textContent),
+		).toEqual(["Link", "Made at"]);
 		const links = el("case-pages").querySelectorAll(".page-name");
 		(links[1] as unknown as HTMLButtonElement).click();
 		(links[0] as unknown as HTMLButtonElement).click();
@@ -2347,7 +2351,7 @@ describe("a case of several pages (DEC-038)", () => {
 		).toBe(`${PAY}\nOpens in a new tab; the case's marks are drawn there`);
 	});
 
-	test("more than three pages: one disclosure, closed but for the page in front, remembered; open where the tab shows none (DEC-063)", () => {
+	test("more than three pages: the heading starts closed, the choice is remembered, also where the tab shows none (DEC-063, DEC-065)", () => {
 		const base = flow("c_many");
 		const urls = ["a", "b", "c", "d", "e"].map(
 			(x) => `https://shop.example/${x}`,
@@ -2366,25 +2370,21 @@ describe("a case of several pages (DEC-038)", () => {
 			caseState(c, (s) => {
 				s.tab = { id: 1, url, title: "", size: undefined };
 			});
-		const shownRows = () =>
-			[...el("case-pages").querySelectorAll("li")]
-				.filter((li) => !(li as unknown as HTMLElement).hidden)
-				.map((li) => li.querySelector(".page-name")?.textContent);
 		const toggle = () => el<HTMLButtonElement>("case-pages-toggle");
 		render(at("http://localhost:3000/c"), noActions);
-		expect(toggle().hidden).toBe(false);
 		expect(toggle().textContent).toBe("Pages 5");
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
-		// Closed: the page in front only, whatever its host.
-		expect(shownRows()).toEqual(["Page 3"]);
+		// Closed as "Comments" is: the heading alone (DEC-065).
+		expect(el("case-pages").hidden).toBe(true);
 		toggle().click();
 		expect(toggle().getAttribute("aria-expanded")).toBe("true");
-		expect(shownRows().length).toBe(5);
+		expect(el("case-pages").hidden).toBe(false);
+		expect(el("case-pages").querySelectorAll("li").length).toBe(5);
 		// Remembered for the case, also when the tab moves on.
 		render(at("http://localhost:3000/d"), noActions);
-		expect(shownRows().length).toBe(5);
+		expect(el("case-pages").hidden).toBe(false);
 		toggle().click();
-		expect(shownRows()).toEqual(["Page 4"]);
+		expect(el("case-pages").hidden).toBe(true);
 		// Closed by the person: it stays closed, also where the tab shows
 		// none of the case's pages, render after render (DEC-064's review).
 		render(at("https://shop.example/elsewhere"), noActions);
@@ -5010,7 +5010,7 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		const facts = [...el("case-facts").querySelectorAll(".fact")]
 			.filter((f) => !(f as unknown as HTMLElement).hidden)
 			.map((f) => {
-				// The label as shown: "Pages" opens nothing for one page (DEC-063).
+				// The label as shown; one page is a fact, several a list (DEC-065).
 				const dt = f.querySelector("dt");
 				const shown = [...(dt?.children ?? [])].filter(
 					(x) => !(x as unknown as HTMLElement).hidden,
@@ -5022,7 +5022,8 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 					f.querySelector("dd")?.textContent,
 				];
 			});
-		expect(facts.map(([label]) => label)).toEqual(["Pages", "Link", "Made at"]);
+		expect(facts.map(([label]) => label)).toEqual(["Page", "Link", "Made at"]);
+		expect(el("case-pages-section").hidden).toBe(true);
 		expect(facts[0]?.[1]).toContain("www.example.com/kk");
 		expect(facts[2]?.[1]).toContain(
 			`${c.page.viewport.width}×${c.page.viewport.height}, `,
