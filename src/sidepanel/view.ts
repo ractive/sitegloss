@@ -278,7 +278,11 @@ export function pagePath(url: string): string {
 /** `sitegloss.dev, 8 pages`: where a case is, in its card's name (DEC-067). */
 export function pagesLine(c: Case): string {
 	const { where, pages } = whereText(c);
-	return pages === undefined ? where : `${where}, ${pages}`;
+	// Spoken after "on": the card's "Site: …" label reads as "the site …".
+	const spoken = where
+		.replace(/^Sites: /, "the sites ")
+		.replace(/^Site: /, "the site ");
+	return pages === undefined ? spoken : `${spoken}, ${pages}`;
 }
 
 const SVG = "http://www.w3.org/2000/svg";

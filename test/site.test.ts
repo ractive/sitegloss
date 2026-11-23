@@ -123,21 +123,25 @@ describe("a case's card says its sites and its number of pages", () => {
 			whereText(
 				caseOn(["https://app.sitegloss.dev/a", "https://sitegloss.dev/b"]),
 			),
-		).toEqual({ where: "sitegloss.dev", pages: "2 pages" });
+		).toEqual({ where: "Site: sitegloss.dev", pages: "2 pages" });
 	});
 
 	test("two or three sites are named, more counted", () => {
 		expect(
 			whereText(caseOn(["https://comparis.ch/a", "https://ractive.ch/b"])),
-		).toEqual({ where: "comparis.ch, ractive.ch", pages: "2 pages" });
+		).toEqual({ where: "Sites: comparis.ch, ractive.ch", pages: "2 pages" });
 		expect(sitesText(["a.ch", "b.ch", "c.ch", "d.ch"])).toBe(
 			"a.ch, b.ch and 2 more sites",
 		);
 	});
 
-	test("one page on one site keeps its address; local addresses only say the host", () => {
+	test("one page on a site says the site and the page's address; local addresses only say the address or the host", () => {
 		expect(whereText(caseOn(["https://app.sitegloss.dev/pricing"]))).toEqual({
-			where: "app.sitegloss.dev/pricing",
+			where: "Site: sitegloss.dev",
+			pages: "app.sitegloss.dev/pricing",
+		});
+		expect(whereText(caseOn(["http://localhost:3000/a"]))).toEqual({
+			where: "localhost:3000/a",
 		});
 		expect(
 			whereText(caseOn(["http://localhost:3000/a", "http://localhost:3000/b"])),

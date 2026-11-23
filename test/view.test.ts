@@ -2269,9 +2269,9 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
 		// The site and the number of pages (DEC-067).
-		expect(row?.textContent).toContain("shop.example · 2 pages");
+		expect(row?.textContent).toContain("Site: shop.example · 2 pages");
 		expect(row?.getAttribute("aria-label")).toContain(
-			"on shop.example, 2 pages",
+			"on the site shop.example, 2 pages",
 		);
 		expect(
 			window.document.querySelector(

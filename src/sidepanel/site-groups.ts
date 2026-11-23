@@ -113,9 +113,19 @@ export function whereText(c: Case): { where: string; pages?: string } {
 	const pages = casePages(c);
 	const first = pages[0]?.url ?? c.page.url;
 	const sites = caseSites(c);
-	if (pages.length <= 1 && sites.length <= 1) return { where: shortUrl(first) };
+	// A case on local addresses only has no site: its one page's address, or its host.
+	if (pages.length <= 1 && sites.length === 0)
+		return { where: shortUrl(first) };
+	// The site is named as one (the owner wanted the word on the card).
 	return {
-		where: sites.length === 0 ? hostOf(first) || first : sitesText(sites),
-		pages: `${pages.length} page${pages.length === 1 ? "" : "s"}`,
+		where:
+			sites.length === 0
+				? hostOf(first) || first
+				: `${sites.length === 1 ? "Site" : "Sites"}: ${sitesText(sites)}`,
+		// One page: its address says more than "1 page".
+		pages:
+			pages.length <= 1 && sites.length > 0
+				? shortUrl(first)
+				: `${Math.max(1, pages.length)} page${pages.length > 1 ? "s" : ""}`,
 	};
 }
