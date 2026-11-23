@@ -285,12 +285,12 @@ describe("the copies", () => {
 			what: "copy-link",
 			text: COPY_FAILED,
 		});
-		let called = false;
-		const write = async () => void (called = true);
+		const called: string[] = [];
+		const write = async (text: string) => void called.push(text);
 		expect(
 			await copyStep(c, { kind: "sending", why: "next" }, "copy-ai", write),
 		).toBeUndefined();
-		expect(called).toBe(false);
+		expect(called).toEqual([]);
 	});
 });
 
