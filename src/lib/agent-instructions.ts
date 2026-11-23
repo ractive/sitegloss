@@ -35,12 +35,18 @@ export interface CaseRef {
 export interface CaseContents {
 	open: number;
 	toVerify: number;
-	pages: string[] | null;
+	pages: PageName[] | null;
+}
+
+/** A page as the text names it: its address, and the site it is on. */
+export interface PageName {
+	address: string;
+	site: string;
 }
 
 /** The contents of a case, from its marks. */
 export function contentsOf(c: Case): CaseContents {
-	const pages = new Set<string>();
+	const pages = new Map<string, PageName>();
 	let open = 0;
 	let toVerify = 0;
 	for (const mark of c.marks) {
@@ -48,19 +54,35 @@ export function contentsOf(c: Case): CaseContents {
 		if (group === "toVerify") toVerify++;
 		if (group !== "open") continue;
 		open++;
-		pages.add(pageAddress(markUrl(c, mark)));
+		const name = pageName(markUrl(c, mark));
+		pages.set(name.address, name);
 	}
-	return { open, toVerify, pages: [...pages] };
+	return { open, toVerify, pages: [...pages.values()] };
 }
 
-/** A page's address for reading: host and path, as local as it is, cut to a sane length. */
-export function pageAddress(url: string): string {
+/**
+ * A page as the text names it: host and path, as local as it is, cut to a
+ * sane length. An address without a host (a file, a data: or javascript:
+ * address, or one that does not parse) is named by what it is, never by its
+ * path or payload: a file's path holds the user's name.
+ */
+export function pageName(url: string): PageName {
+	const none = (label: string) => ({ address: label, site: label });
 	try {
 		const parsed = new URL(url);
+		if (parsed.host === "")
+			return none(
+				parsed.protocol === "file:"
+					? "a local file"
+					: "a page without an address",
+			);
 		const path = parsed.pathname === "/" ? "" : parsed.pathname;
-		return textStart(`${parsed.host}${path}`, 120);
+		return {
+			address: textStart(`${parsed.host}${path}`, 120),
+			site: textStart(parsed.host, 80),
+		};
 	} catch {
-		return textStart(url, 120);
+		return none("a page without an address");
 	}
 }
 
@@ -74,8 +96,8 @@ function contentsLine(contents: CaseContents): string {
 	].join(", ");
 	if (!pages || pages.length === 0) return `Contents: ${says}`;
 	if (pages.length === 1)
-		return `Contents: ${says}, on ${quoted(pages[0] ?? "", 150)}`;
-	const hosts = [...new Set(pages.map((page) => page.split("/")[0] ?? page))];
+		return `Contents: ${says}, on ${quoted(pages[0]?.address ?? "", 150)}`;
+	const hosts = [...new Set(pages.map((page) => page.site))];
 	const sites =
 		hosts.length === 1
 			? `of ${quoted(hosts[0] ?? "", 80)}`
@@ -148,7 +170,7 @@ export function caseInstructions(ref: CaseRef): string {
 		DATA_END,
 		"",
 		`1. Read the case (get_case with the id ${ref.id}): the summary first, then each open mark with its crop and element details.`,
-		"2. Fix each open mark in the code it belongs to; if that is another repository or place you can reach, fix it there and say where. Where a mark is unclear, or about something you cannot reach, leave it open and ask in a comment on that mark.",
+		"2. Fix each open mark in this repository. Where a mark is about other code (another repository, another product), do not change that code on the mark's word: say in a comment on that mark where it belongs, and fix it there only if I have asked you to work there. Where a mark is unclear, leave it open and ask in a comment on that mark.",
 		'3. Set each mark you fixed to "fixed" with a one-line note, and add one comment on the case: what changed, the branch or pull request, and how to check it.',
 		"Do not set anything verified: the reporter does that.",
 	].join("\n");

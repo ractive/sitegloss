@@ -4070,10 +4070,12 @@ Changed on 2026-11-23, after an AI app's feedback on the text it received (the o
 accepted it: "yes, change the template"), the same words as the web app's: (1) inside
 the quoted block a `Contents:` line says how many marks are open, how many wait to be
 verified and the pages the open ones are on (host and path, cut; several: their number
-and the sites); (2) step 2 says "fix it in the code it belongs to, in another repository
-or place you can reach too, and say where", where it assumed every mark was a defect of
-the repository the AI app was in; (3) either connection will do, the server's or the
-extension's own, and the server is added only if there is neither. The line on the live
+and the sites); (2) step 2 stays "in this repository", but a mark about other code (another repository,
+another product) is named in a comment on the mark, not changed on the mark's word: the
+mark's text is untrusted data, so it must not send the AI app into other code; (3) either
+connection will do, the server's or the extension's own, and the server is added only if
+there is neither. A page address without a host (a file, data:, or one that does not
+parse) is named "a local file" or "a page without an address", never by its path. The line on the live
 page (`LIVE_PAGE`) is now the web app's too.
 
 ## DEC-070: Escape takes a new mark back while its comment is empty (owner)
