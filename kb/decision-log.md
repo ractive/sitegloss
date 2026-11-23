@@ -3741,9 +3741,13 @@ same on its case card (its DEC-041).
 `packages/api/vectors/site.json` that they pass, held as `page-key.json` is. A site is the
 registrable domain of an address's host by the public suffix list with its private section
 (`app.dev.sitegloss.dev` is `sitegloss.dev`, `foo.vercel.app` its own, `shop.example.co.uk` is
-`example.co.uk`); none for `localhost` and names under it, IP addresses, a host without a dot,
-names under `.local`, `.test`, `.internal`, `.invalid`, `.home.arpa`, and anything but http and
-https; `.example` is a site. Lower case; an international name in its ASCII form
+`example.co.uk`). No site: a host whose ending is on neither section of the list (`.lan`,
+`.home`, `.corp`, `.localdomain`, `.intranet`, `.local`, `.test`, `.internal`, `.invalid`),
+except `.example`, the one named exception, which tests and demos use; `localhost` and names
+under it; `home.arpa` and names under it (on the list, but the home network's); IP addresses; a
+host without a dot; a host with an empty label (`.com`, `a..com`); anything but http and https.
+Every trailing dot is dropped first. (The lead decided the ending rule after the review, in place
+of a growing list of local endings, for both repositories.) Lower case; an international name in its ASCII form
 (`xn--bcher-kva.de`), as `new URL` gives the host. A case's sites come from its pages and its
 screenshots, most pages first, then by name. Never stored: no change to the case format, the
 sync or the manifest.
@@ -3781,6 +3785,21 @@ both sites. Making the site part of a page's identity would take a new `pageKey`
 (site and path, with local addresses taking the case's site, which is ambiguous once a case has
 two), new vectors, the server recomputing every case's list of pages, and every installed
 version agreeing on it, since each computes `pageKey` itself: a change of the contract, not of
-the display. The page filter's menu does not group by site (the web's does). Under a site's
-heading a row can still name that site's host ("sitegloss.dev"), which now says little.
-`CLAUDE.md` still says the tab-mcp client is the only runtime dependency.
+the display. The page filter's menu does not group by site (the web's does).
+
+**After the review** (the same day):
+
+- **A row under a site's heading names only what the heading does not**: another host of that
+  site, or a local host; never the site's own name, nor another site (the row is under that
+  site's heading too). The row above the heading ("Current page") keeps all its hosts.
+- **A site none of the listed pages is on gets no heading**: a case keeps 200 pages, but its
+  screenshots of later pages still count for its sites (the card, `sites`).
+- **The rule runs once per address and per case**: `siteOf` keeps the last 5,000 answers, and a
+  case's sites and groups are kept per case object while its change time and its counts of pages
+  and screenshots stay the same.
+- **When the sites change, their headings are kept by name and only moved**, and the focus goes
+  back to the heading or the row it was on; a row whose site left goes to the same page in the
+  first list that has it.
+- **The build test checks the list's data** (`xn--p1ai`), not an option's name: in the worker and
+  the panel, never in `content.js`.
+- `CLAUDE.md` names `tldts` beside the tab-mcp client, and where it may be loaded.
