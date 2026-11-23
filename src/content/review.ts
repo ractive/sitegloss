@@ -99,6 +99,8 @@ interface Entry {
 		range: Range | null;
 		said?: string;
 		unread?: true;
+		/** The page's changes (`#changes`) when its text was last looked for. */
+		lookedAt: number;
 		dark: boolean;
 	};
 }
@@ -242,6 +244,14 @@ export class Reviewer {
 	#generation = 0;
 	/** The page was looked at this many times by itself (`#watchPage`). */
 	#ticks = 0;
+	/**
+	 * How often the page's DOM changed (not Sitegloss's own): a highlight
+	 * whose text was gone is looked for again only after a change (DEC-066).
+	 */
+	#changes = 0;
+	#observer: MutationObserver | undefined;
+	/** Where the round over the highlights whose text was gone stands. */
+	#goneAt = 0;
 	/** Which page (`pageKey`) the marks were last looked for on. */
 	#page = "";
 	/**
@@ -344,18 +354,44 @@ export class Reviewer {
 		this.#render();
 	}
 
+	/**
+	 * Count the page's changes while marks are drawn, leaving out Sitegloss's
+	 * own host being put back at the end of the page.
+	 */
+	#watchChanges(): void {
+		const doc = this.overlay.doc;
+		const Observer = doc.defaultView?.MutationObserver;
+		if (this.#observer !== undefined || Observer === undefined) return;
+		const host = this.overlay.host;
+		this.#observer = new Observer((records) => {
+			for (const r of records)
+				if (
+					r.type === "characterData" ||
+					![...r.addedNodes, ...r.removedNodes].every((n) => n === host)
+				) {
+					this.#changes++;
+					return;
+				}
+		});
+		this.#observer.observe(doc.documentElement, {
+			childList: true,
+			characterData: true,
+			subtree: true,
+		});
+	}
+
 	/** The page is looked at twice a second while marks are drawn. */
 	#watchPage(): void {
 		clearInterval(this.#timer);
+		this.#watchChanges();
 		// Layout changes (lazy content, accordions) move elements without a scroll.
 		this.#timer = setInterval(() => {
 			this.#checkPage();
 			// One search a tick: a new route replaces every element at once.
-			// Now and then also a highlight whose text was gone (DEC-066).
-			const gone = ++this.#ticks % GONE_TICKS === 0;
-			const replaced = this.#entries.find(
-				(e) => this.#replaced(e) || (gone && this.#textBack(e)),
-			);
+			const replaced =
+				this.#entries.find((e) => this.#replaced(e)) ??
+				// Now and then one highlight whose text was gone (DEC-066).
+				(++this.#ticks % GONE_TICKS === 0 ? this.#textBack() : undefined);
 			if (replaced !== undefined) this.#findAgain(replaced);
 			// The marks the last route did not have, a few a tick.
 			else this.#lookAgain(STALE_BUDGET_MS);
@@ -655,9 +691,12 @@ export class Reviewer {
 			range,
 			...(range === null ? {} : { said: bareText(range.toString()) }),
 			...(found === "unread" ? { unread: true as const } : {}),
+			lookedAt: this.#changes,
 			dark: isDarkGround(backdropOf(el)?.color),
 		};
 		const was = entry.elementStatus ?? entry.match.status;
+		if (found === "unread") entry.match.textUnread = true;
+		else delete entry.match.textUnread;
 		if (found === "gone") {
 			entry.match.textChanged = true;
 			if (was === "found") entry.match.status = "probable";
@@ -695,13 +734,31 @@ export class Reviewer {
 		return this.#element(entry)?.isConnected === false || textMoved(entry.text);
 	}
 
-	/** A highlight whose text was gone, and is in its element again (text that came late, a fix undone). */
-	#textBack(entry: Entry): boolean {
-		const text = entry.text;
-		const h = entry.mark.highlight;
-		if (text === undefined || h === undefined || !entry.match.textChanged)
-			return false;
-		return typeof findText(text.element, h) !== "string";
+	/**
+	 * The next highlight whose text was gone and whose page changed since it
+	 * was last looked for, if its text is in its element again (text that
+	 * came late, a fix undone). One a pass, in turn: each look reads all of
+	 * the element's text, and a long page with many changed texts must not
+	 * stall (DEC-066).
+	 */
+	#textBack(): Entry | undefined {
+		const n = this.#entries.length;
+		for (let k = 0; k < n; k++) {
+			const entry = this.#entries[(this.#goneAt + k) % n] as Entry;
+			const text = entry.text;
+			const h = entry.mark.highlight;
+			if (
+				text === undefined ||
+				h === undefined ||
+				!entry.match.textChanged ||
+				text.lookedAt === this.#changes
+			)
+				continue;
+			this.#goneAt = (this.#goneAt + k + 1) % n;
+			text.lookedAt = this.#changes;
+			return typeof findText(text.element, h) === "string" ? undefined : entry;
+		}
+		return undefined;
 	}
 
 	/**
@@ -1323,6 +1380,8 @@ export class Reviewer {
 		this.#closeMark();
 		this.#generation++;
 		clearInterval(this.#timer);
+		this.#observer?.disconnect();
+		this.#observer = undefined;
 		this.#timer = undefined;
 		this.#case = undefined;
 		this.#entries = [];

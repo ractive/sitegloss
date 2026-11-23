@@ -38,6 +38,7 @@ import {
 	MAX_REOPEN_NOTE,
 	MAX_REOPENS,
 	MAX_TITLE,
+	MAX_UNKNOWN_SHAPE,
 	MAX_URL,
 	MAX_VERDICT,
 	type Mark,
@@ -1175,14 +1176,16 @@ function shapeIn(shape: WireMark["shape"]): Shape {
 		kind === "note"
 	)
 		return shape as Shape;
-	// The format's rule for a kind's name (`isKindName`), or the merge's
-	// check would refuse the whole case; a server sends none other.
+	// The format's rules for a kind's name (`isKindName`) and its size, or
+	// the merge's check would refuse the whole case. One too large is kept
+	// as its kind alone: it is not drawn here, nor sent from here, and the
+	// server keeps the whole of it.
+	const name = isKindName(kind) ? kind : "unnamed";
+	const given = { ...(shape as Record<string, unknown>), kind: name };
 	return {
 		kind: "unknown",
-		given: {
-			...(shape as Record<string, unknown>),
-			kind: isKindName(kind) ? kind : "unnamed",
-		},
+		given:
+			JSON.stringify(given).length > MAX_UNKNOWN_SHAPE ? { kind: name } : given,
 	};
 }
 
@@ -2120,6 +2123,13 @@ export function isClean(c: Case, book: CaseBook, me?: string): boolean {
 	const here = new Map((c.comments ?? []).map((k) => [k.id, k]));
 	for (const k of here.values()) {
 		const before = known[k.id];
+		// About a mark held back (`deriveOps`): it waits with it, as
+		// `commentOps` has it, and is nothing to send now.
+		if (before === undefined && k.mark !== undefined) {
+			const a = c.marks.find((x) => x.id === k.mark);
+			if (a?.shape.kind === "unknown" && book.marks[a.id] === undefined)
+				continue;
+		}
 		if (before === undefined) return false;
 		// Another's text that differs is not sent: it does not wait.
 		if (before.text !== k.text && ownAtServer(before, me)) return false;

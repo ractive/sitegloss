@@ -585,6 +585,12 @@ function matchView(m: MarkMatch) {
 						"The highlighted text is not in this element any more: the text changed, perhaps by the fix.",
 				}
 			: {}),
+		...(m.textUnread
+			? {
+					textUnread:
+						"The element is too long to look for the highlighted text in it: whether it changed is not known.",
+				}
+			: {}),
 		score: Math.round(m.score * 100) / 100,
 		shownCandidate: m.current,
 		candidates: m.candidates.map((c) => ({

@@ -856,14 +856,25 @@ describe("highlights and marks of a newer kind in the sync (DEC-066)", () => {
 					wire(3, {
 						shape: { kind: 5, r: 1 } as unknown as WireMark["shape"],
 					}),
+					// Larger than a case keeps: its kind alone.
+					wire(4, {
+						shape: {
+							kind: "scribble",
+							data: "x".repeat(300 * 1024),
+						} as unknown as WireMark["shape"],
+					}),
 				],
 				removedMarks: [],
 				removedShots: [],
 			},
 			new Map(
-				["server shot", "server crop 1", "server crop 2", "server crop 3"].map(
-					(p) => [ref(p).sha256, "image"],
-				),
+				[
+					"server shot",
+					"server crop 1",
+					"server crop 2",
+					"server crop 3",
+					"server crop 4",
+				].map((p) => [ref(p).sha256, "image"]),
 			),
 			new Map(),
 			{ teamId: "team_1", whole: false, now: NOW },
@@ -875,6 +886,10 @@ describe("highlights and marks of a newer kind in the sync (DEC-066)", () => {
 			kind: "unknown",
 			given: { kind: "unnamed", r: 1 },
 		});
+		expect(value.marks[3]?.shape).toEqual({
+			kind: "unknown",
+			given: { kind: "scribble" },
+		});
 		const markOps = (x: Case) =>
 			deriveOps(x, merged?.book as CaseBook, ref, newId)
 				.ops.filter((op) => op.type.startsWith("mark."))
@@ -884,5 +899,24 @@ describe("highlights and marks of a newer kind in the sync (DEC-066)", () => {
 		expect(
 			markOps(validateCase(withComment(value, "m2", "Rounder", NOW))),
 		).toEqual(["mark.patch"]);
+	});
+});
+
+describe("a mark of a newer kind held back from the team (DEC-066)", () => {
+	test("its comment waits with it, and the case counts as having nothing to send", () => {
+		const newer: Mark = {
+			...mark(2),
+			shape: { kind: "unknown", given: { kind: "circle", r: 3 } },
+		};
+		const c: Case = {
+			...local([mark(1), newer]),
+			comments: [{ id: "k_1", mark: "m2", text: "Rounder", at: NOW }],
+		};
+		const { book, ops } = synced(c);
+		expect(
+			ops.filter((op) => op.type === "mark.create").map((op) => op.type),
+		).toEqual(["mark.create"]);
+		expect(ops.some((op) => op.type === "comment.create")).toBe(false);
+		expect(isClean(c, book)).toBe(true);
 	});
 });

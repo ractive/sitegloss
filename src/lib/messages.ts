@@ -225,6 +225,11 @@ export interface MarkMatch {
 	 * probable.
 	 */
 	textChanged?: true;
+	/**
+	 * A highlight whose element is too long to read whole (DEC-066): its
+	 * text was not looked for, and nothing is said of whether it changed.
+	 */
+	textUnread?: true;
 }
 
 /** A load stopped by a clear or by another case's load: nothing to say. */

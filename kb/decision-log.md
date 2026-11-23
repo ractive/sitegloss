@@ -3767,7 +3767,7 @@ The service's side is its DEC-040; the format both build to is one contract.
 - **Limits, said in the toolbar.** Text in a form field, an editor, an image, a canvas,
   an SVG, a frame or a component's shadow root (the caret does not reach into one): the
   dialog does not open, the hint names the Box tool. Text that is there but shows nowhere
-  says so. An element's text is read up to 200,000 text nodes with words; past that a
+  says so. An element's text is read up to 50,000 text nodes with words (one look at that many: about 66 ms in Chrome; 200,000 took 337 ms); past that a
   selection says it reaches too far, and a quote not found is not called changed. A selection
   longer than 500 characters or 40 lines is cut to that and the toolbar says so. Frames
   as for the other tools: the page's top document only.
@@ -3795,9 +3795,13 @@ The service's side is its DEC-040; the format both build to is one contract.
   element any more, often the fix itself, the element is drawn as a box, a found match is
   only probable (`textChanged` in the match), and the panel says "Text changed" and why.
   While the case is drawn, a change under the live range (it collapsed, left the page, or
-  holds other text: a fix that set one of its text nodes) has it looked for again, and a
-  text that was gone is looked for again every 2 s (text that came late, a fix undone).
-  Show, and an AI app's add_mark, scroll to the text, not to the middle of its element.
+  holds other text: a fix that set one of its text nodes) has it looked for again. A text
+  that was gone is looked for again only after the page changed (a MutationObserver
+  counts changes, Sitegloss's own host left out), one such highlight every 2 s, in turn:
+  each look reads all of its element's text. Show, and an AI app's add_mark, scroll to the
+  text's first line in every pane it is inside (innermost first), then the window; text
+  that shows nowhere scrolls its element into view. A highlight in an element too long to
+  read says so in the panel ("Text not looked for") and to an AI app (`textUnread`).
 - **Where it shows.** The panel's row quotes the text on one line, cut, beside the status;
   the toolbar names the tool with a tooltip; get_case carries the highlight (its text and
   the number of lines in a large case); add_mark takes an optional `text` to highlight
@@ -3812,13 +3816,16 @@ The service's side is its DEC-040; the format both build to is one contract.
   not drawn and has no pin on the page (its element is outlined while it is looked for);
   Show is not offered when it has no element. A shape without a kind's name (1 to 64
   characters, no control characters), or larger than 256 KB, is still refused: that is a
-  broken file, not a newer one; from the server such a kind is kept under "unnamed".
+  broken file, not a newer one; from the server a kind without such a name is kept under
+  "unnamed", and a shape over the size as its kind alone (the server keeps all of it).
   **Not sent to a team that does not have it**: API v1 takes only the kinds it names, so
-  `mark.create` would be refused for good. Such a mark waits here, and the sync counts it
-  as nothing to send; a newer version sends it. The panel's hint says so.
+  `mark.create` would be refused for good. Such a mark waits here, comments about it wait
+  with it, and the sync counts both as nothing to send; a newer version sends them. The panel's hint says so.
 - **Unknown fields, where they survive.** `validateCase` keeps every field it does not
   know on a case, a screenshot and a mark (it ran on every change, so they were lost on
-  the first comment), each up to 16 KB as JSON. So they survive an import, a change in the
+  the first comment), each up to 16 KB as JSON, at most 32 on one part and 256 KB on a
+  whole case; what is over is left out without a word (the import has no place for such a
+  note, and no version writes fields that large). So they survive an import, a change in the
   panel, adding a mark (`saveCase` carries the case's), the store and an export. Not on an element's details, whose allow-list is a privacy rule (DEC-009), nor
   inside a resolution, a finding, a comment or an image. They are never sent: the sync
   builds what it sends from known fields, and a teammate's mark comes in from the

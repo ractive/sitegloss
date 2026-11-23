@@ -37,11 +37,12 @@ export interface ElementText {
 
 /**
  * The most text nodes with words read of one element (white space between
- * elements does not count): a whole long page has fewer. Past it nothing is
- * claimed: a selection says it is too long, a quote not found is not
- * "changed".
+ * elements does not count): a long article has fewer. One look at this many
+ * takes about 66 ms in Chrome (measured; 200,000 took 337 ms). Past it
+ * nothing is claimed: a selection says it is too long, a quote not found is
+ * not "changed".
  */
-const MAX_NODES = 200_000;
+const MAX_NODES = 50_000;
 
 /**
  * An element's text nodes, without scripts, styles and what is typed into
@@ -245,22 +246,58 @@ export function findText(
 /** A range's text without its white space: what tells that the text under it changed. */
 export const bareText = (text: string): string => text.replace(/\s+/g, "");
 
+/** Whether an element scrolls its content up and down (a pane of its own). */
+function scrollsY(el: Element): boolean {
+	const overflow =
+		el.ownerDocument.defaultView?.getComputedStyle(el).overflowY ?? "";
+	return (
+		(overflow === "auto" || overflow === "scroll" || overflow === "overlay") &&
+		el.scrollHeight > el.clientHeight
+	);
+}
+
 /**
  * Scroll so that the start of `target` (an element, or a highlight's text)
- * is in the middle of the window: in a tall element, its text, not the
- * element's middle.
+ * is in the middle of what shows it: every pane it is inside (a chat, a
+ * docs layout) from the innermost out, then the window. In a tall element,
+ * its text, not the element's middle. Text that shows nowhere: its element.
  */
 export function scrollToMiddle(target: Element | Range): void {
-	if (!("setStart" in target)) {
-		target.scrollIntoView({
+	const element = (r: Range): Element | null =>
+		r.startContainer.nodeType === TEXT
+			? r.startContainer.parentElement
+			: (r.startContainer as Element);
+	const whole = (el: Element) =>
+		el.scrollIntoView({
 			block: "center",
 			inline: "nearest",
 			behavior: "instant",
 		});
+	if (!("setStart" in target)) {
+		whole(target);
 		return;
 	}
-	const win = target.startContainer.ownerDocument?.defaultView;
-	const first = rangeLines(target)[0];
+	const at = element(target);
+	const line = () => rangeLines(target)[0];
+	if (line() === undefined) {
+		if (at !== null) whole(at);
+		return;
+	}
+	const doc = target.startContainer.ownerDocument ?? document;
+	for (let el = at?.parentElement ?? null; el !== null; el = el.parentElement) {
+		if (el === doc.documentElement || el === doc.body || !scrollsY(el))
+			continue;
+		const first = line();
+		if (first === undefined) return;
+		const box = el.getBoundingClientRect();
+		// Instant, whatever the page's `scroll-behavior`: the next pane measures after it.
+		el.scrollBy({
+			top: first.y + first.height / 2 - (box.y + el.clientHeight / 2),
+			behavior: "instant",
+		});
+	}
+	const win = doc.defaultView;
+	const first = line();
 	if (win == null || first === undefined) return;
 	win.scrollBy({
 		left: 0,

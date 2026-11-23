@@ -1237,6 +1237,31 @@ describe("what a newer Sitegloss wrote (DEC-066)", () => {
 		});
 	});
 
+	test("unknown fields are bounded: 32 on one part, 16 KB each, 256 KB on a whole case", () => {
+		const many = Object.fromEntries(
+			Array.from({ length: 40 }, (_, i) => [`x${i}`, i]),
+		);
+		const big = "y".repeat(15 * 1024);
+		const kept = validateCase({
+			...newer(),
+			...many,
+			huge: "z".repeat(17 * 1024),
+			marks: Array.from({ length: 20 }, (_, i) => ({
+				...mark(i + 1),
+				note: big,
+			})),
+		});
+		const extras = (o: object, known: string[]) =>
+			Object.keys(o).filter((k) => !known.includes(k));
+		expect(
+			extras(kept, [...Object.keys(sampleCase()), "shots", "marks"]).length,
+		).toBeLessThanOrEqual(32);
+		expect("huge" in kept).toBe(false);
+		const notes = kept.marks.filter((a) => "note" in a).length;
+		expect(notes).toBeGreaterThan(10);
+		expect(notes).toBeLessThan(20);
+	});
+
 	test("a version that knows the kind draws it: the store's copy is looked at anew", () => {
 		const kept = validateCase({
 			...newer(),

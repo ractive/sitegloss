@@ -799,6 +799,19 @@ export class MarkAdder {
 	#down(e: PointerEvent): void {
 		if (e.button !== 0 || this.#tool === null) return;
 		e.preventDefault();
+		// A double click's word waits for a third click only: any other press
+		// (a pin, beside a popover, elsewhere) gives it up (DEC-066).
+		const waiting = this.#clicks;
+		if (
+			waiting !== undefined &&
+			!(
+				this.#tool === "highlight" &&
+				Math.hypot(e.clientX - waiting.x, e.clientY - waiting.y) <= 4 &&
+				this.#editing === null &&
+				this.overlay.reviewAt(e.clientX, e.clientY) === undefined
+			)
+		)
+			this.#stopClicks();
 		if (this.#editing !== null) {
 			this.#commitComment();
 			return;
@@ -826,13 +839,6 @@ export class MarkAdder {
 				this.#message = "";
 				this.#renderToolbar();
 			}
-			// A press elsewhere is no third click: the word waits no more.
-			const waiting = this.#clicks;
-			if (
-				waiting !== undefined &&
-				Math.hypot(e.clientX - waiting.x, e.clientY - waiting.y) > 4
-			)
-				this.#stopClicks();
 			this.#select(caret, caret);
 			this.#drag = { pointerId: e.pointerId, start: p, points: [p], caret };
 			this.overlay.capture.setPointerCapture?.(e.pointerId);

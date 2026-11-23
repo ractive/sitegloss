@@ -864,6 +864,7 @@ function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
 	// A highlight whose text is not there any more (DEC-066).
 	if (m.textChanged && m.status !== "lost") return "Text changed";
+	if (m.textUnread && m.status !== "lost") return "Text not looked for";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
 }
 
@@ -879,6 +880,8 @@ const PILL: Record<MarkStatus, string | undefined> = {
 function matchText(m: MarkMatch): string {
 	if (m.textChanged && m.status !== "lost")
 		return `The highlighted text is no longer in the element: it changed, or the fix changed it. Its element is outlined (${percent(m.score)}).`;
+	if (m.textUnread && m.status !== "lost")
+		return `The element is too long to look for the highlighted text in it. Its element is outlined (${percent(m.score)}).`;
 	if (m.current > 0)
 		return `Candidate ${m.current + 1} of ${m.candidates.length} (${percent(m.score)})`;
 	switch (m.status) {

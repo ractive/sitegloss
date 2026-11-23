@@ -143,6 +143,9 @@ export const isKindName = (kind: unknown): kind is string =>
  */
 export const MAX_UNKNOWN_SHAPE = 256 * 1024;
 export const MAX_EXTRA = 16 * 1024;
+/** The most unknown fields kept on one case, screenshot or mark, and on a whole case together (as JSON). */
+export const MAX_EXTRA_KEYS = 32;
+export const MAX_EXTRAS = 256 * 1024;
 
 /** A shape as a file and the server have it: an unknown one as it came. */
 export const shapeOut = (shape: Shape): Shape | UnknownShape["given"] =>
@@ -1732,16 +1735,26 @@ const MARK_KEYS = new Set([
 
 /** A case's fields this version does not know (DEC-066), for code that rebuilds a case from its named fields. */
 export const caseExtras = (c: Case): Record<string, unknown> =>
-	extrasOf(c as unknown as Obj, CASE_KEYS);
+	extrasOf(c as unknown as Obj, CASE_KEYS, { left: MAX_EXTRAS });
 
 /** The fields of `o` this version does not know, as they are (`CASE_KEYS`). */
-function extrasOf(o: Obj, known: ReadonlySet<string>): Obj {
+function extrasOf(
+	o: Obj,
+	known: ReadonlySet<string>,
+	/** What the whole case may still keep (`MAX_EXTRAS`), shared by its parts. */
+	budget: { left: number },
+): Obj {
 	const out: Obj = {};
+	let keys = 0;
 	for (const [key, value] of Object.entries(o)) {
 		if (known.has(key) || value === undefined) continue;
 		// Bounded: what nothing here reads does not grow a case without end.
-		const size = JSON.stringify(value)?.length ?? 0;
-		if (size <= MAX_EXTRA) out[key] = value;
+		const size = key.length + (JSON.stringify(value)?.length ?? 0);
+		if (size > MAX_EXTRA || size > budget.left || keys >= MAX_EXTRA_KEYS)
+			continue;
+		out[key] = value;
+		budget.left -= size;
+		keys++;
 	}
 	return out;
 }
@@ -1749,6 +1762,7 @@ function extrasOf(o: Obj, known: ReadonlySet<string>): Obj {
 /** Check that `value` is a case in format `sitegloss/2` and return it typed. */
 export function validateCase(value: unknown): Case {
 	const o = obj(value, "case");
+	const extras = { left: MAX_EXTRAS };
 	const format = o["format"];
 	if (format === OLD_CASE_FORMAT)
 		throw new CaseError(
@@ -1773,7 +1787,7 @@ export function validateCase(value: unknown): Case {
 		if (image !== shotImage(shotId))
 			fail(`case.shots[${i}].image`, `must be ${shotImage(shotId)}`);
 		return {
-			...extrasOf(s, SHOT_KEYS),
+			...extrasOf(s, SHOT_KEYS, extras),
 			id: shotId,
 			image,
 			scrollX: num(s["scrollX"], `case.shots[${i}].scrollX`),
@@ -1820,7 +1834,7 @@ export function validateCase(value: unknown): Case {
 		const highlight = highlightWithin(a["highlight"], drawn);
 		return {
 			// What a newer Sitegloss wrote and this one does not know (DEC-066).
-			...extrasOf(a, MARK_KEYS),
+			...extrasOf(a, MARK_KEYS, extras),
 			id: markId,
 			number,
 			shot,
@@ -1888,7 +1902,7 @@ export function validateCase(value: unknown): Case {
 	const link = o["link"];
 	const pages = o["pages"];
 	return {
-		...extrasOf(o, CASE_KEYS),
+		...extrasOf(o, CASE_KEYS, extras),
 		format: CASE_FORMAT,
 		id: id(o["id"], "case.id"),
 		title: str(o["title"], "case.title", MAX_TITLE),
