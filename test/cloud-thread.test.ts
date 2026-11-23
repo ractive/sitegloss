@@ -8,6 +8,7 @@ import {
 	type Case,
 	isOwnComment,
 	newId,
+	withAssigned,
 	withCaseComment,
 	withCaseCommentText,
 	withClosed,
@@ -17,11 +18,11 @@ import {
 	withResolution,
 } from "../src/lib/case.ts";
 import type { Op } from "../src/lib/cloud/api.ts";
-import type { CaseBook } from "../src/lib/cloud/book.ts";
+import { type CaseBook, KEYS, membersOf } from "../src/lib/cloud/book.ts";
 import { commentIn, mergeCase, viaOf } from "../src/lib/cloud/wire.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
 import type { FakeApi } from "./cloud-fake.ts";
-import { FakeServer } from "./cloud-fake.ts";
+import { FakeServer, TEAM } from "./cloud-fake.ts";
 import {
 	addMark,
 	change,
@@ -269,6 +270,115 @@ describe("closing", () => {
 		);
 		expect(server.caseOf("c_flow")?.closed?.user?.name).toBe("Dana Developer");
 		expect((await caseHere(tess)).closed).toBeDefined();
+	});
+});
+
+describe("the hand-over (DEC-071)", () => {
+	test("assigned here, it goes with the sync; the team reads who has it and who gave it, and who started the case", async () => {
+		await shared();
+		recording(tess);
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(tess, dana);
+		expect(
+			sent(tess, "case.patch").map((o) => "assignee" in o && o.assignee),
+		).toEqual([DANA.id]);
+		expect(server.caseOf("c_flow")?.assignee).toEqual(DANA);
+		const there = await caseHere(dana);
+		expect(there.assignee).toEqual(DANA);
+		expect(there.assignedBy?.user).toEqual(TESS);
+		expect(there.createdBy).toEqual(TESS);
+		// Taken: nothing waits any more here.
+		expect((await caseHere(tess)).assign).toBeUndefined();
+		expect((await caseHere(tess)).assignee).toEqual(DANA);
+	});
+
+	test("a change that does not name the assignee leaves it, here and at the server", async () => {
+		await shared();
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(tess, dana);
+		recording(dana);
+		await change(dana, "c_flow", (c, now) =>
+			withClosed(
+				withVerdict(c, "Both are fixed by the new theme.", now),
+				false,
+				now,
+			),
+		);
+		await change(dana, "c_flow", (c, now) =>
+			withResolution(c, "m1", { kind: "fixed", note: "" }, now),
+		);
+		await sync(dana, tess);
+		expect(sent(dana, "case.patch").some((o) => "assignee" in o)).toBe(false);
+		expect(server.caseOf("c_flow")?.assignee).toEqual(DANA);
+		expect((await caseHere(tess)).assignee).toEqual(DANA);
+		expect((await caseHere(dana)).assignee).toEqual(DANA);
+	});
+
+	test("assigned while offline: it waits here, and goes once the server answers", async () => {
+		await shared();
+		tess.api.offline = true;
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await tess.engine.request();
+		expect((await caseHere(tess)).assign?.to).toEqual({
+			id: DANA.id,
+			name: DANA.name,
+		});
+		expect(server.caseOf("c_flow")?.assignee).toBeNull();
+		tess.api.offline = false;
+		await sync(tess);
+		expect(server.caseOf("c_flow")?.assignee).toEqual(DANA);
+		expect((await caseHere(tess)).assign).toBeUndefined();
+	});
+
+	test("nobody is sent as null; a teammate's later assignment counts here", async () => {
+		await shared();
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(tess, dana);
+		await change(dana, "c_flow", (c, now) => withAssigned(c, null, now));
+		await sync(dana, tess);
+		expect(server.caseOf("c_flow")?.assignee).toBeNull();
+		expect((await caseHere(tess)).assignee).toBeNull();
+		await change(dana, "c_flow", (c, now) =>
+			withAssigned(c, { id: TESS.id, name: TESS.name }, now),
+		);
+		await sync(dana, tess);
+		expect((await caseHere(tess)).assignee).toEqual(TESS);
+	});
+
+	test("the team's members are kept for the Assign menu; a server from before lists none", async () => {
+		await shared();
+		const kept = (d: Device) =>
+			membersOf(d.kv.data.get(KEYS.members), TEAM)?.map((m) => m.name);
+		expect(kept(tess)?.sort()).toEqual([DANA.name, TESS.name]);
+		const old = new FakeServer();
+		old.beforeAssignees = true;
+		const pat = device("pat", old.api({ id: "u_pat", name: "Pat" }));
+		await signIn(pat);
+		await sync(pat);
+		expect(kept(pat)).toBeUndefined();
+	});
+
+	test("an export carries the server's records, never what waits to be sent", async () => {
+		await shared();
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(tess, dana);
+		await change(tess, "c_flow", (c, now) => withAssigned(c, null, now));
+		const file = await readExport(
+			await exportCase(tess.store, await caseHere(tess)),
+		);
+		expect(file.case.assignee).toEqual(DANA);
+		expect(file.case.createdBy).toEqual(TESS);
+		expect(file.case.assign).toBeUndefined();
 	});
 });
 

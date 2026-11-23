@@ -187,6 +187,10 @@ export class FakeServer {
 	future = false;
 	/** Refuse operations of these types with a code no client knows yet. */
 	refuseWith: { type: Op["type"]; code: string; message: string } | undefined;
+	/** The team's members (DEC-071): everyone a device was made for, and whoever is added. */
+	readonly members = new Map<string, UserRef>();
+	/** A server from before assignees: no members, no assignee on a case, `assignee` in a patch ignored. */
+	beforeAssignees = false;
 
 	#tick(): string {
 		this.now = new Date(this.now.getTime() + 1000);
@@ -522,6 +526,7 @@ export class FakeServer {
 						importedAt: op.case.importedAt ?? null,
 						closed: null,
 						createdBy: user,
+						...(this.beforeAssignees ? {} : { assignee: null }),
 						createdAt: op.case.createdAt ?? at,
 						updatedAt: at,
 						rev,
@@ -531,7 +536,25 @@ export class FakeServer {
 			}
 			case "case.patch": {
 				const row = this.#live(op.caseId);
-				const v = row.value;
+				let v = row.value;
+				// The assignee (DEC-071): a member of the team, or nobody;
+				// stamped from the caller; the same again changes nothing.
+				if (op.assignee !== undefined && !this.beforeAssignees) {
+					const to =
+						op.assignee === null ? null : this.members.get(op.assignee);
+					if (to === undefined)
+						throw new Refusal(
+							"invalid",
+							"The assignee is no member of the team.",
+						);
+					if ((v.assignee?.id ?? null) !== (to?.id ?? null)) {
+						const { assignedBy: _s, ...rest } = v;
+						v =
+							to === null
+								? { ...rest, assignee: null }
+								: { ...rest, assignee: to, assignedBy: { at, user } };
+					}
+				}
 				row.value = {
 					...v,
 					title: op.title ?? v.title,
@@ -1040,6 +1063,8 @@ export class FakeServer {
 	/** A device of `user`'s. */
 	api(user: UserRef & { email?: string }): FakeApi {
 		const server = this;
+		if (!server.members.has(user.id))
+			server.members.set(user.id, { id: user.id, name: user.name });
 		const reach = (call: string) => {
 			api.calls.push(call);
 			if (api.offline)
@@ -1078,6 +1103,12 @@ export class FakeServer {
 					`GET changes ${since ?? ""}${limit === undefined ? "" : ` limit ${limit}`}`.trim(),
 				);
 				return server.changes(since, limit);
+			},
+			async members(_team) {
+				reach("GET members");
+				return server.beforeAssignees
+					? undefined
+					: structuredClone([...server.members.values()]);
 			},
 			async getCase(_team, caseId) {
 				reach(`GET case ${caseId}`);
@@ -1251,7 +1282,7 @@ export function fakeHttp(
 				: Response.json(detail);
 		}
 		const route =
-			/^\/api\/v1\/teams\/([^/]+)\/(changes|ops|blobs)(?:\/([0-9a-f]+))?$/.exec(
+			/^\/api\/v1\/teams\/([^/]+)\/(changes|ops|blobs|members)(?:\/([0-9a-f]+))?$/.exec(
 				url.pathname,
 			);
 		if (route === null || route[1] !== TEAM)
@@ -1267,6 +1298,12 @@ export function fakeHttp(
 					limit === null ? undefined : Number(limit),
 				),
 			);
+		}
+		if (what === "members") {
+			const members = await api.members(TEAM);
+			return members === undefined
+				? no(404, "not_found", "Not found.")
+				: Response.json({ members });
 		}
 		if (what === "ops") {
 			const body = JSON.parse(String(init?.body)) as { ops: Op[] };

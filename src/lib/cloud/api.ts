@@ -37,6 +37,8 @@ export type CaseDetail = Schemas["CaseDetail"];
 export type Removed = Schemas["Removed"];
 export type Me = Schemas["Me"];
 export type Team = Schemas["TeamMembership"];
+/** A member of a team, as far as a case is assigned to them (DEC-071): id and name. */
+export type Member = Schemas["TeamMember"];
 
 /** The most operations in one request, and about how much text. */
 export const MAX_OPS = 100;
@@ -96,6 +98,11 @@ export interface Api {
 	): Promise<Changes>;
 	/** One case, whole, as the server has it now; none: the team has no such case. */
 	getCase(teamId: string, caseId: string): Promise<CaseDetail | undefined>;
+	/**
+	 * The team's members, to assign a case to (DEC-071); none: the server
+	 * does not offer them (one from before assignees).
+	 */
+	members(teamId: string): Promise<Member[] | undefined>;
 	ops(teamId: string, ops: readonly Op[]): Promise<OpsResponse>;
 	hasBlob(teamId: string, sha256: string): Promise<boolean>;
 	putBlob(teamId: string, sha256: string, image: Blob): Promise<void>;
@@ -225,6 +232,12 @@ export function httpApi(options: HttpApiOptions): Api {
 			);
 			return response.status === 404 ? undefined : json<CaseDetail>(response);
 		},
+		async members(teamId) {
+			const response = await call(`${team(teamId)}/members`, {}, [404]);
+			if (response.status === 404) return undefined;
+			const { members } = await json<{ members?: unknown }>(response);
+			return membersIn(members);
+		},
 		ops: async (teamId, ops) =>
 			json<OpsResponse>(
 				await call(`${team(teamId)}/ops`, {
@@ -254,6 +267,26 @@ export function httpApi(options: HttpApiOptions): Api {
 		},
 	};
 }
+
+/**
+ * The members as the server listed them, each with an id and a name within
+ * what a case keeps of a person; anything else is left out.
+ */
+export function membersIn(value: unknown): Member[] {
+	if (!Array.isArray(value)) return [];
+	const out: Member[] = [];
+	for (const m of value.slice(0, MAX_MEMBERS)) {
+		if (typeof m !== "object" || m === null) continue;
+		const { id, name } = m as { id?: unknown; name?: unknown };
+		if (typeof id !== "string" || typeof name !== "string") continue;
+		if (id === "" || id.length > 64) continue;
+		out.push({ id, name: name.slice(0, 200) });
+	}
+	return out;
+}
+
+/** The most members a list keeps: a team larger than this is not listed whole. */
+export const MAX_MEMBERS = 500;
 
 /** An answer's body, read up to `max` bytes (body.ts), with what went wrong said as the API's. */
 async function bodyOf(response: Response, max: number): Promise<Uint8Array> {

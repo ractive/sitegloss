@@ -39,6 +39,7 @@ import {
 	MAX_OPS,
 	MAX_OPS_BYTES,
 	type Me,
+	type Member,
 	type Op,
 	type OpResult,
 	type OpType,
@@ -66,6 +67,7 @@ import {
 	type Rejected,
 	type Reread,
 	readAccount,
+	type TeamMembers,
 	teamOf,
 } from "./book.ts";
 import {
@@ -564,6 +566,7 @@ export class CloudSync {
 		return this.#exclusive(async () => {
 			await this.#detachAll();
 			await this.#deps.kv.remove(KEYS.account);
+			await this.#deps.kv.remove(KEYS.members);
 			await this.#books.publishModes();
 			await this.#say({ ...OFF });
 		});
@@ -642,12 +645,14 @@ export class CloudSync {
 			if (this.#now().getTime() - account.checkedAt < ACCOUNT_CHECK_MS)
 				return false;
 			let next: Account;
+			let members = false;
 			try {
-				next = await this.#refresh(
-					this.#deps.api(account.server),
-					account,
-					ACCOUNT_CHECK_MS,
-				);
+				const api = this.#deps.api(account.server);
+				next = await this.#refresh(api, account, ACCOUNT_CHECK_MS);
+				// The members as often as a run asks for them: the look on being
+				// shown stays one request, unless the team changed.
+				if (next.teamId !== undefined)
+					members = await this.#members(api, next.teamId);
 			} catch (error) {
 				// Not reached, or refused: the next run asks and says it.
 				if (error instanceof ApiFailure) return false;
@@ -656,7 +661,8 @@ export class CloudSync {
 			const changed =
 				next.teamId !== account.teamId ||
 				JSON.stringify(next.teams) !== JSON.stringify(account.teams);
-			if (!changed) return false;
+			// Only the members changed: said, and nothing to sync for it.
+			if (!changed) return members;
 			await this.#books.publishModes();
 			const before = await this.status();
 			if (teamOf(next) !== undefined)
@@ -900,6 +906,7 @@ export class CloudSync {
 				});
 				return;
 			}
+			await this.#members(api, team.id);
 			this.#read = undefined;
 			await this.#readThreadsOnce(team);
 			await this.#flush(api, team);
@@ -1007,6 +1014,37 @@ export class CloudSync {
 		}
 		await this.#deps.kv.set({ [KEYS.account]: next });
 		return next;
+	}
+
+	/**
+	 * The team's members, to assign a case to (DEC-071), asked for when
+	 * those stored are another team's or older than `freshMs`. Whether
+	 * what is stored changed. Not reached or refused: what is stored stays
+	 * (an assignment made offline picks from it).
+	 */
+	async #members(
+		api: Api,
+		teamId: string,
+		freshMs = ACCOUNT_FRESH_MS,
+	): Promise<boolean> {
+		const now = this.#now().getTime();
+		const stored = (await this.#deps.kv.get(KEYS.members)) as
+			| TeamMembers
+			| undefined;
+		if (stored?.teamId === teamId && now - stored.at < freshMs) return false;
+		let members: Member[] | undefined;
+		try {
+			members = await api.members(teamId);
+		} catch (error) {
+			if (error instanceof ApiFailure) return false;
+			throw error;
+		}
+		const next: TeamMembers = { teamId, members: members ?? null, at: now };
+		await this.#deps.kv.set({ [KEYS.members]: next });
+		return (
+			stored?.teamId !== teamId ||
+			JSON.stringify(stored.members) !== JSON.stringify(next.members)
+		);
 	}
 
 	// --- sending ----------------------------------------------------------------------
