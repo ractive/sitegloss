@@ -4040,8 +4040,11 @@ function renderAi({ ai }: PanelState): void {
 	showTalking(ai.connected && ai.working);
 }
 
-/** How long the chip keeps saying an app talks after its last call ended. */
-export const TALKING_AFTER_MS = 1500;
+/**
+ * How long the chip keeps saying an app talks after its last call ended:
+ * most calls take a blink, and the glow has to be seen.
+ */
+export const TALKING_AFTER_MS = 2500;
 let talkingUntil: ReturnType<typeof setTimeout> | undefined;
 
 /**

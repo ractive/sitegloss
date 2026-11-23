@@ -724,10 +724,31 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 
 /*
  * An AI app is talking (DEC-063): while its call runs and a moment after,
- * the dot pulses a soft ring in its own green. A shadow, so nothing moves.
+ * the whole button glows in the connection's green, and its dot with it.
+ * (First only the dot pulsed, 8 px of it: the owner did not see it.) Shadows
+ * and the edge's colour only, so nothing moves and nothing changes size.
  */
+.ai-pill[data-talking] {
+	border-color: var(--st-verified);
+	animation: talking-pill 1.2s ease-in-out infinite;
+}
+
 .ai-pill[data-talking] .dot {
 	animation: talking 1.2s ease-in-out infinite;
+}
+
+@keyframes talking-pill {
+	0%,
+	100% {
+		box-shadow:
+			0 0 0 0 color-mix(in srgb, var(--st-verified) 50%, transparent),
+			0 0 0 0 color-mix(in srgb, var(--st-verified) 0%, transparent);
+	}
+	50% {
+		box-shadow:
+			0 0 0 3px color-mix(in srgb, var(--st-verified) 35%, transparent),
+			0 0 14px 3px color-mix(in srgb, var(--st-verified) 45%, transparent);
+	}
 }
 
 @keyframes talking {
@@ -743,6 +764,12 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 
 /* Without motion: a steady ring for the same time. */
 @media (prefers-reduced-motion: reduce) {
+	.ai-pill[data-talking] {
+		animation: none;
+		box-shadow: 0 0 0 3px
+			color-mix(in srgb, var(--st-verified) 35%, transparent);
+	}
+
 	.ai-pill[data-talking] .dot {
 		animation: none;
 		box-shadow: 0 0 0 3px
