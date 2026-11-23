@@ -385,11 +385,19 @@ const sizeOf = (s: Size) => `${s.width}×${s.height}`;
 
 const percent = (score: number) => `${Math.round(score * 100)}%`;
 
-function setHint(el: HTMLElement, text: string | undefined): void {
+function setHint(
+	el: HTMLElement,
+	text: string | undefined,
+	again = false,
+): void {
 	el.hidden = text === undefined;
 	// Written only when it changed: a status line repeats what it is given,
-	// and a render for something else must not make it speak again.
-	if (el.textContent !== (text ?? "")) el.textContent = text ?? "";
+	// and a render for something else must not make it speak again; `again`:
+	// an action wrote it anew, the same words too, to be said again.
+	if (again && text !== undefined) {
+		el.textContent = "";
+		el.textContent = text;
+	} else if (el.textContent !== (text ?? "")) el.textContent = text ?? "";
 }
 
 /** Under Export while Chrome's prompt is open: what the answer does. */
@@ -1156,6 +1164,8 @@ interface CaseParts {
 	/** The case's pages, where it has several (DEC-038). */
 	pages: HTMLUListElement;
 	pagesKey: string;
+	/** The action hint last written (`caseHintSeq`). */
+	hintSeq: number;
 	/** Whether the case syncs with the team, and "Share with team" (DEC-039). */
 	team: HTMLElement;
 	teamText: HTMLElement;
@@ -1602,6 +1612,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		meta: h("p", { class: "case-meta" }, page, about),
 		pages: h("ul", { class: "case-pages", id: "case-pages", hidden: true }),
 		pagesKey: "",
+		hintSeq: 0,
 		team: h(
 			"p",
 			{ class: "meta case-team", id: "case-team", hidden: true },
@@ -2952,8 +2963,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 	// Said once the draw has settled, not at every step of its count
 	// (DEC-064's review): while it settles, the line says what it said.
 	const settling = foundNow !== undefined && state.loaded?.settling === true;
+	const again = typeof caseHint === "string" && state.caseHintSeq !== p.hintSeq;
+	p.hintSeq = state.caseHintSeq;
 	if (!settling) {
-		setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow);
+		setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow, again);
 		p.hint.classList.toggle("visually-hidden", foundNow !== undefined);
 	}
 

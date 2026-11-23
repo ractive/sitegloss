@@ -296,7 +296,7 @@ describe("a name that stays while the text changes is still the element (DEC-064
 		expect(found(stored, there, "button")).toEqual([true, "found"]);
 	});
 
-	test("a labelled region whose content is other data", () => {
+	test("a labelled region whose content is other data: the region, unsure (nothing tells it from the one row left of a list, DEC-064's second review)", () => {
 		const region = (rows: string) =>
 			page(`<section aria-label="Recent cases"><p>${rows}</p></section>`);
 		const stored = describeElement(
@@ -305,7 +305,7 @@ describe("a name that stays while the text changes is still the element (DEC-064
 			) as Element,
 		);
 		const there = region("Settings page spacing, 7 marks");
-		expect(found(stored, there, "section")).toEqual([true, "found"]);
+		expect(found(stored, there, "section")).toEqual([true, "probable"]);
 	});
 
 	test("the same Edit under another user's name is found", () => {
@@ -320,5 +320,88 @@ describe("a name that stays while the text changes is still the element (DEC-064
 			true,
 			"found",
 		]);
+	});
+});
+
+describe("the four cases of a name and a text, together, so none is traded for another (DEC-064's second review)", () => {
+	const page = (body: string) => {
+		const window = new Window({ url: "https://www.example.com/app" });
+		const doc = window.document as unknown as Document;
+		doc.write(
+			`<header><nav aria-label="Main"><a href="/">Home</a></nav></header><main><h1>Cases</h1>${body}</main>`,
+		);
+		return doc;
+	};
+	const outcome = (stored: ElementDetails, doc: Document) => {
+		const { elements, all } = details(doc);
+		const ranked = rank(stored, all);
+		return { best: elements[ranked[0]?.index ?? -1], status: classify(ranked) };
+	};
+	const row = (n: number, text: string) =>
+		`<li><a class="row" aria-label="Open case" href="/cases/${n}">${text}</a></li>`;
+
+	test("1. the same text under another name (the two Edit): never found", () => {
+		const card = (comment: boolean) =>
+			page(
+				`<article><p>The button is too small</p><button aria-label="Edit the text of mark 47">Edit</button>${comment ? `<p>Done</p><button aria-label="Edit the comment by Dana Developer">Edit</button><button aria-label="Delete the comment by Dana Developer">Delete</button>` : ""}</article>`,
+			);
+		const stored = describeElement(
+			card(true).querySelector('[aria-label^="Edit the comment"]') as Element,
+		);
+		expect(outcome(stored, card(false)).status === "found").toBe(false);
+		const both = card(true);
+		const there = outcome(stored, both);
+		expect(there.status).toBe("found");
+		expect(
+			there.best === both.querySelector('[aria-label^="Edit the comment"]'),
+		).toBe(true);
+	});
+
+	test("2. one element's text changed under its unique name (12, then 3): found", () => {
+		const bell = (count: string) =>
+			page(`<button class="Bell" aria-label="Notifications">${count}</button>`);
+		const stored = describeElement(
+			bell("12").querySelector("button") as Element,
+		);
+		const there = bell("3");
+		const got = outcome(stored, there);
+		expect(got.status).toBe("found");
+		expect(got.best === there.querySelector("button")).toBe(true);
+	});
+
+	test("3. rows sharing a generic name, the stored row gone: never found on another row", () => {
+		const list = (rows: string[]) => page(`<ul>${rows.join("")}</ul>`);
+		const marked = list([
+			row(1, "Checkout button too pale"),
+			row(2, "Settings page spacing"),
+			row(3, "Help link is broken"),
+		]);
+		const stored = describeElement(
+			marked.querySelector('a[href="/cases/1"]') as Element,
+		);
+		const there = list([
+			row(2, "Settings page spacing"),
+			row(3, "Help link is broken"),
+		]);
+		expect(outcome(stored, there).status === "found").toBe(false);
+		// One row left, the name now on no other element: still not found.
+		const one = list([row(2, "Settings page spacing")]);
+		expect(outcome(stored, one).status === "found").toBe(false);
+		// With its row there, it is that row.
+		const got = outcome(stored, marked);
+		expect(got.status).toBe("found");
+		expect(got.best === marked.querySelector('a[href="/cases/1"]')).toBe(true);
+	});
+
+	test("4. an element with no accessible name of its own, by its text: found", () => {
+		const doc = (extra: string) =>
+			page(
+				`<section><p class="Intro">Fill in your postcode first</p>${extra}</section>`,
+			);
+		const stored = describeElement(doc("").querySelector("p.Intro") as Element);
+		const there = doc("<p>Another paragraph</p>");
+		const got = outcome(stored, there);
+		expect(got.status).toBe("found");
+		expect(got.best === there.querySelector("p.Intro")).toBe(true);
 	});
 });

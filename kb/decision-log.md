@@ -3660,4 +3660,27 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   - The scroll hold's room is no longer taken back at a press; it goes back only as it
     scrolls out of sight, so nothing on screen moves. The status line says what a draw
     found once it settled (after the searches again), and only when that changed.
+- **Second review of those fixes (8 findings):**
+  - Matching, reworked again so the four cases hold together (one test for all four):
+    the same text under another name is never found (the two "Edit"); a text that changed
+    under a name only that element carries is found when the text is short (a count, 12
+    then 3); a name several candidates carry ("Open case" on every row) counts only with
+    the text; and a text long enough to compare that is another text altogether leaves
+    the candidate probable at best, also when one row is left and its name is now on no
+    other element. The price: a labelled region whose whole content changed is drawn as
+    probable, not found; nothing recorded tells it from the one row left of a list
+    (recording whether the name was shared when the mark was made would, and needs the
+    case format to grow).
+  - The field's token is used once: every load of the frame gets a new address and token
+    before anything is handed, the frame takes one hello per load, and the frame cannot
+    be seen or typed in until it answered that load's hello. Measured in Chrome 156 and
+    Firefox 160, with the page's own listeners and a PerformanceObserver: the page sees
+    no resource or navigation entry for the field's frame, before or after it moves the
+    overlay itself (a plain append, which loads the frame again), `window.length` stays 0
+    and `window[0]` is undefined; so the page cannot read the frame's address or token.
+    After the page's move the field was at its second address with a new token.
+  - Also: a late "ready" puts the focus into the field; the focus is restored after a
+    move from what the overlay saw before it, not from the frame's blur; an action's hint
+    is said again when it repeats; a draw that stops early stops settling; the viewer's
+    queue leaves no rejection unhandled; tests now exercise what their names say.
 

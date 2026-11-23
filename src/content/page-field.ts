@@ -6,11 +6,14 @@
  * is injected after them): in the frame they see neither. What was typed
  * comes back over the frame's port; `value` is the last that came.
  *
- * Where the frame does not come up (a page that refuses the extension's
- * frame), the dialog says so and offers the side panel instead, rather than
- * a field nobody can type in. A frame that reloads (the overlay moved into a
- * modal dialog of the page) gets what it had back: the text, the label, and
- * the focus if it had it.
+ * Each load of the frame gets a token of its own, handed once: a frame that
+ * loads again (the overlay moved into a modal dialog of the page, which the
+ * page can cause) is sent to a new address with a new token before anything
+ * is handed to it, so a token is never good twice. The frame cannot be seen
+ * or typed in until it answered this load's hello ("ready"). Where it does
+ * not come up, the dialog says so and offers the side panel instead. A frame
+ * that loads again gets what it had back: the text, the label, the state,
+ * and the focus if it had it.
  */
 
 import type { FieldInit, FromField, ToField } from "../lib/field-protocol.ts";
@@ -44,8 +47,15 @@ export class PageField {
 	#port: MessagePort | undefined;
 	#queue: ToField[] = [];
 	#ready = false;
-	#focused = false;
+	/** The focus is to be in the field once it is ready (asked, or held before a reload). */
+	#wantFocus = false;
+	/** Held across a move: the old document's blur as it goes does not count. */
+	#holdFocus = false;
 	#timer: ReturnType<typeof setTimeout> | undefined;
+	/** This load's token, and whether it was handed already. */
+	#token = "";
+	#handed = false;
+	#loads = 0;
 	readonly #fallback: HTMLDivElement;
 	onInput: ((value: string) => void) | undefined;
 	onSubmit: ((value: string) => void) | undefined;
@@ -56,24 +66,42 @@ export class PageField {
 	constructor(doc: Document, init: FieldInit) {
 		this.#init = { ...init };
 		this.#value = init.value;
-		const token = frameToken();
 		const frame = doc.createElement("iframe");
 		frame.className = "field";
 		frame.title = init.label;
+		// Not to be seen or typed in until this load answered (see above).
+		frame.style.visibility = "hidden";
 		const url = fieldUrl();
-		frame.src = url === undefined ? "about:blank" : `${url}#${token}`;
+		const go = () => {
+			this.#token = frameToken();
+			this.#handed = false;
+			this.#loads++;
+			frame.src =
+				url === undefined
+					? "about:blank"
+					: `${url}?load=${this.#loads}#${this.#token}`;
+		};
+		go();
 		frame.addEventListener("load", () => {
 			if (url === undefined) return;
 			this.#port?.close();
-			const port = handPort(frame, token, {
+			this.#port = undefined;
+			this.#ready = false;
+			frame.style.visibility = "hidden";
+			// Loaded again with a token already handed (moved, or reloaded by
+			// the page): to a new address and a new token first.
+			if (this.#handed) {
+				go();
+				return;
+			}
+			this.#handed = true;
+			const port = handPort(frame, this.#token, {
 				...this.#init,
 				value: this.#value,
 			});
 			port.onmessage = (e: MessageEvent<FromField>) => this.receive(e.data);
 			this.#port = port;
 			for (const m of this.#queue.splice(0)) port.postMessage(m);
-			// Loaded again (moved with the overlay): the focus it had.
-			if (this.#focused) port.postMessage({ type: "focus" } satisfies ToField);
 			this.#wait();
 		});
 		const say = doc.createElement("p");
@@ -140,12 +168,23 @@ export class PageField {
 	}
 
 	focus(): void {
+		this.#wantFocus = true;
 		if (!this.available) {
 			this.#fallback.querySelector("button")?.focus();
 			return;
 		}
+		if (!this.#ready) return;
+		this.#focusField();
+	}
+
+	/** The field had the focus as the overlay moved: it gets it back once loaded again. */
+	keepFocus(): void {
+		this.#wantFocus = true;
+		this.#holdFocus = true;
+	}
+
+	#focusField(): void {
 		this.frame.focus();
-		this.#focused = true;
 		this.#say({ type: "focus" });
 	}
 
@@ -159,12 +198,24 @@ export class PageField {
 		if (m.type === "ready") {
 			this.#ready = true;
 			clearTimeout(this.#timer);
+			// Late, after the way out was offered: the focus that was on it, or
+			// asked for, goes into the field, not to the page (DEC-064's
+			// second review).
+			const root = this.element.getRootNode() as Document | ShadowRoot;
+			const onFallback =
+				!this.available && this.#fallback.contains(root.activeElement ?? null);
 			this.frame.hidden = false;
+			this.frame.style.visibility = "";
 			this.#fallback.hidden = true;
+			this.#holdFocus = false;
+			if (this.#wantFocus || onFallback) this.#focusField();
 			return;
 		}
 		if (m.type === "focus") {
-			this.#focused = m.on;
+			// The person moved on from the field: no focus to give back; but
+			// not the blur of a document that goes as the overlay moves.
+			if (m.on) this.#wantFocus = true;
+			else if (!this.#holdFocus) this.#wantFocus = false;
 			return;
 		}
 		if (m.type === "height") {

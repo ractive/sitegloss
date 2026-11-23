@@ -133,6 +133,12 @@ export interface PanelState {
 	images: CaseImages | undefined;
 	/** Under the open case's buttons. */
 	caseHint: CaseHint | undefined;
+	/**
+	 * One more for every hint an action writes, the same words again too:
+	 * the line is written anew, so a second failure is said again
+	 * (DEC-064's second review).
+	 */
+	caseHintSeq: number;
 	loaded: Loaded | undefined;
 	/**
 	 * An import that would replace a case that is here already; in a file of
@@ -314,6 +320,7 @@ export const initialState = (): PanelState => ({
 	current: undefined,
 	images: undefined,
 	caseHint: undefined,
+	caseHintSeq: 0,
 	loaded: undefined,
 	importing: undefined,
 	importError: undefined,

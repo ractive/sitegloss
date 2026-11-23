@@ -107,6 +107,7 @@ import {
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
+import { settledLoaded } from "./settle.ts";
 import { cssSize, onScreen, type Size, sameSize, windowFor } from "./size.ts";
 import {
 	type CaseHint,
@@ -493,6 +494,7 @@ async function readMatches(
 				state.current?.id === c.id
 			)
 				void readMatches(state.current, tabId, hint, false);
+			else settled(c.id, tabId);
 		},
 		testWait("routeSettleMs", ROUTE_SETTLE_MS),
 	);
@@ -586,7 +588,19 @@ async function loadOnLoaded(
 		}
 	} finally {
 		if (drawing === target) setDrawing(undefined);
+		// Stopped early (busy too long, the tab or the case changed): what
+		// it has is what it found; the status line may say it now
+		// (DEC-064's second review). Not a newer draw's: that one settles itself.
+		if (work.current()) settled(c.id, tabId);
 	}
+}
+
+/** The draw of that case on that tab is no longer settling. */
+function settled(caseId: string, tabId: number): void {
+	if (settledLoaded(state.loaded, caseId, tabId) === undefined) return;
+	update((s) => {
+		s.loaded = settledLoaded(s.loaded, caseId, tabId) ?? s.loaded;
+	});
 }
 
 /** The newest `follow`: one that started later knows the tab in front better. */
@@ -1147,7 +1161,11 @@ function closeCase(): void {
 function caseHintWriter(): (text: CaseHint | undefined) => void {
 	const may = caseHints.action();
 	return (text) => {
-		if (may()) update((s) => (s.caseHint = text));
+		if (may())
+			update((s) => {
+				s.caseHint = text;
+				s.caseHintSeq++;
+			});
 	};
 }
 

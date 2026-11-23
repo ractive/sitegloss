@@ -47,9 +47,12 @@ export function openViewer(
 		.catch(() => undefined)
 		.then(() => showInViewer(caseId, markId, pictureId, from));
 	queues.set(from, next);
-	void next.finally(() => {
+	// Cleaned up either way; a failed open is the caller's to handle, not
+	// an uncaught rejection of this chain (DEC-064's second review).
+	const cleanup = () => {
 		if (queues.get(from) === next) queues.delete(from);
-	});
+	};
+	next.then(cleanup, cleanup);
 	return next;
 }
 

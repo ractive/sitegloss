@@ -23,6 +23,7 @@ import {
 	type RenderedMark,
 } from "../lib/marks.ts";
 import { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
+import { fieldOf } from "./page-field.ts";
 
 declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 
@@ -865,6 +866,9 @@ export class Overlay {
 			this.popover.querySelector("iframe.field")
 		)
 			return;
+		// The field that has the focus gets it back after the move.
+		const focused = this.root.activeElement;
+		if (focused?.tagName === "IFRAME") fieldOf(focused)?.keepFocus();
 		// Where the browser can, a move that keeps the frames as they are
 		// (`moveBefore`); else the field's frame loads again and gets back its
 		// text, label and focus (`PageField`).

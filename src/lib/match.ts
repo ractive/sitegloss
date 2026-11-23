@@ -12,6 +12,12 @@ export const FOUND = 0.75;
 export const PROBABLE = 0.5;
 /** How much a name that says more than the text counts against that text (`identity`). */
 export const NAME_WEIGHT = 0.7;
+/** Texts this long are compared; a shorter one (a count, "12") is not held against a name. */
+const MIN_COMPARED = 4;
+/** Under this, a compared text is another text. */
+const OTHER_TEXT = 0.3;
+/** An identity that leaves a candidate probable at best (`identityFactor` 0.75). */
+const UNSURE = 0.6;
 /** Two candidates closer than this are a tie. */
 export const TIE = 0.03;
 
@@ -143,14 +149,26 @@ function comparable(
 	return { ...candidate, attributes: { ...candidate.attributes, href } };
 }
 
-const NOTHING_REPEATED: ReadonlySet<Naming> = new Set();
+/** A naming value several candidates share; "name": the accessible name. */
+type Repeated = Naming | "name";
 
-/** Which of the stored element's naming values several candidates have. */
+const NOTHING_REPEATED: ReadonlySet<Repeated> = new Set();
+
+/**
+ * Which of the stored element's naming values several candidates have, the
+ * accessible name among them: a name every row of a list carries ("Open
+ * case") names none of them (DEC-064's second review).
+ */
 function repeatedNames(
 	stored: ElementDetails,
 	candidates: readonly ElementDetails[],
-): Set<Naming> {
-	const repeated = new Set<Naming>();
+): Set<Repeated> {
+	const repeated = new Set<Repeated>();
+	if (stored.name) {
+		let count = 0;
+		for (const c of candidates) if (c.name === stored.name) count++;
+		if (count > 1) repeated.add("name");
+	}
 	for (const key of NAMING) {
 		const value = naming(stored, key);
 		if (!value) continue;
@@ -172,7 +190,7 @@ function repeatedNames(
 export function identity(
 	stored: ElementDetails,
 	candidate: ElementDetails,
-	repeated: ReadonlySet<Naming> = NOTHING_REPEATED,
+	repeated: ReadonlySet<Repeated> = NOTHING_REPEATED,
 ): number | undefined {
 	candidate = comparable(stored, candidate);
 	const same = (key: Naming) =>
@@ -180,24 +198,32 @@ export function identity(
 	const names = (key: Naming) => same(key) && !repeated.has(key);
 	if (names("testId") || names("id")) return 1;
 	// A name that says more than the visible text (an `aria-label` beyond
-	// "Edit") is what tells such elements apart, so it weighs most; the text
-	// counts too, but cannot make up for another name. In one card of the web
-	// app, "Edit" for the mark's text and "Edit" and "Delete" for a comment,
-	// named "Edit the comment by …" and "Delete the comment by …" (mark 47,
-	// DEC-063): the same text under another name is not the element. And a
-	// text that changed under the same name still is (a "Notifications"
-	// button whose badge read 12 and now 3; a labelled region whose content
-	// is another environment's data), as is the same text under a name with
-	// another user's name in it (DEC-064's review).
+	// "Edit") tells such elements apart, when it names one element on the
+	// page: then it weighs most, and a text that changed under it (a badge
+	// read 12, now 3; a labelled region with other data) does not undo it.
+	// The same text under another name is not the element (mark 47, the two
+	// "Edit" of one card, DEC-063). A name several candidates carry (each
+	// row's "Open case") is no evidence by itself: it counts only together
+	// with the text (DEC-064's second review).
 	if (
 		stored.name &&
 		stored.text &&
 		grams(stored.name).text !== grams(stored.text).text
-	)
-		return (
-			NAME_WEIGHT * textSimilarity(stored.name, candidate.name ?? "") +
-			(1 - NAME_WEIGHT) * textSimilarity(stored.text, candidate.text ?? "")
-		);
+	) {
+		const name = textSimilarity(stored.name, candidate.name ?? "");
+		const text = textSimilarity(stored.text, candidate.text ?? "");
+		if (repeated.has("name")) return Math.min(name, text);
+		const blend = NAME_WEIGHT * name + (1 - NAME_WEIGHT) * text;
+		// A text long enough to compare that is another text altogether: the
+		// one row left of a list whose rows all said "Open case" looks like a
+		// region whose content changed, and nothing recorded tells them
+		// apart. Unsure, then, never "found"; a short text (a count) is not
+		// compared so.
+		const comparable =
+			grams(stored.text).text.length >= MIN_COMPARED &&
+			grams(candidate.text ?? "").text.length >= MIN_COMPARED;
+		return comparable && text < OTHER_TEXT ? Math.min(blend, UNSURE) : blend;
+	}
 	const texts: number[] = [];
 	if (stored.name)
 		texts.push(textSimilarity(stored.name, candidate.name ?? ""));
@@ -226,7 +252,7 @@ function identityFactor(value: number | undefined): number {
 export function score(
 	stored: ElementDetails,
 	candidate: ElementDetails,
-	repeated: ReadonlySet<Naming> = NOTHING_REPEATED,
+	repeated: ReadonlySet<Repeated> = NOTHING_REPEATED,
 ): number {
 	candidate = comparable(stored, candidate);
 	let total = 0;

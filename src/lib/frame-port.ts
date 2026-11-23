@@ -28,8 +28,10 @@ export interface Hello<T> {
  * bits from `getRandomValues`, which a plain http: page has too
  * (`randomUUID` is only in secure contexts).
  */
-export function frameToken(): string {
-	const bytes = crypto.getRandomValues(new Uint8Array(16));
+export function frameToken(
+	random: Pick<Crypto, "getRandomValues"> = crypto,
+): string {
+	const bytes = random.getRandomValues(new Uint8Array(16));
 	return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -56,17 +58,24 @@ export function helloPort<T>(
 	return { port, init: data.init as T };
 }
 
-/** In the frame: the port and what to show, handed over by the content script, once. */
-export function framePort<T>(): Promise<{ port: MessagePort; init: T }> {
-	const token = location.hash.slice(1);
+/**
+ * In the frame: the port and what to show, handed over by the content
+ * script, once per load: after the first hello that holds, the frame listens
+ * for no other (this load's token is used up).
+ */
+export function framePort<T>(
+	target: Pick<Window, "addEventListener" | "removeEventListener"> = window,
+	parent: unknown = window.parent,
+	token: string = location.hash.slice(1),
+): Promise<{ port: MessagePort; init: T }> {
 	return new Promise((resolve) => {
-		const on = (e: MessageEvent) => {
-			const hello = helloPort<T>(e, window.parent, token);
+		const on = (e: Event) => {
+			const hello = helloPort<T>(e as MessageEvent, parent, token);
 			if (hello === undefined) return;
-			removeEventListener("message", on);
+			target.removeEventListener("message", on);
 			resolve(hello);
 		};
-		addEventListener("message", on);
+		target.addEventListener("message", on);
 	});
 }
 

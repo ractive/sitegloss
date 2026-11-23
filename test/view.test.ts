@@ -1979,6 +1979,30 @@ describe("what the panel's draw found, under the case's buttons", () => {
 		});
 	};
 
+	test("the same failure twice is said twice; a render for something else says nothing (DEC-064's second review)", async () => {
+		const c = sampleCase("c_hint_again");
+		const at = (seq: number) =>
+			caseState(c, (s) => {
+				s.caseHint = "Not saved: the store refused it";
+				s.caseHintSeq = seq;
+			});
+		render(at(1), noActions);
+		let writes = 0;
+		new window.MutationObserver(() => void writes++).observe(
+			el("case-hint") as unknown as Parameters<
+				MutationObserver["observe"]
+			>[0] as never,
+			{ childList: true, characterData: true, subtree: true },
+		);
+		render(at(1), noActions);
+		await Promise.resolve();
+		expect(writes).toBe(0);
+		render(at(2), noActions);
+		await Promise.resolve();
+		expect(writes).toBeGreaterThan(0);
+		expect(el("case-hint").textContent).toBe("Not saved: the store refused it");
+	});
+
 	test("what a draw found is said once it settled, not at each step of its count (DEC-064's review)", () => {
 		const state = drawnWith(2);
 		if (state.loaded) state.loaded.settling = true;

@@ -571,16 +571,29 @@ describe("a loaded mark's pin and the one popover (DEC-027)", () => {
 	});
 });
 
-test("a pin holds three digits: mark 100 and on in a smaller number (DEC-064's review)", async () => {
-	const { pinFontSize, badgeRadius } = await import("../src/lib/marks.ts");
-	expect([
-		pinFontSize(9),
-		pinFontSize(99),
-		pinFontSize(100),
-		pinFontSize(999),
-	]).toEqual([11, 11, 9, 9]);
-	// Three bold digits at 9 px are about 16 px wide: inside the 20 px pin.
-	expect(3 * 9 * 0.6).toBeLessThan(
-		2 * badgeRadius({ kind: "box", rect: { x: 0, y: 0, width: 1, height: 1 } }),
-	);
+test("three digits get the smaller number, on the page and in the screenshot (DEC-064's second review)", async () => {
+	const { paintMark } = await import("../src/lib/marks.ts");
+	const note = { kind: "note" as const, at: { x: 40, y: 40 } };
+	// On the page: the pin's number as the overlay draws it.
+	overlay.renderReview([item(99, note), item(100, note)]);
+	const size = (n: number) =>
+		overlay.marks
+			.querySelector(`[data-review="${n}"] [data-number] text`)
+			?.getAttribute("font-size");
+	expect([size(99), size(100)]).toEqual(["11", "9"]);
+	// In the screenshot: the font the canvas is given for each number.
+	const fonts: string[] = [];
+	const ctx = new Proxy(
+		{},
+		{
+			get: (_t, key) => (key === "font" ? undefined : () => undefined),
+			set: (_t, key, value) => {
+				if (key === "font") fonts.push(String(value));
+				return true;
+			},
+		},
+	) as unknown as OffscreenCanvasRenderingContext2D;
+	paintMark(ctx, { number: 99, shape: note });
+	paintMark(ctx, { number: 100, shape: note });
+	expect(fonts.map((f) => f.split(" ")[1])).toEqual(["11px", "9px"]);
 });

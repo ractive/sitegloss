@@ -87,6 +87,25 @@ describe("the viewer's window (DEC-064)", () => {
 	});
 });
 
+test("a failed open rejects for the caller only: no rejection left unhandled (DEC-064's second review)", async () => {
+	const { openViewer } = await import("../src/worker/viewer-window.ts");
+	browser.api.windows.get = async () => {
+		throw new Error("No window with id: 5");
+	};
+	const unhandled: unknown[] = [];
+	const on = (e: unknown) => void unhandled.push(e);
+	process.on("unhandledRejection", on);
+	try {
+		await expect(openViewer("c_1", "m1", "screenshot", 5)).rejects.toThrow(
+			"No window",
+		);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(unhandled).toEqual([]);
+	} finally {
+		process.off("unhandledRejection", on);
+	}
+});
+
 describe("the viewer goes with its case (DEC-064's review)", () => {
 	test("it stays only while its case is open and not closed", async () => {
 		const { viewerStays } = await import("../src/sidepanel/viewer-follow.ts");

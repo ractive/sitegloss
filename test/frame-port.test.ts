@@ -91,8 +91,8 @@ describe("the field's keys (DEC-064's review)", () => {
 	});
 });
 
-describe("a field's frame that loads again (DEC-064's review)", () => {
-	test("gets back its text, its label, its state and the focus it had", async () => {
+describe("a field's frame that loads again (DEC-064's second review)", () => {
+	test("a new address and token before anything is handed; then its text, label, state and the focus it had", async () => {
 		const had = (globalThis as { chrome?: unknown }).chrome;
 		(globalThis as { chrome?: unknown }).chrome = {
 			runtime: { getURL: (p: string) => `chrome-extension://abc/${p}` },
@@ -105,52 +105,132 @@ describe("a field's frame that loads again (DEC-064's review)", () => {
 				value: "",
 				maxLength: 100,
 			});
-			const hellos: { init: Record<string, unknown>; port: MessagePort }[] = [];
+			const hellos: {
+				token: string;
+				init: Record<string, unknown>;
+				port: MessagePort;
+			}[] = [];
 			Object.defineProperty(field.frame, "contentWindow", {
 				value: {
 					postMessage: (
-						data: { init: Record<string, unknown> },
+						data: { token: string; init: Record<string, unknown> },
 						_origin: string,
 						transfer: MessagePort[],
 					) =>
-						hellos.push({ init: data.init, port: transfer[0] as MessagePort }),
+						hellos.push({
+							token: data.token,
+							init: data.init,
+							port: transfer[0] as MessagePort,
+						}),
 				},
 			});
+			let focused = 0;
+			field.frame.focus = () => void focused++;
 			const load = () =>
 				field.frame.dispatchEvent(new win.Event("load") as unknown as Event);
+			const first = field.frame.src;
+			// Hidden until this load's frame answers.
+			expect(field.frame.style.visibility).toBe("hidden");
 			load();
 			field.receive({ type: "ready" });
+			expect(field.frame.style.visibility).toBe("");
 			field.receive({ type: "input", value: "Half way" });
 			field.receive({ type: "focus", on: true });
 			field.label = "Comment for mark 2";
 			field.disabled = true;
-			// Moved with the overlay: the frame loads again.
-			const heard: unknown[] = [];
+			// The overlay moves; the old document's blur as it goes.
+			field.keepFocus();
+			field.receive({ type: "focus", on: false });
+			load();
+			// Nothing handed to that load: its token was used. A new address.
+			expect(hellos.length).toBe(1);
+			expect(field.frame.src === first).toBe(false);
+			expect(field.frame.style.visibility).toBe("hidden");
 			load();
 			const again = hellos[1];
 			if (again === undefined) throw new Error("no second hello");
-			again.port.onmessage = (e) => void heard.push(e.data);
+			expect(again.token === hellos[0]?.token).toBe(false);
+			expect(field.frame.src.endsWith(`#${again.token}`)).toBe(true);
 			expect(again.init).toMatchObject({
 				label: "Comment for mark 2",
 				value: "Half way",
 				disabled: true,
 			});
-			await new Promise((r) => setTimeout(r, 10));
-			expect(heard).toContainEqual({ type: "focus" });
+			const heard: unknown[] = [];
+			again.port.onmessage = (e) => void heard.push(e.data);
+			const before = focused;
 			field.receive({ type: "ready" });
+			await new Promise((r) => setTimeout(r, 10));
+			expect(focused).toBe(before + 1);
+			expect(heard).toContainEqual({ type: "focus" });
+		} finally {
+			(globalThis as { chrome?: unknown }).chrome = had;
+		}
+	});
+
+	test("a ready that comes after the way out was offered puts the focus into the field", () => {
+		const had = (globalThis as { chrome?: unknown }).chrome;
+		(globalThis as { chrome?: unknown }).chrome = {
+			runtime: { getURL: (p: string) => `chrome-extension://abc/${p}` },
+		};
+		try {
+			const win = new Window();
+			const doc = win.document as unknown as Document;
+			const field = new PageField(doc, { label: "x", value: "", maxLength: 9 });
+			doc.body.append(field.element);
+			let focused = 0;
+			field.frame.focus = () => void focused++;
+			field.unavailable();
+			field.focus();
+			expect(doc.activeElement?.getAttribute("data-action")).toBe(
+				"field-in-panel",
+			);
+			field.receive({ type: "ready" });
+			expect(field.available).toBe(true);
+			expect(focused).toBe(1);
 		} finally {
 			(globalThis as { chrome?: unknown }).chrome = had;
 		}
 	});
 });
 
-test("the token needs no secure context: 128 random bits as hex, from getRandomValues", async () => {
+test("the token needs no secure context: run with a crypto that has no randomUUID", async () => {
 	const { frameToken } = await import("../src/lib/frame-port.ts");
-	const a = frameToken();
+	const random = {
+		getRandomValues: <T extends ArrayBufferView | null>(a: T) =>
+			crypto.getRandomValues(a as unknown as Uint8Array) as unknown as T,
+	};
+	expect("randomUUID" in random).toBe(false);
+	const a = frameToken(random);
 	expect(a).toMatch(/^[0-9a-f]{32}$/);
-	expect(frameToken() === a).toBe(false);
-	// Not randomUUID, which a plain http: page does not have (the full
-	// Chromium set's "plain http: host" test showed it).
-	expect(frameToken.toString()).not.toContain("randomUUID");
-	expect(frameToken.toString()).toContain("getRandomValues");
+	expect(frameToken(random) === a).toBe(false);
+});
+
+test("the frame takes the first hello that holds, and no second one on that load", async () => {
+	const { framePort, FRAME_HELLO: TYPE } = await import(
+		"../src/lib/frame-port.ts"
+	);
+	const listeners = new Set<(e: Event) => void>();
+	const target = {
+		addEventListener: (_t: string, f: (e: Event) => void) =>
+			void listeners.add(f),
+		removeEventListener: (_t: string, f: (e: Event) => void) =>
+			void listeners.delete(f),
+	} as unknown as Parameters<typeof framePort>[0];
+	const parent = {};
+	const send = (port: MessagePort) => {
+		for (const f of [...listeners])
+			f({
+				source: parent,
+				ports: [port],
+				data: { type: TYPE, token: "t", init: 1 },
+			} as unknown as Event);
+	};
+	const taken = framePort<number>(target, parent, "t");
+	const first = new MessageChannel().port1;
+	const second = new MessageChannel().port1;
+	send(first);
+	send(second);
+	expect((await taken).port === first).toBe(true);
+	expect(listeners.size).toBe(0);
 });
