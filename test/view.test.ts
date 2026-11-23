@@ -3,11 +3,12 @@ import {
 	beforeAll,
 	describe,
 	expect,
+	jest,
 	setSystemTime,
 	test,
 } from "bun:test";
 import { Window } from "happy-dom";
-import type { Case, Mark } from "../src/lib/case.ts";
+import { type Case, type Mark, markUrl } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
 import { serverChooser } from "../src/sidepanel/cloud-view.ts";
@@ -598,7 +599,7 @@ describe("a mark's status and actions", () => {
 						matches,
 					};
 			});
-		// Not loaded on a tab: nothing to show.
+		// Not loaded, and no tab in front to draw them on: nothing to show.
 		render(withImages(false), actions);
 		expect(row("m1").querySelector("[data-action=show]")).toBeNull();
 		render(withImages(true), actions);
@@ -635,6 +636,111 @@ describe("a mark's status and actions", () => {
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("data-action")).toBe("open-larger");
 		expect(crop.getAttribute("aria-label")).toContain("shows it large");
+	});
+
+	test("Show is there while the marks are not drawn: it draws them, then shows the mark", () => {
+		const c = twoMarks();
+		const called: string[] = [];
+		const actions = actionsWith({
+			loadOntoTab: () => called.push("load"),
+			loadAndShow: (_c, a) => called.push(`load+show ${a.id}`),
+			showMatch: () => called.push("show"),
+		});
+		const at = (url: string | undefined) =>
+			caseState(c, (s) => {
+				if (url !== undefined)
+					s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		const show = (id: string) =>
+			row(id).querySelector(
+				".mark-head [data-action=show]",
+			) as unknown as HTMLButtonElement | null;
+		// The page the marks were made on, not drawn: Show draws, then shows.
+		const page = c.marks[0] ? markUrl(c, c.marks[0]) : "";
+		render(at(page), actions);
+		expect(el("load-case").textContent).toBe("Show marks");
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
+		expect(show("m1")?.getAttribute("aria-busy")).toBe("false");
+		show("m1")?.click();
+		expect(called).toEqual(["load+show m1"]);
+		// While it draws, that button says so.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.showingMark = { caseId: c.id, markId: "m1" };
+			}),
+			actions,
+		);
+		expect(show("m1")?.getAttribute("aria-busy")).toBe("true");
+		expect(show("m2")?.getAttribute("aria-busy")).toBe("false");
+		// Drawn on this tab: the old Show, with its drawn name, not this one.
+		const found: MarkMatch = {
+			markId: "m1",
+			number: 1,
+			status: "found",
+			score: 1,
+			current: 0,
+			candidates: [
+				{ score: 1, summary: "p", selector: "p", visible: true, found: true },
+			],
+		};
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					matches: new Map([["m1", found]]),
+					url: page,
+				};
+			}),
+			actions,
+		);
+		expect(show("m1")).not.toBeNull();
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
+			"Show mark 1 on the page",
+		);
+		expect(show("m1")?.hasAttribute("data-loads")).toBe(false);
+		// A mark of a newer kind with no element: no Show while not drawn.
+		const newer: Case = {
+			...c,
+			marks: c.marks.map((m) =>
+				m.id === "m2"
+					? ({
+							...m,
+							element: null,
+							shape: { kind: "unknown", given: { kind: "squiggle" } },
+						} as unknown as Mark)
+					: m,
+			),
+		};
+		render(
+			caseState(newer, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+			}),
+			actions,
+		);
+		expect(show("m1")).not.toBeNull();
+		expect(show("m2")).toBeNull();
+		// A tab without access (Chrome gives no address): no button.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: "", title: "", size: undefined };
+			}),
+			actions,
+		);
+		expect(show("m1")).toBeNull();
+		// A tab Sitegloss cannot work on, none, or another page: no button.
+		for (const url of [
+			"chrome://extensions",
+			undefined,
+			"https://other.example.org/elsewhere",
+		]) {
+			render(at(url), actions);
+			expect(show("m1")).toBeNull();
+		}
 	});
 
 	test("a mark opens and closes at its head; Expand all opens every one", () => {
@@ -1233,6 +1339,222 @@ describe("Verify closes its mark (DEC-061)", () => {
 			window.document.activeElement ===
 				(row("m3").querySelector(".mark-toggle") as unknown),
 		).toBe(true);
+	});
+
+	test("a Verify shows at the press, cues the row it opens once, says when nothing waits, and comes back when not saved", async () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const verified = (k: number, at: string) =>
+			m(k, { ...fixed, verified: { at } });
+		const c: Case = {
+			...sampleCase("c_verify_cue"),
+			marks: [m(1, fixed), m(2), m(3, fixed)],
+		};
+		let answer: Promise<string | undefined> | undefined;
+		const actions = actionsWith({ verifyMark: () => answer });
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const cued = () => doc.querySelectorAll("[data-arrived]").length;
+		const line = () => doc.getElementById("case-hint")?.textContent;
+		render(caseState(c), actions);
+		// Not saved: the row is as it was.
+		answer = Promise.resolve("Not saved: no.");
+		(
+			row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+		).click();
+		const verify = row("m1").querySelector(
+			'[data-mark-action="verify"]',
+		) as unknown as HTMLButtonElement;
+		verify.click();
+		expect(row("m1").hasAttribute("data-verifying")).toBe(true);
+		// The stored truth stays in data-status; the press has its own marker.
+		expect(row("m1").getAttribute("data-status")).toBe("fixed");
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+		expect(row("m1").getAttribute("data-status")).toBe("fixed");
+		expect(row("m1").hasAttribute("data-open")).toBe(true);
+		expect(cued()).toBe(0);
+		// Saved: the next row to verify carries the cue, once.
+		answer = undefined;
+		verify.click();
+		const one: Case = {
+			...c,
+			updatedAt: "2026-11-15T09:00:00Z",
+			marks: [verified(1, "2026-11-15T09:00:00Z"), m(2), m(3, fixed)],
+		};
+		render(caseState(one), actions);
+		expect(cued()).toBe(1);
+		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
+		expect(line()).toBe("Mark 3 opened, to verify.");
+		// A redraw within the cue's second carries it on, on the same row only;
+		// once it has run out, an unrelated redraw (a changed comment) has none.
+		const redrawn = (at: string, comment: string): Case => ({
+			...one,
+			updatedAt: at,
+			marks: one.marks.map((a) => (a.id === "m2" ? { ...a, comment } : a)),
+		});
+		render(caseState(redrawn("2026-11-15T09:30:00Z", "Edited")), actions);
+		expect(cued()).toBe(1);
+		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
+		const real = Date.now;
+		Date.now = () => real() + 3000;
+		try {
+			render(
+				caseState(redrawn("2026-11-15T10:00:00Z", "Edited again")),
+				actions,
+			);
+			expect(cued()).toBe(0);
+		} finally {
+			Date.now = real;
+		}
+		// The last one to verify, with an open mark left: said once.
+		(
+			row("m3").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		const last: Case = {
+			...one,
+			updatedAt: "2026-11-16T09:00:00Z",
+			marks: [one.marks[0] as Mark, m(2), verified(3, "2026-11-16T09:00:00Z")],
+		};
+		render(caseState(last), actions);
+		expect(cued()).toBe(0);
+		expect(line()).toBe("That was the last mark to verify.");
+	});
+
+	describe("a Verify that is not saved or not answered puts back only what is still its own", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const mk = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const later = async () => {
+			for (let i = 0; i < 4; i++) await Promise.resolve();
+		};
+		const press = (c: Case, answer: Promise<string | undefined>): Actions => {
+			const actions = actionsWith({ verifyMark: () => answer });
+			render(caseState(c), actions);
+			(
+				row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+			).click();
+			(
+				row("m1").querySelector(
+					'[data-mark-action="verify"]',
+				) as unknown as HTMLButtonElement
+			).click();
+			return actions;
+		};
+
+		test("another case on screen meanwhile: its row is left alone", async () => {
+			const a: Case = {
+				...sampleCase("c_undo_a"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			const b: Case = {
+				...sampleCase("c_undo_b"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			let fail: (why: string) => void = () => {};
+			const actions = press(
+				a,
+				new Promise((resolve) => {
+					fail = resolve;
+				}),
+			);
+			render(caseState(b), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			fail("Not saved: no.");
+			await later();
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+		});
+
+		test("no answer: after the wait the row is put back and says so, once; a late answer changes nothing", async () => {
+			const c: Case = {
+				...sampleCase("c_undo_wait"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			jest.useFakeTimers();
+			try {
+				let late: (why: string | undefined) => void = () => {};
+				press(
+					c,
+					new Promise((resolve) => {
+						late = resolve;
+					}),
+				);
+				expect(row("m1").hasAttribute("data-verifying")).toBe(true);
+				expect(row("m1").querySelector(".pill")?.textContent).toBe("Verified");
+				jest.advanceTimersByTime(5050);
+				expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+				expect(row("m1").querySelector(".pill")?.textContent).toBe("To verify");
+				expect(row("m1").hasAttribute("data-open")).toBe(true);
+				expect(doc.getElementById("case-hint")?.textContent).toBe(
+					"Not saved: the Verify got no answer.",
+				);
+				late("Not saved: too late.");
+				await later();
+				expect(row("m1").hasAttribute("data-open")).toBe(true);
+				expect(doc.getElementById("case-hint")?.textContent).toBe(
+					"Not saved: the Verify got no answer.",
+				);
+			} finally {
+				jest.useRealTimers();
+			}
+		});
+
+		test("a redraw already shows the mark verified: a refused write does not reopen it", async () => {
+			const c: Case = {
+				...sampleCase("c_undo_truth"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			let fail: (why: string) => void = () => {};
+			const actions = press(
+				c,
+				new Promise((resolve) => {
+					fail = resolve;
+				}),
+			);
+			render(
+				caseState({
+					...c,
+					updatedAt: "2026-11-15T09:00:00Z",
+					marks: [
+						mk(1, { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } }),
+						mk(2, fixed),
+					],
+				}),
+				actions,
+			);
+			fail("Not saved: changed meanwhile.");
+			await later();
+			expect(row("m1").getAttribute("data-status")).toBe("verified");
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+			expect(row("m1").querySelector(".pill")?.textContent).toBe("Verified");
+		});
 	});
 
 	test("a Verify not saved takes no focus later from a field the person moved to (DEC-064's review)", () => {

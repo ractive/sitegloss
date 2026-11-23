@@ -18,7 +18,7 @@
  * `apps/app/src/lib/next-step.ts`), kept in step by hand.
  */
 
-import { caseInstructions } from "../lib/agent-instructions.ts";
+import { caseInstructions, contentsOf } from "../lib/agent-instructions.ts";
 import {
 	assigneeOf,
 	type Case,
@@ -71,6 +71,8 @@ export type Where =
 			team: string;
 			link: string | undefined;
 			mcp: string;
+			/** The team's AI app page in the web app. */
+			ai: string | undefined;
 			offline?: true;
 	  };
 
@@ -122,6 +124,10 @@ export function whereIs(cloud: Cloud, c: Case): Where {
 					? undefined
 					: caseAddress(server, team.slug, c.id),
 			mcp: mcpAddress(server),
+			ai:
+				team.slug === undefined
+					? undefined
+					: new URL(`/t/${encodeURIComponent(team.slug)}/ai`, server).href,
 			...(cloud.status?.state === "offline" ? { offline: true as const } : {}),
 		};
 	}
@@ -418,7 +424,8 @@ export async function copyStep(
 					id: c.id,
 					title: c.title,
 					url: where.link,
-					mcpUrl: where.mcp,
+					aiUrl: where.ai ?? where.link,
+					contents: contentsOf(c),
 				});
 	try {
 		await write(text);

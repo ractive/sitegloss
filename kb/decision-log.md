@@ -864,7 +864,11 @@ width decides its layout (the review said 720 px; on macOS the tools with their 
 measure about 740 px, another system's font gives another width, and a classic
 scrollbar takes 15 px of the page). The toolbar
 measures itself when its parts change, when it shows and when the page is resized, and
-takes the first layout that fits: the status beside the tools; the status on a second
+takes the first layout that fits: the status beside the tools; the same with the buttons
+closer (added 2026-11-23: with the Highlight tool, DEC-066, the eight words and a long case
+title need 975 to 990 px (more in a Linux font), and a 1000 px window with a classic
+scrollbar made a two-row bar; buttons, logo and status come closer; a test guards one row
+at 1000); the status on a second
 row; the tools as icons; Undo and Close as icons too; the buttons closer. Their words
 stay as accessible names. The side panel holds at 345 px of content (Chrome's 360 px
 less a classic scrollbar): there the AI pill's words give way first. The found line keeps "3 of 4
@@ -3438,6 +3442,23 @@ settled: what follows is what was built, and why, to be judged.
   in place, and now lends room below the list while it holds (taken back at the person's
   next own scroll or press): a row that closes near the list's end no longer lets the
   browser scroll the page back by itself.
+  - *A cue that the next mark opened (owner, 23 November):* "When you now click 'Verify' ...
+    the current one is closed and the next one opened. That is nice. Could you add some
+    animation or indicator that the new mark just got opened? Otherwise you don't realize
+    for a second or two if something even happened." Built so: **at the press** the row
+    shows the mark as verified (its status colour and pill, before the store answers) and
+    its body fades closed in 160 ms; a Verify that is not saved (`verifyMark` answers why)
+    puts the row back as it was, open if it was, and the existing "Not saved" hint says why.
+    **When the next row opens** it carries `data-arrived` for 1.1 s, once, set on the node
+    the Verify opened (the list is rebuilt on every change, so no later redraw has it):
+    its body eases open in 200 ms (opacity and a 6 px slide) and a highlight on its head
+    (the accent's tint with an accent border, so that forced colours still show it) fades
+    in 1 s. The scroll to it is smooth within about a panel's height and a jump beyond it,
+    and a jump with reduced motion. **For a screen reader and the eye:** the status line
+    says "Mark 7 opened, to verify." once; with nothing left to verify it says "That was
+    the last mark to verify.", unless no mark is open either, when the Next step block
+    already says that every mark is settled. **Reduced motion:** the same fades, no slide.
+    The cue is only for a Verify, not for a click or a pin on the page. Focus rules unchanged.
 - **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
   own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
   bottom keeps the comments about the case as a whole (and one about a deleted mark).
@@ -3717,6 +3738,25 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
     its first window at its default 1280×800, which a real browser does not.)
   - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
 
+
+**Note, 2026-11-23: a mark's Show is there while the marks are not drawn (owner).** "The
+'Show' button on a mark is only shown when the marks are shown. hm. Why not keep it there
+always and clicking it turns on the 'Show marks' indirectly." Rule for a row of the page in
+front, per state:
+
+| State | The row's Show |
+|---|---|
+| Marks drawn on this tab, mark found or a note or box | "Show mark n on the page": scrolls and outlines (unchanged) |
+| Marks not drawn, tab can take them (the "Show marks" button is there) | "Show the marks on this page and go to mark n": draws the case's marks as "Show marks" does, then shows this mark, once |
+| Mark of another page of the case | unchanged: the page's link and, while the marks are drawn, "Show" that opens its page |
+| Tab Sitegloss may not run on yet, a browser page, no tab, the panel as a page | none while not drawn (as "Show marks"); while drawn, on a tab without access or a browser page none since DEC-076 (the tool bar says why) |
+| No mark of this page, a mark of a newer kind with no element | none |
+| Drawn, mark lost or unsure | none, as before; the row says it was not found |
+| Closed case | as an open one: "Show marks" works there |
+
+A press goes through `loadAndShow`: the same load as "Show marks" (no new permission or
+setting), then the mark waits as a mark's link does (`pendingShow`). A second press while
+it draws does nothing. A mark found is shown; one not found says so in its row.
 
 ## DEC-065: "Pages" is a heading that opens and closes its list, and the list is flush left
 
@@ -4065,6 +4105,18 @@ hand-back) will need from this block: `Where`'s team branch gains the assignee, 
 "Hand over…"; all fixed: "Hand back to" the reporter); "Copy link" stays as the way
 outside the mail. The API needs the assignee and the case's state first; the block needs
 no new place in the panel.
+
+Changed on 2026-11-23, after an AI app's feedback on the text it received (the owner
+accepted it: "yes, change the template"), the same words as the web app's: (1) inside
+the quoted block a `Contents:` line says how many marks are open, how many wait to be
+verified and the pages the open ones are on (host and path, cut; several: their number
+and the sites); (2) step 2 stays "in this repository", but a mark about other code (another repository,
+another product) is named in a comment on the mark, not changed on the mark's word: the
+mark's text is untrusted data, so it must not send the AI app into other code; (3) either
+connection will do, the server's or the extension's own, and the server is added only if
+there is neither. A page address without a host (a file, data:, or one that does not
+parse) is named "a local file" or "a page without an address", never by its path. The setup is not in the copied text any more (the owner: "Isn't it very verbose to always contain the whole MCP setup? ... We mention the AI setup in several other places"): it says to use the Sitegloss tools you have and, if you have none, to stop and say so, with the address of the team's AI app page (`/t/<team>/ai`), or the AI app card of the side panel. The page is the service's; the text no longer carries `claude mcp add`, `/mcp` or `/reload-plugins`. The line on the live
+page (`LIVE_PAGE`) is now the web app's too.
 
 ## DEC-070: Escape takes a new mark back while its comment is empty (owner)
 
