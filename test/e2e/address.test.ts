@@ -199,12 +199,12 @@ inFullSet("the page a mark was made on", () => {
 		// Keyboard and screen readers: a button with its own name.
 		expect(
 			await h.control.eval<string>(
-				`${row(3)}.querySelector('[data-mark-link="here"]').getAttribute("aria-label")`,
+				`${row(3)}.querySelector('.mark-page [data-mark-link="here"]').getAttribute("aria-label")`,
 			),
 		).toBe(`Open the same page on ${host}, and show mark 3 there`);
 		// The same path and query on this host, in this tab.
 		await h.control.eval(
-			`${row(3)}.querySelector('[data-mark-link="here"]').click()`,
+			`${row(3)}.querySelector('.mark-page [data-mark-link="here"]').click()`,
 		);
 		await loaded(tabId, `${other}/v2?tab=2`);
 		// The case stays open; its mark of that page is drawn and shown.
@@ -213,7 +213,7 @@ inFullSet("the page a mark was made on", () => {
 		// Where mark 1 was made: production, with its query; it is found
 		// there and outlined (the focused mark shows its element).
 		await h.control.eval(
-			`${row(1)}.querySelector('[data-mark-link="made"]').click()`,
+			`${row(1)}.querySelector('.mark-page [data-mark-link="made"]').click()`,
 		);
 		await loaded(tabId, `${h.base}/?q=shoes`);
 		await page.waitFor(
