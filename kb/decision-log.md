@@ -4376,7 +4376,8 @@ intransparent, why suddenly no marks are there and why you can't show/hide marks
   "the Sitegloss icon in the toolbar" is not there to click; and Firefox drops `activeTab` when
   the tab goes to the next page, even of the same site. So a case open while browsing a site
   loses its marks at every link, and the tool bar's Show/Hide goes with them: the owner's
-  "suddenly no marks". Chrome keeps the grant while the tab stays on its site.
+  "suddenly no marks". Chrome keeps the grant while the tab stays on the same origin and drops it
+  at another (tested with the store package in Chromium).
 - **What happened in Firefox when the box was ticked** (a build without the host permission,
   `bun scripts/build.ts --firefox`, installed as a temporary add-on through Marionette, the
   sidebar opened by `SidebarController`, the click a real one): Firefox's own prompt came ("…

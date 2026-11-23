@@ -91,8 +91,8 @@ user agent. What differs from Chrome and Edge:
 1. Click the Sitegloss icon on a tab (in the toolbar's Extensions menu, the puzzle piece,
    until you pin it). The side panel opens there. Sitegloss installs without access to
    any site: until you allow it on all sites, it may run only on a tab where you clicked
-   its icon (Chrome keeps that while the tab stays on the site; Firefox only until the tab
-   goes to another page). So the side panel's main view first offers "Allow on all sites",
+   its icon (Chrome keeps that while the tab stays on the same origin; Firefox only until the
+   tab goes to another page). So the side panel's main view first offers "Allow on all sites",
    with "Not now"; the same setting is under Options, last on the main view, as "Allow on
    all sites (highly recommended)", with what it means under it: the browser asks first,
    and Sitegloss uses it on the tab in front only and sends nothing anywhere by itself.
