@@ -196,6 +196,15 @@ function start(): void {
 	const overlay = new Overlay(document);
 	const adder = new MarkAdder(overlay, pageBlur, activity);
 	const reviewer = new Reviewer(overlay);
+	adder.onAddImages = (caseId, number) => {
+		chrome.runtime
+			.sendMessage({
+				type: "panel:images",
+				caseId,
+				number,
+			} satisfies WorkerRequest)
+			.catch(() => undefined);
+	};
 	const state = () => {
 		const s = adder.state();
 		const loaded = reviewer.caseId;

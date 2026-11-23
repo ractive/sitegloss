@@ -58,6 +58,15 @@ export const UNDER_MARK = 3;
 const unfolded = new Set<string>();
 /** A new comment being typed at a mark, by `caseId:markId`. */
 const markDrafts = new Map<string, string>();
+/** The marks whose comment box was opened with "Add comment" (DEC-063). */
+const markBoxes = new Set<string>();
+/** The mark whose comment box takes the focus when it is drawn next. */
+let focusBox: string | undefined;
+/**
+ * Whether the case's Comments section is open, this session, per case
+ * (DEC-063). Not set: open when the case has comments, closed when none.
+ */
+const threadOpen = new Map<string, boolean>();
 
 /** What a mark's comments show besides the case, as one text: in the marks list's key. */
 export function threadStateKey(caseId: string): string {
@@ -65,6 +74,7 @@ export function threadStateKey(caseId: string): string {
 		editing?.caseId === caseId ? editing.id : null,
 		armed?.caseId === caseId ? armed.id : null,
 		[...unfolded].filter((k) => k.startsWith(`${caseId}:`)),
+		[...markBoxes].filter((k) => k.startsWith(`${caseId}:`)),
 	]);
 }
 
@@ -109,6 +119,7 @@ function keyOf(c: Case, context: ThreadContext): string {
 		context,
 		editing?.caseId === c.id ? editing.id : null,
 		armed?.caseId === c.id ? armed.id : null,
+		threadOpen.get(c.id) ?? null,
 	]);
 }
 
@@ -141,13 +152,55 @@ export function renderThread(
 	section.className = "thread";
 	section.id = "case-thread";
 	section.setAttribute("aria-labelledby", "thread-heading");
+	// Open when there are comments, closed when there are none, until the
+	// person opens or closes it (this session, per case).
+	const open = threadOpen.get(c.id) ?? comments.length > 0;
 	section.replaceChildren(
 		h(
 			"h2",
 			{ id: "thread-heading" },
-			"Comments ",
-			h("span", { class: "count" }, String(comments.length)),
+			h(
+				"button",
+				{
+					type: "button",
+					class: "thread-toggle",
+					"aria-expanded": String(open),
+					"aria-controls": "thread-body",
+					"data-thread-focus": "toggle",
+					onclick: () => {
+						threadOpen.set(c.id, !open);
+						redraw?.();
+					},
+				},
+				h("span", { class: "chevron", "aria-hidden": "true" }),
+				"Comments ",
+				h("span", { class: "count" }, String(comments.length)),
+			),
 		),
+		h(
+			"div",
+			{
+				class: "thread-body",
+				id: "thread-body",
+				...(open ? {} : { hidden: true }),
+			},
+			...threadBody(c, comments, context, actions),
+		),
+	);
+	if (focused !== undefined)
+		section
+			.querySelector<HTMLElement>(`[data-thread-focus="${focused}"]`)
+			?.focus();
+}
+
+/** The thread's comments and its form. */
+function threadBody(
+	c: Case,
+	comments: readonly CaseComment[],
+	context: ThreadContext,
+	actions: ThreadActions,
+): HTMLElement[] {
+	return [
 		comments.length === 0
 			? h(
 					"p",
@@ -166,11 +219,7 @@ export function renderThread(
 					{ class: "meta" },
 					"Your role in the team does not allow writing comments.",
 				),
-	);
-	if (focused !== undefined)
-		section
-			.querySelector<HTMLElement>(`[data-thread-focus="${focused}"]`)
-			?.focus();
+	];
 }
 
 function item(
@@ -366,6 +415,13 @@ export function markThreadView(
 			void markDrafts.set(key, (e.target as HTMLTextAreaElement).value),
 	});
 	field.value = markDrafts.get(key) ?? "";
+	// The box opens with "Add comment", the focus in it (DEC-063); one being
+	// typed in stays open.
+	const boxOpen = markBoxes.has(key) || field.value !== "";
+	if (boxOpen && focusBox === key) {
+		focusBox = undefined;
+		queueMicrotask(() => field.focus());
+	}
 	return h(
 		"section",
 		{
@@ -396,31 +452,61 @@ export function markThreadView(
 					...shown.map((k) => item(c, k, context, actions, true)),
 				)
 			: null,
-		context.mayComment
-			? h(
-					"div",
-					{ class: "comment-form" },
-					field,
-					h(
-						"div",
-						{ class: "row" },
-						h(
-							"button",
-							{
-								type: "button",
-								class: "small",
-								"data-action": "mark-comment-add",
-								onclick: () => {
-									const text = markDrafts.get(key) ?? "";
-									if (text.trim() === "") return;
-									markDrafts.delete(key);
-									actions.addComment(c.id, text, a.id);
-								},
+		!context.mayComment
+			? null
+			: !boxOpen
+				? h(
+						"button",
+						{
+							type: "button",
+							class: "small",
+							"data-action": "mark-comment-open",
+							onclick: () => {
+								markBoxes.add(key);
+								focusBox = key;
+								redrawAll?.();
 							},
-							"Add comment",
+						},
+						"Add comment",
+					)
+				: h(
+						"div",
+						{ class: "comment-form" },
+						field,
+						h(
+							"div",
+							{ class: "row" },
+							h(
+								"button",
+								{
+									type: "button",
+									class: "small strong",
+									"data-action": "mark-comment-add",
+									onclick: () => {
+										const text = markDrafts.get(key) ?? "";
+										if (text.trim() === "") return;
+										markDrafts.delete(key);
+										markBoxes.delete(key);
+										actions.addComment(c.id, text, a.id);
+									},
+								},
+								"Add comment",
+							),
+							h(
+								"button",
+								{
+									type: "button",
+									class: "small",
+									"data-action": "mark-comment-cancel",
+									onclick: () => {
+										markDrafts.delete(key);
+										markBoxes.delete(key);
+										redrawAll?.();
+									},
+								},
+								"Cancel",
+							),
 						),
 					),
-				)
-			: null,
 	);
 }

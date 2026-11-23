@@ -46,6 +46,9 @@ import {
 	type Broadcast,
 	type CaptureResult,
 	type ContentRequest,
+	IMAGES_FOR_KEY,
+	type ImagesFor,
+	type ImagesForAnswer,
 	isCloudRequest,
 	isWorkerRequest,
 	type NumberCheck,
@@ -402,6 +405,45 @@ async function handle(
 				request.shotIds.filter(isSafeId).map(pendingImage),
 			);
 			return {};
+		case "panel:images": {
+			const tab = sender.tab;
+			if (
+				tab?.id === undefined ||
+				!isSafeId(request.caseId) ||
+				!Number.isInteger(request.number) ||
+				request.number < 1
+			)
+				throw new Error("invalid request");
+			// Before any await: the click's gesture opens the panel.
+			const opened = openPanel({ tabId: tab.id, windowId: tab.windowId });
+			await chrome.storage.session.set({
+				[IMAGES_FOR_KEY]: {
+					caseId: request.caseId,
+					number: request.number,
+					tabId: tab.id,
+					at: Date.now(),
+				} satisfies ImagesFor,
+			});
+			// A panel already open takes it now; one that opens takes it as
+			// it starts.
+			chrome.runtime
+				.sendMessage({ type: "panel:images" } satisfies Broadcast)
+				.catch(() => undefined);
+			// Not opened (no gesture left, or another browser's rule): the
+			// panel opened later still asks for the images.
+			await opened.catch((error: unknown) =>
+				console.warn("Sitegloss: side panel", error),
+			);
+			return {};
+		}
+		case "panel:images-take": {
+			// The panel's own: a page may not take what another left.
+			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			const kept = await chrome.storage.session.get(IMAGES_FOR_KEY);
+			await chrome.storage.session.remove(IMAGES_FOR_KEY);
+			const images = kept[IMAGES_FOR_KEY] as ImagesFor | undefined;
+			return (images === undefined ? {} : { images }) satisfies ImagesForAnswer;
+		}
 		case "bar:place": {
 			// Two numbers, or nothing: a page cannot put anything else here.
 			if (request.place !== undefined) {

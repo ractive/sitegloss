@@ -57,9 +57,10 @@ import {
 	teamOf,
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
-import { foundLine, noneHere } from "./follow.ts";
+import { findsOn, foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
+import { openAt, pageHosts } from "./page-hosts.ts";
 import { holdClickedInPlace } from "./scroll-anchor.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
@@ -235,34 +236,24 @@ export function access(state: PanelState): "yes" | "ask" | "never" {
 }
 
 /**
- * The page in front shows none of the case's marks (DEC-022): none was
- * found, or the case has none of this page, and then where they are
- * (DEC-057).
+ * The one quiet line where the marks start (DEC-063), or nothing. A case of
+ * many pages has marks on some only, so a page without any is normal: the
+ * pages list and the page filter say where they are. Said is only that the
+ * tab shows none of the case's pages, or that this page's marks were all
+ * looked for and none was found (`allLost`). A case of one page gets no
+ * button here: its address in the facts above opens it.
  */
-export function noneFoundText(c: Case, url: string | undefined): string {
-	if (
-		url !== undefined &&
-		url !== "" &&
-		c.marks.some((a) => onPageInFront(c, a, url))
-	)
-		return "None of this case's marks were found on this page.";
-	// The pages its marks are on, the first few by name (DEC-038): not the
-	// page in front, nor a page without marks (the first page of a case
-	// marked elsewhere).
-	const counts = marksByPage(c);
-	const front = url ? pageInFront(c, url) : undefined;
-	const pages = casePages(c)
-		.filter(
-			(p) =>
-				(counts.get(pageKey(p.url)) ?? 0) > 0 &&
-				(front === undefined || pageKey(p.url) !== pageKey(front.url)),
-		)
-		.map((p) => shortUrl(p.url));
-	const here = "This case has no marks on this page.";
-	if (pages.length === 0) return here;
-	const named = pages.slice(0, 3).join(", ");
-	const more = pages.length > 3 ? ` and ${pages.length - 3} more` : "";
-	return `${here} They are on ${named}${more}.`;
+export function noneFoundText(
+	c: Case,
+	url: string | undefined,
+	allLost: boolean,
+): string | undefined {
+	if (url === undefined || !isWebPage(url)) return undefined;
+	if (pageInFront(c, url) === undefined)
+		return casePages(c).length > 1
+			? "None of this case's pages is in this tab."
+			: "This case's page is not in this tab.";
+	return allLost ? "None of this page's marks were found here." : undefined;
 }
 
 /** `shop.example/cart and 2 more pages`: a case's pages in the list. */
@@ -1124,7 +1115,10 @@ interface CaseParts {
 	/** The facts' rows that come and go with what they hold. */
 	teamRow: HTMLElement;
 	/** "Show all n" under the first three pages. */
-	pagesMore: HTMLButtonElement;
+	/** "Pages 12": opens and closes the list of pages (DEC-063). */
+	pagesToggle: HTMLButtonElement;
+	pagesLabel: HTMLElement;
+	pagesCount: HTMLElement;
 	rename: HTMLElement;
 	renameField: HTMLInputElement;
 	renameSave: HTMLButtonElement;
@@ -1164,7 +1158,8 @@ interface CaseParts {
 	/** Sitegloss may not run on the tab in front. */
 	access: Notice;
 	/** None of the case's marks were found on the tab in front (DEC-022). */
-	noneFound: Notice;
+	/** The quiet line where the marks start (DEC-063). */
+	noneFound: HTMLElement;
 	/** What the tab in front shows of the case, in one line. */
 	tabLine: HTMLElement;
 	/** Show, or Hide where the case is loaded on the tab in front. */
@@ -1173,7 +1168,6 @@ interface CaseParts {
 	/** "Add marks", or "Done adding" while the toolbar adds to the case. */
 	addMarks: HTMLButtonElement;
 	/** The same under the last mark of the list, where it has marks. */
-	addMarksEnd: HTMLButtonElement;
 	adding: boolean;
 	/** "← All cases" is finishing the marks, or could not (DEC-023). */
 	leaving: HTMLElement;
@@ -1235,22 +1229,29 @@ function holdDelete(button: HTMLElement | undefined): void {
 	};
 }
 
-/** The cases whose list of pages shows all of them, not only the first three. */
-const unfoldedPages = new Set<string>();
+/**
+ * The cases whose list of pages is open, this session (DEC-063). A list of
+ * more than `PAGES_SHOWN` is closed at first; closed, it still shows the
+ * page in front, so the person sees where they are.
+ */
+const openPages = new Set<string>();
 
-/** How many pages the facts show before "Show all n". */
+/** Up to this many pages, the list is just shown: nothing to open or close. */
 const PAGES_SHOWN = 3;
 
-/** The list of pages folded to the first three, or all of them (DEC-061). */
-function foldPages(p: CaseParts): void {
+/**
+ * The list of pages, open or closed (DEC-063); `noneHere`: the tab shows none
+ * of the case's pages, and the list is open so the person sees where to go.
+ */
+function foldPages(p: CaseParts, noneHere: boolean): void {
 	const rows = [...p.pages.children] as HTMLElement[];
-	const all = unfoldedPages.has(p.current.id);
-	rows.forEach((li, i) => {
-		li.hidden = !all && i >= PAGES_SHOWN;
-	});
-	p.pagesMore.hidden = rows.length <= PAGES_SHOWN;
-	p.pagesMore.textContent = all ? "Show fewer" : `Show all ${rows.length}`;
-	p.pagesMore.setAttribute("aria-expanded", String(all));
+	const many = rows.length > PAGES_SHOWN;
+	const open = !many || noneHere || openPages.has(p.current.id);
+	for (const li of rows) li.hidden = !open && !li.hasAttribute("data-here");
+	p.pagesToggle.hidden = !many;
+	p.pagesLabel.hidden = many;
+	p.pagesToggle.setAttribute("aria-expanded", String(open));
+	p.pagesCount.textContent = String(rows.length);
 }
 
 // The case's menu closes on a press outside it.
@@ -1515,18 +1516,28 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		},
 		"Share with team",
 	);
-	const pagesMore: HTMLButtonElement = h("button", {
-		type: "button",
-		class: "link pages-more",
-		id: "case-pages-more",
-		hidden: true,
-		onclick: () => {
-			const key = created.current.id;
-			if (!unfoldedPages.delete(key)) unfoldedPages.add(key);
-			created.pagesKey = "";
-			foldPages(created);
+	const pagesCount = h("span", { class: "count" });
+	const pagesToggle: HTMLButtonElement = h(
+		"button",
+		{
+			type: "button",
+			class: "link pages-toggle",
+			id: "case-pages-toggle",
+			"aria-controls": "case-pages",
+			"aria-expanded": "false",
+			hidden: true,
+			onclick: () => {
+				const key = created.current.id;
+				const open = pagesToggle.getAttribute("aria-expanded") === "true";
+				if (open) openPages.delete(key);
+				else openPages.add(key);
+				foldPages(created, false);
+			},
 		},
-	});
+		h("span", { class: "chevron", "aria-hidden": "true" }),
+		"Pages ",
+		pagesCount,
+	);
 	const created: CaseParts = {
 		current: c,
 		title,
@@ -1542,7 +1553,9 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		linkMenu,
 		counts: h("p", { class: "meta case-counts", id: "case-counts" }),
 		teamRow: h("div", { class: "fact", hidden: true }),
-		pagesMore,
+		pagesToggle,
+		pagesLabel: h("span", {}, "Pages"),
+		pagesCount,
 		rename: h(
 			"div",
 			{ class: "rename", id: "rename", hidden: true },
@@ -1619,20 +1632,12 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		sizeText,
 		origin: h("p", { class: "hint", id: "case-origin", hidden: true }),
 		access: accessNotice("case-access", () => actions),
-		noneFound: notice(
-			"none-found",
-			h(
-				"button",
-				{
-					type: "button",
-					"data-action": "open-case-page",
-					title:
-						"Open the page the marks were made on in a new tab; the case's marks are drawn there",
-					onclick: () => actions.openPage(created.current),
-				},
-				"Open the case's page",
-			),
-		),
+		noneFound: h("p", {
+			class: "hint none-here",
+			id: "none-found",
+			role: "status",
+			hidden: true,
+		}),
 		tabLine: h("p", { class: "tab-line", id: "tab-line", hidden: true }),
 		// A button with an edge, not a link: it was overlooked (the owner). It
 		// sits in the marks' bar: the marks are what it shows.
@@ -1652,18 +1657,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				type: "button",
 				id: "add-marks",
 				class: "primary",
-				onclick: () =>
-					created.adding
-						? actions.doneAdding(created.current)
-						: actions.addMarks(created.current),
-			},
-			"Add marks",
-		),
-		addMarksEnd: h(
-			"button",
-			{
-				type: "button",
-				id: "add-marks-end",
 				onclick: () =>
 					created.adding
 						? actions.doneAdding(created.current)
@@ -1740,14 +1733,18 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.rename,
 		created.closedLine,
 		created.counts,
-		h("div", { class: "row case-actions" }, created.addMarks),
 		created.leaving,
 		created.saved,
 		// The case's facts, one quiet block of label and value.
 		h(
 			"dl",
 			{ class: "case-facts", id: "case-facts" },
-			fact("Pages", created.meta, created.pages, pagesMore),
+			h(
+				"div",
+				{ class: "fact" },
+				h("dt", {}, created.pagesLabel, pagesToggle),
+				h("dd", {}, created.meta, created.pages),
+			),
 			created.teamRow,
 			fact("Link", created.linkRow),
 			fact("Made at", h("span", {}, created.madeAt, ", ", created.madeOn)),
@@ -1780,7 +1777,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		"section",
 		{ class: "this-tab", id: "this-tab" },
 		created.access.el,
-		created.noneFound.el,
+		created.noneFound,
 		created.tabLine,
 		created.hint,
 		created.size,
@@ -1793,6 +1790,20 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.shots,
 		// Closing files the case away: at the end; Delete case is in the menu.
 		h("section", { class: "case-footer" }, created.closeButton),
+		// Always in reach while a case is open (DEC-063): adding marks, and
+		// the marks shown or not on the tab. Sticky at the panel's bottom, it
+		// rests after the content, so it never covers the last row.
+		h(
+			"div",
+			{
+				class: "case-dock",
+				id: "case-dock",
+				role: "toolbar",
+				"aria-label": "Marks on this tab",
+			},
+			created.addMarks,
+			created.loadButton,
+		),
 	);
 	return created;
 }
@@ -2539,9 +2550,6 @@ function pageChooser(
 			label,
 			count === undefined ? null : h("span", { class: "count" }, ` ${count}`),
 		);
-	const hosts = new Set(
-		pages.filter((pg) => isWebPage(pg.url)).map((pg) => hostOf(pg.url)),
-	);
 	const select = h(
 		"select",
 		{
@@ -2555,9 +2563,8 @@ function pageChooser(
 		h("option", { value: "" }, picked ? "All pages" : "Other page…"),
 		...pages.map((pg) => {
 			const n = marksOn(pg.url);
-			const path = isWebPage(pg.url)
-				? shortPath(pg.url, hosts.size > 1)
-				: pg.url;
+			// A page is its path whatever the host (DEC-063).
+			const path = isWebPage(pg.url) ? shortPath(pg.url, false) : pg.url;
 			const title = pg.title.trim();
 			// A page without marks would show nothing.
 			return h(
@@ -2621,18 +2628,19 @@ function renderPages(
 	// Counted once for all the pages, not once per page.
 	const counts = marksByPage(c);
 	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
+	// One row per page whatever the host (DEC-063): its hosts under it.
+	const hostsOf = pageHosts(c);
+	const origins = new Set([...hostsOf.values()].flatMap((x) => x.origins));
 	const key = JSON.stringify([
 		pages.map((page) => [page.url, page.title, marksOn(page.url)]),
 		here?.url ?? null,
 		byPage.page?.url ?? null,
+		[...hostsOf.entries()],
+		tabOrigin(tabUrl),
 	]);
 	if (key === p.pagesKey) return;
 	p.pagesKey = key;
 	p.pages.hidden = pages.length === 0;
-	// The host only where it tells the pages apart.
-	const hosts = new Set(
-		pages.filter((page) => isWebPage(page.url)).map((page) => hostOf(page.url)),
-	);
 	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
 	// the title it was on), in the same row.
 	const at = document.activeElement as HTMLElement | null;
@@ -2651,12 +2659,15 @@ function renderPages(
 			const front = here !== undefined && here.url === page.url;
 			const title = page.title.trim();
 			const web = isWebPage(page.url);
-			const path = web ? shortPath(page.url, hosts.size > 1) : page.url;
+			const path = web ? shortPath(page.url, false) : page.url;
+			const hosts = hostsOf.get(pageKey(page.url));
+			// On the tab's host when it was marked there, else on its last.
+			const target = openAt(page.url, hosts, tabUrl);
 			// An address is cut at its start: its end tells two pages apart.
 			const address = () => h("bdi", { dir: "ltr" }, path);
 			// The page in front is said by `aria-current` alone, once.
 			const name = title || address();
-			const whole = title ? `${title}\n${page.url}` : page.url;
+			const whole = title ? `${title}\n${target}` : target;
 			const tooltip = web
 				? `${whole}\nOpens in a new tab; the case's marks are drawn there`
 				: whole;
@@ -2677,7 +2688,7 @@ function renderPages(
 								class: `link ${nameClass}`,
 								title: tooltip,
 								...(front ? { "aria-current": "page" } : {}),
-								onclick: () => actions.openPage(p.current, page.url),
+								onclick: () => actions.openPage(p.current, target),
 							},
 							name,
 						)
@@ -2686,6 +2697,14 @@ function renderPages(
 				pageCount(p.current, page, marks, byPage, actions),
 				title
 					? h("span", { class: "page-address cut-start" }, address())
+					: null,
+				// Marked on more than one host in this case: on which, the last first.
+				origins.size > 1 && hosts
+					? h(
+							"span",
+							{ class: "page-hosts" },
+							hosts.origins.map((o) => hostOf(o)).join(", "),
+						)
 					: null,
 			);
 		}),
@@ -2744,7 +2763,14 @@ function renderCase(state: PanelState, actions: Actions): void {
 		pageFilter(c, state.markPage, state.tab?.url),
 		actions,
 	);
-	foldPages(p);
+	// The tab shows none of the case's pages: the list is open (DEC-063).
+	const tabUrl = state.tab?.url;
+	const noneInTab =
+		several &&
+		tabUrl !== undefined &&
+		isWebPage(tabUrl) &&
+		pageInFront(c, tabUrl) === undefined;
+	foldPages(p, noneInTab);
 	// The status counts under the title, as the bar and chips count them.
 	const n = c.marks.length;
 	p.counts.textContent =
@@ -2784,6 +2810,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.addMarks.disabled = !ok || state.leaving?.phase === "finishing";
 	p.addMarks.textContent = p.adding ? "Done adding" : "Add marks";
 	p.addMarks.classList.toggle("primary", !p.adding);
+	// Adding is on: said by the button itself, dark, until Done adding.
+	p.addMarks.classList.toggle("strong", p.adding);
 	p.addMarks.title = !ok
 		? NEEDS_ACCESS
 		: p.adding
@@ -2791,9 +2819,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 			: "Each mark you draw on the page goes into this case when its comment is done";
 	// The same button at the end of a long list of marks; not amber, which
 	// is the view's one button that starts drawing (DEC-024).
-	p.addMarksEnd.disabled = p.addMarks.disabled;
-	p.addMarksEnd.textContent = p.addMarks.textContent;
-	p.addMarksEnd.title = p.addMarks.title;
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
 	// The case has no mark of this page (DEC-057), or the search is over and
@@ -2812,12 +2837,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.loadButton.title = p.loadedHere
 		? "Take this case's marks off the page in this tab; they stay off on this tab until you show them again"
 		: "Look for each mark's element on the page in this tab and draw the marks there";
-	p.noneFound.el.hidden = !none;
-	p.noneFound.text.textContent = none ? noneFoundText(c, state.tab?.url) : "";
-	p.noneFound.button.hidden =
-		!none ||
-		!isWebPage(c.page.url) ||
-		pageInFront(c, state.tab?.url ?? "") !== undefined;
+	const allLost =
+		none &&
+		here !== undefined &&
+		findsOn(c, [...here.matches.values()], here.url).own.length > 0;
+	setHint(p.noneFound, noneFoundText(c, state.tab?.url, allLost));
 	// With a team (DEC-039): whether the case is the team's, and what a
 	// delete then means.
 	const sync = caseSync(state.cloud, c.id);
@@ -3067,7 +3091,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 					h("span", { class: "count" }, String(c.marks.length)),
 				),
 				// Kept across redraws, like the status block under the bar.
-				h("div", { class: "marks-tools" }, toggleAll, p.loadButton),
+				h("div", { class: "marks-tools" }, toggleAll),
 			),
 			p.status,
 			!narrowed || c.marks.length === 0
@@ -3088,7 +3112,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 						),
 					),
 			items.length > 0 ? h("ol", { class: "marks" }, ...items) : null,
-			items.length > 0 ? h("div", { class: "row" }, p.addMarksEnd) : null,
 			items.length > 0
 				? null
 				: c.marks.length === 0
@@ -3835,6 +3858,30 @@ function renderAi({ ai }: PanelState): void {
 	// connected, the pill leads to the switch, which is enough.
 	keepOn.checked = ai.keepOn;
 	setHint(aiCall, ai.lastCall && callText(ai.lastCall));
+	showTalking(ai.working);
+}
+
+/** How long the chip keeps saying an app talks after its last call ended. */
+export const TALKING_AFTER_MS = 1500;
+let talkingUntil: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * While an AI app's tool call runs, and a moment after, the chip glows
+ * (DEC-063): a style alone, nothing in its name, so a screen reader hears
+ * no chatter; the AI card says the last call in words.
+ */
+function showTalking(working: boolean): void {
+	if (working) {
+		clearTimeout(talkingUntil);
+		talkingUntil = undefined;
+		aiButton.dataset["talking"] = "";
+		return;
+	}
+	if (!("talking" in aiButton.dataset) || talkingUntil !== undefined) return;
+	talkingUntil = setTimeout(() => {
+		talkingUntil = undefined;
+		delete aiButton.dataset["talking"];
+	}, TALKING_AFTER_MS);
 }
 
 // The test build's guards and delays below are short (DEC-053): its clicks

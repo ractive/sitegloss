@@ -719,6 +719,34 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	background: var(--danger);
 }
 
+/*
+ * An AI app is talking (DEC-063): while its call runs and a moment after,
+ * the dot pulses a soft ring in its own green. A shadow, so nothing moves.
+ */
+.ai-pill[data-talking] .dot {
+	animation: talking 1.2s ease-in-out infinite;
+}
+
+@keyframes talking {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-verified) 55%, transparent);
+	}
+	50% {
+		box-shadow: 0 0 0 4px
+			color-mix(in srgb, var(--st-verified) 25%, transparent);
+	}
+}
+
+/* Without motion: a steady ring for the same time. */
+@media (prefers-reduced-motion: reduce) {
+	.ai-pill[data-talking] .dot {
+		animation: none;
+		box-shadow: 0 0 0 3px
+			color-mix(in srgb, var(--st-verified) 35%, transparent);
+	}
+}
+
 /* "Fill in the code for <app>?", under the top bar on every view (DEC-044). */
 .pair-fill-ask {
 	display: grid;
@@ -1451,10 +1479,21 @@ ul.cases [data-case]:hover:not(:disabled) {
 	min-width: 0;
 }
 
-.case-facts .pages-more {
-	justify-self: start;
+/* "Pages 12": the label is the disclosure of the list (DEC-063). */
+.case-facts .pages-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 	min-height: 0;
-	font-size: 12px;
+	padding: 0;
+	font: inherit;
+	color: var(--ink-2);
+	white-space: nowrap;
+}
+
+.case-facts .pages-toggle .count {
+	font-weight: 600;
+	color: var(--ink);
 }
 
 /* The title as a field while it is renamed. */
@@ -1503,6 +1542,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 	/* Chrome 116, without subgrid: the same columns, lined up per row only. */
 	grid-template-columns: 3px minmax(0, 1fr) auto auto;
 	grid-template-rows: 19px 16px;
+	grid-auto-rows: 15px;
 	padding: 2px 0;
 }
 
@@ -1549,6 +1589,19 @@ ul.cases [data-case]:hover:not(:disabled) {
 
 .case-pages li[data-here] .page-name {
 	font-weight: 600;
+}
+
+/* A case marked on several hosts: each page's hosts, the last first, small under it. */
+.case-pages .page-hosts {
+	grid-area: 3 / 2 / 4 / -1;
+	min-width: 0;
+	margin-left: var(--s2);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 11px;
+	line-height: 15px;
+	color: var(--ink-2);
 }
 
 .case-pages .page-address {
@@ -1723,6 +1776,8 @@ ul.cases [data-case]:hover:not(:disabled) {
  */
 .page-filter {
 	align-items: center;
+	/* A grid item: never wider than the panel for a long option (DEC-063). */
+	min-width: 0;
 }
 
 .page-filter select {
@@ -1775,17 +1830,33 @@ ul.cases [data-case]:hover:not(:disabled) {
 	font-weight: 700;
 }
 
-/* Add marks (or Done adding), as wide as there is room, and Export. */
-.case-actions {
-	flex-wrap: nowrap;
+/*
+ * The open case's tool bar (DEC-063): Add marks (or Done adding) as wide as
+ * there is room, and the marks shown or not. Sticky at the panel's bottom
+ * and resting after the content, so the last row is never under it.
+ */
+.case-dock {
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
+	display: flex;
+	gap: var(--s2);
+	padding: var(--s2) var(--s4);
+	border-top: 1px solid var(--rule);
+	background: var(--paper);
 }
 
-.case-actions > button {
+.case-dock > button {
 	min-height: 36px;
 }
 
-.case-actions > #add-marks {
+.case-dock > #add-marks {
 	flex: 1;
+	min-width: 0;
+}
+
+.case-dock > #load-case {
+	flex: none;
 }
 
 /*
@@ -2285,17 +2356,26 @@ ol.marks {
 	margin-left: auto;
 }
 
+/* Verify and Reopen… once: in the head while closed, in the body when open (DEC-063). */
+.mark[data-open] .mark-sub .head-actions {
+	display: none;
+}
+
 /* Focus moving up the list stops below the bars, not under them. */
 .mark :is(button, input, textarea) {
 	scroll-margin-top: calc(var(--bar) + 48px);
 }
 
-/* Open: the rest of the mark on a sheet, right of the margin. */
+/*
+ * Open: the rest of the mark on a sheet across the panel's width, from its
+ * gutter under the pin (the owner, DEC-063); it covers the rail there.
+ */
 .mark .body {
+	position: relative;
 	display: grid;
 	gap: var(--s2);
 	min-width: 0;
-	margin: 0 var(--s4) var(--s3) var(--margin);
+	margin: 0 var(--s4) var(--s3);
 	padding: var(--s3);
 	border: 1px solid var(--rule);
 	border-radius: var(--r-card);
@@ -2358,16 +2438,17 @@ button.crop:hover img {
  * picture is contained in its tile, never cropped; one shown large takes the
  * grid's whole width at its own shape, its caption under it.
  */
+/* Four in a row with the panel's width back (DEC-063): three pictures and the way to add one. */
 .pictures {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: var(--s3) var(--s2);
 	align-items: start;
 }
 
-@media (max-width: 320px) {
+@media (max-width: 360px) {
 	.pictures {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 }
 
@@ -3076,6 +3157,50 @@ ol.comments {
 	background: var(--sheet);
 	color: var(--ink);
 	font: inherit;
+}
+
+/* "Comments 4" opens and closes the case's thread (DEC-063): the whole heading is the control. */
+.thread > h2 {
+	margin: 0;
+}
+
+.thread-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s2);
+	min-height: 32px;
+	margin-left: calc(-1 * var(--s1));
+	padding: 0 var(--s1);
+	border: 0;
+	background: none;
+	font: inherit;
+	color: var(--ink);
+}
+
+.thread-toggle:hover:not(:disabled) {
+	background: var(--wash);
+}
+
+.thread-body {
+	margin-top: var(--s3);
+}
+
+/* A disclosure's arrow: right when closed, down when open. */
+:is(.thread-toggle, .pages-toggle) > .chevron {
+	margin-top: 0;
+}
+
+:is(.thread-toggle, .pages-toggle)[aria-expanded="true"] > .chevron {
+	transform: rotate(45deg);
+}
+
+.pages-toggle > .chevron {
+	width: 6px;
+	height: 6px;
+}
+
+.mark-thread > button[data-action="mark-comment-open"] {
+	justify-self: start;
 }
 
 /* A mark's comments, at the mark (DEC-061): after its actions, quietly ruled off. */

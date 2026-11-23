@@ -14,7 +14,6 @@ import {
 	addedImage,
 	type Case,
 	caseImages,
-	casePages,
 	cleanTitle,
 	heldImagesOf,
 	MARK_CHANGED,
@@ -58,6 +57,8 @@ import {
 import { toAddedImage } from "../lib/images.ts";
 import {
 	type Broadcast,
+	type ImagesFor,
+	type ImagesForAnswer,
 	isMarkRequest,
 	isOpenCaseRequest,
 	type LoadReplacedAnswer,
@@ -68,6 +69,7 @@ import {
 	type OpenCaseAnswer,
 	type OpenCaseRequest,
 	type OverlayState,
+	type WorkerRequest,
 } from "../lib/messages.ts";
 import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
@@ -104,6 +106,7 @@ import {
 	tryShow,
 } from "./mark-link.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
+import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
 import { cssSize, onScreen, type Size, sameSize, windowFor } from "./size.ts";
 import {
@@ -170,7 +173,10 @@ function describeError(error: unknown): string {
 
 // --- the state and its work ------------------------------------------------------
 
-const panel = new Panel((state) => render(state, actions));
+const panel = new Panel((state) => {
+	render(state, actions);
+	askImages(state);
+});
 const update = (change: (s: PanelState) => void) => panel.update(change);
 const state = panel.state;
 
@@ -1749,7 +1755,8 @@ const actions: Actions = {
 
 	openPage(c, url = c.page.url) {
 		// One of the case's own pages only (DEC-038).
-		if (!isWebPage(url) || !casePages(c).some((p) => p.url === url)) return;
+		// One of the case's own pages, on a host it was marked on (DEC-038, DEC-063).
+		if (!isWebPage(url) || !isCasePageAddress(c, url)) return;
 		const hint = caseHintWriter();
 		// Now, while the click allows Chrome's prompt. The tab opens meanwhile;
 		// once it has loaded, the case's marks follow it there (DEC-022), and
@@ -2590,6 +2597,57 @@ let addingImages: AddImagesDialog | undefined;
  * Open the dialog that adds images to mark `a` (DEC-058); `files`: pictures
  * pasted into the open mark, offered at once. Nothing is added without Add.
  */
+/**
+ * "Add image…" in the page's mark dialog (DEC-063): the worker left which
+ * mark of which case in session storage, and opened the panel. The panel's
+ * own dialog opens once the case is open here and the mark is in it (it
+ * is saved a moment after the page's dialog closed); a minute later the
+ * wish is forgotten.
+ */
+let imagesFor: ImagesFor | undefined;
+const IMAGES_FOR_MS = 60_000;
+
+function takeImagesFor(value: unknown): void {
+	const v = value as Partial<ImagesFor> | undefined;
+	if (
+		typeof v?.caseId !== "string" ||
+		typeof v.number !== "number" ||
+		typeof v.at !== "number"
+	)
+		return;
+	imagesFor = v as ImagesFor;
+	askImages(state);
+}
+
+/** Take what the page's "Add image…" left with the worker, if anything. */
+function takeImages(): void {
+	void chrome.runtime
+		.sendMessage({ type: "panel:images-take" } satisfies WorkerRequest)
+		.then((answer: ImagesForAnswer | undefined) =>
+			takeImagesFor(answer?.images),
+		)
+		.catch(() => undefined);
+}
+
+function askImages(s: PanelState): void {
+	const want = imagesFor;
+	if (want === undefined) return;
+	if (Date.now() - want.at > IMAGES_FOR_MS) {
+		imagesFor = undefined;
+		return;
+	}
+	const c = s.current;
+	const a =
+		c?.id === want.caseId
+			? c.marks.find((m) => m.number === want.number)
+			: undefined;
+	if (c === undefined || a === undefined) return;
+	imagesFor = undefined;
+	void showAddImages(c, a);
+}
+
+takeImages();
+
 async function showAddImages(
 	c: Case,
 	a: Mark,
@@ -2927,6 +2985,11 @@ async function drawnFor(
 
 /** News from the pages and the worker: nothing is answered. */
 function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
+	// Only the worker says so; the answer comes from it too.
+	if (news?.type === "panel:images") {
+		if (fromBackground(sender)) takeImages();
+		return false;
+	}
 	if (news?.type === "overlay:changed") {
 		const from = sender.tab?.id;
 		// Sitegloss runs on the tab the open case waits for: the icon was clicked.

@@ -176,6 +176,8 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 .popover textarea::placeholder { color: ${L.popoverPlaceholder}; opacity: 1; }
 .popover textarea:focus-visible, .popover button:focus-visible { outline: 2px solid ${HOVER_COLOUR}; outline-offset: 1px; }
 .popover .row { display: flex; gap: 6px; justify-content: space-between; margin-top: 8px; }
+.popover .row.images { justify-content: flex-start; margin-top: 6px; }
+.popover .row.images:has(> [hidden]:only-child) { display: none; }
 .popover button {
 	box-sizing: border-box; min-height: 28px; font: inherit; font-weight: 600;
 	padding: 3px 12px; border-radius: 6px; cursor: pointer;
@@ -246,6 +248,9 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	color: ${L.barText}; font: inherit; font-weight: 600;
 }
 .reviewbar button:hover, .reviewbar button:focus-visible { background: ${L.barHover}; border-color: ${L.barText}; }
+/* Add marks is the bar's main action (DEC-063): amber, as the toolbar's own. */
+.reviewbar button[data-action="review-add"] { background: ${L.amber}; border-color: ${L.amber}; color: ${L.bar}; }
+.reviewbar button[data-action="review-add"]:hover, .reviewbar button[data-action="review-add"]:focus-visible { background: ${L.amberHover}; border-color: ${L.amberHover}; color: ${L.bar}; }
 /* The user's own colours: the system's, with every edge drawn. */
 @media (forced-colors: active) {
 	.toolbar, .reviewbar, .popover {
@@ -259,7 +264,8 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	/* Also hovered and focused: no state brings amber back under the system's text colour. */
 	.toolbar button[aria-pressed="true"], .toolbar button[aria-pressed="true"]:hover, .toolbar button[aria-pressed="true"]:focus-visible,
 	.toolbar button.primary, .toolbar button.primary:hover, .toolbar button.primary:focus-visible,
-	.popover button.primary, .popover button.primary:hover, .popover button.primary:focus-visible {
+	.popover button.primary, .popover button.primary:hover, .popover button.primary:focus-visible,
+	.reviewbar button[data-action="review-add"], .reviewbar button[data-action="review-add"]:hover, .reviewbar button[data-action="review-add"]:focus-visible {
 		forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight;
 	}
 	.toolbar button:disabled { border-color: GrayText; color: GrayText; opacity: 1; }

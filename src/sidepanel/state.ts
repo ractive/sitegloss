@@ -290,6 +290,8 @@ export interface PanelState {
 		/** "Keep AI access on". */
 		keepOn: boolean;
 		lastCall: AiCall | undefined;
+		/** An AI app's tool call is running (DEC-063). */
+		working: boolean;
 		/**
 		 * The AI app that was just paired in the open card, while it stays
 		 * connected and the card stays open: what to do next is said there
@@ -363,6 +365,7 @@ export const initialState = (): PanelState => ({
 		problem: undefined,
 		keepOn: false,
 		lastCall: undefined,
+		working: false,
 	},
 });
 

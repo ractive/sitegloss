@@ -265,7 +265,36 @@ export type WorkerRequest =
 	 * storage (a content script may not reach it): with `place` it is kept,
 	 * without it the kept one is answered (`BarPlaceAnswer`).
 	 */
-	| { type: "bar:place"; place?: { right: number; top: number } };
+	| { type: "bar:place"; place?: { right: number; top: number } }
+	/**
+	 * "Add image…" in the page's mark dialog (DEC-063): the side panel opens
+	 * (the click's gesture) and its own dialog adds images to mark `number`
+	 * of the case once the mark is in it. A page can read an image pasted or
+	 * dropped in the page, so the panel takes them.
+	 */
+	| { type: "panel:images"; caseId: string; number: number }
+	/**
+	 * From the side panel: the mark the page's "Add image…" left, taken
+	 * (answered as `ImagesForAnswer`, then forgotten). The panel touches no
+	 * storage itself; the worker keeps it in session storage, which
+	 * outlives the worker's restarts.
+	 */
+	| { type: "panel:images-take" };
+
+export interface ImagesForAnswer {
+	images?: ImagesFor;
+}
+
+/** Where the worker leaves the panel's next "Add images" (DEC-063), in session storage. */
+export const IMAGES_FOR_KEY = "sitegloss.imagesFor";
+
+/** What `IMAGES_FOR_KEY` holds: the mark of which case, from which tab, when. */
+export interface ImagesFor {
+	caseId: string;
+	number: number;
+	tabId: number;
+	at: number;
+}
 
 /**
  * The one-off messages the service worker answers. Nothing about the AI
@@ -280,6 +309,8 @@ export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	"case:undo-add",
 	"images:discard",
 	"bar:place",
+	"panel:images",
+	"panel:images-take",
 ]);
 
 export interface BarPlaceAnswer {
@@ -368,7 +399,9 @@ export type Broadcast =
 	 */
 	| { type: "sync:run"; force?: boolean }
 	/** The worker's account or team sync changed (DEC-039): read it again. */
-	| { type: "cloud:changed" };
+	| { type: "cloud:changed" }
+	/** The page's "Add image…" left a mark for the panel (DEC-063): take it. */
+	| { type: "panel:images" };
 
 /**
  * What the side panel asks of the worker about the account and the sync

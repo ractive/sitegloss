@@ -192,6 +192,12 @@ function normalizeRect(a: Point, b: Point): Rect {
 export class MarkAdder {
 	readonly overlay: Overlay;
 	/**
+	 * "Add image…" in the mark's dialog (DEC-063): the side panel's dialog
+	 * adds the images, never this page (a page reads what is pasted or
+	 * dropped in it). Called within the click, for its gesture.
+	 */
+	onAddImages: ((caseId: string, number: number) => void) | undefined;
+	/**
 	 * Marks drawn and not in the case yet: a comment being typed, one on its
 	 * way, one that could not be added. The case holds every other (DEC-026).
 	 */
@@ -686,9 +692,25 @@ export class MarkAdder {
 		const row = doc.createElement("div");
 		row.className = "row";
 		row.append(remove, done);
+		const caseId = this.#target?.caseId;
+		const image = doc.createElement("button");
+		image.type = "button";
+		image.dataset["action"] = "comment-image";
+		image.textContent = "Add image…";
+		image.title =
+			"Done with this mark, and add images to it in the side panel: pasted or dropped here, the page could read them";
+		image.hidden = caseId === undefined || this.onAddImages === undefined;
+		image.addEventListener("click", () => {
+			if (caseId === undefined) return;
+			this.onAddImages?.(caseId, draft.number);
+			this.#commitComment();
+		});
+		const more = doc.createElement("div");
+		more.className = "row images";
+		more.append(image);
 		// A loaded mark's popover opened over this one (DEC-027): the comment
 		// typed so far is the mark's, as after a click beside it.
-		this.overlay.openPopover([label, field, row], () => {
+		this.overlay.openPopover([label, field, more, row], () => {
 			if (this.#editing === draft) this.#commitComment();
 		});
 		this.#placePopover(draft);

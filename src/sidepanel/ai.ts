@@ -425,6 +425,7 @@ export async function startAi(
 				active: a.state !== "disconnected" || a.retrying,
 				keepOn: a.keepOn,
 				lastCall: a.lastCall,
+				working: connected && (a.running ?? 0) > 0,
 			};
 		});
 		// A worker that failed before may have started since.
