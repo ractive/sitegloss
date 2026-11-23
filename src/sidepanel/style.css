@@ -2363,6 +2363,22 @@ ol.marks {
 	text-underline-offset: 2px;
 }
 
+/*
+ * A highlight's text (DEC-066): a quote on one line, cut where the row ends,
+ * on the logo's amber like the stroke on the page.
+ */
+.mark-sub .quote {
+	/* It gives way first: the row's status stays on its line. */
+	flex: 1 1 0;
+	min-width: 5em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding-inline-start: var(--s2);
+	border-inline-start: 3px solid var(--accent);
+	color: var(--ink);
+}
+
 .mark[data-colour="lost"] .mark-sub .state {
 	color: var(--danger);
 	font-weight: 600;

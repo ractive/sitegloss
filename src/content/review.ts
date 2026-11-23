@@ -6,7 +6,10 @@
  * dashed when only probable or tied; its colour is its status (DEC-024). A
  * mark without an element goes where it was. The marks of other pages are
  * not looked for, drawn or counted. An element that a re-render replaced
- * afterwards is looked for again.
+ * afterwards is looked for again. A highlight's text is looked for in its
+ * element and drawn on the lines it has now; where it is not there any more,
+ * the element is drawn as a box and the mark is only probable (DEC-066). A
+ * mark of a kind this version does not know is not drawn.
  */
 
 import { PANEL } from "../lib/browser.ts";
@@ -37,6 +40,7 @@ import {
 	STATUS_LABEL,
 	shapeBounds,
 	shapeOnBox,
+	translateHighlight,
 	translateShape,
 } from "../lib/case.ts";
 import {
@@ -45,7 +49,10 @@ import {
 	describeElement,
 	summarize,
 } from "../lib/element.ts";
-import { clearTextCache } from "../lib/match.ts";
+import { boundsOfRects } from "../lib/highlight.ts";
+import { backdropOf } from "../lib/look.ts";
+import { isDarkGround } from "../lib/marks.ts";
+import { clearTextCache, type MatchStatus } from "../lib/match.ts";
 import type {
 	CandidateInfo,
 	LoadResult,
@@ -61,6 +68,7 @@ import {
 	withSaveKey,
 } from "./overlay.ts";
 import { PageField } from "./page-field.ts";
+import { findText, rangeLines } from "./text-range.ts";
 
 interface Entry {
 	mark: Mark;
@@ -73,6 +81,14 @@ interface Entry {
 	/** The best elements worth showing, best first. */
 	candidates: Candidate[];
 	match: MarkMatch;
+	/** How its element was found, before its text was looked for (DEC-066). */
+	elementStatus?: MatchStatus;
+	/**
+	 * A highlight's text in the element it is drawn on (DEC-066): a live
+	 * range, `null` where the text is not there any more; `dark`: on a dark
+	 * ground.
+	 */
+	text?: { element: Element; range: Range | null; dark: boolean };
 }
 
 /** Asks the side panel that shows the case (DEC-027). */
@@ -162,6 +178,10 @@ function typed(open: OpenMark): string {
 	if (open.field !== undefined) open.draft = open.field.value;
 	return open.draft;
 }
+
+/** A highlight's live range whose text left the page. */
+const deadRange = (range: Range | null | undefined): boolean =>
+	range != null && (range.collapsed || !range.startContainer.isConnected);
 
 /** Let the page run between marks: loading a big case takes a while. */
 const yieldToPage = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -568,10 +588,11 @@ export class Reviewer {
 		if (!here) return this.#elsewhere(mark);
 		const found = findCandidates(search, stored);
 		const { status, candidates, truncated } = found;
-		return {
+		return this.#withText({
 			mark,
 			here,
 			candidates,
+			elementStatus: status,
 			match: {
 				...base,
 				status,
@@ -579,7 +600,37 @@ export class Reviewer {
 				candidates: candidates.map((k) => this.#info(k, search.context)),
 				...(truncated ? { truncated: true } : {}),
 			},
+		});
+	}
+
+	/**
+	 * A highlight's text looked for in the element it is drawn on (DEC-066):
+	 * there, it is drawn on the lines the text has now; not there (the text
+	 * changed, often the fix), the element is drawn as a box and a found
+	 * element is only probable, and the panel says why.
+	 */
+	#withText(entry: Entry): Entry {
+		const h = entry.mark.highlight;
+		const el = this.#element(entry);
+		if (h === undefined || el === undefined) {
+			delete entry.text;
+			return entry;
+		}
+		const range = findText(el, h) ?? null;
+		entry.text = {
+			element: el,
+			range,
+			dark: isDarkGround(backdropOf(el)?.color),
 		};
+		const was = entry.elementStatus ?? entry.match.status;
+		if (range === null) {
+			entry.match.textChanged = true;
+			if (was === "found") entry.match.status = "probable";
+		} else {
+			delete entry.match.textChanged;
+			if (was !== "no-element") entry.match.status = was;
+		}
+		return entry;
 	}
 
 	/** A mark of another page than the one in front: not looked for here. */
@@ -599,9 +650,16 @@ export class Reviewer {
 		};
 	}
 
-	/** The shown element left the page: a re-render, or it is gone. */
+	/**
+	 * The shown element left the page: a re-render, or it is gone; or a
+	 * highlight's text was replaced under it (a fix, hot reload): its range
+	 * collapsed, and the text is looked for again (DEC-066).
+	 */
 	#replaced(entry: Entry): boolean {
-		return this.#element(entry)?.isConnected === false;
+		return (
+			this.#element(entry)?.isConnected === false ||
+			deadRange(entry.text?.range)
+		);
 	}
 
 	/**
@@ -667,6 +725,9 @@ export class Reviewer {
 		if (candidate !== undefined && count > 0)
 			entry.match.current = ((candidate % count) + count) % count;
 		entry.match.score = entry.candidates[entry.match.current]?.score ?? 0;
+		// Another candidate: its text is looked for (DEC-066).
+		if (entry.text !== undefined && entry.text.element !== this.#element(entry))
+			this.#withText(entry);
 		this.#focused = markId;
 		const element = this.#element(entry);
 		if (element !== undefined)
@@ -1251,18 +1312,30 @@ export class Reviewer {
 	#onElement(entry: Entry, rect: Rect): ReviewItem {
 		const { mark } = entry;
 		const details = mark.element;
+		// A highlight on its text's lines as they are now (DEC-066).
+		const text = entry.text;
+		const lines =
+			text?.range !== null && text?.range !== undefined
+				? rangeLines(text.range)
+				: undefined;
+		const onText = lines !== undefined && lines.length > 0;
 		return {
 			number: mark.number,
-			shape: details
-				? shapeOnBox(this.#stored(mark), details.rect, rect)
-				: mark.shape,
+			shape: onText
+				? { kind: "box", rect: boundsOfRects(lines) }
+				: details
+					? shapeOnBox(this.#stored(mark), details.rect, rect)
+					: mark.shape,
 			rect,
-			// The shown candidate itself decides the colour.
+			// The shown candidate itself decides the colour; a highlight whose
+			// text is not there is unsure.
 			found:
 				entry.match.status !== "ambiguous" &&
+				entry.match.textChanged !== true &&
 				entry.candidates[entry.match.current]?.found === true,
 			focused: mark.id === this.#focused,
 			status: markStatus(mark),
+			...(onText ? { lines, dark: text?.dark === true } : {}),
 		};
 	}
 
@@ -1271,13 +1344,19 @@ export class Reviewer {
 		// Only on its own page: a case spans pages (DEC-038).
 		if (!this.#own(mark)) return undefined;
 		const win = this.overlay.doc.defaultView;
+		const shot = this.#case?.shots.find((s) => s.id === mark.shot);
+		const dx = (shot?.scrollX ?? 0) - (win?.scrollX ?? 0);
+		const dy = (shot?.scrollY ?? 0) - (win?.scrollY ?? 0);
 		return {
 			number: mark.number,
-			shape: translateShape(
-				this.#stored(mark),
-				-(win?.scrollX ?? 0),
-				-(win?.scrollY ?? 0),
-			),
+			shape: translateShape(mark.shape, dx, dy),
+			// A highlight without an element: its lines where they were (DEC-066).
+			...(mark.highlight === undefined
+				? {}
+				: {
+						lines: translateHighlight(mark.highlight, dx, dy).rects,
+						dark: isDarkGround(mark.element?.backdrop?.color),
+					}),
 			rect: null,
 			found: false,
 			focused: mark.id === this.#focused,

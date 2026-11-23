@@ -6,6 +6,7 @@
 import {
 	type Case,
 	type ElementDetails,
+	type Highlight,
 	RESOLVE_CHOICES,
 	type Rect,
 	type ResolveChoice,
@@ -103,6 +104,8 @@ export type ContentRequest =
 			selector: string;
 			number: number;
 			blurForms: boolean;
+			/** Text inside the element to highlight (DEC-066). */
+			text?: string;
 	  }
 	/**
 	 * Read the element of a loaded case's mark (or, with `selector`, one
@@ -149,8 +152,10 @@ export type DescribedElement =
 	| {
 			ok: true;
 			details: ElementDetails;
-			/** The element's box in window coordinates. */
+			/** The element's box in window coordinates; a highlight's: its lines' box. */
 			rect: Rect;
+			/** The text highlighted, its lines in window coordinates (DEC-066). */
+			highlight?: Highlight;
 			viewport: Viewport;
 			scroll: { x: number; y: number };
 			url: string;
@@ -214,6 +219,12 @@ export interface MarkMatch {
 	candidates: CandidateInfo[];
 	/** Only part of the page was searched (very many elements, or out of time). */
 	truncated?: boolean;
+	/**
+	 * A highlight whose text is not in the element shown any more (DEC-066):
+	 * the text changed, often the fix itself. A found element is then only
+	 * probable.
+	 */
+	textChanged?: true;
 }
 
 /** A load stopped by a clear or by another case's load: nothing to say. */

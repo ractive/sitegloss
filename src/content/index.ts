@@ -5,6 +5,7 @@
 
 import { LANGUAGE, nextNumbers } from "../lib/case.ts";
 import { cssSelector, describeElement } from "../lib/element.ts";
+import { boundsOfRects } from "../lib/highlight.ts";
 import {
 	insideInput,
 	inspectElement,
@@ -14,6 +15,7 @@ import {
 	selectorProblem,
 } from "../lib/inspect.ts";
 import { withLook } from "../lib/look.ts";
+import { isDarkGround } from "../lib/marks.ts";
 import type {
 	BarPlaceAnswer,
 	BlurResult,
@@ -31,6 +33,7 @@ import { PageBlur } from "./blur.ts";
 import { HOST_ID, Overlay, storedBarPlace } from "./overlay.ts";
 
 import { LoadReplaced, Reviewer } from "./review.ts";
+import { findText, selectedText } from "./text-range.ts";
 
 declare global {
 	var __sitegloss: boolean | undefined;
@@ -58,6 +61,8 @@ function mark(
 	selector: string,
 	number: number,
 	blurForms: boolean,
+	/** Text inside the element to highlight (DEC-066). */
+	text?: string,
 ): DescribedElement {
 	// The same rules as get_mark_element's: whether it matches is an answer (CR-01).
 	const problem = selectorProblem(document, selector);
@@ -74,6 +79,14 @@ function mark(
 	});
 	if (el === undefined)
 		return { ok: false, error: `Nothing that matches ${selector} is visible.` };
+	// The text to highlight, found before anything on the page changes.
+	const quote = text?.replace(/\s+/g, " ").trim();
+	const range = quote === undefined ? undefined : findText(el, { text: quote });
+	if (quote !== undefined && range === undefined)
+		return {
+			ok: false,
+			error: `The text is not in the element ${selector} names (it is matched with its white space collapsed, as the page shows it).`,
+		};
 	const started = activity.begin("ai-mark", () => endAi(overlay));
 	if (!started.ok) return started;
 	el.scrollIntoView({
@@ -81,20 +94,52 @@ function mark(
 		inline: "nearest",
 		behavior: "instant",
 	});
+	const selected = range === undefined ? undefined : selectedText(range);
+	if (
+		selected !== undefined &&
+		(typeof selected === "string" || selected.cut)
+	) {
+		activity.end("ai-mark");
+		return {
+			ok: false,
+			error:
+				typeof selected === "string"
+					? "That text cannot be highlighted: it is typed text or in a form field."
+					: "That text is on more than 40 lines: a highlight holds no more.",
+		};
+	}
+	const marked = selected?.element ?? el;
 	const r = el.getBoundingClientRect();
-	const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
-	overlay.setTemporaryMark({ number, rect });
+	const rect =
+		selected === undefined
+			? { x: r.x, y: r.y, width: r.width, height: r.height }
+			: boundsOfRects(selected.lines);
+	const details = withLook(
+		describeElement(marked),
+		marked,
+		{ x: scrollX, y: scrollY },
+		overlay.host,
+	);
+	overlay.setTemporaryMark({
+		number,
+		rect,
+		...(selected === undefined
+			? {}
+			: {
+					lines: selected.lines,
+					dark: isDarkGround(details.backdrop?.color),
+				}),
+	});
 	releaseBlur = pageBlur.hold(blurForms);
 	return {
 		ok: true,
-		// The AI app's mark: how its element looks, once, now (DEC-048).
-		details: withLook(
-			describeElement(el),
-			el,
-			{ x: scrollX, y: scrollY },
-			overlay.host,
-		),
+		// The AI app's mark: how its element looks, once, now (DEC-048); a
+		// highlight's element is the one that holds all of its text.
+		details,
 		rect,
+		...(selected === undefined
+			? {}
+			: { highlight: { ...selected.highlight, rects: selected.lines } }),
 		viewport: {
 			width: innerWidth,
 			height: innerHeight,
@@ -363,7 +408,13 @@ function start(): void {
 					break;
 				case "element:mark":
 					sendResponse(
-						mark(overlay, message.selector, message.number, message.blurForms),
+						mark(
+							overlay,
+							message.selector,
+							message.number,
+							message.blurForms,
+							message.text,
+						),
 					);
 					break;
 				case "element:inspect":
