@@ -1633,7 +1633,7 @@ describe("Verify (DEC-023)", () => {
 		expect(row("m2").querySelector(".mark-sub button")).toBeNull();
 	});
 
-	test("the case list counts by status, with the bar", () => {
+	test("the case list counts by status, with the bar, after the case's state", () => {
 		const c = fourMarks();
 		const home = initialState();
 		home.cases = [c];
@@ -1649,7 +1649,16 @@ describe("Verify (DEC-023)", () => {
 			[...item.querySelectorAll(".card-chips > span")].map(
 				(s) => s.textContent,
 			),
-		).toEqual(["● 1 open", "◐ 1 to verify", "✓ 1 verified", "– 1 dismissed"]);
+		).toEqual([
+			"In progress",
+			"● 1 open",
+			"◐ 1 to verify",
+			"✓ 1 verified",
+			"– 1 dismissed",
+		]);
+		expect(item.getAttribute("aria-label")).toContain(
+			"Button contrast, in progress:",
+		);
 		expect(
 			[...item.querySelectorAll(".progress.band > span")].map((s) =>
 				s.getAttribute("data-kind"),
@@ -6034,5 +6043,105 @@ describe("what comes next on the open case (DEC-069)", () => {
 		state.cloud.atTeam = {};
 		render(state, noActions);
 		expect(el("next-step-note").textContent).toBe("");
+	});
+});
+
+describe("the hand-over in the panel (DEC-071)", () => {
+	const TESS = { id: "u_tess", name: "Tess" };
+	const DANA = { id: "u_dana", name: "Dana" };
+	const signedIn = (s: PanelState) => {
+		s.cloud.account = {
+			name: "Tess",
+			email: "tess@example.com",
+			userId: TESS.id,
+			server: "https://app.sitegloss.dev",
+			teams: [
+				{ id: "t_1", name: "Web", slug: "web", permissions: ["case:update"] },
+			],
+			teamId: "t_1",
+			expired: false,
+		};
+		s.cloud.atTeam = { c_1: "t_1" };
+		s.cloud.members = [DANA, TESS];
+	};
+
+	test("Assign is a menu: you first, the others, then Nobody; the one who has it is checked, and a pick assigns", () => {
+		const picked: (string | null)[] = [];
+		const c = { ...withOneMark(sampleCase()), createdBy: TESS, assignee: DANA };
+		render(
+			caseState(c, signedIn),
+			actionsWith({
+				assignCase: (id, to) => void picked.push(`${id} ${to?.id ?? null}`),
+			}),
+		);
+		const button = el("next-step").querySelector(
+			'[data-step="assign"]',
+		) as unknown as HTMLButtonElement;
+		expect(button.textContent).toBe("Reassign");
+		expect(button.getAttribute("aria-haspopup")).toBe("menu");
+		const menu = el("assign-menu");
+		expect(menu.hidden).toBe(true);
+		button.click();
+		expect(menu.hidden).toBe(false);
+		expect(button.getAttribute("aria-expanded")).toBe("true");
+		const items = [...menu.querySelectorAll('[role="menuitemradio"]')];
+		expect(items.map((x) => x.textContent?.replace("✓", ""))).toEqual([
+			"You",
+			"Dana",
+			"Nobody",
+		]);
+		expect(items.map((x) => x.getAttribute("aria-checked"))).toEqual([
+			"false",
+			"true",
+			"false",
+		]);
+		(items[2] as unknown as HTMLButtonElement).click();
+		expect(picked).toEqual(["c_1 null"]);
+		expect(menu.hidden).toBe(true);
+	});
+
+	test("My cases: a chip with its count; on, the list keeps the person's cases only", () => {
+		const shown: boolean[] = [];
+		const theirs = {
+			...withOneMark(sampleCase("c_theirs")),
+			title: "Theirs",
+			createdBy: TESS,
+			assignee: DANA,
+		};
+		const given = {
+			...withOneMark(sampleCase("c_given")),
+			title: "Given",
+			createdBy: DANA,
+			assignee: TESS,
+		};
+		const state = initialState();
+		signedIn(state);
+		state.cases = [theirs, given];
+		const actions = actionsWith({ showMine: (on) => void shown.push(on) });
+		render(state, actions);
+		const chip = el<HTMLButtonElement>("my-cases");
+		expect(chip.textContent).toBe("My cases1");
+		expect(chip.getAttribute("aria-pressed")).toBe("false");
+		chip.click();
+		expect(shown).toEqual([true]);
+		const listed = () =>
+			[
+				...window.document.querySelectorAll('[data-group="other"] [data-case]'),
+			].map((x) => x.getAttribute("data-case"));
+		expect(listed()).toEqual(["c_theirs", "c_given"]);
+		state.mine = true;
+		render(state, actions);
+		expect(listed()).toEqual(["c_given"]);
+		// A card says who has the open marks.
+		expect(
+			window.document.querySelector('[data-case="c_given"] .card-assignee')
+				?.textContent,
+		).toBe(" · Assigned to you");
+		// Not signed in: no filter, nothing about assignees.
+		const out = initialState();
+		out.cases = [theirs, given];
+		render(out, actions);
+		expect(el("my-cases")).toBeNull();
+		expect(window.document.querySelector(".card-assignee")).toBeNull();
 	});
 });

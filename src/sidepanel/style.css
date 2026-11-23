@@ -173,6 +173,14 @@ p {
 	color: var(--ink-2);
 }
 
+.empty > p {
+	margin: 0;
+}
+
+.empty > p + p {
+	margin-top: var(--s2);
+}
+
 a {
 	color: var(--link);
 	text-underline-offset: 2px;
@@ -1327,6 +1335,18 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	color: var(--st-dismissed);
 }
 
+/* The case's state (DEC-071): one quiet badge before the counts, no colour of its own. */
+.case-card .card-chips > .card-state {
+	background: var(--wash);
+	color: var(--ink);
+	font-weight: 600;
+}
+
+/* "My cases" (DEC-071): above the list, as the open case's status chips. */
+.cases-filter {
+	margin: 0 0 var(--s2);
+}
+
 .case-card .card-chips .none {
 	padding: 0;
 	font-weight: 400;
@@ -1524,6 +1544,41 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 
 .next-step:focus {
 	outline: none;
+}
+
+/*
+ * Assign (DEC-071): a menu button, its chevron pointing down, and the
+ * team's members under it as the case's "…" menu has its actions.
+ */
+.next-step .assign {
+	position: relative;
+	display: inline-flex;
+}
+
+.next-step .menu-button {
+	gap: var(--s2);
+}
+
+.next-step .menu-button > .chevron {
+	margin: -4px 0 0;
+	transform: rotate(45deg);
+}
+
+.assign-menu {
+	left: 0;
+	right: auto;
+	max-height: 260px;
+	overflow-y: auto;
+}
+
+.assign-menu > button {
+	gap: var(--s2);
+}
+
+.assign-menu .check {
+	width: 1em;
+	flex: none;
+	text-align: center;
 }
 
 /*

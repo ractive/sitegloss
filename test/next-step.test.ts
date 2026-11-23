@@ -305,3 +305,114 @@ describe("the instructions for an AI app", () => {
 		).toBe('Title: "abcd"');
 	});
 });
+
+describe("the team's case with an assignee: whose turn it is (DEC-071)", () => {
+	const TESS = { id: "u_tess", name: "Tess" };
+	const DANA = { id: "u_dana", name: "Dana" };
+	const PAT = { id: "u_pat", name: "Pat" };
+	/** As `me` sees the case Tess started, assigned to `to`. */
+	const as = (
+		c: Case,
+		me: string,
+		to: typeof DANA | null,
+		more: { mayAssign?: boolean; where?: Where } = {},
+	) =>
+		nextStep({ ...c, createdBy: TESS, assignee: to }, more.where ?? TEAM_HAS, {
+			adding: false,
+			mayClose: true,
+			me,
+			mayAssign: more.mayAssign ?? true,
+		});
+
+	test("open marks and nobody on them: whoever may assigns, the others send the link", () => {
+		const c = withMarks("open", "open");
+		expect(as(c, TESS.id, null)).toEqual({
+			text: "Nobody is on it yet: assign it to whoever fixes the open marks.",
+			actions: ["assign", "copy-link", "copy-ai"],
+		});
+		expect(as(c, TESS.id, null, { mayAssign: false })).toEqual({
+			text: "Nobody is on it yet: send the case to whoever fixes the open marks.",
+			actions: ["copy-link", "copy-ai"],
+		});
+	});
+
+	test("the assignee, the reporter and a third member each read what is theirs", () => {
+		const c = withMarks("open", "fixed");
+		expect(as(c, DANA.id, DANA)).toEqual({
+			text: "Assigned to you: fix the open marks, and set each one fixed.",
+			actions: ["copy-ai", "assign"],
+		});
+		// The reporter also has a fix to check while marks are open.
+		expect(as(c, TESS.id, DANA)).toEqual({
+			text: "Check the fixed marks on the page that has the fix. Assigned to Dana: the open marks are theirs to fix.",
+			actions: ["verify", "copy-link", "assign"],
+		});
+		expect(as(c, PAT.id, DANA, { mayAssign: false })).toEqual({
+			text: "Assigned to Dana: the open marks are theirs to fix.",
+			actions: ["copy-link"],
+		});
+	});
+
+	test("every open mark fixed: back with the reporter to verify", () => {
+		const c = withMarks("fixed", "verified");
+		expect(as(c, TESS.id, DANA)).toEqual({
+			text: "Every open mark is fixed: check them on the page that has the fix, and verify them.",
+			actions: ["verify"],
+		});
+		expect(as(c, DANA.id, DANA)).toEqual({
+			text: "Every open mark is fixed: Tess checks and verifies them.",
+			actions: [],
+		});
+	});
+
+	test("every mark settled: the reporter closes it", () => {
+		const c = withMarks("verified", "wontfix");
+		expect(as(c, TESS.id, DANA)?.text).toBe(
+			"Every mark is settled: close the case.",
+		);
+		expect(as(c, PAT.id, DANA)).toEqual({
+			text: "Every mark is settled: Tess closes the case.",
+			actions: [],
+		});
+	});
+
+	test("an assignment not at the server yet: the block says it waits, and why", () => {
+		const c = {
+			...withMarks("open"),
+			createdBy: TESS,
+			assignee: null,
+			assign: { to: DANA, at: AT },
+		};
+		const said = (where: Where) =>
+			nextStep(c, where, { adding: false, mayClose: true, me: TESS.id })?.text;
+		expect(said(TEAM_HAS)).toBe(
+			"Assigned to Dana: the open marks are theirs to fix. The change goes to the team with the next sync.",
+		);
+		expect(said({ ...TEAM_HAS, offline: true })).toBe(
+			"Assigned to Dana: the open marks are theirs to fix. The change waits here until the server can be reached.",
+		);
+	});
+
+	test("a server that told no assignee, or a case only in this browser: as before", () => {
+		const c = { ...withMarks("open"), createdBy: TESS };
+		expect(
+			nextStep(c, TEAM_HAS, { adding: false, mayClose: true, me: DANA.id })
+				?.text,
+		).toBe("Send the case to whoever fixes the open marks.");
+		expect(
+			as(c, TESS.id, DANA, { where: { kind: "browser", share: "may" } }),
+		).toEqual({
+			text: "It is only in this browser. Share it so whoever fixes it can open it.",
+			actions: ["share"],
+		});
+	});
+
+	test("offline is part of where the team's case is", () => {
+		expect(
+			whereIs(
+				cloud({ atTeam: { c_1: "t_1" }, status: synced({ state: "offline" }) }),
+				withMarks("open"),
+			),
+		).toEqual({ ...TEAM_HAS, offline: true });
+	});
+});

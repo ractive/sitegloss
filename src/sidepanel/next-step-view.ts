@@ -5,8 +5,12 @@
  * leaves it as it was. What a copy did is said under it. Both live regions
  * stay rendered while empty (out of sight, not `hidden`), so that a reader
  * hears what is written into them.
+ *
+ * Assign… (DEC-071) is a menu button: the team's members, the person
+ * looking first as "You", then Nobody; the one the case has is checked.
  */
 
+import type { UserRef } from "../lib/case.ts";
 import { h } from "./dom.ts";
 import type { NextStep, StepAction } from "./next-step.ts";
 
@@ -19,6 +23,19 @@ export interface StepParts {
 	key: string;
 	/** What a click does, as of the latest render. */
 	act: (action: StepAction) => void;
+	/** What a pick in the Assign menu does, as of the latest render. */
+	pick: (to: UserRef | null) => void;
+}
+
+/** The Assign menu's choices (DEC-071). */
+export interface AssignChoices {
+	/** The team's members, as the server listed them. */
+	members: UserRef[];
+	/** Who has the case now (as shown here); null: nobody. */
+	current: UserRef | null;
+	/** Who is looking. */
+	me: string;
+	pick: (to: UserRef | null) => void;
 }
 
 const LABEL: Record<StepAction, { label: string; title: string }> = {
@@ -57,6 +74,11 @@ const LABEL: Record<StepAction, { label: string; title: string }> = {
 		title:
 			"Close the case: it is filed away under Closed, and stays readable and changeable. A new open mark opens it again.",
 	},
+	assign: {
+		label: "Assign",
+		title:
+			"Choose who fixes the open marks: a member of the team. They see it under My cases; when every open mark is fixed, it comes back to whoever started the case to verify",
+	},
 };
 
 export function nextStepParts(): StepParts {
@@ -81,7 +103,15 @@ export function nextStepParts(): StepParts {
 		row,
 		note,
 	);
-	return { el, text, row, note, key: "", act: () => undefined };
+	return {
+		el,
+		text,
+		row,
+		note,
+		key: "",
+		act: () => undefined,
+		pick: () => undefined,
+	};
 }
 
 /** Out of sight but rendered: a live region a reader keeps listening to. */
@@ -99,8 +129,10 @@ export function renderNextStep(
 	note: string | undefined,
 	act: (action: StepAction) => void,
 	off: Partial<Record<StepAction, string>> = {},
+	assign?: AssignChoices,
 ): void {
 	p.act = act;
+	if (assign !== undefined) p.pick = assign.pick;
 	away(p.el, step === undefined);
 	// A region with a name only while it says something: an empty one is no
 	// landmark for a reader to land on.
@@ -119,7 +151,12 @@ export function renderNextStep(
 	if (p.note.textContent !== (shown ?? "")) p.note.textContent = shown ?? "";
 	away(p.note, shown === undefined);
 	const actions = step?.actions ?? [];
-	const key = JSON.stringify(actions.map((a) => [a, off[a] ?? null]));
+	const key = JSON.stringify([
+		actions.map((a) => [a, off[a] ?? null]),
+		actions.includes("assign") && assign !== undefined
+			? [assign.members, assign.current?.id ?? null, assign.me]
+			: null,
+	]);
 	if (key === p.key) return;
 	p.key = key;
 	// The button that has the focus, by its action: a click that changed the
@@ -130,6 +167,8 @@ export function renderNextStep(
 	p.row.replaceChildren(
 		...actions.map((action) => {
 			const why = off[action];
+			if (action === "assign" && assign !== undefined)
+				return assignMenu(p, assign, why);
 			return h(
 				"button",
 				{
@@ -145,6 +184,7 @@ export function renderNextStep(
 		}),
 	);
 	p.row.hidden = actions.length === 0;
+	// (The menu's button holds the action's name too: the focus finds it.)
 	if (had)
 		(
 			p.row.querySelector<HTMLElement>(
@@ -153,4 +193,103 @@ export function renderNextStep(
 			p.row.querySelector<HTMLElement>("button:not(:disabled)") ??
 			p.el
 		).focus();
+}
+
+/**
+ * Assign… and its menu (DEC-071): a menu button, as the case's "…" is, with
+ * the members as radio items. A pick goes to `p.pick`; Escape or a click
+ * elsewhere closes it, the arrows move in it.
+ */
+function assignMenu(
+	p: StepParts,
+	choices: AssignChoices,
+	off: string | undefined,
+): HTMLElement {
+	const close = (back: boolean) => {
+		menu.hidden = true;
+		button.setAttribute("aria-expanded", "false");
+		if (back) button.focus();
+	};
+	const you = choices.members.find((m) => m.id === choices.me);
+	const others = choices.members
+		.filter((m) => m.id !== choices.me)
+		.sort((a, b) => a.name.localeCompare(b.name));
+	const item = (to: UserRef | null, label: string) => {
+		const checked = (choices.current?.id ?? null) === (to?.id ?? null);
+		return h(
+			"button",
+			{
+				type: "button",
+				role: "menuitemradio",
+				"aria-checked": String(checked),
+				"data-assign": to?.id ?? "",
+				onclick: () => {
+					close(true);
+					p.pick(to);
+				},
+			},
+			h("span", { class: "check", "aria-hidden": "true" }, checked ? "✓" : ""),
+			label,
+		);
+	};
+	const menu: HTMLElement = h(
+		"div",
+		{
+			class: "case-menu assign-menu",
+			id: "assign-menu",
+			role: "menu",
+			"aria-label": "Assign the case to",
+			hidden: true,
+			onkeydown: (e: Event) => {
+				const k = e as KeyboardEvent;
+				const items = [...menu.querySelectorAll<HTMLElement>("button")];
+				const at = items.indexOf(document.activeElement as HTMLElement);
+				if (k.key === "Escape") {
+					k.preventDefault();
+					close(true);
+				} else if (k.key === "ArrowDown" || k.key === "ArrowUp") {
+					k.preventDefault();
+					const step = k.key === "ArrowDown" ? 1 : -1;
+					items[(at + step + items.length) % items.length]?.focus();
+				} else if (k.key === "Tab") close(false);
+			},
+		},
+		...(you === undefined ? [] : [item(you, "You")]),
+		...others.map((m) => item(m, m.name)),
+		item(null, "Nobody"),
+	);
+	// The sentence beside it names who has the case: the button need not.
+	const label = choices.current === null ? LABEL.assign.label : "Reassign";
+	const button: HTMLButtonElement = h(
+		"button",
+		{
+			type: "button",
+			class: "small menu-button",
+			"data-step": "assign",
+			"aria-haspopup": "menu",
+			"aria-expanded": "false",
+			"aria-controls": "assign-menu",
+			title: off ?? LABEL.assign.title,
+			disabled: off !== undefined,
+			onclick: () => {
+				const open = menu.hidden;
+				menu.hidden = !open;
+				button.setAttribute("aria-expanded", String(open));
+				if (open)
+					(
+						menu.querySelector<HTMLElement>('[aria-checked="true"]') ??
+						menu.querySelector<HTMLElement>("button")
+					)?.focus();
+			},
+		},
+		label,
+		h("span", { class: "chevron", "aria-hidden": "true" }),
+	);
+	const wrap = h("span", { class: "assign" }, button, menu);
+	// A click outside closes it, as the case's "…" menu.
+	wrap.addEventListener("focusout", (e) => {
+		const to = (e as FocusEvent).relatedTarget as Node | null;
+		if (to !== null && !wrap.contains(to)) close(false);
+	});
+	return wrap;
 }
