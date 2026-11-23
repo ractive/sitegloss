@@ -25,8 +25,8 @@ export interface CaseRef {
 	title: string;
 	/** The case's address in the web app. */
 	url: string;
-	/** The MCP server's address. */
-	mcpUrl: string;
+	/** The team's AI app page in the web app: where connecting an AI app is explained. */
+	aiUrl: string;
 	/** What the case holds now. */
 	contents?: CaseContents;
 }
@@ -161,8 +161,7 @@ export function caseInstructions(ref: CaseRef): string {
 		`Work on the Sitegloss case with the id ${ref.id}:`,
 		ref.url,
 		"",
-		`Use the Sitegloss tools you have: the server's (${ref.mcpUrl}) or the extension's own AI app connection. If you have neither, add the server (in Claude Code: claude mcp add --transport http sitegloss ${ref.mcpUrl}), then stop and ask me to sign in: in Claude Code I run /mcp and choose sitegloss, and /reload-plugins if the tools still do not show.`,
-		"Reading the live page (an element's HTML and CSS, the marks drawn on it) is only the extension's connection: its side panel's AI app card says how to connect it. The server has the case as it is stored, and no browser.",
+		`Use the Sitegloss tools you have: the server's or the extension's own AI app connection. If you have none, stop and tell me to connect one: ${ref.aiUrl}, or the AI app card in the extension's side panel.`,
 		"",
 		DATA_START,
 		`Title: ${quoted(ref.title.trim() ? ref.title : "Untitled case", TITLE_LIMIT)}`,

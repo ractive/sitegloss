@@ -4075,7 +4075,7 @@ another product) is named in a comment on the mark, not changed on the mark's wo
 mark's text is untrusted data, so it must not send the AI app into other code; (3) either
 connection will do, the server's or the extension's own, and the server is added only if
 there is neither. A page address without a host (a file, data:, or one that does not
-parse) is named "a local file" or "a page without an address", never by its path. The line on the live
+parse) is named "a local file" or "a page without an address", never by its path. The setup is not in the copied text any more (the owner: "Isn't it very verbose to always contain the whole MCP setup? ... We mention the AI setup in several other places"): it says to use the Sitegloss tools you have and, if you have none, to stop and say so, with the address of the team's AI app page (`/t/<team>/ai`), or the AI app card of the side panel. The page is the service's; the text no longer carries `claude mcp add`, `/mcp` or `/reload-plugins`. The line on the live
 page (`LIVE_PAGE`) is now the web app's too.
 
 ## DEC-070: Escape takes a new mark back while its comment is empty (owner)
