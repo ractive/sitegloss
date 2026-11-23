@@ -4086,12 +4086,18 @@ its review). This is the extension's side of step 2; step 1 is DEC-069.
   case does, and the block says so. The shadow keeps the server's assignee id beside
   its other fields, so a patch is sent only while the two differ; a pick is kept as
   `assign` even when it is the record here again (that record may be older than what
-  the server took), so only the sync decides there is nothing to send. **Refused**
+  the server took), so only the sync decides there is nothing to send; once the book's
+  shadow says that assignee (the operation was applied or a duplicate, or nothing had
+  to be sent), the sync drops it and the case's record says that assignee. **Refused**
   (the person left the team, the role does not allow it): its own operation, so the
   title, summary, link and marks are never held back by it; the waiting assignment is
-  dropped, the server's record shows again, and the case says why in its block
-  ("Gone is not in the team any more, so the case was not assigned to them.",
-  `assignRefused`, this browser's note) until the next assignment. **To another
+  dropped, the server's record shows again, and the case says why in its block,
+  `assignRefused`, this browser's note: "Gone is not in the team any more, so the case
+  was not assigned to them." only where the server said the operation was invalid and
+  the person is not among the members as last listed; otherwise "The server did not
+  take the assignment to Dana: <its reason>". It is said while marks are open, until
+  the next assignment here or until the server's hand-over is another one (someone
+  assigned the case since). **To another
   team**: sharing a case with a team other than the one it was of drops what the first
   team said of it and any assignment waiting for it; the new team's server says its
   own. A `case.patch` that names no assignee, as every other
@@ -4112,7 +4118,9 @@ its review). This is the extension's side of step 2; step 1 is DEC-069.
 - **Cases synced before this version** have no reporter and no assignee here, and the
   changes feed does not bring them again for a case nobody changed. Once per team and
   start, where the server assigns cases, every synced book whose shadow has no
-  `assignee` is read again whole (as `#readThreadsOnce` does for the thread, DEC-046).
+  `assignee` is read again whole (as `#readThreadsOnce` does for the thread, DEC-046),
+  at most 25 a run (`HAND_OVER_READS`), so the sync is not held for a whole team at
+  once; the next runs take the rest.
   Until then the case's hand-over is not known (`handOverKnown`): it is in nobody's My
   cases, and its block says nothing about whose turn it is. A team's case whose
   reporter is not on record is nobody's either (an earlier draft took it for the
@@ -4153,7 +4161,8 @@ its review). This is the extension's side of step 2; step 1 is DEC-069.
   list under "Cases" and hides the Closed group (nobody's turn); the cases under "This
   page" stay, they are about the tab, and the count takes them in: with the person's
   one case there, the list says "No other case waits for you." A press keeps the focus
-  on the chip, and a redraw of the list keeps it on the card that had it. **Kept for the panel's session** (`sessionStorage`): the panel touches
+  on the chip, and a redraw of the list keeps it on the card that had it; a card (or
+  the Closed group's heading) that leaves the list hands it to the chip. **Kept for the panel's session** (`sessionStorage`): the panel touches
   no storage of the extension's (a test holds it), and keeping a view filter across
   browser restarts through the worker was not worth a message of its own; a reopened
   panel shows every case.
@@ -4167,8 +4176,9 @@ its review). This is the extension's side of step 2; step 1 is DEC-069.
   case `turn`, `assignee` and `startedBy`; it takes `mine`. `get_case` gives the same and
   `assignedBy`, or `assignmentNotSentYet`. `assign_case` takes `me`, a member's id or a
   name only one member has, or `null`; it asks first, as every changing tool, and the
-  question names who gets it ("Assign to: Dana.", "Assign to: nobody.") or says the
-  call will be refused, whatever the app sent (an id); it refuses a
+  question names who gets it ("Assign to: Dana.", "Assign to: nobody.") or says, by
+  the same checks in the same order as the call, why it will be refused, in one short
+  sentence (the members' list goes to the app only); it refuses a
   case only in this browser, a role without `case:update` and a name that is no member
   (with the members to choose from), and goes through the sync. The instructions tell
   the flow in three sentences, in step with the service's MCP server.
