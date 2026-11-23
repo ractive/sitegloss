@@ -250,7 +250,33 @@ inFullSet("the look", () => {
 		await panel.send("Emulation.clearDeviceMetricsOverride");
 	}, 120_000);
 
-	test("the top bar is paper, and the dark scheme's tokens arrive", async () => {
+	test("the top bar is paper, the dark scheme's tokens arrive, and the bundled faces load", async () => {
+		// The values are the style sheet's own: what is asked is that they
+		// arrive, not which they are (test/contrast.test.ts holds those).
+		const css = await Bun.file(
+			new URL("../../src/sidepanel/style.css", import.meta.url),
+		).text();
+		const token = (block: string, name: string) =>
+			new RegExp(`${name}:\\s*(#[0-9a-f]{6});`).exec(block)?.[1] ?? "";
+		const lightBlock = css.slice(css.indexOf(":root {"));
+		const darkBlock = css.slice(
+			css.indexOf("@media (prefers-color-scheme: dark)"),
+		);
+		const rgb = (hex: string) =>
+			`rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+		const want = (block: string) => {
+			const [paper, ink, rule] = ["--paper", "--ink", "--rule"].map((n) =>
+				token(block, n),
+			) as [string, string, string];
+			return {
+				paper,
+				ink,
+				body: rgb(paper),
+				text: rgb(ink),
+				bar: rgb(paper),
+				rule: rgb(rule),
+			};
+		};
 		const read = () =>
 			panel.eval<Record<string, string>>(
 				`(() => {
@@ -270,24 +296,20 @@ inFullSet("the look", () => {
 				features: [{ name: "prefers-color-scheme", value }],
 			});
 		await scheme("light");
-		expect(await read()).toEqual({
-			paper: "#fcf9ed",
-			ink: "#211e13",
-			body: "rgb(252, 249, 237)",
-			text: "rgb(33, 30, 19)",
-			bar: "rgb(252, 249, 237)",
-			rule: "rgb(219, 216, 203)",
-		});
+		const light = await read();
+		expect(light).toEqual(want(lightBlock));
 		await scheme("dark");
-		expect(await read()).toEqual({
-			paper: "#181712",
-			ink: "#f2f0e9",
-			body: "rgb(24, 23, 18)",
-			text: "rgb(242, 240, 233)",
-			bar: "rgb(24, 23, 18)",
-			rule: "rgb(57, 55, 47)",
-		});
+		const dark = await read();
+		expect(dark).toEqual(want(darkBlock));
+		expect(dark["paper"] === light["paper"]).toBe(false);
 		await panel.send("Emulation.setEmulatedMedia", { features: [] });
+		// The web app's faces, from the package's fonts/ (DEC-077): loaded, not
+		// fallen back to the system's.
+		expect(
+			await panel.eval<boolean[]>(
+				`Promise.all(['400 13px "Inter Variable"', '700 15px "Manrope Variable"'].map((f) => document.fonts.load(f).then((faces) => faces.length > 0 && document.fonts.check(f))))`,
+			),
+		).toEqual([true, true]);
 	}, 60_000);
 
 	test("on the page every mark's shape has its casing, a draft's and a loaded mark's", async () => {

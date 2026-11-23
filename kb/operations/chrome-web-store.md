@@ -363,6 +363,18 @@ in other environments, alone or with an AI app the user connects.
   - The hand-over buttons ("Copy link", "Copy for your AI app", copy the case's id) write
     to the clipboard in the click, with no `clipboardWrite` permission and nothing read.
     The instructions text is built into the package.
+  - Two font files in `fonts/` (DEC-077): `inter-latin-wght-normal.woff2` (48,256 bytes)
+    and `manrope-latin-wght-normal.woff2` (24,836 bytes), the web app's typefaces. Data,
+    not code: copied unchanged from `src/fonts/`, which holds the variable Latin files of
+    `@fontsource-variable/inter` and `@fontsource-variable/manrope` 5.3.0; SIL Open Font
+    License 1.1, both licence texts in `LICENSES.txt`. Only the side panel and the picture
+    viewer load them; nothing is fetched from the network and no font goes into a web
+    page. The package grows by about 85 KB unpacked (the store zip from about 400 KB to
+    about 476 KB).
+- **The listing's screenshots show the old look** (DEC-077: cream, the forest green, the
+  web app's type). The three uploaded to the dashboard (the toolbar with marks on a page;
+  the side panel with a case; a case loaded in another environment) need retaking before
+  0.4.0 is published; so do Firefox's (see the Firefox runbook).
 - **Data usage:** the categories stay as they are. Under *Collected*, *Website content*,
   add the text the user selects with the Highlight tool (at most 500 characters, up to 32
   characters of the page's text before and after it, and the boxes of its lines); it is

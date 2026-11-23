@@ -2124,7 +2124,7 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
  * The open case's tool bar (DEC-063): Add marks as wide as there is room, and
  * the marks shown or not. Sticky at the panel's bottom and resting after the
  * content, so the last row is never under it. One step quieter (DEC-064):
- * lower, secondary buttons at rest, amber only while adding is on.
+ * lower, secondary buttons at rest, primary only while adding is on.
  */
 .case-dock {
 	position: sticky;
@@ -2454,9 +2454,10 @@ ol.marks {
 	content: "";
 	position: absolute;
 	inset: 0 var(--s2);
-	border: 2px solid var(--accent-edge);
+	/* The highlight is the web app's: the green (DEC-077), not the logo's amber. */
+	border: 2px solid var(--strong);
 	border-radius: var(--r-card);
-	background: color-mix(in srgb, var(--accent) 20%, transparent);
+	background: color-mix(in srgb, var(--strong) 12%, transparent);
 	pointer-events: none;
 	animation: verify-glow 1s ease-out var(--cue-elapsed, 0ms) forwards;
 }

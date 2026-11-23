@@ -96,7 +96,7 @@ function button(
 			"data-action": action,
 			title,
 			onclick,
-			// Ink, not amber: amber is the view's one action that starts drawing.
+			// The green of a main action, without the size of the view's one that starts drawing (DEC-077).
 			...(primary ? { class: "strong" } : {}),
 		},
 		label,
