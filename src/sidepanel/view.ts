@@ -256,6 +256,16 @@ export function noneFoundText(
 	return allLost ? "None of this page's marks were found here." : undefined;
 }
 
+/**
+ * A page of the case as the list and the filter name it (DEC-063): its path,
+ * whatever the host, as a page is the same on every host; but a home page is
+ * its host's own (`pageKey`), so two hosts' home pages are named with their
+ * hosts, not both "/" (DEC-064's review).
+ */
+export function pagePath(url: string): string {
+	return shortPath(url, /^https?:\/\//.test(pageKey(url)));
+}
+
 /** `shop.example/cart and 2 more pages`: a case's pages in the list. */
 export function pagesLine(c: Case): string {
 	const [first, ...rest] = casePages(c);
@@ -377,7 +387,9 @@ const percent = (score: number) => `${Math.round(score * 100)}%`;
 
 function setHint(el: HTMLElement, text: string | undefined): void {
 	el.hidden = text === undefined;
-	el.textContent = text ?? "";
+	// Written only when it changed: a status line repeats what it is given,
+	// and a render for something else must not make it speak again.
+	if (el.textContent !== (text ?? "")) el.textContent = text ?? "";
 }
 
 /** Under Export while Chrome's prompt is open: what the answer does. */
@@ -1234,11 +1246,13 @@ function holdDelete(button: HTMLElement | undefined): void {
 }
 
 /**
- * The cases whose list of pages is open, this session (DEC-063). A list of
- * more than `PAGES_SHOWN` is closed at first; closed, it still shows the
- * page in front, so the person sees where they are.
+ * The list of pages opened or closed by the person, per case, this session
+ * (DEC-063). Not chosen: closed for more than `PAGES_SHOWN`, open where the
+ * tab shows none of the case's pages. A choice wins over that, so the list
+ * does not open again by itself at the next render (DEC-064's review).
+ * Closed, it still shows the page in front.
  */
-const openPages = new Set<string>();
+const openPages = new Map<string, boolean>();
 
 /** Up to this many pages, the list is just shown: nothing to open or close. */
 const PAGES_SHOWN = 3;
@@ -1250,7 +1264,7 @@ const PAGES_SHOWN = 3;
 function foldPages(p: CaseParts, noneHere: boolean): void {
 	const rows = [...p.pages.children] as HTMLElement[];
 	const many = rows.length > PAGES_SHOWN;
-	const open = !many || noneHere || openPages.has(p.current.id);
+	const open = !many || (openPages.get(p.current.id) ?? noneHere);
 	for (const li of rows) li.hidden = !open && !li.hasAttribute("data-here");
 	p.pagesToggle.hidden = !many;
 	p.pagesLabel.hidden = many;
@@ -1533,8 +1547,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 			onclick: () => {
 				const key = created.current.id;
 				const open = pagesToggle.getAttribute("aria-expanded") === "true";
-				if (open) openPages.delete(key);
-				else openPages.add(key);
+				openPages.set(key, !open);
+				created.pagesKey = "";
 				foldPages(created, false);
 			},
 		},
@@ -2144,9 +2158,13 @@ const REOPEN_TITLE =
 /**
  * A mark just verified (DEC-061): its row closes, and once it is drawn as
  * verified the focus goes to the next mark waiting to be verified, else to
- * the closed row's head.
+ * the closed row's head. Only for a while, and only where the focus still
+ * is in the list: a Verify that was not saved, and a change of that mark
+ * minutes later, take no focus from a field (DEC-064's review).
  */
-let verifiedNow: { caseId: string; markId: string } | undefined;
+let verifiedNow: { caseId: string; markId: string; at: number } | undefined;
+/** How long a Verify waits for its row to be drawn as verified. */
+export const VERIFIED_WAIT_MS = 5000;
 
 const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton(
@@ -2155,7 +2173,7 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		VERIFIED_TITLE,
 		() => {
 			openMarks.delete(`${c.id}:${a.id}`);
-			verifiedNow = { caseId: c.id, markId: a.id };
+			verifiedNow = { caseId: c.id, markId: a.id, at: Date.now() };
 			actions.verifyMark(c, a);
 		},
 		true,
@@ -2570,7 +2588,7 @@ function pageChooser(
 		...pages.map((pg) => {
 			const n = marksOn(pg.url);
 			// A page is its path whatever the host (DEC-063).
-			const path = isWebPage(pg.url) ? shortPath(pg.url, false) : pg.url;
+			const path = isWebPage(pg.url) ? pagePath(pg.url) : pg.url;
 			const title = pg.title.trim();
 			// A page without marks would show nothing.
 			return h(
@@ -2672,7 +2690,7 @@ function renderPages(
 			const front = here !== undefined && here.url === page.url;
 			const title = page.title.trim();
 			const web = isWebPage(page.url);
-			const path = web ? shortPath(page.url, false) : page.url;
+			const path = web ? pagePath(page.url) : page.url;
 			const hosts = hostsOf.get(pageKey(page.url));
 			// On the tab's host when it was marked there, else on its last.
 			const target = openAt(page.url, hosts, tabUrl);
@@ -2825,7 +2843,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	// says so (DEC-064).
 	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
 	p.addMarks.classList.toggle("primary", p.adding);
-	p.addMarks.setAttribute("aria-pressed", String(p.adding));
+	// Its words say what it does; no pressed state beside them (DEC-064's review).
 	p.addMarks.title = !ok
 		? NEEDS_ACCESS
 		: p.adding
@@ -2931,8 +2949,13 @@ function renderCase(state: PanelState, actions: Actions): void {
 		typeof caseHint === "object" && state.loaded?.caseId === c.id
 			? foundLine(c, state.loaded)
 			: undefined;
-	setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow);
-	p.hint.classList.toggle("visually-hidden", foundNow !== undefined);
+	// Said once the draw has settled, not at every step of its count
+	// (DEC-064's review): while it settles, the line says what it said.
+	const settling = foundNow !== undefined && state.loaded?.settling === true;
+	if (!settling) {
+		setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow);
+		p.hint.classList.toggle("visually-hidden", foundNow !== undefined);
+	}
 
 	// A filter ends once none of its marks are left (nothing to show), or a
 	// mark was added (it would not show, as if it was not saved).
@@ -3162,9 +3185,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 		if (kept !== undefined && !kept.hidden) kept.focus();
 		refocus?.(marks);
 		// Verified and drawn so: the next mark to verify has the focus.
+		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
+			verifiedNow = undefined;
 		const v = verifiedNow;
+		const focusHere = (() => {
+			const at = document.activeElement;
+			return at === null || at === document.body || marks.contains(at);
+		})();
 		if (
 			v?.caseId === c.id &&
+			focusHere &&
 			c.marks.find((m) => m.id === v.markId)?.resolution
 		) {
 			const done = c.marks.find((m) => m.id === v.markId);
@@ -3262,8 +3292,12 @@ function focusInMarks(
 	list: HTMLElement,
 ): ((next: HTMLElement) => void) | undefined {
 	const at = document.activeElement as HTMLElement | null;
-	if (at === null || at.tagName !== "BUTTON" || !list.contains(at))
-		return undefined;
+	if (at === null || !list.contains(at)) return undefined;
+	// A field being typed in at a mark (a comment, an edit, a note): the
+	// same field after the redraw, with its caret (DEC-064's review).
+	if (at.tagName === "TEXTAREA" || at.tagName === "INPUT")
+		return fieldAgain(at as HTMLTextAreaElement | HTMLInputElement);
+	if (at.tagName !== "BUTTON") return undefined;
 	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
 	// The row's head is found again by its class (a second redraw, when
 	// the pictures come, must not drop the focus the first one put there).
@@ -3282,6 +3316,8 @@ function focusInMarks(
 		which === "class" ? "mark-toggle" : (at.getAttribute(which) as string);
 	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
 	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
+	// A comment's Edit or Delete: that comment's, not the first one's.
+	const comment = at.closest("[data-comment]")?.getAttribute("data-comment");
 	// The marks around it, for when its row goes (a mark deleted).
 	const marks = [...list.querySelectorAll<HTMLElement>("li.mark")].map(
 		(li) => li.dataset["mark"],
@@ -3319,13 +3355,22 @@ function focusInMarks(
 				? `[data-picture="${quoted(picture)}"] `
 				: finding != null
 					? `[data-finding="${quoted(finding)}"] `
-					: "";
+					: comment != null
+						? `[data-comment="${quoted(comment)}"] `
+						: "";
 		const same = row.querySelector<HTMLElement>(
 			which === "class"
 				? ".mark-toggle"
 				: `${within}[${which}="${quoted(value)}"]`,
 		);
 		if (same !== null) return same.focus();
+		// A comment's Edit: its field now, to type in.
+		if (comment != null) {
+			const field = row.querySelector<HTMLElement>(
+				`[data-comment="${quoted(comment)}"] textarea`,
+			);
+			if (field !== null) return field.focus();
+		}
 		// A mark's action that went with its status (Verify, Save): the same
 		// row's next control, the first of its actions now.
 		if (which === "data-mark-action") {
@@ -3352,6 +3397,45 @@ function focusInMarks(
 				: row.querySelector<HTMLElement>("[data-action=add-image]")) ??
 			row.querySelector<HTMLElement>(".mark-toggle");
 		fallback?.focus();
+	};
+}
+
+/**
+ * The field `at` in a mark's row found again after the list is drawn anew:
+ * by its mark and what holds it (a comment, a form, the mark's comments),
+ * with the caret where it was.
+ */
+function fieldAgain(
+	at: HTMLTextAreaElement | HTMLInputElement,
+): ((next: HTMLElement) => void) | undefined {
+	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
+	if (markId === undefined) return undefined;
+	const holder =
+		[
+			["data-comment", at.closest("[data-comment]")],
+			["data-form", at.closest("[data-form]")],
+			["data-mark-thread", at.closest("[data-mark-thread]")],
+		].find(([, e]) => e !== null) ?? [];
+	const [attr, el] = holder as [string | undefined, Element | null | undefined];
+	const scope =
+		attr && el ? `[${attr}="${quoted(el.getAttribute(attr) ?? "")}"] ` : "";
+	const cls = at.classList[0] ? `[class~="${quoted(at.classList[0])}"]` : "";
+	const selector = `li.mark[data-mark="${quoted(markId)}"] ${scope}${at.tagName.toLowerCase()}${cls}`;
+	const start = at.selectionStart;
+	const end = at.selectionEnd;
+	return (next) => {
+		const field = next.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+			selector,
+		);
+		if (field === null) return;
+		field.focus({ preventScroll: true });
+		if (start !== null && end !== null) {
+			try {
+				field.setSelectionRange(start, end);
+			} catch {
+				// A field without a caret (a radio): the focus is enough.
+			}
+		}
 	};
 }
 
@@ -3866,7 +3950,8 @@ function renderAi({ ai }: PanelState): void {
 	// connected, the pill leads to the switch, which is enough.
 	keepOn.checked = ai.keepOn;
 	setHint(aiCall, ai.lastCall && callText(ai.lastCall));
-	showTalking(ai.working);
+	// Only a connection that is up has an app talking.
+	showTalking(ai.connected && ai.working);
 }
 
 /** How long the chip keeps saying an app talks after its last call ended. */

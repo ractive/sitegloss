@@ -76,29 +76,46 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 	/**
 	 * Room lent below the list while held: a row that closes (Verify) or goes
 	 * near the list's end would make the page shorter, and the browser would
-	 * scroll it back by itself. Taken back at the person's next own scroll
-	 * or press, not when the hold ends: then it would move what it kept.
-	 */
-	let lent = false;
-	/**
-	 * Lent above a tool bar sticky at the bottom (`data-room-before`), so
-	 * the bar stays at the window's bottom with the room above it; below
-	 * the root where there is none.
+	 * scroll it back by itself. Lent above a tool bar sticky at the bottom
+	 * (`data-room-before`), so the bar stays at the window's bottom; below
+	 * the root where there is none. Never taken back at a press (the page
+	 * would move between the press and its release, and the click land
+	 * elsewhere), only as the person scrolls up out of it, and only the part
+	 * that is out of sight: nothing on screen moves (DEC-064's review).
 	 */
 	let lentTo: HTMLElement | undefined;
-	const lend = (on: boolean) => {
-		if (on === lent) return;
-		lent = on;
-		if (on) {
-			const bar = root.querySelector<HTMLElement>("[data-room-before]");
-			lentTo = bar ?? root;
-			if (bar) bar.style.marginTop = `${html.clientHeight}px`;
-			else root.style.marginBottom = `${html.clientHeight}px`;
-		} else if (lentTo !== undefined) {
+	let lentPx = 0;
+	const setRoom = (px: number) => {
+		lentPx = Math.max(0, Math.ceil(px));
+		if (lentTo === undefined) return;
+		const value = lentPx > 0 ? `${lentPx}px` : "";
+		if (lentTo === root) lentTo.style.marginBottom = value;
+		else lentTo.style.marginTop = value;
+		if (lentPx === 0) lentTo = undefined;
+	};
+	const lend = () => {
+		const bar = root.querySelector<HTMLElement>("[data-room-before]");
+		const to = bar ?? root;
+		// Lent before to a tool bar the list has since replaced: lent anew.
+		if (lentTo !== undefined && (lentTo !== to || !lentTo.isConnected)) {
 			lentTo.style.marginTop = "";
 			lentTo.style.marginBottom = "";
 			lentTo = undefined;
+			lentPx = 0;
 		}
+		if (lentTo === to && lentPx >= html.clientHeight) return;
+		lentTo = to;
+		setRoom(html.clientHeight);
+	};
+	/** The room that is out of sight below the window goes back; what is in sight stays. */
+	const giveBack = () => {
+		if (lentTo === undefined || lentPx === 0) return;
+		const below = html.scrollHeight - win.scrollY - html.clientHeight;
+		// The tool bar's own place follows the room (it is drawn at the
+		// window's bottom, sticky): not room.
+		const after = lentTo === root ? 0 : lentTo.offsetHeight;
+		const unseen = Math.min(lentPx, Math.max(0, below - after));
+		if (unseen > 0.5) setRoom(lentPx - unseen);
 	};
 	const elementOf = (key: string) =>
 		key.startsWith("chip:")
@@ -151,7 +168,7 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 				keys = markAnchorKeys(order, row.dataset["mark"] ?? "");
 				element = row;
 			} else return;
-			lend(true);
+			lend();
 			expected = win.scrollY;
 			hold(true);
 			held = {
@@ -172,13 +189,15 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 		"scroll",
 		() => {
 			if (held !== undefined && Math.abs(win.scrollY - expected) > 1) release();
+			// Not held: the room scrolled out of sight goes back.
+			if (held === undefined) giveBack();
 		},
 		{ passive: true },
 	);
-	/** The person's own scroll or press: no longer held, and the room goes back. */
+	/** The person's own scroll or press: no longer held (the room stays, see above). */
 	const theirs = () => {
 		release();
-		lend(false);
+		giveBack();
 	};
 	// A press comes before its click: it ends the hold of the click before.
 	for (const type of ["wheel", "touchstart", "pointerdown"] as const)

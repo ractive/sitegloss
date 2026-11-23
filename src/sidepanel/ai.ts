@@ -363,6 +363,7 @@ export async function startAi(
 						connected: false,
 						apps: 0,
 						active: false,
+						working: false,
 					}),
 			);
 			return;
@@ -374,6 +375,8 @@ export async function startAi(
 		});
 		opened.onDisconnect.addListener(() => {
 			if (port === opened) port = undefined;
+			// No worker, no call running: the chip stops saying one is (DEC-064's review).
+			update((s) => (s.ai = { ...s.ai, working: false }));
 			// The worker stopped, and its questions with it: the next one's
 			// first state lists what waits then.
 			showQuestions([]);
@@ -406,6 +409,7 @@ export async function startAi(
 					connected: false,
 					apps: 0,
 					active: false,
+					working: false,
 				}),
 		);
 	}

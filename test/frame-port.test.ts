@@ -90,3 +90,56 @@ describe("the field's keys (DEC-064's review)", () => {
 		expect(fieldKey(key("Enter", { keyCode: 229 }), true)).toBeUndefined();
 	});
 });
+
+describe("a field's frame that loads again (DEC-064's review)", () => {
+	test("gets back its text, its label, its state and the focus it had", async () => {
+		const had = (globalThis as { chrome?: unknown }).chrome;
+		(globalThis as { chrome?: unknown }).chrome = {
+			runtime: { getURL: (p: string) => `chrome-extension://abc/${p}` },
+		};
+		try {
+			const win = new Window();
+			const doc = win.document as unknown as Document;
+			const field = new PageField(doc, {
+				label: "Comment for mark 1",
+				value: "",
+				maxLength: 100,
+			});
+			const hellos: { init: Record<string, unknown>; port: MessagePort }[] = [];
+			Object.defineProperty(field.frame, "contentWindow", {
+				value: {
+					postMessage: (
+						data: { init: Record<string, unknown> },
+						_origin: string,
+						transfer: MessagePort[],
+					) =>
+						hellos.push({ init: data.init, port: transfer[0] as MessagePort }),
+				},
+			});
+			const load = () =>
+				field.frame.dispatchEvent(new win.Event("load") as unknown as Event);
+			load();
+			field.receive({ type: "ready" });
+			field.receive({ type: "input", value: "Half way" });
+			field.receive({ type: "focus", on: true });
+			field.label = "Comment for mark 2";
+			field.disabled = true;
+			// Moved with the overlay: the frame loads again.
+			const heard: unknown[] = [];
+			load();
+			const again = hellos[1];
+			if (again === undefined) throw new Error("no second hello");
+			again.port.onmessage = (e) => void heard.push(e.data);
+			expect(again.init).toMatchObject({
+				label: "Comment for mark 2",
+				value: "Half way",
+				disabled: true,
+			});
+			await new Promise((r) => setTimeout(r, 10));
+			expect(heard).toContainEqual({ type: "focus" });
+			field.receive({ type: "ready" });
+		} finally {
+			(globalThis as { chrome?: unknown }).chrome = had;
+		}
+	});
+});

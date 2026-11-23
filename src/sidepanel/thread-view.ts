@@ -18,7 +18,12 @@ import { formatDate, h } from "./dom.ts";
 
 /** What the user can do in the thread; `main.ts` carries it out. */
 export interface ThreadActions {
-	addComment(caseId: string, text: string, markId: string | undefined): void;
+	/** Answers whether it was saved: what was typed stays until it is. */
+	addComment(
+		caseId: string,
+		text: string,
+		markId: string | undefined,
+	): Promise<boolean> | void;
 	editComment(caseId: string, commentId: string, text: string): void;
 	deleteComment(caseId: string, commentId: string): void;
 }
@@ -58,6 +63,8 @@ export const UNDER_MARK = 3;
 const unfolded = new Set<string>();
 /** A new comment being typed at a mark, by `caseId:markId`. */
 const markDrafts = new Map<string, string>();
+/** The comments on their way to the store, by case or `caseId:markId`: one at a time. */
+const sending = new Set<string>();
 /** The marks whose comment box was opened with "Add comment" (DEC-063). */
 const markBoxes = new Set<string>();
 /** The mark whose comment box takes the focus when it is drawn next. */
@@ -376,10 +383,16 @@ function form(c: Case, actions: ThreadActions): HTMLElement {
 					"data-action": "comment-add",
 					onclick: () => {
 						const now = drafts.get(c.id) ?? { text: "", mark: "" };
-						if (now.text.trim() === "") return;
-						drafts.delete(c.id);
-						actions.addComment(c.id, now.text, undefined);
-						redraw?.();
+						if (now.text.trim() === "" || sending.has(c.id)) return;
+						// Kept until saved, as at a mark (DEC-064's review).
+						sending.add(c.id);
+						void Promise.resolve(actions.addComment(c.id, now.text, undefined))
+							.then((saved) => {
+								if (saved === false) return;
+								if (drafts.get(c.id)?.text === now.text) drafts.delete(c.id);
+								redraw?.();
+							})
+							.finally(() => sending.delete(c.id));
 					},
 				},
 				"Add comment",
@@ -484,10 +497,20 @@ export function markThreadView(
 									"data-action": "mark-comment-add",
 									onclick: () => {
 										const text = markDrafts.get(key) ?? "";
-										if (text.trim() === "") return;
-										markDrafts.delete(key);
-										markBoxes.delete(key);
-										actions.addComment(c.id, text, a.id);
+										if (text.trim() === "" || sending.has(key)) return;
+										// What was typed stays until it is saved; a save
+										// that fails leaves the box and the text to try
+										// again (DEC-064's review).
+										sending.add(key);
+										void Promise.resolve(actions.addComment(c.id, text, a.id))
+											.then((saved) => {
+												if (saved === false) return;
+												if (markDrafts.get(key) === text)
+													markDrafts.delete(key);
+												markBoxes.delete(key);
+												redrawAll?.();
+											})
+											.finally(() => sending.delete(key));
 									},
 								},
 								"Add comment",

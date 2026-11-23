@@ -86,3 +86,15 @@ describe("the viewer's window (DEC-064)", () => {
 		expect(tab?.url).toContain("picture=screenshot");
 	});
 });
+
+describe("the viewer goes with its case (DEC-064's review)", () => {
+	test("it stays only while its case is open and not closed", async () => {
+		const { viewerStays } = await import("../src/sidepanel/viewer-follow.ts");
+		expect(viewerStays("c_1", { id: "c_1" })).toBe(true);
+		expect(viewerStays("c_1", { id: "c_2" })).toBe(false);
+		expect(viewerStays("c_1", undefined)).toBe(false);
+		expect(
+			viewerStays("c_1", { id: "c_1", closed: { at: "2026-11-23" } }),
+		).toBe(false);
+	});
+});

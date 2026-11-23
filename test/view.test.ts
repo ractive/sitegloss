@@ -23,6 +23,7 @@ let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
 let ago: (iso: string, now?: number) => string;
 let webAppNote: (state: PanelState) => string | undefined;
 let TALKING_AFTER_MS: number;
+let pagePath: (url: string) => string;
 let noneFoundText: (
 	c: Case,
 	url: string | undefined,
@@ -58,6 +59,7 @@ beforeAll(async () => {
 		webAppNote,
 		noneFoundText,
 		TALKING_AFTER_MS,
+		pagePath,
 	} = await import("../src/sidepanel/view.ts"));
 	({ ago } = await import("../src/sidepanel/cloud-view.ts"));
 });
@@ -1067,6 +1069,32 @@ describe("Verify closes its mark (DEC-061)", () => {
 		).toBe(true);
 	});
 
+	test("a Verify not saved takes no focus later from a field the person moved to (DEC-064's review)", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const base = withOneMark(sampleCase("c_verify_failed"));
+		const c: Case = {
+			...base,
+			marks: base.marks.map((a) => ({ ...a, resolution: fixed })),
+		};
+		render(caseState(c), noActions);
+		const row = window.document.querySelector(
+			'[data-mark="m1"]',
+		) as unknown as HTMLElement;
+		(row.querySelector(".head-verify") as unknown as HTMLButtonElement).click();
+		// Not saved: the person types the summary meanwhile.
+		el<HTMLTextAreaElement>("verdict").focus();
+		const later: Case = {
+			...c,
+			updatedAt: "2026-11-15T09:00:00Z",
+			marks: c.marks.map((a) => ({
+				...a,
+				resolution: { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } },
+			})),
+		};
+		render(caseState(later), noActions);
+		expect(window.document.activeElement?.id).toBe("verdict");
+	});
+
 	test("where the focus goes after a Verify", () => {
 		const order = [
 			{ id: "m1", status: "fixed" },
@@ -1951,6 +1979,18 @@ describe("what the panel's draw found, under the case's buttons", () => {
 		});
 	};
 
+	test("what a draw found is said once it settled, not at each step of its count (DEC-064's review)", () => {
+		const state = drawnWith(2);
+		if (state.loaded) state.loaded.settling = true;
+		render(state, noActions);
+		expect(el("case-hint").textContent).not.toContain("marks found");
+		if (state.loaded) state.loaded.settling = false;
+		render(state, noActions);
+		expect(el("case-hint").textContent).toBe(
+			"2 of 2 marks found on www.example.com/kk.",
+		);
+	});
+
 	test("what a draw found is no sentence on screen, only for a screen reader; a mark saved while adding is counted at once (DEC-061)", () => {
 		const state = drawnWith(1);
 		render(state, noActions);
@@ -2321,12 +2361,46 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(shownRows().length).toBe(5);
 		toggle().click();
 		expect(shownRows()).toEqual(["Page 4"]);
-		// The tab shows none of the case's pages: open, and one quiet line.
+		// Closed by the person: it stays closed, also where the tab shows
+		// none of the case's pages, render after render (DEC-064's review).
 		render(at("https://shop.example/elsewhere"), noActions);
-		expect(shownRows().length).toBe(5);
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		render(at("https://shop.example/elsewhere"), noActions);
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
 		expect(el("none-found").textContent).toBe(
 			"None of this case's pages is in this tab.",
 		);
+	});
+
+	test("with no choice made, the pages list is open where the tab shows none of the case's pages (DEC-063)", () => {
+		const base = flow("c_many_none");
+		const urls = ["a", "b", "c", "d", "e"].map(
+			(x) => `https://shop.example/${x}`,
+		);
+		const c: Case = {
+			...base,
+			pages: urls.map((url, i) => ({
+				url,
+				title: `Page ${i + 1}`,
+				lang: "en",
+			})),
+			shots: urls.map((url, i) => shot(`s${i + 1}`, url, 1280)),
+			marks: urls.map((_, i) => mark(i + 1, `s${i + 1}`)),
+		};
+		render(
+			caseState(c, (s) => {
+				s.tab = {
+					id: 1,
+					url: "https://shop.example/elsewhere",
+					title: "",
+					size: undefined,
+				};
+			}),
+			noActions,
+		);
+		expect(
+			el<HTMLButtonElement>("case-pages-toggle").getAttribute("aria-expanded"),
+		).toBe("true");
 	});
 
 	test("the marks by page: this page follows the tab, any page from the list or the menu, combined with the status chips, which count what it leaves", () => {
@@ -3413,6 +3487,100 @@ describe("the thread and closing (DEC-046)", () => {
 		],
 	});
 
+	const asTess = (s: PanelState) => {
+		s.cloud.account = {
+			name: "Tess Tester",
+			email: "tess@example.com",
+			userId: "u_tess",
+			server: "https://app.sitegloss.dev",
+			teams: [],
+			teamId: undefined,
+			expired: false,
+		};
+	};
+	const twoOfTess = (c: Case): Case => ({
+		...c,
+		comments: ["k_a", "k_b"].map((id, i) => ({
+			id,
+			mark: "m1",
+			text: `Comment ${i + 1}`,
+			at: `2026-11-20T1${i}:00:00.000Z`,
+			user: { id: "u_tess", name: "Tess Tester" },
+		})),
+	});
+
+	test("at a mark, the focus stays on the comment acted on after a redraw, not the first one (DEC-064's review)", () => {
+		const c = twoOfTess(withOneMark(sampleCase("c_two")));
+		render(caseState(c, asTess), noActions);
+		const del = (id: string) =>
+			window.document.querySelector(
+				`[data-mark-thread="m1"] [data-comment="${id}"] [data-action="comment-delete"]`,
+			) as unknown as HTMLButtonElement;
+		del("k_b").focus();
+		// Another change of the case redraws the list.
+		render(
+			caseState({ ...c, updatedAt: "2026-11-21T10:00:00.000Z" }, asTess),
+			noActions,
+		);
+		expect(window.document.activeElement === (del("k_b") as unknown)).toBe(
+			true,
+		);
+	});
+
+	test("a comment at a mark whose save fails keeps its box and its text (DEC-064's review)", async () => {
+		const c = withOneMark(sampleCase("c_fail"));
+		let answer = false;
+		const actions = actionsWith({ addComment: () => Promise.resolve(answer) });
+		render(caseState(c, asTess), actions);
+		const q = (sel: string) =>
+			window.document.querySelector(
+				`[data-mark-thread="m1"] ${sel}`,
+			) as unknown as HTMLElement | null;
+		(q('[data-action="mark-comment-open"]') as HTMLButtonElement).click();
+		await Promise.resolve();
+		const box = q("textarea") as unknown as HTMLTextAreaElement;
+		box.value = "Checked on staging";
+		box.dispatchEvent(new window.Event("input") as unknown as Event);
+		(q('[data-action="mark-comment-add"]') as HTMLButtonElement).click();
+		await new Promise((r) => setTimeout(r, 0));
+		render(
+			caseState({ ...c, updatedAt: "2026-11-21T10:00:00.000Z" }, asTess),
+			actions,
+		);
+		expect(
+			(q("textarea") as unknown as HTMLTextAreaElement | null)?.value,
+		).toBe("Checked on staging");
+		// Saved the next time: the box closes.
+		answer = true;
+		(q('[data-action="mark-comment-add"]') as HTMLButtonElement).click();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(q("textarea") === null).toBe(true);
+	});
+
+	test("typing at a mark survives a redraw of the list: the same box, the caret where it was (DEC-064's review)", async () => {
+		const c = withOneMark(sampleCase("c_typing"));
+		render(caseState(c, asTess), noActions);
+		(
+			window.document.querySelector(
+				'[data-mark-thread="m1"] [data-action="mark-comment-open"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		await Promise.resolve();
+		const box = () =>
+			window.document.querySelector(
+				'[data-mark-thread="m1"] textarea',
+			) as unknown as HTMLTextAreaElement;
+		box().value = "Half way";
+		box().dispatchEvent(new window.Event("input") as unknown as Event);
+		box().setSelectionRange(4, 4);
+		render(
+			caseState({ ...c, updatedAt: "2026-11-21T10:00:00.000Z" }, asTess),
+			noActions,
+		);
+		expect(window.document.activeElement === (box() as unknown)).toBe(true);
+		expect([box().value, box().selectionStart]).toEqual(["Half way", 4]);
+	});
+
 	test("the thread at the bottom is the case's; a comment about a mark shows at the mark, with Add comment there (DEC-061)", async () => {
 		const done: string[] = [];
 		const actions = actionsWith({
@@ -3842,6 +4010,21 @@ describe("the AI app", () => {
 		// A moment after the call: still on, then off.
 		expect(talking()).toBe(true);
 		await Bun.sleep(TALKING_AFTER_MS + 50);
+		expect(talking()).toBe(false);
+		// A call said to run on a connection that is gone: no glow (DEC-064's review).
+		render(
+			caseState(
+				c,
+				ai({
+					active: false,
+					connected: false,
+					apps: 0,
+					status: "Not connected",
+					working: true,
+				}),
+			),
+			noActions,
+		);
 		expect(talking()).toBe(false);
 	});
 
@@ -4699,7 +4882,8 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		);
 		expect(el("add-marks").textContent).toBe("Adding marks: Done");
 		expect(el("add-marks").classList.contains("primary")).toBe(true);
-		expect(el("add-marks").getAttribute("aria-pressed")).toBe("true");
+		// The words say it; no "pressed" beside "Done" (DEC-064's review).
+		expect(el("add-marks").hasAttribute("aria-pressed")).toBe(false);
 		expect(line()).toContain("Adding marks: draw on the page");
 		el("add-marks").click();
 		expect(called).toEqual(["add", "done"]);
@@ -5591,4 +5775,12 @@ describe("the second link names the origin in front (DEC-050)", () => {
 			"Open http://localhost:3000/cart in this tab, and show the mark there",
 		);
 	});
+});
+
+test("two hosts' home pages are two pages, named with their hosts; other pages by their path (DEC-064's review)", () => {
+	expect(pagePath("https://staging.example/")).toBe("staging.example");
+	expect(pagePath("http://localhost:3000/")).toBe("localhost:3000");
+	expect(pagePath("https://staging.example/t/a/settings")).toBe(
+		"/t/a/settings",
+	);
 });

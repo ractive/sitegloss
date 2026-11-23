@@ -120,6 +120,7 @@ import {
 } from "./state.ts";
 import { startSync, syncActions } from "./sync.ts";
 import { type Actions, lostMarksText, NO_ACCESS, render } from "./view.ts";
+import { viewerStays } from "./viewer-follow.ts";
 import { panelWindow } from "./window.ts";
 
 const store = new IdbStore();
@@ -1384,7 +1385,7 @@ async function renameCase(caseId: string, text: string): Promise<void> {
 async function changeThread(
 	caseId: string,
 	change: (c: Case, now: string) => Case,
-): Promise<void> {
+): Promise<boolean> {
 	const hint = caseHintWriter();
 	try {
 		const saved = await store.updateCase(caseId, (current) => {
@@ -1398,8 +1399,10 @@ async function changeThread(
 		});
 		announce(caseId);
 		void refreshCases();
+		return true;
 	} catch (error) {
 		hint(`Not saved: ${message(error)}`);
+		return false;
 	}
 }
 
@@ -1962,7 +1965,7 @@ const actions: Actions = {
 
 	saveLink: (c, text) => void linkCase(c.id, text),
 	addComment: (caseId, text, markId) =>
-		void changeThread(caseId, (c, now) =>
+		changeThread(caseId, (c, now) =>
 			withCaseComment(
 				c,
 				{ id: newId("k"), text, ...(markId ? { mark: markId } : {}) },
@@ -2687,13 +2690,16 @@ async function showPicture(
 		caseId,
 		tile: `${markId}:${pictureId}`,
 	};
+	// The case left or closed while the window opened: it goes at once
+	// (DEC-064's review).
+	viewerFollows(state);
 }
 
 /** The viewer goes with the case: another case, the list, a closed case. */
 function viewerFollows(s: PanelState): void {
 	const on = viewerOn;
 	if (on === undefined) return;
-	if (s.current?.id === on.caseId && s.current.closed === undefined) return;
+	if (viewerStays(on.caseId, s.current)) return;
 	viewerOn = undefined;
 	void chrome.windows.remove(on.windowId).catch(() => undefined);
 }
