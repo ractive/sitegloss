@@ -3582,7 +3582,9 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   So Chrome's entry has `use_dynamic_url: true`: only this browser session's address
   works (Chrome 130 and later; older versions ignore the key). Measured in Chrome 156: a
   page's fetch of the fixed address is refused (it was answered 200 without the key), and
-  the field still loads from `chrome.runtime.getURL`. Firefox has no such key and needs
+  the field still loads from `chrome.runtime.getURL`. So Sitegloss now needs Chrome 130
+  (October 2024) or later; Chrome 116 to 129, and Edge before 130, can no longer install
+  or update it. Firefox has no such key and needs
   none: each install has an address of its own (`moz-extension://<a random id>`), so a
   page cannot try one. The field page shows nothing and reads nothing until the content
   script hands it its port; loaded by a page itself, it is an empty, disabled field.
@@ -3641,3 +3643,21 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   another image… from the page's dialog), `look`, `panel`, `extension`, `verify`, and in
   Firefox the field (focus on open, typing, Ctrl+Enter, Escape, nothing heard by the page)
   and the viewer's popup window.
+- **Review of pull request 53 (23 findings), what changed of the above:**
+  - Matching: a name that says more than the text weighs 0.7 and the text 0.3, instead of
+    both having to match (that lost a "Notifications" button whose badge changed, a
+    labelled region with other data, an Edit under another user's name). The other Edit
+    and the Delete beside it still come out lost or probable, never found.
+  - The field's frame: the hello names a token the content script put in the frame's
+    address fragment, carries one port and is taken once; the frame says it is ready, and
+    where it does not come up within 4 s the dialog says so and offers "Write it in the
+    side panel", which opens that mark's comment, resolve or reopen form there. Measured:
+    a page with `frame-src 'none'` does not stop the field in Chrome or in Firefox (both
+    exempt the extension's frame). A frame that loads again (the overlay moved into a
+    modal dialog of the page) gets back its text, label, state and focus; where the
+    browser has `moveBefore` it is not loaded again, and the overlay is not moved for
+    order alone while a field is open. Enter and Escape of an input method do nothing.
+  - The scroll hold's room is no longer taken back at a press; it goes back only as it
+    scrolls out of sight, so nothing on screen moves. The status line says what a draw
+    found once it settled (after the searches again), and only when that changed.
+

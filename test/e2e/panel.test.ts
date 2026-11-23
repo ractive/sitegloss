@@ -617,9 +617,11 @@ inBothSets("the side panel's page", () => {
 				return send(tabId, message);
 			}`);
 			await openCase(saved?.id as string);
-			// One of two found: it is looked for again.
+			// One of two found: it is looked for again. (The status line says
+			// it only once the searches again are over, DEC-064's review: the
+			// marks' rows say it at once.)
 			await h.control.waitFor(
-				`${id("case-hint")}.textContent.includes("1 of 2 marks found")`,
+				`[...document.querySelectorAll(".match")].filter((m) => m.dataset.status === "found").length === 1`,
 			);
 			await page.click(shadow('[data-action="review-hide"]'));
 			await until(
