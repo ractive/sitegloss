@@ -302,7 +302,15 @@ export type WorkerRequest =
 			markId: string;
 			pictureId: string;
 			windowId: number;
-	  };
+			/** The picture's size, the browser window's bounds and the screen's free area (`viewerBounds`). */
+			layout?: {
+				picture?: { width: number; height: number };
+				over: { left: number; top: number; width: number; height: number };
+				screen: { left: number; top: number; width: number; height: number };
+			};
+	  }
+	/** From the viewer in its window: the frame above its page, for the next window's size. */
+	| { type: "viewer:frame"; height: number };
 
 export interface ImagesForAnswer {
 	images?: ImagesFor;
@@ -345,6 +353,7 @@ export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	"panel:images",
 	"panel:images-take",
 	"viewer:open",
+	"viewer:frame",
 ]);
 
 export interface BarPlaceAnswer {

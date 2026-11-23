@@ -9,6 +9,10 @@ function fakeChrome() {
 	const api = {
 		runtime: { getURL: (p: string) => `chrome-extension://x/${p}` },
 		storage: {
+			local: {
+				get: async (key: string) => ({ [key]: store[key] }),
+				set: async (o: Record<string, unknown>) => void Object.assign(store, o),
+			},
 			session: {
 				get: async (key: string) => ({ [key]: store[key] }),
 				set: async (o: Record<string, unknown>) => void Object.assign(store, o),
@@ -104,6 +108,28 @@ test("a failed open rejects for the caller only: no rejection left unhandled (DE
 	} finally {
 		process.off("unhandledRejection", on);
 	}
+});
+
+test("the window's bounds use the frame the last viewer measured; a layout from the panel is checked (DEC-064)", async () => {
+	const { boundsFor, rememberFrame, viewerLayoutOk } = await import(
+		"../src/worker/viewer-window.ts"
+	);
+	const layout = {
+		picture: { width: 640, height: 300 },
+		over: { left: 0, top: 0, width: 1400, height: 900 },
+		screen: { left: 0, top: 0, width: 1920, height: 1200 },
+	};
+	const first = await boundsFor(layout);
+	await rememberFrame(60);
+	const after = await boundsFor(layout);
+	expect(first.height - after.height).toBe(28);
+	expect(viewerLayoutOk(layout)).toBe(true);
+	expect(
+		viewerLayoutOk({ ...layout, over: { ...layout.over, width: -1 } }),
+	).toBe(false);
+	expect(
+		viewerLayoutOk({ ...layout, picture: { width: Number.NaN, height: 3 } }),
+	).toBe(false);
 });
 
 describe("the viewer goes with its case (DEC-064's review)", () => {

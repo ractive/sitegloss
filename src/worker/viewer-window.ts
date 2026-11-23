@@ -6,6 +6,7 @@
  * in session storage: the worker may sleep between a picture and the next.
  */
 
+import { viewerBounds } from "../viewer/layout.ts";
 import { viewerPath } from "../viewer/pictures.ts";
 
 const KEY = "sitegloss.viewers";
@@ -32,6 +33,64 @@ export function viewerUrl(
 	);
 }
 
+/** A window's size and place as the panel worked it out (`viewerBounds`). */
+export interface ViewerBounds {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+}
+
+/** What the panel tells of the picture, the browser window and the screen. */
+export interface ViewerLayout {
+	picture?: { width: number; height: number };
+	over: ViewerBounds;
+	screen: ViewerBounds;
+}
+
+const number = (n: unknown) =>
+	typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 100_000;
+const box = (b: unknown) => {
+	const x = b as Partial<ViewerBounds> | undefined;
+	return (
+		x !== undefined &&
+		[x.left, x.top, x.width, x.height].every(number) &&
+		(x.width ?? 0) > 0 &&
+		(x.height ?? 0) > 0
+	);
+};
+
+/** Numbers within reason, from the panel: nothing else goes on to Chrome. */
+export function viewerLayoutOk(l: ViewerLayout): boolean {
+	const p = l.picture;
+	return (
+		box(l.over) &&
+		box(l.screen) &&
+		(p === undefined ||
+			(number(p.width) && number(p.height) && p.width > 0 && p.height > 0))
+	);
+}
+
+const FRAME_KEY = "sitegloss.viewerFrame";
+
+/** The frame above the viewer's page, as the last viewer measured it. */
+export async function rememberFrame(height: number): Promise<void> {
+	if (!Number.isInteger(height) || height < 0 || height > 400) return;
+	await chrome.storage.local.set({ [FRAME_KEY]: height });
+}
+
+/** The window's bounds for a layout: `viewerBounds` with the frame last measured. */
+export async function boundsFor(layout: ViewerLayout): Promise<ViewerBounds> {
+	const kept = await chrome.storage.local.get(FRAME_KEY).catch(() => ({}));
+	const frame = (kept as Record<string, unknown>)[FRAME_KEY];
+	return viewerBounds(
+		layout.picture,
+		layout.over,
+		layout.screen,
+		typeof frame === "number" ? frame : undefined,
+	);
+}
+
 /** One after the other per browser window: two quick clicks, one window. */
 const queues = new Map<number, Promise<unknown>>();
 
@@ -41,11 +100,12 @@ export function openViewer(
 	markId: string,
 	pictureId: string,
 	from: number,
+	bounds?: ViewerBounds,
 ): Promise<number> {
 	const before = queues.get(from) ?? Promise.resolve();
 	const next = before
 		.catch(() => undefined)
-		.then(() => showInViewer(caseId, markId, pictureId, from));
+		.then(() => showInViewer(caseId, markId, pictureId, from, bounds));
 	queues.set(from, next);
 	// Cleaned up either way; a failed open is the caller's to handle, not
 	// an uncaught rejection of this chain (DEC-064's second review).
@@ -61,6 +121,7 @@ async function showInViewer(
 	markId: string,
 	pictureId: string,
 	from: number,
+	bounds: ViewerBounds | undefined,
 ): Promise<number> {
 	const url = viewerUrl(caseId, markId, pictureId, from);
 	const all = await viewers();
@@ -71,27 +132,42 @@ async function showInViewer(
 		const tab = await chrome.tabs.get(open.tabId).catch(() => undefined);
 		const shown =
 			tab?.windowId === open.windowId &&
-			(await chrome.tabs
-				.update(open.tabId, { url })
-				.then(() => chrome.windows.update(open.windowId, { focused: true }))
+			(await Promise.all([
+				// The picture and the window's size change together: the new
+				// page shows its picture only once decoded (DEC-064).
+				chrome.tabs.update(open.tabId, { url }),
+				chrome.windows.update(open.windowId, {
+					...(bounds ?? {}),
+					focused: true,
+				}),
+			])
 				.then(() => true)
 				.catch(() => false));
 		if (shown) return open.windowId;
 	}
-	const browser = await chrome.windows.get(from);
-	const width = Math.round(Math.min(1280, (browser.width ?? 1280) * 0.85));
-	const height = Math.round(Math.min(900, (browser.height ?? 900) * 0.85));
+	// At its size and place in one step, as the panel worked it out from
+	// the picture's size and the screen: no resize once it is shown.
+	const place =
+		bounds ??
+		(await (async () => {
+			const browser = await chrome.windows.get(from);
+			const width = Math.round(Math.min(1280, (browser.width ?? 1280) * 0.85));
+			const height = Math.round(Math.min(900, (browser.height ?? 900) * 0.85));
+			return {
+				width,
+				height,
+				left: Math.round(
+					(browser.left ?? 0) + ((browser.width ?? width) - width) / 2,
+				),
+				top: Math.round(
+					(browser.top ?? 0) + ((browser.height ?? height) - height) / 2,
+				),
+			};
+		})());
 	const made = await chrome.windows.create({
 		url,
 		type: "popup",
-		width,
-		height,
-		left: Math.round(
-			(browser.left ?? 0) + ((browser.width ?? width) - width) / 2,
-		),
-		top: Math.round(
-			(browser.top ?? 0) + ((browser.height ?? height) - height) / 2,
-		),
+		...place,
 		focused: true,
 	});
 	const tabId = made?.tabs?.[0]?.id;

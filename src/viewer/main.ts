@@ -4,11 +4,15 @@
  * that is not synced; nothing is asked of a server.
  *
  * Where it is (DEC-064): in a small window of the extension's own over the
- * browser window (`?window=1&from=<its id>`), which it sizes to the picture;
- * or in a tab, from "Open in a tab". Never in the page in front.
+ * browser window (`?window=1&from=<its id>`), opened at its size and place
+ * by whoever opens it (`viewerBounds`), never resized once shown; or in a
+ * tab, from "Open in a tab". Never in the page in front. A picture shows
+ * once it is decoded; Previous and Next only for more than one picture;
+ * "Actual size" only where it changes something.
  */
 
 import { IdbStore } from "../lib/store.ts";
+import { offersNavigation, PICTURE_PAD, sizeChoice } from "./layout.ts";
 import {
 	markPictures,
 	pictureIndex,
@@ -25,6 +29,7 @@ const position = byId<HTMLSpanElement>("position");
 const previous = byId<HTMLButtonElement>("previous");
 const next = byId<HTMLButtonElement>("next");
 const size = byId<HTMLButtonElement>("size");
+const zoom = byId<HTMLSpanElement>("zoom");
 const stage = byId<HTMLElement>("stage");
 const img = byId<HTMLImageElement>("picture");
 const problem = byId<HTMLParagraphElement>("problem");
@@ -63,7 +68,10 @@ async function show(index: number): Promise<void> {
 	url = undefined;
 	caption.textContent = picture.title;
 	detail.textContent = picture.detail;
-	position.textContent = `${index + 1} of ${pictures.length}`;
+	// One picture (most marks): nothing to go through (the owner, DEC-064).
+	const several = offersNavigation(pictures.length);
+	for (const e of [position, previous, next]) e.hidden = !several;
+	position.textContent = several ? `${index + 1} of ${pictures.length}` : "";
 	document.title = `${picture.title} · Sitegloss`;
 	previous.disabled = index === 0;
 	next.disabled = index === pictures.length - 1;
@@ -74,10 +82,16 @@ async function show(index: number): Promise<void> {
 		return;
 	}
 	url = URL.createObjectURL(stored.blob);
+	// Shown once decoded: no half-drawn picture, no jump as it arrives.
+	img.hidden = true;
 	img.src = url;
 	img.alt = picture.alt;
+	await img.decode().catch(() => undefined);
+	if (index !== at) return;
+	fit(true);
 	img.hidden = false;
 	problem.hidden = true;
+	offerSize();
 	history.replaceState(
 		null,
 		"",
@@ -85,10 +99,47 @@ async function show(index: number): Promise<void> {
 	);
 }
 
+/** The stage's room for the picture, inside its padding and the picture's edge. */
+const room = () => ({
+	width: stage.clientWidth - PICTURE_PAD,
+	height: stage.clientHeight - PICTURE_PAD,
+});
+
+/**
+ * What the size control says and does, in words (DEC-064): "Actual size
+ * (100%)" while fitted smaller, "Fit to window" at the actual size; a
+ * picture that fits is shown at 100% and there is nothing to switch.
+ */
+function offerSize(): void {
+	if (img.hidden || img.naturalWidth === 0) return;
+	const natural = { width: img.naturalWidth, height: img.naturalHeight };
+	const { canSwitch, fitted } = sizeChoice(natural, room());
+	const fittedNow = stage.hasAttribute("data-fit");
+	size.disabled = !canSwitch;
+	size.textContent =
+		canSwitch && !fittedNow ? "Fit to window" : "Actual size (100%)";
+	size.title = canSwitch
+		? fittedNow
+			? "Show the picture at its actual size, one pixel to one (F)"
+			: "Show the whole picture, fitted to the window (F)"
+		: "This picture is shown at its actual size";
+	zoom.textContent =
+		canSwitch && fittedNow ? `Fitted: ${Math.round(fitted * 100)}%` : "100%";
+}
+
 function fit(on: boolean): void {
 	stage.toggleAttribute("data-fit", on);
-	// Pressed: actual size.
-	size.setAttribute("aria-pressed", String(!on));
+	if (!on) {
+		// At its actual size, the view starts on the picture's middle.
+		stage.scrollLeft = (stage.scrollWidth - stage.clientWidth) / 2;
+		stage.scrollTop = (stage.scrollHeight - stage.clientHeight) / 2;
+	}
+	offerSize();
+}
+
+/** The switch, only where it changes something. */
+function toggleSize(): void {
+	if (!size.disabled) fit(!stage.hasAttribute("data-fit"));
 }
 
 /** It goes: the window, back to the browser window it was over; or the tab. */
@@ -119,60 +170,18 @@ inTab.addEventListener("click", () => {
 		.then(() => window.close());
 });
 close.addEventListener("click", closeViewer);
-/**
- * The window as large as the picture needs, within the screen, centred over
- * the browser window (DEC-064): the picture at its size where it fits, its
- * bar above it; never more than the screen leaves.
- */
-async function sizeToPicture(): Promise<void> {
-	if (where !== "window" || img.hidden || img.naturalWidth === 0) return;
-	const me = await chrome.windows.getCurrent().catch(() => undefined);
-	const over = Number.isInteger(from)
-		? await chrome.windows.get(from).catch(() => undefined)
-		: undefined;
-	if (me?.id === undefined) return;
-	const frameX = window.outerWidth - window.innerWidth;
-	const frameY = window.outerHeight - window.innerHeight;
-	const bar = document.querySelector<HTMLElement>(".bar")?.offsetHeight ?? 48;
-	const room = { w: screen.availWidth - 32, h: screen.availHeight - 32 };
-	const width = Math.round(
-		Math.max(
-			Math.min(560, room.w),
-			Math.min(room.w, img.naturalWidth + 34 + frameX),
-		),
-	);
-	const height = Math.round(
-		Math.max(
-			Math.min(360, room.h),
-			Math.min(room.h, img.naturalHeight + 34 + bar + frameY),
-		),
-	);
-	const x = over
-		? (over.left ?? 0) + (over.width ?? width) / 2
-		: screen.availWidth / 2;
-	const y = over
-		? (over.top ?? 0) + (over.height ?? height) / 2
-		: screen.availHeight / 2;
-	const left = Math.round(
-		Math.min(Math.max(x - width / 2, 16), 16 + room.w - width),
-	);
-	const top = Math.round(
-		Math.min(Math.max(y - height / 2, 16), 16 + room.h - height),
-	);
-	await chrome.windows
-		.update(me.id, { width, height, left, top })
-		.catch(() => undefined);
-}
-img.addEventListener("load", () => void sizeToPicture());
+// The person resized the window: what fits now decides what is offered.
+addEventListener("resize", offerSize);
 previous.addEventListener("click", () => void show(at - 1));
 next.addEventListener("click", () => void show(at + 1));
-size.addEventListener("click", () => fit(!stage.hasAttribute("data-fit")));
+size.addEventListener("click", toggleSize);
 document.addEventListener("keydown", (e) => {
 	if (e.metaKey || e.ctrlKey || e.altKey) return;
-	if (e.key === "ArrowLeft" && at > 0) void show(at - 1);
-	else if (e.key === "ArrowRight" && at < pictures.length - 1)
+	const several = offersNavigation(pictures.length);
+	if (e.key === "ArrowLeft" && several && at > 0) void show(at - 1);
+	else if (e.key === "ArrowRight" && several && at < pictures.length - 1)
 		void show(at + 1);
-	else if (e.key === "f" || e.key === "F") fit(!stage.hasAttribute("data-fit"));
+	else if (e.key === "f" || e.key === "F") toggleSize();
 	else if (e.key === "Escape") closeViewer();
 	else return;
 	e.preventDefault();
@@ -190,4 +199,10 @@ else {
 	else await show(pictureIndex(pictures, firstPicture));
 }
 // In its window, the keyboard is the viewer's: Escape closes it at once.
-if (where === "window") close.focus();
+if (where === "window") {
+	close.focus();
+	// The frame above the page, for the next window's size (DEC-064).
+	void chrome.runtime
+		.sendMessage({ type: "viewer:frame", height: outerHeight - innerHeight })
+		.catch(() => undefined);
+}

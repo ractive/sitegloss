@@ -74,6 +74,7 @@ import {
 import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
+import { markPictures } from "../viewer/pictures.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
@@ -2690,12 +2691,40 @@ async function showPicture(
 ): Promise<void> {
 	const browser = await chrome.windows.getCurrent();
 	if (browser.id === undefined) return;
+	// The picture's size is known before the window exists: the window
+	// opens at its size and place in one step (DEC-064).
+	const c = state.current?.id === caseId ? state.current : undefined;
+	const path = c
+		? markPictures(c, markId).find((p) => p.id === pictureId)?.path
+		: undefined;
+	const stored = path
+		? await store.getImage(caseId, path).catch(() => undefined)
+		: undefined;
+	const s = window.screen as Screen & { availLeft?: number; availTop?: number };
+	const layout = {
+		...(stored && stored.width > 1
+			? { picture: { width: stored.width, height: stored.height } }
+			: {}),
+		over: {
+			left: browser.left ?? 0,
+			top: browser.top ?? 0,
+			width: browser.width ?? s.availWidth,
+			height: browser.height ?? s.availHeight,
+		},
+		screen: {
+			left: s.availLeft ?? 0,
+			top: s.availTop ?? 0,
+			width: s.availWidth,
+			height: s.availHeight,
+		},
+	};
 	const answer = (await chrome.runtime.sendMessage({
 		type: "viewer:open",
 		caseId,
 		markId,
 		pictureId,
 		windowId: browser.id,
+		layout,
 	} satisfies WorkerRequest)) as {
 		ok?: boolean;
 		viewerWindowId?: number;

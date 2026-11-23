@@ -3683,4 +3683,21 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
     move from what the overlay saw before it, not from the frame's blur; an action's hint
     is said again when it repeats; a draw that stops early stops settling; the viewer's
     queue leaves no rejection unhandled; tests now exercise what their names say.
+- **The picture viewer, after the owner tried it** ("much better now", three points):
+  - "Actual size" changes something only for a picture larger than the window; one that
+    fits (or fits exactly) shows at 100% and the control is disabled with "This picture
+    is shown at its actual size". The control reads "Actual size (100%)" while fitted
+    and "Fit to window" at the actual size, the zoom beside it ("Fitted: 77%", "100%");
+    the picture stays centred in both states (at its actual size the view starts on its
+    middle), and the bar does not move. Measured: 400×200 and 640×300 shown at 100%,
+    nothing to switch; 2400×900 fitted at 77% and 800×2400 at 41%, their centres the
+    same before and after the switch, every control of the bar at the same place.
+  - The window opens at its size and place in one step: the panel reads the picture's
+    size from the store, the worker works out the bounds before `chrome.windows.create`
+    (with the frame above the page the last viewer measured, 88 px at first), the
+    page paints the viewer's ground from its first frame and shows the picture once it
+    is decoded. Measured: each window's bounds took one value from creation on; a reused
+    window changes its bounds and its picture together. (The headless test browser kept
+    its first window at its default 1280×800, which a real browser does not.)
+  - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
 

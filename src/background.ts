@@ -83,7 +83,13 @@ import {
 	PANEL_PORT,
 	type WorkerMessage,
 } from "./worker/protocol.ts";
-import { openViewer, windowClosed } from "./worker/viewer-window.ts";
+import {
+	boundsFor,
+	openViewer,
+	rememberFrame,
+	viewerLayoutOk,
+	windowClosed,
+} from "./worker/viewer-window.ts";
 
 declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 declare const SITEGLOSS_FIREFOX: boolean | undefined;
@@ -454,7 +460,8 @@ async function handle(
 				!isSafeId(request.caseId) ||
 				!isSafeId(request.markId) ||
 				!isSafeId(request.pictureId) ||
-				!Number.isInteger(request.windowId)
+				!Number.isInteger(request.windowId) ||
+				(request.layout !== undefined && !viewerLayoutOk(request.layout))
 			)
 				throw new Error("invalid request");
 			const viewerWindowId = await openViewer(
@@ -462,8 +469,14 @@ async function handle(
 				request.markId,
 				request.pictureId,
 				request.windowId,
+				request.layout && (await boundsFor(request.layout)),
 			);
 			return { viewerWindowId };
+		}
+		case "viewer:frame": {
+			if (!fromExtensionPage(sender)) throw new Error("not from the viewer");
+			await rememberFrame(request.height);
+			return {};
 		}
 		case "panel:images-take": {
 			// The panel's own: a page may not take what another left.
