@@ -2323,7 +2323,15 @@ const REOPEN_TITLE =
  * is in the list: a Verify that was not saved, and a change of that mark
  * minutes later, take no focus from a field (DEC-064's review).
  */
-let verifiedNow: { caseId: string; markId: string; at: number } | undefined;
+let verifiedNow:
+	| {
+			caseId: string;
+			markId: string;
+			at: number;
+			/** The next mark to verify as the list stood at the click: the verified one may leave a filtered list. */
+			next: string | undefined;
+	  }
+	| undefined;
 /** How long a Verify waits for its row to be drawn as verified. */
 export const VERIFIED_WAIT_MS = 5000;
 
@@ -2334,7 +2342,19 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		VERIFIED_TITLE,
 		() => {
 			openMarks.delete(`${c.id}:${a.id}`);
-			verifiedNow = { caseId: c.id, markId: a.id, at: Date.now() };
+			const order = [
+				...document.querySelectorAll<HTMLElement>("section.marks li.mark"),
+			].map((li) => ({
+				id: li.dataset["mark"] ?? "",
+				status: li.dataset["status"] ?? "",
+			}));
+			const next = afterVerify(order, a.id)?.markId;
+			verifiedNow = {
+				caseId: c.id,
+				markId: a.id,
+				at: Date.now(),
+				next: next === a.id ? undefined : next,
+			};
 			actions.verifyMark(c, a);
 		},
 		true,
@@ -2351,6 +2371,23 @@ export function afterVerify(
 		order.slice(at + 1).find((m) => m.status === "fixed") ??
 		order.slice(0, at).find((m) => m.status === "fixed");
 	return { markId: next?.id ?? verified };
+}
+
+/**
+ * The row a Verify opens next, in the list as it is drawn now: the one known at
+ * the click while it still waits there (a filtered list has dropped the verified
+ * mark, and nothing can be counted from it), else the next by the list. None
+ * when nothing waits: the rows after the verified one first, then round to the
+ * ones before it, since going through them all is what a Verify after a Verify is.
+ */
+export function opensAfterVerify(
+	order: readonly { id: string; status: string }[],
+	verified: string,
+	known: string | undefined,
+): string | undefined {
+	const kept = order.find((m) => m.id === known && m.status === "fixed")?.id;
+	const to = kept ?? afterVerify(order, verified)?.markId;
+	return to === verified ? undefined : to;
 }
 
 const reopenButton = (c: Case, a: Mark, actions: Actions) =>
@@ -3430,9 +3467,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
 			verifiedNow = undefined;
 		const v = verifiedNow;
+		// Only a focus that the Verify left behind is moved: nowhere (its button
+		// went with the redraw) or still in its row. A field or a button of
+		// another row, which the person went to meanwhile, is theirs.
 		const focusHere = (() => {
 			const at = document.activeElement;
-			return at === null || at === document.body || marks.contains(at);
+			if (at === null || at === document.body) return true;
+			const row = at.closest<HTMLElement>("li.mark");
+			return (
+				row !== null && marks.contains(row) && row.dataset["mark"] === v?.markId
+			);
 		})();
 		if (
 			v?.caseId === c.id &&
@@ -3448,21 +3492,37 @@ function renderCase(state: PanelState, actions: Actions): void {
 						status: li.dataset["status"] ?? "",
 					}),
 				);
-				const to = afterVerify(order, v.markId);
 				const head = (id: string) =>
 					marks.querySelector<HTMLElement>(
 						`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
 					);
-				// The next mark to verify where it is on screen; one out of
-				// sight would scroll the list away from the row just verified
-				// (nothing jumps): then the closed row's head.
-				const next = to ? head(to.markId) : null;
-				const r = next?.getBoundingClientRect();
-				const seen =
-					r !== undefined &&
-					r.top >= 0 &&
-					r.bottom <= document.documentElement.clientHeight;
-				(seen ? next : head(v.markId))?.focus({ preventScroll: true });
+				// The next mark to verify opens by itself, in view, so that
+				// verifying a row of them is one press each (the owner). The
+				// one known at the click, which a filtered list still has
+				// when the verified mark has left it; else the list as it is.
+				const to = opensAfterVerify(order, v.markId, v.next);
+				const row =
+					to !== undefined
+						? marks.querySelector<HTMLElement>(
+								`li.mark[data-mark="${quoted(to)}"]`,
+							)
+						: null;
+				if (row) {
+					setOpen(c.id, row, true);
+					// "This one", as for a pin clicked on the page.
+					row.setAttribute("data-picked", "");
+					releaseHeld();
+					row.scrollIntoView?.({ block: "nearest" });
+					// Its head, not its Verify: a second Enter must not verify it unseen.
+					head(to as string)?.focus({ preventScroll: true });
+				}
+				// Nothing waits: the verified row's head; where a filter has
+				// taken that row away, the list's first control, not nowhere.
+				else
+					(
+						head(v.markId) ??
+						marks.querySelector<HTMLElement>("button:not([disabled])")
+					)?.focus({ preventScroll: true });
 			}
 		}
 		if (picked !== undefined) {

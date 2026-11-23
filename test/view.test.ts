@@ -20,6 +20,7 @@ const globals = globalThis as unknown as Record<string, unknown>;
 const before = { document: globals["document"] };
 let render: (state: PanelState, actions: Actions) => void;
 let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
+let opensAfterVerify: typeof import("../src/sidepanel/view.ts")["opensAfterVerify"];
 let ago: (iso: string, now?: number) => string;
 let TALKING_AFTER_MS: number;
 let holdTalkingFor: (ms: number) => void;
@@ -53,6 +54,7 @@ beforeAll(async () => {
 	({
 		render,
 		afterVerify,
+		opensAfterVerify,
 		ASKING_DOWNLOADS,
 		IMPORT_BUSY,
 		EXPORT_ALL_BUSY,
@@ -1015,7 +1017,55 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 });
 
 describe("Verify closes its mark (DEC-061)", () => {
-	test("Verify closes the row; the focus goes to the next mark to verify, else the row's head", async () => {
+	test("a Verify takes no focus the person has moved to another row meanwhile", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const c: Case = {
+			...sampleCase("c_verify_elsewhere"),
+			marks: [m(1, fixed), m(2), m(3, fixed)],
+		};
+		render(caseState(c), noActions);
+		const part = (id: string, selector: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] ${selector}`,
+			) as unknown as HTMLButtonElement;
+		part("m1", ".mark-toggle").click();
+		part("m1", '[data-mark-action="verify"]').click();
+		// The save is on its way; the person goes to mark 2.
+		part("m2", ".mark-toggle").focus();
+		render(
+			caseState({
+				...c,
+				updatedAt: "2026-11-15T09:00:00Z",
+				marks: [
+					m(1, { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } }),
+					m(2),
+					m(3, fixed),
+				],
+			}),
+			noActions,
+		);
+		expect(
+			window.document
+				.querySelector('[data-mark="m3"]')
+				?.hasAttribute("data-open"),
+		).toBe(false);
+		expect(
+			window.document.activeElement === (part("m2", ".mark-toggle") as unknown),
+		).toBe(true);
+	});
+
+	test("Verify closes the row and opens the next mark to verify; with none left, the focus stays on the row's head", async () => {
 		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
 		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
 			id: `m${k}`,
@@ -1051,7 +1101,8 @@ describe("Verify closes its mark (DEC-061)", () => {
 			) as unknown as HTMLButtonElement
 		).click();
 		expect(verified).toEqual(["m1"]);
-		// Stored as verified: drawn closed, the focus on mark 3, the next to verify.
+		// Stored as verified: drawn closed; mark 3, the next to verify, opens by
+		// itself with the focus on its head (not on its Verify), shown as "this one".
 		const done: Case = {
 			...c,
 			updatedAt: "2026-11-15T09:00:00Z",
@@ -1063,6 +1114,31 @@ describe("Verify closes its mark (DEC-061)", () => {
 		};
 		render(caseState(done), actions);
 		expect(row("m1").hasAttribute("data-open")).toBe(false);
+		expect(row("m3").hasAttribute("data-open")).toBe(true);
+		expect(row("m3").hasAttribute("data-picked")).toBe(true);
+		expect(row("m2").hasAttribute("data-open")).toBe(false);
+		expect(
+			window.document.activeElement ===
+				(row("m3").querySelector(".mark-toggle") as unknown),
+		).toBe(true);
+		// The last one verified: nothing else opens, the focus stays on its row.
+		(
+			row("m3").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		const all: Case = {
+			...done,
+			updatedAt: "2026-11-16T09:00:00Z",
+			marks: [
+				done.marks[0] as Mark,
+				m(2),
+				m(3, { ...fixed, verified: { at: "2026-11-16T09:00:00Z" } }),
+			],
+		};
+		render(caseState(all), actions);
+		expect(row("m3").hasAttribute("data-open")).toBe(false);
+		expect(row("m2").hasAttribute("data-open")).toBe(false);
 		expect(
 			window.document.activeElement ===
 				(row("m3").querySelector(".mark-toggle") as unknown),
@@ -1107,6 +1183,25 @@ describe("Verify closes its mark (DEC-061)", () => {
 			markId: "m1",
 		});
 		expect(afterVerify(order, "gone")).toBeUndefined();
+	});
+
+	test("the row a Verify opens: the next that waits; in a filtered list the one known at the click; none when nothing waits", () => {
+		const order = [
+			{ id: "m1", status: "fixed" },
+			{ id: "m2", status: "open" },
+			{ id: "m3", status: "fixed" },
+		];
+		expect(opensAfterVerify(order, "m1", undefined)).toBe("m3");
+		// Round to the ones before it, after the last.
+		expect(opensAfterVerify(order, "m3", undefined)).toBe("m1");
+		// The list is filtered and the verified mark has left it.
+		const left = order.filter((m) => m.id !== "m1");
+		expect(opensAfterVerify(left, "m1", "m3")).toBe("m3");
+		// What was known at the click waits no more: nothing is opened for it.
+		expect(opensAfterVerify(left, "m1", "m2")).toBeUndefined();
+		expect(
+			opensAfterVerify([{ id: "m1", status: "verified" }], "m1", undefined),
+		).toBeUndefined();
 	});
 });
 
