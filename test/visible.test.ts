@@ -160,6 +160,23 @@ describe("what covers an element", () => {
 		expect(viewOf($("el"), element)?.y).toBe(0);
 	});
 
+	test("a mark nothing covers is not asked again while the page stands still", () => {
+		let asked = 0;
+		hitsAt = () => {
+			asked++;
+			return [$("el")];
+		};
+		expect(viewOf($("el"), element)?.y).toBe(0);
+		const first = asked;
+		expect(first).toBeGreaterThan(0);
+		clock += 3 * COVER_MS;
+		expect(viewOf($("el"), element)?.y).toBe(0);
+		expect(asked).toBe(first);
+		// A change of the DOM: asked again.
+		expect(viewOf($("el"), element, 1)?.y).toBe(0);
+		expect(asked).toBeGreaterThan(first);
+	});
+
 	test("while it moves, the covers found are taken at their boxes; once still, the page is asked again", () => {
 		place($("head"), box(0, 0, 1024, 60));
 		hitsAt = (_x, y) => (y <= 60 ? [$("head")] : [$("el")]);

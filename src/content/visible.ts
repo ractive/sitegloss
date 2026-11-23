@@ -8,9 +8,10 @@
  * The covers are found by hit tests, which cost: a mark is tested when it
  * first shows, when the page's DOM changed, when it has stood still for
  * `SETTLE_MS` after moving (a head that slides away or in after the
- * scroll), and every `COVER_MS` at most; never more than `TESTS_A_PASS`
- * marks a pass, the rest in the passes after. Meanwhile (a scroll) the
- * covers found lately on the page are taken at their boxes of the moment.
+ * scroll), and, while something covers it, every `COVER_MS`. A pass spends
+ * `TEST_MS` on them at most (one mark at least); the rest wait for the next
+ * frames (`pending`). Meanwhile (a scroll) the covers found lately on the
+ * page are taken at their boxes of the moment.
  */
 
 import type { Point, Rect } from "../lib/case.ts";
@@ -38,8 +39,8 @@ export const CHAIN_MS = 2000;
 export const COVER_MS = 2000;
 /** A mark that stood still this long after moving is tested again. */
 export const SETTLE_MS = 350;
-/** At most this many marks are hit-tested a pass (each at up to 8 points). */
-export const TESTS_A_PASS = 6;
+/** How long a pass may spend on hit tests (each mark at up to 8 points). */
+export const TEST_MS = 2;
 /** A cover not found again for this long is no longer assumed. */
 const KNOWN_MS = 5000;
 
@@ -115,10 +116,11 @@ export class Visibility {
 	#coverBoxes = new Map<Cover, Rect | null>();
 	/** The open modal dialogs, or the fullscreen element, this pass. */
 	#tops: Element[] = [];
-	/** Hit tests left this pass. */
-	#budget = TESTS_A_PASS;
-	/** For a measurement: marks hit-tested, and points asked. */
-	readonly counts = { marks: 0, points: 0 };
+	/** Until when this pass may hit-test; whether it tested a mark yet. */
+	#until = 0;
+	#testedAny = false;
+	/** Marks were due for a hit test that this pass had no time for. */
+	pending = false;
 
 	constructor(
 		doc: Document,
@@ -137,7 +139,9 @@ export class Visibility {
 		this.#positions.clear();
 		this.#boxes.clear();
 		this.#coverBoxes.clear();
-		this.#budget = TESTS_A_PASS;
+		this.#until = performance.now() + TEST_MS;
+		this.#testedAny = false;
+		this.pending = false;
 		const full = this.#doc.fullscreenElement;
 		this.#tops = full ? [full] : this.#modals();
 		const now = this.#now();
@@ -324,22 +328,22 @@ export class Visibility {
 		const due =
 			last === undefined ||
 			last.changes !== changes ||
-			now - last.tested >= COVER_MS ||
+			// Only a mark something covers is asked again by age: a cover gone
+			// would leave it wrongly hidden; one come without a move or a DOM
+			// change leaves a mark drawn over it, the lesser wrong.
+			(now - last.tested >= COVER_MS &&
+				Object.values(last.covers).some((c) => c != null)) ||
 			(still && last.tested < last.moved && now - last.moved >= SETTLE_MS);
 		if (!due && still) return last.view;
 		const probes = probePoints(rect, view, reach);
 		let covers: Partial<Record<Probe, Cover | null>>;
 		let tested = last?.tested ?? Number.NEGATIVE_INFINITY;
-		if (
-			due &&
-			this.#budget > 0 &&
-			typeof this.#doc.elementsFromPoint === "function"
-		) {
-			this.#budget--;
-			this.counts.marks++;
+		const time = !this.#testedAny || performance.now() < this.#until;
+		if (due && !time) this.pending = true;
+		if (due && time && typeof this.#doc.elementsFromPoint === "function") {
+			this.#testedAny = true;
 			covers = {};
 			for (const [name, p] of Object.entries(probes) as [Probe, Point][]) {
-				this.counts.points++;
 				const cover = this.#coverAt(el, p);
 				covers[name] = cover;
 				if (cover !== null) this.#known.set(cover.root, { cover, at: now });
@@ -408,7 +412,20 @@ export class Visibility {
 	 * none`) counts as showing: the mark stays rather than going wrongly.
 	 */
 	#coverAt(el: Element, p: Point): Cover | null {
-		const hits = this.#doc
+		const doc = this.#doc;
+		// The topmost alone first: mostly it is the element, and the list of
+		// all costs more.
+		const top =
+			typeof doc.elementFromPoint === "function"
+				? doc.elementFromPoint(p.x, p.y)
+				: null;
+		if (
+			top !== null &&
+			top !== this.#host &&
+			(within(top, el) || within(el, top))
+		)
+			return null;
+		const hits = doc
 			.elementsFromPoint(p.x, p.y)
 			.filter((h) => h !== this.#host);
 		const hit = hits[0];

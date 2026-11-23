@@ -1520,6 +1520,8 @@ export class Reviewer {
 			if (clipped !== null) add(entry, { ...item, ...clipped });
 		}
 		this.overlay.renderReview(items);
+		// Hit tests this pass had no time for: in the next frames (DEC-075).
+		if (this.#visibility.pending) this.#schedule();
 		// Which of the case's marks are found on this page, drawn or not: a
 		// mark out of sight is not drawn (DEC-075), and a test asks this.
 		this.overlay.marks?.setAttribute(
