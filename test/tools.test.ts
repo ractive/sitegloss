@@ -507,13 +507,33 @@ describe("tools", () => {
 				CLAUDE,
 				cloud,
 			);
-			expect(
-				refused.some((l) =>
-					l.startsWith(
-						"Sitegloss will refuse this whatever you answer: No member of the team is Pat.",
-					),
-				),
-			).toBe(true);
+			// One short sentence for the person; the members' list is the app's.
+			expect(refused).toContain(
+				"Sitegloss will refuse this whatever you answer: no member of the team is called “Pat”.",
+			);
+			expect(refused.join(" ")).not.toContain("u_dana");
+			// The call's other checks, in its order: never "Assign to" for a
+			// call that will be refused.
+			await putCase(store, { ...sampleCase("c_here") });
+			const here = await ask(
+				"assign_case",
+				{ caseId: "c_here", assignee: null },
+				CLAUDE,
+				cloud,
+			);
+			expect(here.some((l) => l.startsWith("Assign to"))).toBe(false);
+			expect(here).toContain(
+				"Sitegloss will refuse this whatever you answer: only a case of the team can be assigned, and this one is kept in this browser only (or nobody is signed in to a team).",
+			);
+			const role = await ask(
+				"assign_case",
+				{ caseId: "c_1", assignee: "me" },
+				CLAUDE,
+				{ handOver: async () => team({ mayAssign: false }) },
+			);
+			expect(role).toContain(
+				"Sitegloss will refuse this whatever you answer: your role in “Web” does not allow changing its cases.",
+			);
 		});
 
 		test("against a server that assigns no cases: the state only, and mine lists what is kept here", async () => {

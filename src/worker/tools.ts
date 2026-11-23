@@ -2191,21 +2191,10 @@ export function createTools(deps: ToolDeps): Tool[] {
 		execute: async ({ caseId, assignee }, { client }) => {
 			const hand = await deps.handOver?.();
 			const c = await mustGet(caseId);
-			if (hand === undefined || !hand.synced(c.id))
-				throw new CaseError(
-					"Only a case of the user's team can be assigned: this one is kept in this browser only, or nobody is signed in to a team.",
-				);
-			if (!hand.mayAssign)
-				throw new CaseError(
-					`The user's role in “${hand.team}” does not allow changing its cases.`,
-				);
-			const members = hand.members ?? [];
-			if (members.length === 0)
-				throw new CaseError(
-					"The team's members are not known here yet (the server lists none, or could not be reached since the sign-in).",
-				);
-			const to =
-				assignee === null ? null : memberNamed(members, assignee, hand.me);
+			const check = assignCheck(hand, c.id, assignee);
+			if ("refused" in check) throw new CaseError(check.forApp);
+			const to = check.to;
+			if (hand === undefined) return { content: [] };
 			const said = (who: UserRef | null) =>
 				who === null ? "nobody" : who.id === hand.me ? "the user" : who.name;
 			let result = "";
@@ -2276,14 +2265,56 @@ export function createTools(deps: ToolDeps): Tool[] {
 }
 
 /**
- * The member `name` means (DEC-071): `me`, an id, or a name that only one
- * member has; otherwise refused, with the members to choose from.
+ * Whether assign_case may assign case `caseId` to `assignee` (DEC-071), in
+ * the order the call checks: the team's case, a role that may change it,
+ * the members known, a member named. Refused: why, once for the person's
+ * question (one short sentence) and once for the AI app (with the members
+ * to choose from, where a name matched none).
  */
-export function memberNamed(
+export function assignCheck(
+	hand: HandOver | undefined,
+	caseId: string,
+	assignee: string | null,
+): { to: UserRef | null } | { refused: string; forApp: string } {
+	const no = (refused: string, forApp = refused) => ({ refused, forApp });
+	if (hand === undefined || !hand.synced(caseId))
+		return no(
+			"only a case of the team can be assigned, and this one is kept in this browser only (or nobody is signed in to a team).",
+			"Only a case of the user's team can be assigned: this one is kept in this browser only, or nobody is signed in to a team.",
+		);
+	if (!hand.mayAssign)
+		return no(
+			`your role in “${hand.team}” does not allow changing its cases.`,
+			`The user's role in “${hand.team}” does not allow changing its cases.`,
+		);
+	const members = hand.members ?? [];
+	if (members.length === 0)
+		return no(
+			"the team's members are not known here.",
+			"The team's members are not known here yet (the server lists none, or could not be reached since the sign-in).",
+		);
+	if (assignee === null) return { to: null };
+	const found = findMember(members, assignee, hand.me);
+	if (typeof found !== "string") return { to: found };
+	const name = cut(assignee.trim(), 60);
+	const list = `The members: ${members.map((m) => `${m.name} (${m.id})`).join(", ")}.`;
+	return found === "several"
+		? no(
+				`more than one member is called “${name}”.`,
+				`More than one member is called ${name}: use the id. ${list}`,
+			)
+		: no(
+				`no member of the team is called “${name}”.`,
+				`No member of the team is ${name}. ${list}`,
+			);
+}
+
+/** The member `name` means: `me`, an id, or a name only one member has. */
+function findMember(
 	members: readonly UserRef[],
 	name: string,
 	me: string,
-): UserRef {
+): UserRef | "none" | "several" {
 	const wanted = name.trim();
 	const named = members.filter(
 		(m) => m.name.trim().toLowerCase() === wanted.toLowerCase(),
@@ -2294,9 +2325,7 @@ export function memberNamed(
 			: (members.find((m) => m.id === wanted) ??
 				(named.length === 1 ? named[0] : undefined));
 	if (found !== undefined) return { id: found.id, name: found.name };
-	throw new CaseError(
-		`${named.length > 1 ? `More than one member is called ${cut(wanted, 200)}: use the id.` : `No member of the team is ${cut(wanted, 200)}.`} The members: ${members.map((m) => `${m.name} (${m.id})`).join(", ")}.`,
-	);
+	return named.length > 1 ? "several" : "none";
 }
 
 /** What open_case says of the side panel. */
@@ -2431,26 +2460,28 @@ export async function confirmLines(
 				: `Case: “${c.title}” (${pagesText(c)}, ${count} mark${count === 1 ? "" : "s"}${c.verdict ? ", with a summary for the developer" : ""}).`,
 		);
 	}
-	// Who gets the case (DEC-071): by name, whatever the app sent (an id).
-	if (request.tool.name === "assign_case") {
-		const wanted = request.arguments["assignee"];
+	// Who gets the case (DEC-071): by name, whatever the app sent (an id);
+	// or why Sitegloss will refuse it, by the same checks as the call.
+	const wanted = request.arguments["assignee"];
+	if (
+		request.tool.name === "assign_case" &&
+		typeof caseId === "string" &&
+		(wanted === null || typeof wanted === "string")
+	) {
 		const hand = await cloud.handOver?.().catch(() => undefined);
-		if (wanted === null) lines.push("Assign to: nobody.");
-		else if (typeof wanted === "string")
-			try {
-				if (hand?.members === undefined)
-					throw new CaseError(
-						"the team's members are not known here, so the case cannot be assigned.",
-					);
-				const to = memberNamed(hand.members, wanted, hand.me);
-				lines.push(
-					`Assign to: ${to.id === hand.me ? `you (${to.name})` : to.name}.`,
-				);
-			} catch (error) {
-				lines.push(
-					`Sitegloss will refuse this whatever you answer: ${error instanceof Error ? error.message : String(error)}`,
-				);
-			}
+		const exists =
+			(await store.getCase(caseId).catch(() => undefined)) !== undefined;
+		const check = assignCheck(hand, caseId, wanted);
+		if (!exists) {
+			// Said by the case's line above.
+		} else if ("refused" in check)
+			lines.push(
+				`Sitegloss will refuse this whatever you answer: ${check.refused}`,
+			);
+		else
+			lines.push(
+				`Assign to: ${check.to === null ? "nobody" : check.to.id === hand?.me ? `you (${check.to.name})` : check.to.name}.`,
+			);
 	}
 	const mark = request.arguments["mark"];
 	if (MARK_TOOLS.has(request.tool.name) && typeof caseId === "string") {
