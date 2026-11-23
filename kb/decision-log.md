@@ -4386,23 +4386,34 @@ the box and the pin painted over the head and the account button above the pane.
   it. So no pin pokes over a pane's or a cover's edge, and no element showing means no pin.
   It is picked where it is drawn, with a tool on too (DEC-027).
 - **What is hidden.** An element of which nothing is inside the window and its panes; an
-  element wholly under covers; any element outside every open modal dialog (any of them, not
-  only the one in front) or outside a fullscreen element. The case's found marks, drawn or
-  not, are on the overlay's `svg.marks` as `data-found` (the numbers), for a test to read.
-- **What counts as a cover.** The page is asked what is topmost (`elementFromPoint`, then
-  `elementsFromPoint` only when something else is on top; Sitegloss's own host skipped) at the
-  four corners of what shows of the element (2 px in), and just past the top and the bottom
-  of what its mark reaches (the drawing, its pin, the element), where a fixed head next to
-  the element would have the pin's half or a padded box over it. The element, something
-  inside it or around it on top: no cover there. Something else that is, or sits in, a
-  `fixed` or `sticky` box outside the element's ancestors: a cover, whose box is the
-  outermost part of that box the hit test saw, cut to that box (a full-window layer with
-  `pointer-events: none` is not seen, its button is). An end is cut only where both of its
-  points are covered, by covers in one row (one head across, or the cells of a sticky table
-  head: at the nearer bottom); a side only where one cover holds both of its corners. One
-  point covered (a button at a corner, a badge in the middle) changes nothing. An element the
-  hit test does not see (`pointer-events: none`) counts as showing. A half-covered element
-  is drawn on its uncovered part, its pin with it.
+  element under one painting cover at all five of its points; any element outside every open
+  modal dialog (any of them, not only the one in front) or outside a fullscreen element. The
+  case's found marks, drawn or not, are on the overlay's `svg.marks` as `data-found` (the
+  numbers), for a test to read.
+- **Covers, the rule** (narrowed after the second review: the band logic hid marks that were
+  plainly visible twice). A cover cuts only the top end or the bottom end of a mark, and only
+  where one and the same fixed or sticky element covers both points of that end: a head or
+  a foot bar, cut at its edge. A mark is hidden by a cover only when that one element covers
+  all five points inside it (the four corners, 2 px in, and the middle). An element counts as
+  a cover only if it paints: between the topmost hit and the covering element something has
+  a background colour with alpha above zero, a background image or a backdrop filter, or is
+  a dialog or an open popover.
+- **What a cover is, in detail.** The page is asked what is topmost (`elementFromPoint`, then
+  the shadow-aware list of `pageElementsAt` when something else is on top or a shadow host
+  is; Sitegloss's own host skipped) at those five points, and at two points just past the
+  top and two just past the bottom of what the mark reaches (the drawing, its pin, the
+  element), where a head next to the element would have the pin's half or a padded box over
+  it: the same rule, one element at both or nothing. The element, something inside it or
+  around it on top: no cover there. Something else that is, or sits in, a fixed or sticky box
+  outside the element's ancestors: the covering element is the outermost part of that box the
+  hit test saw (a `pointer-events: none` layer is not seen, its button is), its box cut to the
+  fixed or sticky box. An element the hit test does not see counts as showing.
+- **What it deliberately does not do.** No cut at a side by a cover: a fixed side rail or nav
+  next to an element leaves its mark drawn over the rail. A head made of two elements (two
+  halves that take the pointer, the bar itself not) cuts nothing: the mark is drawn over it.
+  Two widgets at an element's two corners (a chat launcher, a consent button) cut nothing.
+  Covers that are neither fixed nor sticky (an absolutely positioned menu) are no covers. A
+  transparent layer that takes the pointer (the click-catcher behind an open menu) is none.
 - **When the page is asked.** A mark is hit-tested when it first shows, when the page's DOM
   changed, once it has stood still 350 ms after moving (`SETTLE_MS`: a head that slides away
   or in by a transition after the scroll; the reviewer draws again 370 ms after the last
@@ -4411,17 +4422,19 @@ the box and the pin painted over the head and the account button above the pane.
   is not asked again while the page stands still: a cover that comes by a class change alone
   leaves it drawn over the cover until the next move, the lesser wrong. While a mark moves
   (a scroll), no hit test: the covers it had and those found on the page in the last 5 s
-  are taken at their boxes of the moment, so a known head cuts marks during the scroll; a
-  guess wrong there is put right 350 ms after the scroll stops. A pass spends 2 ms on hit
-  tests at most (one mark at least); the rest go to the next animation frames.
+  are taken at their boxes of the moment. A pass spends 2 ms on hit tests at most, its clock
+  starting at its first test; a mark that was due and got no time stays owed (its last test
+  and its count of DOM changes kept), and the marks are taken owed and longest untested
+  first, so none waits for ever; the reviewer draws again in the next frame while any is
+  owed.
 - **The cost, measured** (Chromium, the test build). Local web app, 8 marks in two panes,
   199 frames of both panes scrolling 4 px a frame: the clips about 0.06 ms a frame (each
   element's clipping ancestors read again only after a DOM change or 2 s, their boxes once a
   pass, shared by marks). 60 marks in view under a fixed head, 199 frames of the window
-  scrolling 2 px a frame: 0.65 to 0.71 ms a frame against 0.14 to 0.15 without the clipping,
-  at most 3 ms in a frame. Standing still for 10 s after the scroll: the 6 marks the head
-  covers are tested again every 2 s, the rest never; 1.8 ms a redraw (twice a second, as
-  before) on average, 3.7 ms at most. All reads come before the overlay's one write.
+  scrolling 2 px a frame: 0.60 to 0.63 ms a frame against 0.14 to 0.17 without the clipping,
+  at most 2.8 ms in a frame. Standing still for 10 s after the scroll: the 6 marks the head
+  covers are tested again every 2 s, the rest never; 1.5 ms a redraw (twice a second, as
+  before) on average, 4.7 ms at most. All reads come before the overlay's one write.
 - **The popover** of a mark's comment (DEC-027) is placed by what is drawn of its mark (the
   shape cut to its clip, and its pin). While its mark is not drawn (off the page, cut away,
   covered) it stays where it is, with what is being typed in it: it is the person's open
@@ -4432,17 +4445,16 @@ the box and the pin painted over the head and the account button above the pane.
   from under the pointer. Showing a mark from the panel or the highlight tool scrolls its
   element into the middle of its own pane (`scrollIntoView` scrolls every scrolling ancestor),
   so its mark shows; `load_case` scrolls nowhere, as before. Not handled: `clip-path` and
-  `mask` on an ancestor; a cover that is neither fixed nor sticky (an absolutely positioned
-  menu over the element: the mark is drawn over it); a cover over the element's side that
-  reaches neither corner pair; a transparent fixed layer that takes the pointer counts as a
-  cover. No new permission, the manifest untouched; Chrome and Firefox alike (standard DOM
+  `mask` on an ancestor. No new permission, the manifest untouched; Chrome and Firefox alike (standard DOM
   only).
-- Tests: `test/clip.test.ts` (the containing-block chain, the probes, the covers at both
-  points of an end, table cells, a side, a corner that changes nothing, the cut, the pin);
-  `test/visible.test.ts` (happy-dom with given boxes and hit tests: an absolute element
-  escaping a scroller, the body's overflow, `display: contents`, modal dialogs, a button in a
-  `pointer-events: none` layer, a sticky head, the age limit and the settle test with a fake
-  clock); `test/overlay.test.ts` (a moved pin is picked where it is drawn);
-  `test/e2e/marks.test.ts` (a page with a fixed head and a pane with a sticky band: no part of
-  the box or pin above the band while the element is under it, nothing drawn while all of
-  it is, and shown from the panel it is back in its pane and drawn).
+- Tests: `test/clip.test.ts` (the containing-block chain, the probes, the cover rule: one
+  bar at an end, two different elements, two rails, the five points, a corner that changes
+  nothing; the cut, the pin); `test/visible.test.ts` (happy-dom with given boxes and hit
+  tests: an absolute element escaping a scroller, the body's overflow, `display: contents`,
+  modal dialogs, a button in a `pointer-events: none` layer, a head bar, a two-part head, two
+  corner widgets, a transparent and a painting full-window layer, a bar in a shadow root,
+  the age limit and the settle test with a fake clock, the time of a pass held to one mark);
+  `test/overlay.test.ts` (a moved pin is picked where it is drawn); `test/e2e/marks.test.ts`
+  (a page with a fixed head and a pane with a sticky band: no part of the box or pin above
+  the band while the element is under it, nothing drawn while all of it is, and shown from
+  the panel it is back in its pane and drawn).
