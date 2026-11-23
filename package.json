@@ -24,12 +24,12 @@
 		"test:server": "SITEGLOSS_E2E=full bun test --timeout 30000 test/cloud-server.test.ts test/e2e/cloud.test.ts test/e2e/firefox/cloud.test.ts"
 	},
 	"dependencies": {
-		"@ractive-ch/tab-mcp-client": "0.21.0"
+		"@ractive-ch/tab-mcp-client": "0.22.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.7",
 		"@modelcontextprotocol/client": "2.4.0",
-		"@ractive-ch/tab-mcp": "0.13.0",
+		"@ractive-ch/tab-mcp": "0.13.3",
 		"@types/bun": "1.4.4",
 		"@types/chrome": "0.3.7",
 		"ajv": "8.20.0",
