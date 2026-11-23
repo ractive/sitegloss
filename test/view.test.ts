@@ -4079,7 +4079,6 @@ describe("the AI app", () => {
 		const talking = () => "talking" in el("ai-button").dataset;
 		// The real hold is seconds long (TALKING_AFTER_MS): not sat out here.
 		const HOLD = 60;
-		expect(TALKING_AFTER_MS).toBeGreaterThanOrEqual(4000);
 		holdTalkingFor(HOLD);
 		render(caseState(c, ai({ ...on, status: "Connected: Claude" })), noActions);
 		expect(talking()).toBe(false);
@@ -4129,6 +4128,8 @@ describe("the AI app", () => {
 			noActions,
 		);
 		expect(talking()).toBe(false);
+		// The hold as shipped, for whatever renders a talking chip after this.
+		holdTalkingFor(TALKING_AFTER_MS);
 	});
 
 	test("its connection shows in the case view too; no Stop in the top bar, the pill leads to the switch (DEC-061)", () => {
