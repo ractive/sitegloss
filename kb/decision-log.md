@@ -3878,62 +3878,71 @@ agent is done, how is it handed back to a PO? [...] I think this also never appe
 even if we discussed it multiple times."
 
 One block on the open case, directly under the counts: one sentence on where the case
-stands and the one or two buttons that move it on. Quiet: a line of text and the panel's
-small buttons, no colour or banner of its own. No change to the service's API or the case
-format. The rule is one pure function (`nextStep` in `src/sidepanel/next-step.ts`); the
-block is drawn by `next-step-view.ts`.
+stands and the buttons that move it on. Quiet: a line of text and the panel's small
+buttons, no colour or banner of its own. The counts stand right above it, so the sentence
+does not repeat them. No change to the service's API or the case format. The rule is one
+pure function (`nextStep` in `src/sidepanel/next-step.ts`); the block is drawn by
+`next-step-view.ts`.
 
 | The case | It says | It offers |
 |---|---|---|
 | Closed | (no block) | |
-| No marks | Mark what is wrong on the page. | Add marks (not while adding: the tool bar's button is Done then) |
+| No marks | Draw on the page and say what is wrong. | Add marks (not while adding: the tool bar's button is Done then) |
 | Every mark settled | Every mark is settled. | Close case, where the role lets |
-| Marks fixed, to verify | N marks are fixed and wait to be checked on the page that has the fix. | Start verifying; Copy link while marks are open and the team has the case (Share with team where it is only here and may be shared) |
-| Open marks, only in this browser, may be shared | It is only in this browser. Share it so whoever fixes it can open it. | Share with team |
-| ... and the role may not share | It is only in this browser. Your role in "T" does not let you share it: export it to send it as a file. | Export… |
+| Marks fixed, none open | Check the fixed marks on the page that has the fix. | Start verifying |
+| Marks fixed and open | That sentence, then the open marks' sentence below | Start verifying, then the open marks' buttons |
+| Open, the server has it in this team | Send the case to whoever fixes the open marks. | Copy link; Copy for your AI app |
+| Open, the team's, the server not known to have it | It is being sent to the team / It is not with the team yet: the server cannot be reached / The team does not have it yet: Team in the list of cases says why / It goes to the team with the next sync; its link works once it is there. | nothing |
+| Open, the sign-in ran out | Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases. | nothing |
+| Open, only in this browser, may be shared | It is only in this browser. Share it so whoever fixes it can open it. | Share with team |
+| ... the role may not share | It is only in this browser. Your role in "T" does not let you share it: export it to send it as a file. | Export… |
 | ... nobody signed in, or no team chosen | It is only in this browser. Export it to send it as a file, or sign in (choose a team) under Team in the list of cases to share it. | Export… |
-| Open marks, the sign-in ran out | N marks are open. Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases. | nothing |
-| Open marks, the team's, not known to be sent | N marks are open. It is being sent / not with the team yet: the server cannot be reached / Team says why / It goes to the team with the next sync; its link works once it is there. | nothing |
-| Open marks, the team has it | N marks are open. Send the case to whoever fixes them. | Copy link; Copy for your AI app |
 
 Decided, and why:
 
+- **The link only on the sync's own word.** A case's link and the AI app's instructions
+  are offered only where the sync's books hold the server's copy of the case (a synced
+  book with a `shadow`) in the team chosen now. The worker publishes that beside the
+  modes (`atTeam` in `book.ts`: case id to team id, written by `publishModes`, and once
+  after an update that had not written it yet). Nothing of the case itself is proof:
+  an imported file's marks carry `createdBy` too, and a case the sync has not seen counts
+  as the team's. The sync's overall status is no proof either: cases held back or waiting
+  to be read again are not in its count of what waits. The team id in it keeps a case of
+  the team before a switch from getting the new team's address. Until then the block
+  says why there is no link yet.
 - **Settled and to verify come before sharing.** Closing a settled case and verifying a
-  fix are the same whether the case is the team's or this browser's; the brief's table
-  put them only under "Shared".
-- **Whether the team has the case is said only where it is certain.** The panel does not
-  read the sync's books per case (they may be large), so it knows only the sync's state
-  as the worker wrote it. The team has it when a mark carries the server's record of who
-  made it (`createdBy`, set only from the server), or when the last sync ended "synced"
-  with nothing waiting and no problem with this case after the case last changed here.
-  Otherwise no link is offered: an address that does not open yet is worse than none.
-  The cost: right after a change to a case made here, until the sync has run, the block
-  says the link works once the case is there, although it may already.
+  fix are the same whether the case is the team's or this browser's. With fixed and open
+  marks both, both are said and both offered (Start verifying first): the open ones still
+  need handing over while a fix waits to be checked.
 - **Copy link** copies `<server>/t/<team slug>/cases/<case id>`, the address the web app
   gives a member. The panel had no such address before: the slug, which the server always
-  sent with the teams, is now kept in the panel's account (`slug`). What it says: "Link
-  copied. It opens the case for the members of "T". For someone outside the team, use
-  Share… on the case's page in the web app."
+  sent with the teams, is now kept in the panel's account (`slug`). It says: "Link copied.
+  It opens the case for the members of "T"; for anyone else, use Share… in the web app."
+  A refused clipboard (mostly a panel without the focus) says "Copying did not work.
+  Click in the side panel and try again." Either is said for eight seconds, and only
+  while the step still offers that copy.
 - **Copy for your AI app** copies the web app's case template word for word
   (`caseInstructions` in sitegloss.dev's `apps/app/src/lib/agent-instructions.ts`),
   copied into `src/lib/agent-instructions.ts`, with one line of the extension's own: that
   reading the live page is the extension's AI app connection and the MCP server has the
-  case as stored, as the web app's AI app page says it. The two files have to be kept in
-  step by hand; the service's copy lacks that line. The hidden-character filter is
-  written as a code-point test, not a regular expression: Biome's formatter turns the
-  escapes of the original into the invisible characters themselves.
+  case as stored, as the web app's AI app page says it. The two files are kept in step by
+  hand (no test can read the other repository); the file's header lists where they
+  differ. The service's copy lacks the extension's line until it takes it.
 - **"Start verifying", not "Verify".** A mark's own Verify settles it; a second button of
   the same name that only filters and scrolls would be taken for "verify all". It shows
-  the marks to verify on every page, opens the first by number and brings it into view,
-  as a pin clicked on the page does.
+  the marks to verify on every page, opens the lowest-numbered and brings it into view,
+  as a pin clicked on the page does. If none is left by then (verified by the team
+  meanwhile), it says so and lets go of that filter.
 - **The same actions as their other places.** Add marks is the tool bar's `addMarks` and
   is off (with its title) where that one is; Share with team is the Team row's
   `cloudShare`; Export… is the menu's `exportCase`; Close case is the footer's
   `setCaseClosed`. Those places stay as they were.
 - **Keyboard and screen reader.** The block is a `section` named "Next step"; its
   sentence is an `aria-live` paragraph written only when its words change; what a copy
-  did is a `role="status"` line under the buttons, for eight seconds. A click that
-  changes the step keeps the focus in the block.
+  did is a `role="status"` line under the buttons. Both stay rendered while empty (out
+  of sight, not `hidden`), so a reader hears what is written into them. A click that
+  changes the buttons keeps the focus on the same action where it is still offered,
+  else on the block's first button, else on the block.
 
 What step 2 (an assignee, the case's states, "my cases", a mail on hand-over and
 hand-back) will need from this block: `Where`'s team branch gains the assignee, and

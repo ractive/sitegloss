@@ -36,8 +36,9 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   the state on the case in the list and on the open case ("Sending… 3 of 12 images",
   "Synced", "Not sent:" with the reason). Needs progress per case from the sync engine.
   Known gap beside it: an error of the browser's own storage has no place in the panel.
-  The next step on the open case (DEC-069) waits for the same: it offers the case's link
-  only once it is sure the team has the case, and would know that sooner per case.
+  The next step on the open case (DEC-069) reads the one fact per case the sync now
+  publishes (`atTeam`: the server has the case, in which team); the progress would let it
+  say how far a case on its way is.
 - **The open case's head in the panel is a pile.** Built as a draft after the web's case
   page, on the branch `panel-round-3` (DEC-061): the title with a "…" menu (Rename, the
   link, Export, Delete case), the counts, one action (Add marks), one quiet facts block
