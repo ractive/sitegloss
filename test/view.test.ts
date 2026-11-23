@@ -621,7 +621,7 @@ describe("a mark's status and actions", () => {
 					? ({
 							...m,
 							element: null,
-							shape: { kind: "unknown", given: {} },
+							shape: { kind: "unknown", given: { kind: "squiggle" } },
 						} as unknown as Mark)
 					: m,
 			),
