@@ -370,6 +370,10 @@ inFullSet("the look", () => {
 		await page.activate();
 		await panel.eval(`${id("add-marks")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
+		const tools = await page.eval<number>(
+			`${shadow(".toolbar")}.querySelectorAll('[data-action^="tool-"]').length`,
+		);
+		expect(tools).toBeGreaterThan(0);
 		interface Layout {
 			fit: string;
 			/** Rows the buttons stand in. */
@@ -423,8 +427,8 @@ inFullSet("the look", () => {
 				// Beside the tools or on its own row, never between or across.
 				expect([1, 2]).toContain(layout.status);
 				expect(layout.named).toBe(true);
-				// Words go only once the status has a row of its own.
-				if (layout.status === 1) expect(layout.words).toBe(7);
+				// Words go only once the status has a row of its own: every tool, Undo and Done show theirs.
+				if (layout.status === 1) expect(layout.words).toBe(tools + 2);
 			}
 			// Narrower never brings a roomier layout back.
 			const tightness = seen.map((l) => l.fit.length);
@@ -434,9 +438,9 @@ inFullSet("the look", () => {
 			return seen;
 		};
 		const plain = await check();
-		// Adding to a case: five tools, Undo and Done have an icon and a word.
+		// Adding to a case: the tools, Undo and Done have an icon and a word.
 		// Wide enough, all of it is one row; narrow enough, only icons are left.
-		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: 7 });
+		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: tools + 2 });
 		expect(plain.at(-1)).toMatchObject({ status: 2, words: 0 });
 
 		// Moved to the top, the toolbar has no review bar beside it: the bar
