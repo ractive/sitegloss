@@ -3715,7 +3715,13 @@ list of a case's pages sat in the second column of the facts block, beside the l
 - The heading is there from two pages on. Not chosen by the person: open up to three
   pages, closed for more, open where the tab shows none of the case's pages. A choice
   holds for the case, this session (DEC-063, DEC-064's review).
-- Closed is closed: the heading alone. DEC-063's "closed, it still shows the page in
-  front" is gone: a closed list that keeps one row does not read as closed, and the page
-  in front is still said by "This page" in the marks' filter and by each mark's page.
+- Closed is closed: no row of the list shows. DEC-063's "closed, it still shows the page
+  in front" is gone: a closed list that keeps one row does not read as closed. Instead
+  (the owner: "why not having 'Current page' above the collapsible '> Pages'? Give it a
+  try") the page in front has a row of its own above the heading, under the label
+  "Current page", whether the list is open or closed; there is none where the tab shows
+  none of the case's pages. The label names it, so only the list's row has
+  `aria-current`.
+- A list that closes by itself (the tab moved to a page of the case) while the keyboard's
+  focus is in it hands the focus to the heading.
 - A case with one page keeps its address among the facts, under the label "Page".

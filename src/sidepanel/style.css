@@ -1506,13 +1506,26 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	margin: 0;
 }
 
-.pages-section > .case-pages {
+.pages-section .case-pages {
 	font-size: 12px;
 	line-height: 17px;
 }
 
-/* The heading's rule and the facts' would be two lines with a closed list between. */
-.pages-section + .case-facts {
+/* The page in front, above the heading: there while the list is closed. */
+.current-page {
+	display: grid;
+	gap: 2px;
+}
+
+.current-page > .label {
+	margin: 0;
+	font-size: 12px;
+	line-height: 17px;
+	color: var(--ink-2);
+}
+
+/* Under the shown section, whose heading has its own height, the facts sit closer to their rule. */
+.pages-section:not([hidden]) + .case-facts {
 	padding-top: var(--s2);
 }
 

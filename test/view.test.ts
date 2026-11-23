@@ -2374,8 +2374,16 @@ describe("a case of several pages (DEC-038)", () => {
 		render(at("http://localhost:3000/c"), noActions);
 		expect(toggle().textContent).toBe("Pages 5");
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
-		// Closed as "Comments" is: the heading alone (DEC-065).
+		// Closed as "Comments" is (DEC-065); the page in front is said above
+		// the heading, named by its label and not by a second aria-current.
 		expect(el("case-pages").hidden).toBe(true);
+		const current = () =>
+			[...el("case-current-page").querySelectorAll(".page-name")].map(
+				(x) => x.textContent,
+			);
+		expect(current()).toEqual(["Page 3"]);
+		expect(el("case-current-page").parentElement?.hidden).toBe(false);
+		expect(el("case-current-page").querySelector("[aria-current]")).toBeNull();
 		toggle().click();
 		expect(toggle().getAttribute("aria-expanded")).toBe("true");
 		expect(el("case-pages").hidden).toBe(false);
@@ -2383,6 +2391,7 @@ describe("a case of several pages (DEC-038)", () => {
 		// Remembered for the case, also when the tab moves on.
 		render(at("http://localhost:3000/d"), noActions);
 		expect(el("case-pages").hidden).toBe(false);
+		expect(current()).toEqual(["Page 4"]);
 		toggle().click();
 		expect(el("case-pages").hidden).toBe(true);
 		// Closed by the person: it stays closed, also where the tab shows
@@ -2391,6 +2400,8 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
 		render(at("https://shop.example/elsewhere"), noActions);
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		// None of the case's pages in front: no current page to say.
+		expect(el("case-current-page").parentElement?.hidden).toBe(true);
 		expect(el("none-found").textContent).toBe(
 			"None of this case's pages is in this tab.",
 		);
@@ -2425,6 +2436,17 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(
 			el<HTMLButtonElement>("case-pages-toggle").getAttribute("aria-expanded"),
 		).toBe("true");
+		// The tab moves to a page of the case: the list closes by itself, and
+		// a focus that was in it goes to the heading, not to nowhere.
+		el("case-pages").querySelector<HTMLElement>(".page-name")?.focus();
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: urls[1] as string, title: "", size: undefined };
+			}),
+			noActions,
+		);
+		expect(el("case-pages").hidden).toBe(true);
+		expect(document.activeElement?.id).toBe("case-pages-toggle");
 	});
 
 	test("the marks by page: this page follows the tab, any page from the list or the menu, combined with the status chips, which count what it leaves", () => {
