@@ -1,5 +1,5 @@
 {
-	"about": "caseState(counts, closed), caseTurn(state, assigned) and isMine(state, who) as packages/api/src/v1/case-state.ts computes them (DEC-042). counts are a case's marks by status group: open; toVerify (fixed, waiting to be verified); verified; dismissed (won't fix, can't reproduce). assigned: the case has an assignee; assignee: the person asking is it; reporter: the person asking started the case. An implementation in another codebase has to give the same for every entry.",
+	"about": "caseState(counts, closed), caseTurn(state, assigned, reporterHere) and isMine(state, who) as packages/api/src/v1/case-state.ts computes them (DEC-042). counts are a case's marks by status group: open; toVerify (fixed, waiting to be verified); verified; dismissed (won't fix, can't reproduce). assigned: the case has an assignee; assignee: the person asking is it; reporter: the person asking started the case; reporterHere: whoever started the case is a member of its team (none on record counts as not), true where left out. An implementation in another codebase has to give the same for every entry.",
 	"states": [
 		{
 			"counts": { "open": 0, "toVerify": 0, "verified": 0, "dismissed": 0 },
@@ -99,7 +99,79 @@
 		{ "state": "settled", "assigned": false, "turn": "reporter" },
 		{ "state": "settled", "assigned": true, "turn": "reporter" },
 		{ "state": "closed", "assigned": false, "turn": "nobody" },
-		{ "state": "closed", "assigned": true, "turn": "nobody" }
+		{ "state": "closed", "assigned": true, "turn": "nobody" },
+		{
+			"state": "empty",
+			"assigned": false,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "empty",
+			"assigned": true,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "new",
+			"assigned": false,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "new",
+			"assigned": true,
+			"reporterHere": false,
+			"turn": "assignee"
+		},
+		{
+			"state": "in progress",
+			"assigned": false,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "in progress",
+			"assigned": true,
+			"reporterHere": false,
+			"turn": "assignee"
+		},
+		{
+			"state": "to verify",
+			"assigned": false,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "to verify",
+			"assigned": true,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "settled",
+			"assigned": false,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "settled",
+			"assigned": true,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "closed",
+			"assigned": false,
+			"reporterHere": false,
+			"turn": "nobody"
+		},
+		{
+			"state": "closed",
+			"assigned": true,
+			"reporterHere": false,
+			"turn": "nobody"
+		}
 	],
 	"mine": [
 		{

@@ -50,9 +50,15 @@ export function caseState(counts: CaseCounts, closed: boolean): CaseState {
 /**
  * Whose turn it is in `state`: `new` and `in progress` the assignee's,
  * nobody's while there is none (the case is unassigned); `empty`,
- * `to verify` and `settled` the reporter's; `closed` nobody's.
+ * `to verify` and `settled` the reporter's while `reporterHere` (whoever
+ * started the case is a member of its team: found in the team's members),
+ * nobody's once they left or when none is on record; `closed` nobody's.
  */
-export function caseTurn(state: CaseState, assigned: boolean): Turn {
+export function caseTurn(
+	state: CaseState,
+	assigned: boolean,
+	reporterHere = true,
+): Turn {
 	switch (state) {
 		case "new":
 		case "in progress":
@@ -60,7 +66,7 @@ export function caseTurn(state: CaseState, assigned: boolean): Turn {
 		case "closed":
 			return "nobody";
 		default:
-			return "reporter";
+			return reporterHere ? "reporter" : "nobody";
 	}
 }
 
@@ -93,29 +99,45 @@ export const stateOf = (c: Case): CaseState =>
 export const assignedTo = (c: Case): UserRef | null => assigneeOf(c) ?? null;
 
 /**
- * Whose turn it is on case `c`, as this browser knows it. `reporterHere`
- * false: whoever started it left the team, so the reporter's turn is
- * nobody's (the service's `turnOf`; the shared rule stays as it is).
+ * Whether the team's case `c` says who has it: the server told its assignee
+ * (or an assignment waits here). A case synced by a build before DEC-071,
+ * or not back from the server yet, says nothing: whose turn it is is not
+ * known, and it is nobody's in My cases until it is read again.
  */
-export function turnOf(c: Case, reporterHere = true): Turn {
-	const turn = caseTurn(stateOf(c), assignedTo(c) !== null);
-	return turn === "reporter" && !reporterHere ? "nobody" : turn;
-}
+export const handOverKnown = (c: Case): boolean => assigneeOf(c) !== undefined;
+
+/**
+ * Whether whoever started `c` is a member of its team, as far as the
+ * members are known (`members` none: not known, taken as here). None on
+ * record counts as not here, as the server counts it.
+ */
+export const reporterHere = (
+	c: Case,
+	members: readonly { id: string }[] | undefined,
+): boolean =>
+	c.createdBy !== undefined &&
+	(members === undefined || members.some((m) => m.id === c.createdBy?.id));
+
+/** Whose turn it is on case `c`, as this browser knows it (`reporterHere`, above). */
+export const turnOf = (c: Case, members?: readonly { id: string }[]): Turn =>
+	caseTurn(stateOf(c), assignedTo(c) !== null, reporterHere(c, members));
 
 /**
  * Whether case `c` is one of the cases of the person signed in as `me`
  * ("My cases"). `team`: the case is the team's; a case only in this browser
- * is theirs by definition (nobody else has it) while it is open. The
- * reporter of a team's case not known yet (it is on its way to the server,
- * which records who started it) is taken to be `me`: it was made here.
+ * is theirs by definition (nobody else has it) while it is open. A team's
+ * case whose hand-over is not known (`handOverKnown`), or whose reporter is
+ * not, is nobody's here: counting it as the person's put everybody's old
+ * cases under My cases.
  */
 export function mineFor(c: Case, me: string, team: boolean): boolean {
 	const state = stateOf(c);
 	if (!team) return state !== "closed";
+	if (!handOverKnown(c)) return false;
 	const assignee = assignedTo(c);
 	return isMine(state, {
 		assigned: assignee !== null,
 		assignee: assignee?.id === me,
-		reporter: c.createdBy === undefined || c.createdBy.id === me,
+		reporter: c.createdBy !== undefined && c.createdBy.id === me,
 	});
 }

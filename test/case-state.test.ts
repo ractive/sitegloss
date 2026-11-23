@@ -30,12 +30,17 @@ describe("where a case stands: the server's rule, held to the server's own vecto
 			]);
 	});
 
-	test("caseTurn gives every turn in the vectors", () => {
+	test("caseTurn gives every turn in the vectors, with whether the reporter is still in the team", () => {
+		expect(vectors.turns.some((v) => "reporterHere" in v)).toBe(true);
 		for (const v of vectors.turns)
-			expect([v, caseTurn(v.state as CaseState, v.assigned)]).toEqual([
+			expect([
 				v,
-				v.turn as Turn,
-			]);
+				caseTurn(
+					v.state as CaseState,
+					v.assigned,
+					"reporterHere" in v ? (v.reporterHere as boolean) : undefined,
+				),
+			]).toEqual([v, v.turn as Turn]);
 	});
 
 	test("isMine gives every answer in the vectors", () => {
@@ -110,26 +115,50 @@ describe("my cases: the open ones where it is my turn", () => {
 		expect(stateOf(check)).toBe("to verify");
 		expect(mineFor(check, TESS.id, true)).toBe(true);
 		expect(mineFor(check, DANA.id, true)).toBe(false);
-		const done = caseWith(["verified" as ResolutionKind], { createdBy: TESS });
-		expect(mineFor(done, TESS.id, true)).toBe(stateOf(done) === "settled");
+		const done = caseWith(["wontfix"], { createdBy: TESS, assignee: DANA });
+		expect(stateOf(done)).toBe("settled");
+		expect(mineFor(done, TESS.id, true)).toBe(true);
 	});
 
-	test("a team's case whose reporter is not back from the server yet is taken as the person's own", () => {
-		expect(mineFor(caseWith([]), DANA.id, true)).toBe(true);
+	test("a team's case whose hand-over or reporter is not known is nobody's: a case synced before this version, or not back from the server yet", () => {
+		// Read before DEC-071: no assignee told, no reporter.
+		expect(mineFor(caseWith(["open"]), DANA.id, true)).toBe(false);
+		expect(mineFor(caseWith([]), DANA.id, true)).toBe(false);
+		// Told nobody has it, the reporter not on record: nobody's either.
+		expect(mineFor(caseWith(["open"], { assignee: null }), DANA.id, true)).toBe(
+			false,
+		);
+		expect(turnOf(caseWith(["fixed"], { assignee: null }))).toBe("nobody");
+		// Read again: the reporter's.
+		expect(
+			mineFor(
+				caseWith(["open"], { assignee: null, createdBy: DANA }),
+				DANA.id,
+				true,
+			),
+		).toBe(true);
+	});
+
+	test("a reporter who left the team has no turn", () => {
+		const c = caseWith(["fixed"], { createdBy: TESS, assignee: DANA });
+		expect(turnOf(c, [DANA])).toBe("nobody");
+		expect(turnOf(c, [DANA, TESS])).toBe("reporter");
+		expect(turnOf(c)).toBe("reporter");
 	});
 });
 
 describe("assigning in this browser", () => {
 	const at = "2026-11-23T11:00:00.000Z";
 
-	test("waits to be sent, and the server's own assignee again takes it back", () => {
+	test("waits to be sent; a pick back to the record here waits too, as the server may have the one before", () => {
 		const c = caseWith(["open"], { assignee: DANA });
 		const moved = withAssigned(c, TESS, at);
 		expect(moved.assign?.to).toEqual(TESS);
 		expect(moved.updatedAt).toBe(at);
 		const back = withAssigned(moved, DANA, "2026-11-23T11:01:00.000Z");
-		expect(back.assign).toBeUndefined();
-		expect(back.assignee).toEqual(DANA);
+		expect(back.assign?.to).toEqual(DANA);
+		// Nothing waits and the same as shown: nothing changes.
+		expect(withAssigned(c, DANA, at)).toBe(c);
 	});
 
 	test("nobody is an assignment too, and the same again changes nothing", () => {
