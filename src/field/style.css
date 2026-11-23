@@ -16,9 +16,14 @@ body {
 	overflow: hidden;
 }
 
-/* Room for the focus ring inside the frame. */
+/*
+ * Room for the focus ring inside the frame. The size is said here too: Chrome
+ * gives the body of an extension's page 75 % of it, and the field inherited
+ * that (9.75 px beside the dialog's 13).
+ */
 body {
 	padding: 3px;
+	font-size: 100%;
 }
 
 textarea {
