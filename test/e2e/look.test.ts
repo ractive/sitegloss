@@ -11,6 +11,7 @@ import {
 	CASING_EXTRA,
 	PAGE_LOOK,
 	STATUS_COLOUR,
+	TOOLBAR_FITS,
 } from "../../src/content/overlay.ts";
 import { MARK_COLOUR } from "../../src/lib/marks.ts";
 import { openSidePanel, setRelay } from "./ai.ts";
@@ -370,6 +371,10 @@ inFullSet("the look", () => {
 		await page.activate();
 		await panel.eval(`${id("add-marks")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
+		const tools = await page.eval<number>(
+			`${shadow(".toolbar")}.querySelectorAll('[data-action^="tool-"]').length`,
+		);
+		expect(tools).toBeGreaterThan(0);
 		interface Layout {
 			fit: string;
 			/** Rows the buttons stand in. */
@@ -412,10 +417,15 @@ inFullSet("the look", () => {
 				})()`,
 			);
 		};
+		/** How tight a layout is: its place in the toolbar's own list. */
+		const rank = (fit: string) =>
+			(TOOLBAR_FITS as readonly string[]).indexOf(fit);
 		/** From wide to narrow: what must hold whatever the font and the scrollbar. */
 		const check = async (): Promise<Layout[]> => {
 			const seen: Layout[] = [];
-			for (const width of [1600, 1200, 1000, 900, 800, 700, 600, 500, 440]) {
+			for (const width of [
+				1600, 1200, 1030, 1000, 900, 800, 700, 600, 500, 440,
+			]) {
 				const layout = await at(width);
 				seen.push(layout);
 				// The tools never wrap in the middle, and the bar stays on the page.
@@ -423,21 +433,24 @@ inFullSet("the look", () => {
 				// Beside the tools or on its own row, never between or across.
 				expect([1, 2]).toContain(layout.status);
 				expect(layout.named).toBe(true);
-				// Words go only once the status has a row of its own.
-				if (layout.status === 1) expect(layout.words).toBe(7);
+				// Words go only once the status has a row of its own: every tool, Undo and Done show theirs.
+				if (layout.status === 1) expect(layout.words).toBe(tools + 2);
 			}
 			// Narrower never brings a roomier layout back.
-			const tightness = seen.map((l) => l.fit.length);
+			const tightness = seen.map((l) => rank(l.fit));
 			expect(tightness).toEqual([...tightness].sort((a, b) => a - b));
 			const words = seen.map((l) => l.words);
 			expect(words).toEqual([...words].sort((a, b) => b - a));
 			return seen;
 		};
 		const plain = await check();
-		// Adding to a case: five tools, Undo and Done have an icon and a word.
+		// Adding to a case: the tools, Undo and Done have an icon and a word.
 		// Wide enough, all of it is one row; narrow enough, only icons are left.
-		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: 7 });
+		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: tools + 2 });
 		expect(plain.at(-1)).toMatchObject({ status: 2, words: 0 });
+		// Between the roomiest and the status on a row of its own, the buttons
+		// come closer with every word kept.
+		expect(plain.map((l) => l.fit)).toContain("snug");
 
 		// Moved to the top, the toolbar has no review bar beside it: the bar
 		// steps aside while marks are added (DEC-061).
@@ -465,7 +478,7 @@ inFullSet("the look", () => {
 		expect(wide.at(-1)).toMatchObject({ status: 2, words: 0 });
 		// The wider font needs the tighter layout sooner.
 		expect(
-			wide.every((l, i) => l.fit.length >= (plain[i] as Layout).fit.length),
+			wide.every((l, i) => rank(l.fit) >= rank((plain[i] as Layout).fit)),
 		).toBe(true);
 		expect(wide.some((l, i) => l.fit !== (plain[i] as Layout).fit)).toBe(true);
 		await page.eval(`(() => {
