@@ -369,16 +369,17 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		);
 	};
 
-	test("the first layout that fits: the status beside the tools, then under them, then icons, then closer", () => {
+	test("the first layout that fits: the status beside the tools (buttons closer, if need be), then under them, then icons, then closer", () => {
 		overlay.setAddingMarks(true);
 		for (const fit of o.TOOLBAR_FITS) {
 			withRoomFrom(fit);
 			overlay.fitToolbar();
 			expect<string | undefined>(overlay.toolbar.dataset["fit"]).toBe(fit);
 		}
-		// Each step keeps what the one before did.
+		// Each step from "rows" on keeps what the one before did.
 		expect(o.TOOLBAR_FITS).toEqual([
 			"",
+			"snug",
 			"rows",
 			"rows icons",
 			"rows icons all",
@@ -493,7 +494,7 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		overlay.setReviewing(false);
 	});
 
-	test("a wider page lays it out again", () => {
+	test("a wider page lays it out again", async () => {
 		overlay.setAddingMarks(true);
 		withRoomFrom("rows icons");
 		overlay.fitToolbar();
@@ -502,6 +503,7 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		);
 		withRoomFrom("");
 		window.dispatchEvent(new window.Event("resize"));
+		await new Promise((done) => window.requestAnimationFrame(() => done(0)));
 		expect<string | undefined>(overlay.toolbar.dataset["fit"]).toBe("");
 		overlay.setAddingMarks(false);
 	});

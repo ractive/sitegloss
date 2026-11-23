@@ -256,22 +256,44 @@ inBothSets("marking and saving", () => {
 
 	fullTest("the toolbar stays on one line in a normal window", async () => {
 		const { page, tabId } = await h.open("v1");
-		await page.send("Emulation.setDeviceMetricsOverride", {
-			width: 1000,
-			height: 700,
-			deviceScaleFactor: 1,
-			mobile: false,
-		});
+		// A 1000 px window with a classic scrollbar (15 px, Windows and Linux):
+		// the page is 985 px wide, whatever scrollbar the machine has.
+		const metrics = (width: number) =>
+			page.send("Emulation.setDeviceMetricsOverride", {
+				width,
+				height: 700,
+				deviceScaleFactor: 1,
+				mobile: false,
+			});
+		await metrics(1000);
+		const scrollbar = await page.eval<number>(
+			"innerWidth - document.documentElement.clientWidth",
+		);
+		await metrics(985 + scrollbar);
 		// A page's own styles do not reach it, not even on the host element.
 		await page.eval(`(() => {
 			document.documentElement.dir = "rtl";
 			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; }</style>");
 		})()`);
-		await showToolbar(h, page, tabId);
+		const caseId = await showToolbar(h, page, tabId);
+		// A long title, as the bug needed: 29 characters need 987 px in one row in
+		// CI's Linux font (a longer one wraps in the status, and the bar is taller).
+		await h.control.eval(
+			`chrome.tabs.sendMessage(${tabId}, ${JSON.stringify({
+				type: "overlay:title",
+				caseId,
+				title: "Krankenkasse vergleichen (v1)",
+			})})`,
+		);
+		await page.waitFor(`${shadow(".status")}.textContent.includes("(v1)")`);
 		const height = await page.eval<number>(
 			`${shadow(".toolbar")}.getBoundingClientRect().height`,
 		);
 		expect(height).toBeLessThan(60);
+		// Beside the tools: the buttons closer if need be, the status not under them.
+		expect(
+			await page.eval<string>(`${shadow(".toolbar")}.dataset.fit`),
+		).not.toContain("rows");
 		const style = await page.eval<string[]>(
 			`(() => { const s = getComputedStyle(${shadow('[data-action="tool-box"]')}); return [s.textTransform, s.letterSpacing, s.direction]; })()`,
 		);
