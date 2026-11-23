@@ -1,0 +1,88 @@
+{
+	"about": "siteOf(url) and sitesOf(urls) as packages/api/src/v1/site.ts computes them (DEC-041): the site of an address (the registrable domain of its host by the public suffix list with its private section, null for none), and a case's sites from its addresses (most pages first, then by name). An implementation in another codebase has to give the same for every entry.",
+	"vectors": [
+		{ "url": "https://sitegloss.dev/", "site": "sitegloss.dev" },
+		{ "url": "https://app.sitegloss.dev/t/demo", "site": "sitegloss.dev" },
+		{ "url": "https://app.dev.sitegloss.dev/t/demo", "site": "sitegloss.dev" },
+		{ "url": "https://www.comparis.ch/hypotheken", "site": "comparis.ch" },
+		{ "url": "https://shop.example.co.uk/cart", "site": "example.co.uk" },
+		{ "url": "https://example.co.uk/", "site": "example.co.uk" },
+		{ "url": "https://foo.vercel.app/", "site": "foo.vercel.app" },
+		{ "url": "https://preview.foo.vercel.app/", "site": "foo.vercel.app" },
+		{ "url": "https://foo.github.io/repo/", "site": "foo.github.io" },
+		{ "url": "https://foo.pages.dev/#/cart", "site": "foo.pages.dev" },
+		{ "url": "https://github.io/", "site": "github.io" },
+		{ "url": "https://shop.example/cart", "site": "shop.example" },
+		{ "url": "https://staging.shop.example/cart", "site": "shop.example" },
+		{ "url": "https://www.bücher.de/", "site": "xn--bcher-kva.de" },
+		{ "url": "https://xn--bcher-kva.de/", "site": "xn--bcher-kva.de" },
+		{ "url": "https://www.example.com:8443/cart", "site": "example.com" },
+		{ "url": "https://user:pass@www.example.com/cart", "site": "example.com" },
+		{ "url": "HTTPS://WWW.Example.COM/Cart", "site": "example.com" },
+		{ "url": "https://www.example.com./cart", "site": "example.com" },
+		{ "url": "http://localhost:3000/cart", "site": null },
+		{ "url": "http://localhost./", "site": null },
+		{ "url": "http://app.localhost:3000/", "site": null },
+		{ "url": "http://127.0.0.1:8080/", "site": null },
+		{ "url": "http://192.168.1.20/", "site": null },
+		{ "url": "http://8.8.8.8/", "site": null },
+		{ "url": "http://0x7f.1/", "site": null },
+		{ "url": "http://[::1]:3000/", "site": null },
+		{ "url": "http://[2001:db8::1]/cart", "site": null },
+		{ "url": "http://intranet/wiki", "site": null },
+		{ "url": "http://printer.local/", "site": null },
+		{ "url": "http://shop.test/cart", "site": null },
+		{ "url": "http://api.internal/", "site": null },
+		{ "url": "http://router.home.arpa/", "site": null },
+		{ "url": "file:///Users/me/page.html", "site": null },
+		{ "url": "ftp://ftp.example.com/", "site": null },
+		{ "url": "chrome://extensions/", "site": null },
+		{ "url": "about:blank", "site": null },
+		{ "url": "not an address", "site": null },
+		{ "url": "", "site": null }
+	],
+	"cases": [
+		{ "urls": [], "sites": [] },
+		{
+			"urls": [
+				"https://app.sitegloss.dev/t/demo",
+				"https://sitegloss.dev/pricing",
+				"http://localhost:3000/t/demo"
+			],
+			"sites": ["sitegloss.dev"]
+		},
+		{
+			"urls": ["http://localhost:3000/cart", "http://127.0.0.1:3000/pay"],
+			"sites": []
+		},
+		{
+			"urls": [
+				"https://www.ractive.ch/x",
+				"https://www.comparis.ch/a",
+				"https://www.comparis.ch/b"
+			],
+			"sites": ["comparis.ch", "ractive.ch"]
+		},
+		{
+			"urls": [
+				"https://www.comparis.ch/a",
+				"https://comparis.ch/a/",
+				"https://ractive.ch/x",
+				"https://ractive.ch/y"
+			],
+			"sites": ["ractive.ch", "comparis.ch"]
+		},
+		{
+			"urls": ["https://b.example.org/x", "https://a.example.com/y"],
+			"sites": ["example.com", "example.org"]
+		},
+		{
+			"urls": [
+				"https://shop.example/",
+				"https://staging.shop.example/",
+				"https://pay.example.net/checkout"
+			],
+			"sites": ["shop.example", "example.net"]
+		}
+	]
+}
