@@ -13,7 +13,6 @@ import {
 	type Shape,
 	type StatusGroup,
 } from "../lib/case.ts";
-import { handPort } from "../lib/frame-port.ts";
 import { BAR_LOOP, pathData, strokeBounds } from "../lib/logo.ts";
 import {
 	arrowHead,
@@ -23,7 +22,6 @@ import {
 	type RenderedMark,
 } from "../lib/marks.ts";
 import { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
-import type { ViewerInit } from "../viewer/pictures.ts";
 
 declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 
@@ -152,8 +150,6 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	color: ${L.popoverText}; background: ${L.popover};
 }
 .popover textarea::placeholder { color: ${L.popoverPlaceholder}; opacity: 1; }
-/* The viewer over the page (DEC-064): the whole window, above everything of the page's. */
-iframe.viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; margin: 0; padding: 0; background: transparent; color-scheme: light dark; pointer-events: auto; z-index: 2147483647; }
 /* A field of the extension's own (DEC-064): its frame, as tall as the field in it says. */
 .popover iframe.field { display: block; box-sizing: border-box; width: calc(100% + 6px); height: 92px; margin: -3px; border: 0; background: transparent; color-scheme: light; }
 .popover textarea:focus-visible, .popover button:focus-visible { outline: 2px solid ${HOVER_COLOUR}; outline-offset: 1px; }
@@ -724,53 +720,6 @@ export class Overlay {
 	}
 
 	/** Its owner is done with the popover. */
-	#viewer: { frame: HTMLIFrameElement; port?: MessagePort } | undefined;
-
-	/**
-	 * A mark's pictures over the whole window (DEC-064): the viewer, a page
-	 * of the extension's own in a frame, told what to show over its port.
-	 * The page learns only that something of Sitegloss's covers it.
-	 */
-	showViewer(init: ViewerInit, closed: () => void): void {
-		this.closeViewer();
-		const frame = this.doc.createElement("iframe");
-		frame.className = "viewer";
-		frame.title = "Picture";
-		frame.src = chrome.runtime.getURL("viewer/index.html");
-		const viewer: { frame: HTMLIFrameElement; port?: MessagePort } = { frame };
-		frame.addEventListener("load", () => {
-			viewer.port?.close();
-			const port = handPort(frame, init);
-			port.onmessage = (e: MessageEvent<{ type?: string }>) => {
-				if (e.data?.type !== "close" || this.#viewer !== viewer) return;
-				this.closeViewer();
-				closed();
-			};
-			viewer.port = port;
-			frame.focus();
-		});
-		this.#viewer = viewer;
-		this.root.append(frame);
-		frame.focus();
-	}
-
-	/** A key for the viewer, heard by the side panel while it kept the focus. */
-	viewerKey(key: string): void {
-		this.#viewer?.port?.postMessage({ type: "key", key });
-	}
-
-	get viewerOpen(): boolean {
-		return this.#viewer !== undefined;
-	}
-
-	closeViewer(): void {
-		const viewer = this.#viewer;
-		if (viewer === undefined) return;
-		this.#viewer = undefined;
-		viewer.port?.close();
-		viewer.frame.remove();
-	}
-
 	closePopover(): void {
 		this.#popoverDismiss = undefined;
 		this.popover.hidden = true;

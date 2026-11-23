@@ -149,34 +149,3 @@ button:disabled {
 .problem {
 	color: var(--ink-2);
 }
-
-/*
- * Over the page (DEC-064): a modal. The page dims behind it; the bar and the
- * picture on the panel's paper, as one card; a click on the dimmed page
- * beside it closes it.
- */
-:root[data-where="frame"] {
-	background: transparent;
-}
-
-:root[data-where="frame"] body {
-	background: rgb(0 0 0 / 0.55);
-	padding: 32px;
-	cursor: zoom-out;
-}
-
-:root[data-where="frame"] .bar {
-	border: 1px solid var(--rule);
-	border-bottom: 0;
-	border-radius: 8px 8px 0 0;
-	cursor: default;
-}
-
-:root[data-where="frame"] .stage {
-	border: 1px solid var(--rule);
-	border-top: 0;
-	border-radius: 0 0 8px 8px;
-	background: var(--paper);
-	box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
-	cursor: default;
-}

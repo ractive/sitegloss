@@ -3543,7 +3543,7 @@ asked in chat that night (the findings page's D10, D12, D13).
   `test/page-hosts.test.ts`, `test/view.test.ts` (the tool bar, the disclosures, the quiet
   line, the chip, Add comment at a mark), `test/e2e/panel.test.ts` (the quiet line).
 
-## DEC-064: Panel round 5, a draft for the owner to judge: the picture over the page, the page's fields in a frame, corners, the weak points
+## DEC-064: Panel round 5, a draft for the owner to judge: the picture in a window of its own, the page's fields in a frame, corners, the weak points
 
 2026-11-23. On `panel-round-5`. The owner, on round 4: a picture opening in a new tab is
 "super confusing", it should be a modal that Escape or an ✕ closes; the paste into the
@@ -3570,17 +3570,28 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   handed to it once; nothing is posted to the page's window and no address carries data.
   End-to-end test (`adding.test.ts`): keys and a paste of text in the dialog; on round 4
   the page heard every key and the pasted text, now nothing, and the comment is saved.
-- **The picture over the page.** A tile's click opens the viewer over the page in the tab
-  in front, in a frame of the extension's own across the whole window in the closed
-  shadow root (told what to show over its port; it reads the pictures from the extension's
-  store itself). Escape, ✕ Close or a click beside it closes it; the focus stays in the
-  panel after the click, so the panel passes Escape, the arrows and F to the viewer, and
-  the tile has the focus again after. Measured: the page had no frame in `window.length`,
-  no resource entry, no mutation, no key or click event. Where no content script may run
-  (the browser's own pages, the web store, a PDF), a small window of its own, 85% of the
-  browser's, centred over it. Never a tab; the viewer has "Open in a tab".
-- **Firefox: not checked.** The same code runs there (frames of `moz-extension://`,
-  MessageChannel, `windows.create` with `type: "popup"`); no Firefox run was made.
+- **The picture in a window of its own (the owner's choice).** The owner, between the
+  two candidates: "That would be great if you wouldn't need to modify the page that is
+  actually shown." So a tile's click asks the worker for the viewer in a small window
+  of the extension's own (`type: "popup"`, `src/worker/viewer-window.ts`), centred over
+  the panel's browser window; the viewer sizes it to the picture once loaded, within the
+  screen (measured: a 640×300 picture in 674×476, a 1200×2400 one in 1234×1168 on a
+  1920×1200 screen, both centred). One per browser window: the next picture is shown in
+  it (the same window id). Escape or ✕ Close closes it and focuses the browser window
+  again; the panel puts the focus back on the tile. It closes when the case is left or
+  closed and when its browser window closes (the worker hears it; measured). No tab in
+  the tab strip; "Open in a tab" stays in the viewer. Nothing of it touches the page in
+  front (no mutation measured). An overlay on the page was built first and taken out
+  before this was pushed again; its probe had run: the page saw no frame, resource or
+  key, only that Sitegloss's host covered it.
+- **Full screen on macOS and small screens: not checked.** The test browser has no
+  macOS full-screen space; a popup of a full-screen window may open in a space of its
+  own there. Nothing is done differently for it yet; on a small screen the window is
+  the screen less 16 px on each side.
+- **Firefox: not checked.** The same code runs there: the field's frame of
+  `moz-extension://` with a MessageChannel, and `browser.windows.create` with
+  `type: "popup"`, which Firefox opens as a window with a reduced, read-only address bar
+  (its documented popup type); no Firefox run was made.
 - **Corners:** controls 6 px (the top bar's buttons, the page filter's menu, the page
   counts, a tile's remove), cards and the mark's body 8 px, the page's bar and dialog
   10 px with 6 px buttons; status chips and pins stay round.

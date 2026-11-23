@@ -74,7 +74,6 @@ import {
 import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
-import { viewerPath } from "../viewer/pictures.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
@@ -175,6 +174,7 @@ function describeError(error: unknown): string {
 
 const panel = new Panel((state) => {
 	render(state, actions);
+	viewerFollows(state);
 	// The tab in front is known (or another now): what was left for it.
 	if (state.tab?.id !== imagesAskedFor) takeImages(state.tab?.id);
 	askImages(state);
@@ -2651,88 +2651,64 @@ function askImages(s: PanelState): void {
 }
 
 /**
- * The picture shown large (DEC-064), from the tile that was clicked: over the
- * page in the tab in front, in a frame of the extension's own; where no
- * content script may run there (the browser's own pages, the web store, a
- * PDF), in a small window of its own, centred over the browser's. Never a
- * tab: the owner found one confusing; the viewer has "Open in a tab".
+ * The picture shown large (DEC-064): in a small window of the extension's
+ * own over the browser window, never in the page in front (the owner: "if
+ * you wouldn't need to modify the page that is actually shown") and never
+ * in a tab. The worker owns the window: one at a time per browser window,
+ * reused for the next picture, closed with that browser window.
  */
-let viewerOn: { tabId: number; tile: string } | undefined;
+let viewerOn: { windowId: number; caseId: string; tile: string } | undefined;
 
 async function showPicture(
 	caseId: string,
 	markId: string,
 	pictureId: string,
 ): Promise<void> {
-	const tile = `${markId}:${pictureId}`;
-	const tabId = state.tab?.id;
-	if (tabId !== undefined && isWebPage(state.tab?.url ?? "")) {
-		const shown = await sendToTab<{ ok?: boolean }>(tabId, {
-			type: "viewer:show",
-			caseId,
-			markId,
-			pictureId,
-		}).catch(() => undefined);
-		if (shown?.ok === true) {
-			viewerOn = { tabId, tile };
-			return;
-		}
-	}
 	const browser = await chrome.windows.getCurrent();
-	const width = Math.round(Math.min(1280, (browser.width ?? 1280) * 0.85));
-	const height = Math.round(Math.min(900, (browser.height ?? 900) * 0.85));
-	await chrome.windows.create({
-		url: chrome.runtime.getURL(
-			`${viewerPath(caseId, markId, pictureId)}&window=1`,
-		),
-		type: "popup",
-		width,
-		height,
-		left: Math.round(
-			(browser.left ?? 0) + ((browser.width ?? width) - width) / 2,
-		),
-		top: Math.round(
-			(browser.top ?? 0) + ((browser.height ?? height) - height) / 2,
-		),
-		focused: true,
-	});
+	if (browser.id === undefined) return;
+	const answer = (await chrome.runtime.sendMessage({
+		type: "viewer:open",
+		caseId,
+		markId,
+		pictureId,
+		windowId: browser.id,
+	} satisfies WorkerRequest)) as {
+		ok?: boolean;
+		viewerWindowId?: number;
+		error?: string;
+	};
+	if (answer?.ok !== true || answer.viewerWindowId === undefined)
+		throw new Error(answer?.error ?? "no window");
+	viewerOn = {
+		windowId: answer.viewerWindowId,
+		caseId,
+		tile: `${markId}:${pictureId}`,
+	};
 }
 
-// The panel keeps the keyboard after the tile's click: its keys go to the
-// viewer over the page, Escape closing it as there.
-document.addEventListener(
-	"keydown",
-	(e) => {
-		const on = viewerOn;
-		if (on === undefined || e.metaKey || e.ctrlKey || e.altKey) return;
-		if (!["Escape", "ArrowLeft", "ArrowRight", "f", "F"].includes(e.key))
-			return;
-		e.preventDefault();
-		e.stopPropagation();
-		void chrome.tabs
-			.sendMessage(on.tabId, { type: "viewer:key", key: e.key })
-			.then((answer: { ok?: boolean } | undefined) => {
-				if (answer?.ok !== true) viewerOn = undefined;
-			})
-			.catch(() => {
-				viewerOn = undefined;
-			});
-	},
-	true,
-);
-
-/** The viewer over the page went: the focus is back on its tile. */
-function viewerClosed(tabId: number | undefined): void {
+/** The viewer goes with the case: another case, the list, a closed case. */
+function viewerFollows(s: PanelState): void {
 	const on = viewerOn;
-	if (on === undefined || on.tabId !== tabId) return;
+	if (on === undefined) return;
+	if (s.current?.id === on.caseId && s.current.closed === undefined) return;
+	viewerOn = undefined;
+	void chrome.windows.remove(on.windowId).catch(() => undefined);
+}
+
+// The viewer's window went: the focus is back on its tile, where the
+// browser gives the panel the keyboard again.
+chrome.windows.onRemoved.addListener((windowId) => {
+	const on = viewerOn;
+	if (on === undefined || on.windowId !== windowId) return;
 	viewerOn = undefined;
 	const [markId, pictureId] = on.tile.split(":");
+	const row = `li.mark[data-mark="${CSS.escape(markId ?? "")}"] [data-picture="${CSS.escape(pictureId ?? "")}"]`;
 	document
 		.querySelector<HTMLElement>(
-			`li.mark[data-mark="${CSS.escape(markId ?? "")}"] [data-picture="${CSS.escape(pictureId ?? "")}"] [data-action="open-larger"], li.mark[data-mark="${CSS.escape(markId ?? "")}"] [data-picture="${CSS.escape(pictureId ?? "")}"][data-action="open-larger"]`,
+			`${row} [data-action="open-larger"], ${row}[data-action="open-larger"]`,
 		)
 		?.focus({ preventScroll: true });
-}
+});
 
 async function showAddImages(
 	c: Case,
@@ -3072,10 +3048,6 @@ async function drawnFor(
 /** News from the pages and the worker: nothing is answered. */
 function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
 	// Only the worker says so; the answer comes from it too.
-	if (news?.type === "viewer:closed") {
-		viewerClosed(sender.tab?.id);
-		return false;
-	}
 	if (news?.type === "panel:images") {
 		if (fromBackground(sender)) takeImages(state.tab?.id);
 		return false;

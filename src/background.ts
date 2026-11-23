@@ -82,6 +82,7 @@ import {
 	PANEL_PORT,
 	type WorkerMessage,
 } from "./worker/protocol.ts";
+import { openViewer, windowClosed } from "./worker/viewer-window.ts";
 
 declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 declare const SITEGLOSS_FIREFOX: boolean | undefined;
@@ -234,6 +235,13 @@ chrome.permissions.onAdded.addListener(() => {
 void store
 	.sweepPending(Date.now() - PENDING_MAX_AGE_MS)
 	.catch((error: unknown) => console.warn("Sitegloss: sweep", error));
+
+// A browser window that closes takes its picture viewer with it (DEC-064).
+chrome.windows.onRemoved.addListener((windowId) => {
+	void windowClosed(windowId).catch((error: unknown) =>
+		console.warn("Sitegloss: viewer window", error),
+	);
+});
 
 chrome.action.onClicked.addListener((tab) => {
 	if (tab.id === undefined) return;
@@ -435,6 +443,24 @@ async function handle(
 				console.warn("Sitegloss: side panel", error),
 			);
 			return {};
+		}
+		case "viewer:open": {
+			// The panel's own: a page does not open windows.
+			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			if (
+				!isSafeId(request.caseId) ||
+				!isSafeId(request.markId) ||
+				!isSafeId(request.pictureId) ||
+				!Number.isInteger(request.windowId)
+			)
+				throw new Error("invalid request");
+			const viewerWindowId = await openViewer(
+				request.caseId,
+				request.markId,
+				request.pictureId,
+				request.windowId,
+			);
+			return { viewerWindowId };
 		}
 		case "panel:images-take": {
 			// The panel's own: a page may not take what another left.

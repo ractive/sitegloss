@@ -153,14 +153,13 @@ export function createManifest(
 }
 
 /**
- * The extension's own pages that a content script puts in a frame on a web
- * page (DEC-064): the comment field of the page's dialogs and the picture
- * viewer. A frame of the extension's origin, so the page reads nothing typed
- * or shown in it. Any page may load them; they show nothing without the
- * port the content script hands them.
+ * The extension's own page that a content script puts in a frame on a web
+ * page (DEC-064): the comment field of the page's dialogs. A frame of the
+ * extension's origin, so the page reads nothing typed in it. Any page may
+ * load it; it does nothing without the port the content script hands it.
  */
 export const FRAMES_ON_PAGES = [
-	{ resources: ["field/*", "viewer/*"], matches: ["<all_urls>"] },
+	{ resources: ["field/*"], matches: ["<all_urls>"] },
 ];
 
 /** The Firefox build's add-on id (`browser_specific_settings.gecko.id`). */
@@ -360,8 +359,8 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 			"esm",
 			how,
 		)),
-		// A mark's pictures at their size, over the page or in a window of
-		// their own (DEC-060, DEC-064).
+		// A mark's pictures at their size, in a window of their own (DEC-060,
+		// DEC-064).
 		...(await bundle(
 			"src/viewer/index.html",
 			join(outdir, "viewer"),

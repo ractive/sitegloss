@@ -3,19 +3,15 @@
  * cannot give. Read from the extension's own store, so it works for a case
  * that is not synced; nothing is asked of a server.
  *
- * Where it is (DEC-064): over the page in the tab in front, in a frame the
- * content script puts there (`embedded`: what to show comes over the
- * frame's port, never in its address, which the page's resource timing
- * lists); in a small window of its own where there is no content script
- * (`?window=1`); or in a tab, from "Open in a tab".
+ * Where it is (DEC-064): in a small window of the extension's own over the
+ * browser window (`?window=1&from=<its id>`), which it sizes to the picture;
+ * or in a tab, from "Open in a tab". Never in the page in front.
  */
 
-import { framePort } from "../lib/frame-port.ts";
 import { IdbStore } from "../lib/store.ts";
 import {
 	markPictures,
 	pictureIndex,
-	type ViewerInit,
 	type ViewerPicture,
 	viewerPath,
 } from "./pictures.ts";
@@ -34,18 +30,14 @@ const img = byId<HTMLImageElement>("picture");
 const problem = byId<HTMLParagraphElement>("problem");
 
 const inTab = byId<HTMLButtonElement>("in-tab");
-const embedded = window.parent !== window;
 const params = new URLSearchParams(location.search);
-const framed = embedded ? await framePort<ViewerInit>() : undefined;
-const where: "frame" | "window" | "tab" = embedded
-	? "frame"
-	: params.get("window") === "1"
-		? "window"
-		: "tab";
+const where: "window" | "tab" = params.get("window") === "1" ? "window" : "tab";
 document.documentElement.dataset["where"] = where;
-const caseId = framed?.init.caseId ?? params.get("case") ?? "";
-const markId = framed?.init.markId ?? params.get("mark") ?? "";
-const firstPicture = framed?.init.pictureId ?? params.get("picture") ?? "";
+/** The browser window the viewer's window is over, and goes back to. */
+const from = Number(params.get("from") ?? "");
+const caseId = params.get("case") ?? "";
+const markId = params.get("mark") ?? "";
+const firstPicture = params.get("picture") ?? "";
 const store = new IdbStore();
 
 let pictures: ViewerPicture[] = [];
@@ -86,13 +78,11 @@ async function show(index: number): Promise<void> {
 	img.alt = picture.alt;
 	img.hidden = false;
 	problem.hidden = true;
-	// The address says the picture only in a window or a tab of its own.
-	if (where !== "frame")
-		history.replaceState(
-			null,
-			"",
-			`?${new URLSearchParams({ case: caseId, mark: markId, picture: picture.id, ...(where === "window" ? { window: "1" } : {}) })}`,
-		);
+	history.replaceState(
+		null,
+		"",
+		`?${new URLSearchParams({ case: caseId, mark: markId, picture: picture.id, ...(where === "window" ? { window: "1", from: String(from) } : {}) })}`,
+	);
 }
 
 function fit(on: boolean): void {
@@ -101,14 +91,13 @@ function fit(on: boolean): void {
 	size.setAttribute("aria-pressed", String(!on));
 }
 
-/** It goes: the frame over the page, the window, or the tab opened for it. */
+/** It goes: the window, back to the browser window it was over; or the tab. */
 function closeViewer(): void {
-	if (framed !== undefined) {
-		framed.port.postMessage({ type: "close" });
-		return;
-	}
 	if (where === "window") {
-		window.close();
+		const back = Number.isInteger(from)
+			? chrome.windows.update(from, { focused: true }).catch(() => undefined)
+			: Promise.resolve();
+		void back.then(() => window.close());
 		return;
 	}
 	void chrome.tabs
@@ -125,14 +114,56 @@ inTab.addEventListener("click", () => {
 	void chrome.tabs
 		.create({
 			url: chrome.runtime.getURL(viewerPath(caseId, markId, picture?.id ?? "")),
+			...(Number.isInteger(from) ? { windowId: from } : {}),
 		})
-		.then(closeViewer);
+		.then(() => window.close());
 });
 close.addEventListener("click", closeViewer);
-// Over the page: a click on the dimmed page beside it closes it, as a modal's backdrop.
-document.body.addEventListener("click", (e) => {
-	if (where === "frame" && e.target === document.body) closeViewer();
-});
+/**
+ * The window as large as the picture needs, within the screen, centred over
+ * the browser window (DEC-064): the picture at its size where it fits, its
+ * bar above it; never more than the screen leaves.
+ */
+async function sizeToPicture(): Promise<void> {
+	if (where !== "window" || img.hidden || img.naturalWidth === 0) return;
+	const me = await chrome.windows.getCurrent().catch(() => undefined);
+	const over = Number.isInteger(from)
+		? await chrome.windows.get(from).catch(() => undefined)
+		: undefined;
+	if (me?.id === undefined) return;
+	const frameX = window.outerWidth - window.innerWidth;
+	const frameY = window.outerHeight - window.innerHeight;
+	const bar = document.querySelector<HTMLElement>(".bar")?.offsetHeight ?? 48;
+	const room = { w: screen.availWidth - 32, h: screen.availHeight - 32 };
+	const width = Math.round(
+		Math.max(
+			Math.min(560, room.w),
+			Math.min(room.w, img.naturalWidth + 34 + frameX),
+		),
+	);
+	const height = Math.round(
+		Math.max(
+			Math.min(360, room.h),
+			Math.min(room.h, img.naturalHeight + 34 + bar + frameY),
+		),
+	);
+	const x = over
+		? (over.left ?? 0) + (over.width ?? width) / 2
+		: screen.availWidth / 2;
+	const y = over
+		? (over.top ?? 0) + (over.height ?? height) / 2
+		: screen.availHeight / 2;
+	const left = Math.round(
+		Math.min(Math.max(x - width / 2, 16), 16 + room.w - width),
+	);
+	const top = Math.round(
+		Math.min(Math.max(y - height / 2, 16), 16 + room.h - height),
+	);
+	await chrome.windows
+		.update(me.id, { width, height, left, top })
+		.catch(() => undefined);
+}
+img.addEventListener("load", () => void sizeToPicture());
 previous.addEventListener("click", () => void show(at - 1));
 next.addEventListener("click", () => void show(at + 1));
 size.addEventListener("click", () => fit(!stage.hasAttribute("data-fit")));
@@ -158,14 +189,5 @@ else {
 	if (pictures.length === 0) say("This mark is no longer in the case.");
 	else await show(pictureIndex(pictures, firstPicture));
 }
-// Over the page, the keyboard goes where the viewer is.
-if (where !== "tab") close.focus();
-// The side panel's keys while it keeps the focus (DEC-064): the same as here.
-framed?.port.addEventListener(
-	"message",
-	(e: MessageEvent<{ type: string; key?: string }>) => {
-		if (e.data.type !== "key" || e.data.key === undefined) return;
-		document.dispatchEvent(new KeyboardEvent("keydown", { key: e.data.key }));
-	},
-);
-framed?.port.start();
+// In its window, the keyboard is the viewer's: Escape closes it at once.
+if (where === "window") close.focus();

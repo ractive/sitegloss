@@ -91,15 +91,7 @@ export type ContentRequest =
 	| { type: "case:clear"; caseId?: string }
 	/** Hide the case's marks and keep it: the page's bar becomes the pill that shows them again (DEC-061). */
 	| { type: "case:hide"; caseId: string }
-	/**
-	 * A mark's picture over the page, in a frame of the extension's own
-	 * (DEC-064): the page sees none of it. Answered `{ ok: true }` once the
-	 * frame is there; it says `viewer:closed` when it goes.
-	 */
-	| { type: "viewer:show"; caseId: string; markId: string; pictureId: string }
-	/** A key the side panel heard while it kept the focus: for the viewer. */
-	| { type: "viewer:key"; key: string }
-	| { type: "viewer:close" }
+
 	/**
 	 * Scroll to the element `selector` and mark it with `number` for a
 	 * screenshot (`DescribedElement`); the overlay's own bars and the user's
@@ -288,7 +280,19 @@ export type WorkerRequest =
 	 * storage itself; the worker keeps it in session storage, which
 	 * outlives the worker's restarts.
 	 */
-	| { type: "panel:images-take"; tabId: number };
+	| { type: "panel:images-take"; tabId: number }
+	/**
+	 * From the side panel: a mark's picture large, in the viewer's window
+	 * over the browser window `windowId` (DEC-064). One per browser window:
+	 * open, it shows this picture. Answered with `viewerWindowId`.
+	 */
+	| {
+			type: "viewer:open";
+			caseId: string;
+			markId: string;
+			pictureId: string;
+			windowId: number;
+	  };
 
 export interface ImagesForAnswer {
 	images?: ImagesFor;
@@ -320,6 +324,7 @@ export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	"bar:place",
 	"panel:images",
 	"panel:images-take",
+	"viewer:open",
 ]);
 
 export interface BarPlaceAnswer {
@@ -410,9 +415,7 @@ export type Broadcast =
 	/** The worker's account or team sync changed (DEC-039): read it again. */
 	| { type: "cloud:changed" }
 	/** The page's "Add image…" left a mark for the panel (DEC-063): take it. */
-	| { type: "panel:images" }
-	/** The viewer over the page went (DEC-064): the panel's tile takes the focus back. */
-	| { type: "viewer:closed" };
+	| { type: "panel:images" };
 
 /**
  * What the side panel asks of the worker about the account and the sync
