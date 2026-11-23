@@ -528,6 +528,19 @@ describe("a loaded mark's pin and the one popover (DEC-027)", () => {
 		expect(overlay.reviewAt(-2, 20)).toBeUndefined();
 	});
 
+	test("a pin moved into what shows of its element (DEC-075) is picked where it is drawn", () => {
+		overlay.setReviewing(true);
+		overlay.renderReview([
+			item(1, pinAt, {
+				clip: { x: 0, y: 100, width: 800, height: 500 },
+				pin: { x: rect.x, y: 111 },
+			}),
+		]);
+		expect(overlay.reviewAt(rect.x, 111)).toBe(1);
+		expect(overlay.reviewAt(rect.x, rect.y)).toBeUndefined();
+		overlay.setReviewing(false);
+	});
+
 	test("a press on a pin picks its mark; a press on its shape does not", () => {
 		overlay.setReviewing(true);
 		overlay.renderReview([item(7, pinAt)]);

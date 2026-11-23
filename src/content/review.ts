@@ -43,7 +43,7 @@ import {
 	translateHighlight,
 	translateShape,
 } from "../lib/case.ts";
-import { clipMark } from "../lib/clip.ts";
+import { clipMark, intersect, union } from "../lib/clip.ts";
 import {
 	cssSelector,
 	type DescribeContext,
@@ -75,7 +75,7 @@ import {
 	rangeLines,
 	scrollToMiddle,
 } from "./text-range.ts";
-import { UNCUT, Visibility } from "./visible.ts";
+import { SETTLE_MS, Visibility } from "./visible.ts";
 
 interface Entry {
 	mark: Mark;
@@ -274,6 +274,8 @@ export class Reviewer {
 	readonly #ask: AskPanel;
 	/** What of the window each mark's element shows through (DEC-075). */
 	readonly #visibility: Visibility;
+	/** Draws again once a scroll stood still (DEC-075). */
+	#stillTimer: ReturnType<typeof setTimeout> | undefined;
 	/** How often the page is looked at without a scroll: 500 ms, unless a unit test gives its own. */
 	readonly #tickMs: number;
 	/**
@@ -309,10 +311,17 @@ export class Reviewer {
 		overlay.onPick = (number) => this.pick(number);
 		const doc = overlay.doc;
 		// Capture phase: scrolling inside a container moves elements too.
-		doc.addEventListener("scroll", () => this.#schedule(), {
-			capture: true,
-			passive: true,
-		});
+		// Once the scroll has stood still a moment, drawn again: what is over
+		// the marks (a head that slid away or in) is looked at anew (DEC-075).
+		doc.addEventListener(
+			"scroll",
+			() => {
+				this.#schedule();
+				clearTimeout(this.#stillTimer);
+				this.#stillTimer = setTimeout(() => this.#schedule(), SETTLE_MS + 20);
+			},
+			{ capture: true, passive: true },
+		);
 		doc.defaultView?.addEventListener("resize", () => this.#schedule());
 	}
 
@@ -1494,28 +1503,43 @@ export class Reviewer {
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 && r.height === 0) continue;
 			const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
+			const item = this.#onElement(entry, rect);
+			const bounds = shapeBounds(item.shape);
+			const pin = pinPosition(item);
+			const radius = badgeRadius(item.shape);
 			// Only where its element shows: not over a head its pane scrolled
 			// it under, nor anywhere while nothing of it shows (DEC-075).
-			const view = this.#visibility.viewOf(el, rect, this.#changes);
-			if (view === null) continue;
-			const item = this.#onElement(entry, rect);
-			if (view === UNCUT) {
-				add(entry, item);
-				continue;
-			}
-			const clipped = clipMark({
-				element: rect,
-				bounds: shapeBounds(item.shape),
-				pin: pinPosition(item),
-				radius: badgeRadius(item.shape),
-				view,
+			const reach = union(union(rect, bounds), {
+				x: pin.x - radius,
+				y: pin.y - radius,
+				width: 2 * radius,
+				height: 2 * radius,
 			});
+			const view = this.#visibility.viewOf(el, rect, reach, this.#changes);
+			const clipped = clipMark({ element: rect, bounds, pin, radius, view });
 			if (clipped !== null) add(entry, { ...item, ...clipped });
 		}
 		this.overlay.renderReview(items);
-		// The popover follows its mark; a mark off the page leaves it where it is.
+		// Which of the case's marks are found on this page, drawn or not: a
+		// mark out of sight is not drawn (DEC-075), and a test asks this.
+		this.overlay.marks?.setAttribute(
+			"data-found",
+			this.#entries
+				.filter(
+					(e) =>
+						e.match.status !== "lost" &&
+						e.match.status !== "no-element" &&
+						this.#element(e) !== undefined,
+				)
+				.map((e) => e.mark.number)
+				.sort((a, b) => a - b)
+				.join(","),
+		);
+		// The popover follows what is drawn of its mark. A mark not drawn (off
+		// the page, cut away, covered) leaves it where it is, with what is
+		// being typed in it (DEC-075).
 		if (open !== undefined)
-			this.overlay.placePopover(shapeBounds((open as ReviewItem).shape));
+			this.overlay.placePopover(drawnBounds(open as ReviewItem));
 	}
 
 	#renderBar(): void {
@@ -1621,4 +1645,14 @@ export class Reviewer {
 		}
 		bar.querySelector('[data-role="review-status"]')?.replaceWith(text);
 	}
+}
+
+/** What is drawn of a mark: its shape cut to its clip (DEC-075), with its pin. */
+function drawnBounds(item: ReviewItem): Rect {
+	const bounds = shapeBounds(item.shape);
+	const cut =
+		item.clip === undefined ? bounds : (intersect(bounds, item.clip) ?? bounds);
+	return item.pin === undefined
+		? cut
+		: union(cut, { x: item.pin.x, y: item.pin.y, width: 0, height: 0 });
 }

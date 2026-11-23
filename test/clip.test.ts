@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
-	CLIP_MARGIN,
 	clipMark,
+	clippingAncestors,
+	cutByCovers,
+	type Holder,
 	intersect,
 	intersectAll,
-	uncovered,
+	probePoints,
 } from "../src/lib/clip.ts";
 
 /** A window 1000 × 800 with a fixed head of 60 px, and a pane under it. */
@@ -27,45 +29,151 @@ describe("the view an element is seen through", () => {
 		expect(intersectAll([WINDOW, box(2000, 0, 10, 10)])).toBeNull();
 		expect(intersectAll([])).toBeNull();
 	});
+});
 
-	test("a sticky head across the element's top takes the top off the view", () => {
-		const head = box(0, 60, 1000, 50);
-		expect(uncovered(PANE, box(40, 80, 600, 300), head)).toEqual(
+describe("which ancestors cut an element", () => {
+	const holder = (h: Partial<Holder> = {}): Holder => ({
+		position: "static",
+		holdsFixed: false,
+		cutX: false,
+		cutY: false,
+		noBox: false,
+		isWindow: false,
+		...h,
+	});
+	const scroller = (h: Partial<Holder> = {}) =>
+		holder({ cutX: true, cutY: true, ...h });
+
+	test("an element in flow: every scroller around it", () => {
+		expect(
+			clippingAncestors("static", [holder(), scroller(), holder(), scroller()]),
+		).toEqual([1, 3]);
+	});
+
+	test("an absolute element escapes a scroller that is not its containing block", () => {
+		// Its parent scrolls but is static; the positioned one above it holds it.
+		expect(
+			clippingAncestors("absolute", [
+				scroller(),
+				holder(),
+				scroller({ position: "relative" }),
+			]),
+		).toEqual([2]);
+	});
+
+	test("a fixed element escapes all but a transformed ancestor, and what holds that", () => {
+		expect(clippingAncestors("fixed", [scroller(), scroller()])).toEqual([]);
+		expect(
+			clippingAncestors("fixed", [
+				scroller(),
+				scroller({ holdsFixed: true }),
+				scroller(),
+			]),
+		).toEqual([1, 2]);
+	});
+
+	test("the body whose overflow is the window's, and a box-less wrapper, cut nothing", () => {
+		expect(
+			clippingAncestors("static", [
+				scroller({ noBox: true }),
+				scroller({ isWindow: true }),
+			]),
+		).toEqual([]);
+		// A box-less wrapper holds nothing either: the absolute element looks past it.
+		expect(
+			clippingAncestors("absolute", [
+				scroller({ noBox: true, position: "relative" }),
+				scroller({ position: "relative" }),
+			]),
+		).toEqual([1]);
+	});
+
+	test("one axis is enough to count", () => {
+		expect(clippingAncestors("static", [holder({ cutX: true })])).toEqual([0]);
+	});
+});
+
+describe("where the page is asked what covers an element", () => {
+	test("inside its corners, and just past the top and bottom its mark reaches", () => {
+		const element = box(100, 200, 300, 100);
+		const reach = box(89, 189, 311, 111);
+		const p = probePoints(element, WINDOW, reach);
+		expect(p.tl).toEqual({ x: 102, y: 202 });
+		expect(p.br).toEqual({ x: 398, y: 298 });
+		expect(p.aboveL).toEqual({ x: 91, y: 188 });
+		expect(p.aboveR).toEqual({ x: 398, y: 188 });
+		expect(p.belowL).toEqual({ x: 91, y: 301 });
+	});
+
+	test("not past the view, which cuts there already", () => {
+		const p = probePoints(box(100, 50, 300, 100), PANE, box(89, 39, 311, 111));
+		expect(p.tl?.y).toBe(62);
+		expect(p.aboveL).toBeUndefined();
+		expect(
+			probePoints(box(100, -300, 300, 100), PANE, box(100, -300, 300, 100)),
+		).toEqual({});
+	});
+});
+
+describe("the view less the covers", () => {
+	const element = box(40, 80, 600, 300);
+	const head = box(0, 60, 1000, 50);
+
+	test("a head across the element's top takes the top off", () => {
+		expect(cutByCovers(PANE, element, { tl: head, tr: head })).toEqual(
 			box(0, 110, 1000, 690),
 		);
 	});
 
-	test("a banner across its bottom takes the bottom off", () => {
-		const banner = box(0, 700, 1000, 100);
-		expect(uncovered(PANE, box(40, 500, 600, 300), banner)).toEqual(
-			box(0, 60, 1000, 640),
-		);
+	test("the cells of a sticky table head: cut at the nearer bottom", () => {
+		const a = box(40, 60, 300, 40);
+		const b = box(340, 60, 300, 44);
+		expect(cutByCovers(PANE, element, { tl: a, tr: b })?.y).toBe(100);
 	});
 
-	test("a cover over all of what shows leaves nothing", () => {
+	test("a head just above the element, reached by its pin: the view stops at its bottom", () => {
+		const fixedHead = box(0, 0, 1000, 75);
+		const view = cutByCovers(WINDOW, element, {
+			aboveL: fixedHead,
+			aboveR: fixedHead,
+		});
+		expect(view?.y).toBe(75);
+		expect(intersect(element, view ?? WINDOW)).toEqual(element);
+	});
+
+	test("covers at the top and the bottom both cut", () => {
+		const banner = box(0, 300, 1000, 500);
 		expect(
-			uncovered(PANE, box(40, 80, 200, 20), box(0, 60, 1000, 50)),
+			cutByCovers(PANE, element, {
+				tl: head,
+				tr: head,
+				bl: banner,
+				br: banner,
+			}),
+		).toEqual(box(0, 110, 1000, 190));
+	});
+
+	test("a cover down one side cuts that side", () => {
+		const side = box(0, 0, 200, 800);
+		expect(cutByCovers(PANE, element, { tl: side, bl: side })?.x).toBe(200);
+	});
+
+	test("a cover over all of it leaves nothing", () => {
+		const all = box(0, 0, 1000, 800);
+		expect(
+			cutByCovers(PANE, element, { tl: all, tr: all, bl: all, br: all }),
 		).toBeNull();
 	});
 
-	test("a cover in its middle or over one corner changes nothing", () => {
-		expect(uncovered(PANE, box(40, 80, 600, 300), box(100, 200, 50, 50))).toBe(
-			PANE,
-		);
-		expect(uncovered(PANE, box(40, 80, 600, 300), box(0, 60, 100, 40))).toBe(
-			PANE,
-		);
-	});
-
-	test("a cover that does not reach the element changes nothing", () => {
-		expect(uncovered(PANE, box(40, 400, 600, 100), box(0, 60, 1000, 50))).toBe(
-			PANE,
-		);
+	test("one corner covered (a button, a badge) changes nothing: the mark is drawn", () => {
+		const button = box(20, 60, 56, 56);
+		expect(cutByCovers(PANE, element, { tl: button, tr: null })).toEqual(PANE);
+		expect(cutByCovers(PANE, element, {})).toEqual(PANE);
 	});
 });
 
 describe("a mark on an element, drawn where the element shows", () => {
-	test("an element that shows whole is drawn as before, a margin past the view", () => {
+	test("cut exactly at the view; a whole element's pin stays where it is", () => {
 		const element = box(40, 200, 600, 300);
 		const out = clipMark({
 			element,
@@ -75,14 +183,7 @@ describe("a mark on an element, drawn where the element shows", () => {
 			view: VIEW,
 		});
 		expect(out?.pin).toEqual({ x: 40, y: 200 });
-		expect(out?.clip).toEqual(
-			box(
-				-CLIP_MARGIN,
-				60 - CLIP_MARGIN,
-				1000 + 2 * CLIP_MARGIN,
-				740 + 2 * CLIP_MARGIN,
-			),
-		);
+		expect(out?.clip).toEqual(PANE);
 	});
 
 	test("an element under the head is cut at the pane's top, and its pin stays whole under it", () => {
@@ -94,15 +195,11 @@ describe("a mark on an element, drawn where the element shows", () => {
 			radius: R,
 			view: VIEW,
 		});
-		// Exact at the top, where the element is cut; a margin elsewhere.
 		expect(out?.clip.y).toBe(60);
-		expect(out?.clip.x).toBe(-CLIP_MARGIN);
-		// The pin at the visible part's top left, whole: nothing of it above 60.
 		expect(out?.pin).toEqual({ x: 40, y: 60 + R + 1 });
-		expect((out?.pin.y ?? 0) - R).toBeGreaterThan(60);
 	});
 
-	test("an element wholly under the head, or scrolled out of its pane, is not drawn", () => {
+	test("an element wholly under the head, out of its pane, or with no view, is not drawn", () => {
 		for (const element of [box(40, -400, 600, 300), box(40, 800, 600, 50)])
 			expect(
 				clipMark({
@@ -125,10 +222,9 @@ describe("a mark on an element, drawn where the element shows", () => {
 	});
 
 	test("an element whose top shows at the pane's top keeps its pin inside the pane", () => {
-		const element = box(40, 62, 600, 300);
 		const out = clipMark({
-			element,
-			bounds: element,
+			element: box(40, 62, 600, 300),
+			bounds: box(40, 62, 600, 300),
 			pin: { x: 40, y: 62 },
 			radius: R,
 			view: VIEW,
@@ -136,9 +232,19 @@ describe("a mark on an element, drawn where the element shows", () => {
 		expect(out?.pin).toEqual({ x: 40, y: 60 + R + 1 });
 	});
 
-	test("a pin whose place is cut away on one axis goes along the part that shows", () => {
-		// An arrow from far left (its pin at its start) to an element in a
-		// pane that is cut on the left.
+	test("a pin cut away on both axes goes to the corner of what shows", () => {
+		const view = box(300, 200, 500, 400);
+		const out = clipMark({
+			element: box(100, 100, 400, 300),
+			bounds: box(100, 100, 400, 300),
+			pin: { x: 100, y: 100 },
+			radius: R,
+			view,
+		});
+		expect(out?.pin).toEqual({ x: 300 + R + 1, y: 200 + R + 1 });
+	});
+
+	test("a pin cut away on one axis goes along the part that shows", () => {
 		const view = box(300, 60, 700, 740);
 		const out = clipMark({
 			element: box(200, 300, 400, 100),
@@ -148,25 +254,22 @@ describe("a mark on an element, drawn where the element shows", () => {
 			view,
 		});
 		expect(out?.pin).toEqual({ x: 300 + R + 1, y: 250 });
-		expect(out?.clip.x).toBe(300);
 	});
 
 	test("a view too small for a pin leaves it on what shows, cut with the rest", () => {
-		const view = box(0, 60, 1000, 12);
 		const out = clipMark({
 			element: box(40, 30, 600, 40),
 			bounds: box(40, 30, 600, 40),
 			pin: { x: 40, y: 30 },
 			radius: R,
-			view,
+			view: box(0, 60, 1000, 12),
 		});
 		expect(out?.pin).toEqual({ x: 40, y: 60 });
 	});
 
 	test("a highlight's pin left of its text stays where it is", () => {
-		const element = box(40, 200, 600, 100);
 		const out = clipMark({
-			element,
+			element: box(40, 200, 600, 100),
 			bounds: box(80, 210, 200, 20),
 			pin: { x: 69, y: 220 },
 			radius: R,

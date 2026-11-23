@@ -1108,7 +1108,8 @@ export class Overlay {
 			.filter((item) => item.shape.kind !== "unknown")
 			.map((item) => ({
 				number: item.number,
-				...pinPosition(item),
+				// Where it is drawn: moved into what shows of its element (DEC-075).
+				...(item.pin ?? pinPosition(item)),
 				r: badgeRadius(item.shape),
 			}));
 		const inkGroups: SVGElement[] = [];

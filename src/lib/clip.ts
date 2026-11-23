@@ -4,17 +4,12 @@
  * the window, and may be covered by something fixed or sticky over it. A
  * mark of an element that nothing of shows is not drawn; one that shows in
  * part is cut where the element is cut, and its pin stays whole on the part
- * that shows. Pure: the page's boxes come in, the clip and the pin go out.
+ * that shows. When it is not sure, the mark is drawn: a mark that vanishes
+ * while its element is plainly visible is worse than one drawn over a cover.
+ * Pure: the page's boxes come in, the clip and the pin go out.
  */
 
 import type { Point, Rect } from "./case.ts";
-
-/**
- * How far a mark may reach past the edge of what shows on a side where its
- * element is not cut: the stroke's casing, a focused element's outline and
- * the pin's half (radius 10 to 12) stay whole as before.
- */
-export const CLIP_MARGIN = 14;
 
 const right = (r: Rect) => r.x + r.width;
 const bottom = (r: Rect) => r.y + r.height;
@@ -38,28 +33,180 @@ export function intersectAll(rects: readonly Rect[]): Rect | null {
 	return at;
 }
 
+/** The box around both. */
+export function union(a: Rect, b: Rect): Rect {
+	const x = Math.min(a.x, b.x);
+	const y = Math.min(a.y, b.y);
+	return {
+		x,
+		y,
+		width: Math.max(right(a), right(b)) - x,
+		height: Math.max(bottom(a), bottom(b)) - y,
+	};
+}
+
+/** How an ancestor bears on what it holds, read from its computed style. */
+export interface Holder {
+	position: string;
+	/** It is the containing block of fixed (and absolute) descendants (a transform, `contain`). */
+	holdsFixed: boolean;
+	/** It cuts what it holds on that axis (`overflow` not `visible`, `contain: paint`). */
+	cutX: boolean;
+	cutY: boolean;
+	/**
+	 * It has no box of its own to cut with (`display: contents`, a table row
+	 * or row group, where `overflow` does not apply): skipped.
+	 */
+	noBox: boolean;
+	/** It is the body, whose overflow is handed on to the window. */
+	isWindow: boolean;
+}
+
 /**
- * The view an element is seen through, less a cover over it (a sticky head
- * in its scroller, a fixed banner): a cover across the whole visible part of
- * the element at one of its ends takes that end off the view; one that
- * covers all of it leaves nothing (`null`); one in the middle, or over a
- * corner only, changes nothing (the mark is drawn over it, as before).
+ * Which of an element's ancestors (`chain`, nearest first) cut it: those in
+ * its chain of containing blocks. A fixed element escapes them all but one
+ * that holds fixed descendants (a transform); an absolute one, those up to
+ * its positioned ancestor. `position` is the element's own.
  */
-export function uncovered(view: Rect, element: Rect, cover: Rect): Rect | null {
+export function clippingAncestors(
+	position: string,
+	chain: readonly Holder[],
+): number[] {
+	const out: number[] = [];
+	let mode = position;
+	chain.forEach((h, i) => {
+		if (h.noBox) return;
+		const holds =
+			mode === "fixed"
+				? h.holdsFixed
+				: mode === "absolute"
+					? h.position !== "static" || h.holdsFixed
+					: true;
+		if (!holds) return;
+		if ((h.cutX || h.cutY) && !h.isWindow) out.push(i);
+		mode = h.position;
+	});
+	return out;
+}
+
+/**
+ * Where the page is asked what lies over an element: inside what shows of
+ * it, at its corners (2 px in), and just past the top and the bottom of
+ * what its mark reaches (`reach`: the drawing, its pin, the element), where
+ * a fixed head that does not overlap the element would have the pin's half
+ * or a padded box over it. A point past the view is not asked: the view
+ * cuts there already.
+ */
+export type Probe =
+	| "tl"
+	| "tr"
+	| "bl"
+	| "br"
+	| "aboveL"
+	| "aboveR"
+	| "belowL"
+	| "belowR";
+
+export function probePoints(
+	element: Rect,
+	view: Rect,
+	reach: Rect,
+): Partial<Record<Probe, Point>> {
 	const seen = intersect(element, view);
-	if (seen === null) return null;
-	if (intersect(seen, cover) === null) return view;
-	const acrossX = cover.x <= seen.x && right(cover) >= right(seen);
-	const acrossY = cover.y <= seen.y && bottom(cover) >= bottom(seen);
-	if (acrossX && acrossY) return null;
-	let { x, y } = view;
-	let r = right(view);
-	let b = bottom(view);
-	if (acrossX && cover.y <= seen.y) y = Math.max(y, bottom(cover));
-	else if (acrossX && bottom(cover) >= bottom(seen)) b = Math.min(b, cover.y);
-	else if (acrossY && cover.x <= seen.x) x = Math.max(x, right(cover));
-	else if (acrossY && right(cover) >= right(seen)) r = Math.min(r, cover.x);
-	else return view;
+	if (seen === null) return {};
+	const inset = Math.min(2, seen.width / 2, seen.height / 2);
+	const l = seen.x + inset;
+	const r = right(seen) - inset;
+	const t = seen.y + inset;
+	const b = bottom(seen) - inset;
+	const out: Partial<Record<Probe, Point>> = {
+		tl: { x: l, y: t },
+		tr: { x: r, y: t },
+		bl: { x: l, y: b },
+		br: { x: r, y: b },
+	};
+	const wide = intersect(
+		{ x: reach.x, y: view.y, width: reach.width, height: view.height },
+		view,
+	);
+	if (wide === null) return out;
+	const wl = wide.x + 2;
+	const wr = right(wide) - 2;
+	const above = reach.y - 1;
+	const below = bottom(reach) + 1;
+	if (above < seen.y && above > view.y) {
+		out.aboveL = { x: wl, y: above };
+		out.aboveR = { x: wr, y: above };
+	}
+	if (below > bottom(seen) && below < bottom(view)) {
+		out.belowL = { x: wl, y: below };
+		out.belowR = { x: wr, y: below };
+	}
+	return out;
+}
+
+/**
+ * The view less the covers found at the probes (`probePoints`; a cover's
+ * box, or nothing). An end of the view is cut only where both of its points
+ * are covered: the top at the nearer of the two covers' bottoms (one cover
+ * across, or the cells of a sticky table head: covers in one row), the
+ * bottom likewise, a side where one cover holds both its inside corners. One point covered (a button at a corner, a
+ * badge in the middle) changes nothing: the mark is drawn. `null` when
+ * nothing of the element is left in the view.
+ */
+export function cutByCovers(
+	view: Rect,
+	element: Rect,
+	covers: Partial<Record<Probe, Rect | null>>,
+): Rect | null {
+	/**
+	 * Both points of an end covered, by covers in one row (an end) or by one
+	 * cover (a side): the edge picked of the two.
+	 */
+	const pair = (
+		a: Probe,
+		b: Probe,
+		edge: (r: Rect) => number,
+		pick: (p: number, q: number) => number,
+		together: (p: Rect, q: Rect) => boolean,
+	): number | undefined => {
+		const p = covers[a];
+		const q = covers[b];
+		return p == null || q == null || !together(p, q)
+			? undefined
+			: pick(edge(p), edge(q));
+	};
+	const row = (p: Rect, q: Rect) => p.y < bottom(q) && q.y < bottom(p);
+	const same = (p: Rect, q: Rect) =>
+		p.x === q.x && p.y === q.y && p.width === q.width && p.height === q.height;
+	const most = (
+		vs: (number | undefined)[],
+		pick: (...n: number[]) => number,
+	) => {
+		const known = vs.filter((v): v is number => v !== undefined);
+		return known.length === 0 ? undefined : pick(...known);
+	};
+	const top = most(
+		[
+			pair("tl", "tr", bottom, Math.min, row),
+			pair("aboveL", "aboveR", bottom, Math.min, row),
+		],
+		Math.max,
+	);
+	const end = most(
+		[
+			pair("bl", "br", (r) => r.y, Math.max, row),
+			pair("belowL", "belowR", (r) => r.y, Math.max, row),
+		],
+		Math.min,
+	);
+	const left = pair("tl", "bl", right, Math.min, same);
+	const rightCut = pair("tr", "br", (r) => r.x, Math.max, same);
+	const x = Math.max(view.x, left ?? view.x);
+	const y = Math.max(view.y, top ?? view.y);
+	const r = Math.min(right(view), rightCut ?? right(view));
+	const b = Math.min(bottom(view), end ?? bottom(view));
+	if (r <= x || b <= y) return null;
 	const out = { x, y, width: r - x, height: b - y };
 	return intersect(element, out) === null ? null : out;
 }
@@ -78,15 +225,13 @@ export interface ClippedMark {
  *
  * - `view`: what of the window the element can be seen through (the window
  *   and its scrolling ancestors' boxes, `intersectAll`, less its covers,
- *   `uncovered`).
- * - The drawing is cut exactly at the view's edge on each side where the
- *   element is cut; on a side where it is whole, it may reach `CLIP_MARGIN`
- *   past, so a mark whose element shows whole looks as it did.
+ *   `cutByCovers`). The drawing is cut exactly at it: past a pane's or a
+ *   cover's edge lies the head the mark must not reach over, and past the
+ *   window's nothing is seen.
  * - The pin is the box's (`pin`, of radius `radius`): when the place it
  *   belongs to is cut away on an axis, it goes to the nearest place on that
  *   axis of what shows of the mark (`bounds`, else the element); and it
- *   always stays whole inside the view where the view has room for it, so no
- *   pin pokes over the head of a page whose panes scroll.
+ *   always stays whole inside the view where the view has room for it.
  */
 export function clipMark(input: {
 	element: Rect;
@@ -100,12 +245,6 @@ export function clipMark(input: {
 	if (view === null) return null;
 	const seen = intersect(element, view);
 	if (seen === null) return null;
-	const m = CLIP_MARGIN;
-	const x = element.x < view.x ? view.x : view.x - m;
-	const y = element.y < view.y ? view.y : view.y - m;
-	const r = right(element) > right(view) ? right(view) : right(view) + m;
-	const b = bottom(element) > bottom(view) ? bottom(view) : bottom(view) + m;
-	const clip = { x, y, width: r - x, height: b - y };
 	// What shows of the drawing; a flat or empty one (a note) is the element's.
 	const shown =
 		intersect(
@@ -131,7 +270,7 @@ export function clipMark(input: {
 		return p;
 	};
 	return {
-		clip,
+		clip: view,
 		pin: {
 			x: axis(pin.x, view.x, right(view), shown.x, right(shown)),
 			y: axis(pin.y, view.y, bottom(view), shown.y, bottom(shown)),
