@@ -937,6 +937,12 @@ export interface Case {
 	 * it. This browser's note, never in a file.
 	 */
 	assign?: { to: UserRef | null; at: string };
+	/**
+	 * The server refused the last assignment made here (DEC-071): why, in
+	 * words for the person. Said in the case until the next assignment.
+	 * This browser's note, never in a file.
+	 */
+	assignRefused?: { text: string; at: string };
 }
 
 /** The longest case title. */
@@ -1726,6 +1732,7 @@ const CASE_KEYS = new Set([
 	"assignee",
 	"assignedBy",
 	"assign",
+	"assignRefused",
 ]);
 const SHOT_KEYS = new Set([
 	"id",
@@ -1996,6 +2003,22 @@ export function validateCase(value: unknown): Case {
 			? {}
 			: { assignedBy: stampOf(o["assignedBy"], "case.assignedBy") }),
 		...(o["assign"] === undefined ? {} : { assign: assignOf(o["assign"]) }),
+		...(o["assignRefused"] === undefined
+			? {}
+			: {
+					assignRefused: {
+						text: str(
+							obj(o["assignRefused"], "case.assignRefused")["text"],
+							"case.assignRefused.text",
+							1000,
+						),
+						at: str(
+							obj(o["assignRefused"], "case.assignRefused")["at"],
+							"case.assignRefused.at",
+							64,
+						),
+					},
+				}),
 	};
 }
 
@@ -3053,8 +3076,11 @@ export const assigneeOf = (c: Case): UserRef | null | undefined =>
 
 /**
  * The case assigned to `to` (`null`: nobody), waiting to be sent with the
- * next sync (DEC-071); by `app`, when an AI app did it. The same as the
- * server's record takes back what waited; the same as shown changes nothing.
+ * next sync (DEC-071); by `app`, when an AI app did it. The same as shown
+ * changes nothing. A pick is kept as `assign` even when it is the record
+ * here again: the record may be older than what the server has (an
+ * assignment sent and not read back yet), and only the sync, which knows
+ * what the server has, may decide there is nothing to send.
  */
 export function withAssigned(
 	c: Case,
@@ -3065,14 +3091,9 @@ export function withAssigned(
 	const same = (a: UserRef | null | undefined) =>
 		a !== undefined && (a?.id ?? null) === (to?.id ?? null);
 	if (same(assigneeOf(c))) return c;
-	const { assign: _a, ...rest } = c;
+	const { assign: _a, assignRefused: _r, ...rest } = c;
 	return changedBy(
-		same(c.assignee)
-			? rest
-			: {
-					...rest,
-					assign: { to: to && { id: to.id, name: to.name }, at: now },
-				},
+		{ ...rest, assign: { to: to && { id: to.id, name: to.name }, at: now } },
 		now,
 		app,
 	);

@@ -17,10 +17,12 @@ import {
 	withoutMark,
 	withResolution,
 } from "../src/lib/case.ts";
+import { mineFor } from "../src/lib/case-state.ts";
 import type { Op } from "../src/lib/cloud/api.ts";
 import { type CaseBook, KEYS, membersOf } from "../src/lib/cloud/book.ts";
 import { commentIn, mergeCase, viaOf } from "../src/lib/cloud/wire.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
+import { nextStep } from "../src/sidepanel/next-step.ts";
 import type { FakeApi } from "./cloud-fake.ts";
 import { FakeServer, TEAM } from "./cloud-fake.ts";
 import {
@@ -364,6 +366,105 @@ describe("the hand-over (DEC-071)", () => {
 		await signIn(pat);
 		await sync(pat);
 		expect(kept(pat)).toBeUndefined();
+	});
+
+	test("an assignment the server refuses goes, and says why; the title changed with it still arrives", async () => {
+		await shared();
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(
+				{ ...c, title: "Cart and pay page" },
+				{ id: "u_gone", name: "Gone" },
+				now,
+			),
+		);
+		await sync(tess);
+		expect(server.caseOf("c_flow")?.title).toBe("Cart and pay page");
+		expect(server.caseOf("c_flow")?.assignee).toBeNull();
+		const here = await caseHere(tess);
+		expect(here.assign).toBeUndefined();
+		expect(here.assignee).toBeNull();
+		expect(here.assignRefused?.text).toBe(
+			"Gone is not in the team any more, so the case was not assigned to them.",
+		);
+		// Nothing more waits on it: a later change goes as usual.
+		await change(tess, "c_flow", (c, now) =>
+			withVerdict(c, "Both pages.", now),
+		);
+		await sync(tess);
+		expect(server.caseOf("c_flow")?.summary).toBe("Both pages.");
+		// The next assignment ends the note.
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		expect((await caseHere(tess)).assignRefused).toBeUndefined();
+	});
+
+	test("a case synced before this version is read again once, and is nobody's until then", async () => {
+		await shared();
+		// As a build before DEC-071 left it: no reporter, no assignee, a
+		// shadow that never heard of one.
+		const {
+			createdBy: _c,
+			assignee: _a,
+			assignedBy: _b,
+			...old
+		} = await caseHere(tess);
+		await tess.store.updateCase("c_flow", () => ({ value: old }));
+		const kept = book(tess, "c_flow") as CaseBook;
+		const { assignee: _s, ...shadow } = kept.shadow as NonNullable<
+			CaseBook["shadow"]
+		>;
+		await tess.kv.set({ "case:c_flow": { ...kept, shadow } });
+		const team = {
+			kind: "team" as const,
+			team: "Pedal & Pine web",
+			link: "https://sitegloss.test/t/pedal/cases/c_flow",
+			mcp: "https://sitegloss.test/api/mcp",
+		};
+		const before = await caseHere(tess);
+		expect(mineFor(before, TESS.id, true)).toBe(false);
+		expect(
+			nextStep(before, team, { adding: false, mayClose: true, me: TESS.id })
+				?.text,
+		).toBe("Send the case to whoever fixes the open marks.");
+		// The worker starts again: one run reads the case again.
+		tess.engine = device("tess", server.api(TESS), false, {
+			store: tess.store,
+			kv: tess.kv,
+		}).engine;
+		await tess.engine.request();
+		expect(book(tess, "c_flow")?.shadow?.assignee).toBeNull();
+		const after = await caseHere(tess);
+		expect(after.createdBy).toEqual(TESS);
+		expect(after.assignee).toBeNull();
+		expect(mineFor(after, TESS.id, true)).toBe(true);
+		expect(
+			nextStep(after, team, {
+				adding: false,
+				mayClose: true,
+				me: TESS.id,
+				mayAssign: true,
+			})?.text,
+		).toBe("2 marks are open: assign the case to whoever fixes them.");
+	});
+
+	test("a case shared with another team leaves the first team's hand-over behind", async () => {
+		await shared();
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		// Kept here as another team's (a switch of team before it synced).
+		const kept = book(tess, "c_flow") as CaseBook;
+		await tess.kv.set({
+			"case:c_flow": { ...kept, mode: "local", teamId: "team_other" },
+		});
+		recording(tess);
+		await tess.engine.share("c_flow");
+		// What the new team's server says of it comes from there (the fake
+		// has one team, so the same case's records come back).
+		expect((await caseHere(tess)).assign).toBeUndefined();
+		await sync(tess);
+		expect(sent(tess, "case.patch").some((o) => "assignee" in o)).toBe(false);
 	});
 
 	test("an export carries the server's records, never what waits to be sent", async () => {

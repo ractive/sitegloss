@@ -482,24 +482,11 @@ export function casePatch(
 	return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
-/**
- * `patch` with the assignment that waits here (DEC-071), while the server is
- * not known to have it: a member's id, or `null` for nobody. Only ever from
- * `Case.assign`, the person's (or their AI app's) doing in this browser:
- * the server's record that a case carries is never sent back.
- */
-export function withAssignee(
-	patch: ReturnType<typeof casePatch>,
+/** The id `Case.assign` asks for, while the server is not known to have it; none: nothing waits. */
+export const assignWaiting = (
 	c: Case,
 	shadow: Shadow,
-): ReturnType<typeof casePatch> {
-	const wanted = assignWaiting(c, shadow);
-	if (wanted === undefined) return patch;
-	return { ...patch, assignee: wanted };
-}
-
-/** The id `Case.assign` asks for, while the server is not known to have it; none: nothing waits. */
-const assignWaiting = (c: Case, shadow: Shadow): string | null | undefined => {
+): string | null | undefined => {
 	if (c.assign === undefined) return undefined;
 	const wanted = c.assign.to?.id ?? null;
 	return shadow.assignee === wanted ? undefined : wanted;
@@ -672,13 +659,27 @@ export function deriveOps(
 			...(c.createdVia === undefined ? {} : { via: appOut(c.createdVia) }),
 		});
 	else {
-		const patch = withAssignee(casePatch(content, shadow.case), c, shadow);
+		const patch = casePatch(content, shadow.case);
 		if (patch !== undefined)
 			ops.push({
 				opId: newId("o"),
 				type: "case.patch",
 				caseId: c.id,
 				...patch,
+				...via,
+			});
+		// The assignment that waits here (DEC-071), in an operation of its
+		// own: the server refuses a patch whole, and a refused assignment
+		// (the person left the team) must not hold back the title, the
+		// summary or the link. Only ever from `Case.assign`, the person's
+		// (or their AI app's) doing here: the server's record is never sent.
+		const assignee = assignWaiting(c, shadow);
+		if (assignee !== undefined)
+			ops.push({
+				opId: newId("o"),
+				type: "case.patch",
+				caseId: c.id,
+				assignee,
 				...via,
 			});
 		// Open again before any mark goes (a mark sent first would open it

@@ -90,7 +90,14 @@ interface CaseFile {
 function withoutSyncNotes(c: Case): Case {
 	// An assignment that waits to be sent too (DEC-071): from a file it
 	// would be sent as the person's doing, to a team it may not be of.
-	const { via: _v, createdVia: _c, deletedVia: _d, assign: _a, ...rest } = c;
+	const {
+		via: _v,
+		createdVia: _c,
+		deletedVia: _d,
+		assign: _a,
+		assignRefused: _r,
+		...rest
+	} = c;
 	return {
 		...rest,
 		// Images held back are this browser's too (DEC-058): not in a file.
