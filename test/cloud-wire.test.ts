@@ -5,7 +5,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { Case, ElementDetails, Mark } from "../src/lib/case.ts";
+import {
+	type Case,
+	type ElementDetails,
+	type Mark,
+	validateCase,
+	withComment,
+} from "../src/lib/case.ts";
 import type { Op, WireMark, WireShot } from "../src/lib/cloud/api.ts";
 import { type CaseBook, emptyBook } from "../src/lib/cloud/book.ts";
 import {
@@ -428,7 +434,7 @@ describe("a case that is here and at the server, with no record of what the serv
 		shotId: "sh_1",
 		comment,
 		author: "user",
-		shape: mark(n).shape,
+		shape: mark(n).shape as WireMark["shape"],
 		crop: ref(`server crop ${n}`),
 		element: null,
 		resolution: null,
@@ -650,7 +656,7 @@ describe("images added to a mark in the sync (DEC-058)", () => {
 		shotId: book.shots["s1"] as string,
 		comment: "comment 2",
 		author: "user",
-		shape: mark(2).shape,
+		shape: mark(2).shape as WireMark["shape"],
 		crop: ref("crops/m2.webp"),
 		element: null,
 		resolution: null,
@@ -770,5 +776,147 @@ describe("images added to a mark in the sync (DEC-058)", () => {
 			newId,
 		).ops.find((op) => op.type === "mark.patch") as Op;
 		expect(opKey(other)).toBe(opKey(patch));
+	});
+});
+
+describe("highlights and marks of a newer kind in the sync (DEC-066)", () => {
+	const highlight = {
+		text: "wekend",
+		before: "this ",
+		after: ": pick up",
+		rects: [{ x: 1, y: 2, width: 30, height: 18 }],
+	};
+
+	test("a highlight goes out once, with mark.create; never in mark.patch, nor in the fingerprint", () => {
+		const marked: Mark = { ...mark(1), highlight };
+		const c = local([marked, mark(2)]);
+		const { book, ops } = synced(c);
+		const created = ops.filter(
+			(op): op is Extract<Op, { type: "mark.create" }> =>
+				op.type === "mark.create",
+		);
+		expect(created[0]?.mark.highlight).toEqual(highlight);
+		expect(created[1]?.mark.highlight).toBeUndefined();
+		expect(fixedOf(marked)).toBe(fixedOf(mark(1)));
+		const { ops: next } = deriveOps(
+			local([{ ...marked, comment: "Edited" }, mark(2)]),
+			book,
+			ref,
+			newId,
+		);
+		expect(next.map((op) => op.type)).toEqual(["mark.patch"]);
+		expect(JSON.stringify(next)).not.toContain("wekend");
+	});
+
+	test("a teammate's highlight and a mark of a kind this version does not know come in, kept, and send nothing back", () => {
+		const shot: WireShot = {
+			id: "sh_1",
+			caseId: "c_1",
+			url: "https://www.example.com/kk",
+			image: ref("server shot"),
+			scrollX: 0,
+			scrollY: 0,
+			viewport: { width: 1280, height: 800, dpr: 2 },
+			capturedAt: "2026-11-19T09:00:00.000Z",
+			rev: 1,
+		};
+		const wire = (n: number, extra: Partial<WireMark>): WireMark =>
+			({
+				id: `m_${n}`,
+				caseId: "c_1",
+				number: n,
+				shotId: "sh_1",
+				comment: `comment ${n}`,
+				author: "user",
+				shape: mark(n).shape as WireMark["shape"],
+				crop: ref(`server crop ${n}`),
+				element: null,
+				resolution: null,
+				reopens: [],
+				findings: [],
+				status: "open",
+				createdAt: NOW,
+				updatedAt: NOW,
+				rev: 1,
+				...extra,
+			}) as WireMark;
+		const circle = { kind: "circle", centre: { x: 5, y: 6 }, radius: 7 };
+		const book = emptyBook("c_1", "synced", "team_1");
+		book.shots = { s1: "sh_1" };
+		const c: Case = local([]);
+		const merged = mergeCase(
+			c,
+			book,
+			{
+				shots: [shot],
+				marks: [
+					wire(1, { highlight }),
+					wire(2, { shape: circle as unknown as WireMark["shape"] }),
+					// A kind that is no name: kept, under one, not refusing the case.
+					wire(3, {
+						shape: { kind: 5, r: 1 } as unknown as WireMark["shape"],
+					}),
+					// Larger than a case keeps: its kind alone.
+					wire(4, {
+						shape: {
+							kind: "scribble",
+							data: "x".repeat(300 * 1024),
+						} as unknown as WireMark["shape"],
+					}),
+				],
+				removedMarks: [],
+				removedShots: [],
+			},
+			new Map(
+				[
+					"server shot",
+					"server crop 1",
+					"server crop 2",
+					"server crop 3",
+					"server crop 4",
+				].map((p) => [ref(p).sha256, "image"]),
+			),
+			new Map(),
+			{ teamId: "team_1", whole: false, now: NOW },
+		);
+		const value = validateCase(merged?.value);
+		expect(value.marks[0]?.highlight).toEqual(highlight);
+		expect(value.marks[1]?.shape).toEqual({ kind: "unknown", given: circle });
+		expect(value.marks[2]?.shape).toEqual({
+			kind: "unknown",
+			given: { kind: "unnamed", r: 1 },
+		});
+		expect(value.marks[3]?.shape).toEqual({
+			kind: "unknown",
+			given: { kind: "scribble" },
+		});
+		const markOps = (x: Case) =>
+			deriveOps(x, merged?.book as CaseBook, ref, newId)
+				.ops.filter((op) => op.type.startsWith("mark."))
+				.map((op) => op.type);
+		expect(markOps(value)).toEqual([]);
+		// Its comment changed here: a patch, the shape untouched.
+		expect(
+			markOps(validateCase(withComment(value, "m2", "Rounder", NOW))),
+		).toEqual(["mark.patch"]);
+	});
+});
+
+describe("a mark of a newer kind held back from the team (DEC-066)", () => {
+	test("its comment waits with it, and the case counts as having nothing to send", () => {
+		const newer: Mark = {
+			...mark(2),
+			shape: { kind: "unknown", given: { kind: "circle", r: 3 } },
+		};
+		const c: Case = {
+			...local([mark(1), newer]),
+			comments: [{ id: "k_1", mark: "m2", text: "Rounder", at: NOW }],
+		};
+		const { book, ops } = synced(c);
+		expect(
+			ops.filter((op) => op.type === "mark.create").map((op) => op.type),
+		).toEqual(["mark.create"]);
+		expect(ops.some((op) => op.type === "comment.create")).toBe(false);
+		expect(isClean(c, book)).toBe(true);
 	});
 });

@@ -9,7 +9,7 @@ Mark what is wrong on a web page, open the marks in another environment to fix i
 talk them through with your AI app.
 
 A PO marks an issue on the live site: picks an element, draws a box, an arrow or a
-freehand mark, writes a comment, and saves it all as a named case with annotated
+freehand mark, highlights a piece of text, writes a comment, and saves it all as a named case with annotated
 screenshots. A dev loads the case onto `localhost:3000` and sees what was meant in their
 own environment. After the rollout the PO loads it onto the dev and prod sites and checks the
 fix. An AI app such as Claude reads and extends cases through a
@@ -90,7 +90,9 @@ user agent. What differs from Chrome and Edge:
 1. Click the Sitegloss icon on a tab. The side panel opens there.
 2. "New case for this page" creates a case at once, named after the page's title, opens it
    in the side panel and shows the toolbar on the page: Element (click one), Box, Arrow,
-   Pen and Note, each followed by a comment. Sitegloss takes screenshots with the marks
+   Pen, Note and Highlight (select text on the page, or choose it with text selected; it
+   is marked like the swipe in the logo, and found again by its text on another build),
+   each followed by a comment. Sitegloss takes screenshots with the marks
    on them and records each marked element's details (tag, role, name, text, readable
    classes, test id, the heading it is under, a selector, its position) and, once, how
    it looked: its computed styles, the colour behind it and its neighbours' boxes, for

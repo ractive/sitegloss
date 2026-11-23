@@ -140,7 +140,13 @@ export function dashDrawn(
 	return matches.some((m) => {
 		if (!isUnsure(m)) return false;
 		const a = c.marks.find((x) => x.id === m.markId);
-		if (a === undefined || a.shape.kind === "note") return false;
+		// A mark of a kind this version does not know is not drawn (DEC-066).
+		if (
+			a === undefined ||
+			a.shape.kind === "note" ||
+			a.shape.kind === "unknown"
+		)
+			return false;
 		if (m.status !== "no-element") return true;
 		return onPageInFront(c, a, url);
 	});
