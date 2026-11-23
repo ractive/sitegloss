@@ -585,15 +585,63 @@ describe("a mark's status and actions", () => {
 		);
 		expect(show("m1")?.getAttribute("aria-busy")).toBe("true");
 		expect(show("m2")?.getAttribute("aria-busy")).toBe("false");
-		// Drawn on this tab: the old Show, not this one.
+		// Drawn on this tab: the old Show, with its drawn name, not this one.
+		const found: MarkMatch = {
+			markId: "m1",
+			number: 1,
+			status: "found",
+			score: 1,
+			current: 0,
+			candidates: [
+				{ score: 1, summary: "p", selector: "p", visible: true, found: true },
+			],
+		};
 		render(
 			caseState(c, (s) => {
 				s.tab = { id: 1, url: page, title: "", size: undefined };
-				s.loaded = { caseId: c.id, tabId: 1, matches: new Map(), url: page };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					matches: new Map([["m1", found]]),
+					url: page,
+				};
 			}),
 			actions,
 		);
-		expect(show("m1")?.hasAttribute("data-loads")).not.toBe(true);
+		expect(show("m1")).not.toBeNull();
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
+			"Show mark 1 on the page",
+		);
+		expect(show("m1")?.hasAttribute("data-loads")).toBe(false);
+		// A mark of a newer kind with no element: no Show while not drawn.
+		const newer: Case = {
+			...c,
+			marks: c.marks.map((m) =>
+				m.id === "m2"
+					? ({
+							...m,
+							element: null,
+							shape: { kind: "unknown", given: {} },
+						} as unknown as Mark)
+					: m,
+			),
+		};
+		render(
+			caseState(newer, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+			}),
+			actions,
+		);
+		expect(show("m1")).not.toBeNull();
+		expect(show("m2")).toBeNull();
+		// A tab without access (Chrome gives no address): no button.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: "", title: "", size: undefined };
+			}),
+			actions,
+		);
+		expect(show("m1")).toBeNull();
 		// A tab Sitegloss cannot work on, none, or another page: no button.
 		for (const url of [
 			"chrome://extensions",
