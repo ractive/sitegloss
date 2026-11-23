@@ -85,15 +85,20 @@ export function badgePosition(shape: Shape): Point {
 
 /**
  * Where a mark's pin is: a highlight's just left of its first line, centred
- * on it, so it covers neither the highlighted text nor the line above;
+ * on it, so it covers neither the highlighted text nor the line above (never
+ * past the window's left edge);
  * every other mark's where its shape starts (`badgePosition`).
  */
 export function pinPosition(
 	mark: Pick<RenderedMark, "shape" | "lines">,
 ): Point {
 	const first = mark.lines?.[0];
+	// At the window's left edge it moves in, whole (it is what is clicked).
 	if (first !== undefined)
-		return { x: first.x - 11, y: first.y + first.height / 2 };
+		return {
+			x: Math.max(badgeRadius(mark.shape) + 1, first.x - 11),
+			y: first.y + first.height / 2,
+		};
 	return badgePosition(mark.shape);
 }
 

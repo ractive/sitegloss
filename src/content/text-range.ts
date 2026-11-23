@@ -5,12 +5,7 @@
  * decisions are lib/highlight.ts's; this gives them the page.
  */
 
-import {
-	HIGHLIGHT_LIMITS,
-	type Highlight,
-	type Rect,
-	textLength,
-} from "../lib/case.ts";
+import { HIGHLIGHT_LIMITS, type Highlight, type Rect } from "../lib/case.ts";
 import { EDITORS, isEditable } from "../lib/element.ts";
 import {
 	contextOf,
@@ -24,6 +19,11 @@ import {
 	type TextPiece,
 } from "../lib/highlight.ts";
 
+/** Node types and the walker's filter as numbers: the same in every realm. */
+export const ELEMENT = 1;
+export const TEXT = 3;
+const SHOW_TEXT = 4;
+
 /** Elements whose text is no text on the page. */
 const HIDDEN = new Set(["script", "style", "noscript", "template"]);
 
@@ -31,10 +31,17 @@ const HIDDEN = new Set(["script", "style", "noscript", "template"]);
 export interface ElementText {
 	nodes: Text[];
 	flat: FlatText;
+	/** Not all of it was read (`MAX_NODES`): what is not found may be in the rest. */
+	truncated?: true;
 }
 
-/** The most text nodes read of one element: a selection across a whole page stops there. */
-const MAX_NODES = 20_000;
+/**
+ * The most text nodes with words read of one element (white space between
+ * elements does not count): a whole long page has fewer. Past it nothing is
+ * claimed: a selection says it is too long, a quote not found is not
+ * "changed".
+ */
+const MAX_NODES = 200_000;
 
 /**
  * An element's text nodes, without scripts, styles and what is typed into
@@ -46,18 +53,24 @@ export function elementText(el: Element): ElementText {
 	const nodes: Text[] = [];
 	const pieces: TextPiece[] = [];
 	let gap = false;
+	let words = 0;
+	let truncated = false;
 	const isBlock = (e: Element): boolean => {
 		const display = win?.getComputedStyle(e).display ?? "inline";
 		return !display.startsWith("inline") && display !== "contents";
 	};
 	const walk = (parent: Node): void => {
 		for (const child of parent.childNodes) {
-			if (nodes.length >= MAX_NODES) return;
-			if (child.nodeType === Node.TEXT_NODE) {
+			if (words >= MAX_NODES) {
+				truncated = true;
+				return;
+			}
+			if (child.nodeType === TEXT) {
+				if (/\S/.test(child.nodeValue ?? "")) words++;
 				nodes.push(child as Text);
 				pieces.push({ text: child.nodeValue ?? "", gap });
 				gap = false;
-			} else if (child.nodeType === Node.ELEMENT_NODE) {
+			} else if (child.nodeType === ELEMENT) {
 				const e = child as Element;
 				if (e.localName === "br") {
 					gap = true;
@@ -75,7 +88,11 @@ export function elementText(el: Element): ElementText {
 		}
 	};
 	walk(el);
-	return { nodes, flat: flatten(pieces) };
+	return {
+		nodes,
+		flat: flatten(pieces),
+		...(truncated ? { truncated: true as const } : {}),
+	};
 }
 
 /**
@@ -113,13 +130,21 @@ export function rangeLines(range: Range): Rect[] {
 	const doc = range.startContainer.ownerDocument ?? document;
 	const rects: Rect[] = [];
 	const root =
-		range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+		range.commonAncestorContainer.nodeType === TEXT
 			? (range.commonAncestorContainer.parentNode ??
 				range.commonAncestorContainer)
 			: range.commonAncestorContainer;
-	const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	// From the range's first node to its end, not over the whole ancestor.
+	const walker = doc.createTreeWalker(root, SHOW_TEXT);
+	const start = range.startContainer;
+	walker.currentNode =
+		start.nodeType === TEXT
+			? start
+			: (start.childNodes[range.startOffset] ?? start);
 	for (let n = walker.currentNode; n !== null; n = walker.nextNode() as Node) {
-		if (n.nodeType !== Node.TEXT_NODE || !range.intersectsNode(n)) continue;
+		if (n.nodeType !== TEXT) continue;
+		if (range.comparePoint(n, 0) > 0) break;
+		if (!range.intersectsNode(n)) continue;
 		const t = n as Text;
 		const part = doc.createRange();
 		part.setStart(t, t === range.startContainer ? range.startOffset : 0);
@@ -141,14 +166,12 @@ export interface SelectedText {
 }
 
 /** Why a selection makes no highlight, said to the person. */
-export type NoText = "nothing" | "field" | "typed";
+export type NoText = "nothing" | "field" | "typed" | "large" | "unseen";
 
 /** The element of a range: the nearest element that holds all of it. */
 function elementOfRange(range: Range): Element | null {
 	const c = range.commonAncestorContainer;
-	return c.nodeType === Node.ELEMENT_NODE
-		? (c as Element)
-		: (c.parentElement ?? null);
+	return c.nodeType === ELEMENT ? (c as Element) : (c.parentElement ?? null);
 }
 
 /**
@@ -167,7 +190,7 @@ export function selectedText(range: Range): SelectedText | NoText {
 	const start = sourceOf(text, range.startContainer, range.startOffset);
 	const end = sourceOf(text, range.endContainer, range.endOffset);
 	const span = flatSpan(text.flat, start, end);
-	if (span === undefined) return "nothing";
+	if (span === undefined) return text.truncated ? "large" : "nothing";
 	const flat = text.flat.text;
 	let e = cutSpan(flat, span.start, span.end);
 	let cut = e < span.end;
@@ -191,7 +214,9 @@ export function selectedText(range: Range): SelectedText | NoText {
 		cut = true;
 	}
 	const quote = flat.slice(span.start, e);
-	if (quote === "" || lines.length === 0) return "nothing";
+	if (quote === "") return "nothing";
+	// Text that is there and shows nowhere (display: none, a closed part).
+	if (lines.length === 0) return "unseen";
 	return {
 		element,
 		highlight: { text: quote, ...contextOf(flat, span.start, e) },
@@ -202,18 +227,44 @@ export function selectedText(range: Range): SelectedText | NoText {
 
 /**
  * Where a highlight's text is in `element` now, as a live range: by its
- * text, and by the text around it where it is there more than once. None
- * when it is not there any more (the text changed: often the fix).
+ * text, and by the text around it where it is there more than once.
+ * `"gone"`: not there any more (the text changed: often the fix);
+ * `"unread"`: not in the part of a very long element that was read
+ * (`MAX_NODES`), which says nothing about whether it changed.
  */
 export function findText(
 	element: Element,
 	h: Pick<Highlight, "text" | "before" | "after">,
-): Range | undefined {
+): Range | "gone" | "unread" {
 	const text = elementText(element);
 	const at = quoteIn(text.flat.text, h.text, h);
-	return at === undefined ? undefined : rangeOf(text, at.start, at.end);
+	if (at === undefined) return text.truncated ? "unread" : "gone";
+	return rangeOf(text, at.start, at.end);
 }
 
-/** Whether `text` is within what a highlight may quote. */
-export const quotable = (text: string): boolean =>
-	text.trim() !== "" && textLength(text) <= HIGHLIGHT_LIMITS.text;
+/** A range's text without its white space: what tells that the text under it changed. */
+export const bareText = (text: string): string => text.replace(/\s+/g, "");
+
+/**
+ * Scroll so that the start of `target` (an element, or a highlight's text)
+ * is in the middle of the window: in a tall element, its text, not the
+ * element's middle.
+ */
+export function scrollToMiddle(target: Element | Range): void {
+	if (!("setStart" in target)) {
+		target.scrollIntoView({
+			block: "center",
+			inline: "nearest",
+			behavior: "instant",
+		});
+		return;
+	}
+	const win = target.startContainer.ownerDocument?.defaultView;
+	const first = rangeLines(target)[0];
+	if (win == null || first === undefined) return;
+	win.scrollBy({
+		left: 0,
+		top: first.y + first.height / 2 - win.innerHeight / 2,
+		behavior: "instant",
+	});
+}

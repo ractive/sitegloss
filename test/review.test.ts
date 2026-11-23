@@ -1404,3 +1404,58 @@ test("a mark request no panel answers, or that cannot be sent, is said as no pan
 		ok: true,
 	});
 });
+
+describe("a highlight's text (DEC-066)", () => {
+	// happy-dom has no style sheet of its own: the <b> is said to be inline.
+	const PAGE = `<main><p>Ride the trails this <b style="display: inline">wekend</b>: pick up a bike</p></main>`;
+
+	function highlighted(): Case {
+		const p = $("p");
+		const element = describeElement(p);
+		const mark = {
+			id: "m1",
+			number: 1,
+			shot: "s1",
+			comment: "Typo",
+			author: "user",
+			shape: { kind: "box", rect: element.rect },
+			crop: "crops/m1.webp",
+			element,
+			highlight: {
+				text: "wekend: pick up",
+				before: "Ride the trails this ",
+				after: " a bike",
+				rects: [element.rect],
+			},
+		} as Mark;
+		return { ...sampleCase(), shots: [shot("s1")], marks: [mark] };
+	}
+
+	test("a fix in one of its text nodes makes it probable, the text changed; the text back makes it found", async () => {
+		doc.body.innerHTML = PAGE;
+		const loaded = await reviewer.load(highlighted());
+		expect(loaded.matches[0]?.status).toBe("found");
+		expect(loaded.matches[0]?.textChanged).toBeUndefined();
+		// What a framework does with a fix: one text node's value set. The
+		// range keeps its other end and is not collapsed.
+		const node = $("b").firstChild as Text;
+		node.nodeValue = "weekend";
+		let now = await reviewer.matches(highlighted().id);
+		await until(() => {
+			void reviewer.matches(highlighted().id).then((m) => {
+				now = m;
+			});
+			return now?.matches[0]?.textChanged === true;
+		});
+		expect(now?.matches[0]?.status).toBe("probable");
+		// Undone (or the text came late): looked for again by itself.
+		node.nodeValue = "wekend";
+		await until(() => {
+			void reviewer.matches(highlighted().id).then((m) => {
+				now = m;
+			});
+			return now?.matches[0]?.textChanged === undefined;
+		});
+		expect(now?.matches[0]?.status).toBe("found");
+	});
+});

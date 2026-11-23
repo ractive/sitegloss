@@ -68,7 +68,12 @@ import {
 	withSaveKey,
 } from "./overlay.ts";
 import { PageField } from "./page-field.ts";
-import { findText, rangeLines } from "./text-range.ts";
+import {
+	bareText,
+	findText,
+	rangeLines,
+	scrollToMiddle,
+} from "./text-range.ts";
 
 interface Entry {
 	mark: Mark;
@@ -85,10 +90,17 @@ interface Entry {
 	elementStatus?: MatchStatus;
 	/**
 	 * A highlight's text in the element it is drawn on (DEC-066): a live
-	 * range, `null` where the text is not there any more; `dark`: on a dark
-	 * ground.
+	 * range, `null` where the text is not there (or not read: `unread`);
+	 * `said`: the range's text without white space when it was found, to
+	 * tell when the page changes it; `dark`: on a dark ground.
 	 */
-	text?: { element: Element; range: Range | null; dark: boolean };
+	text?: {
+		element: Element;
+		range: Range | null;
+		said?: string;
+		unread?: true;
+		dark: boolean;
+	};
 }
 
 /** Asks the side panel that shows the case (DEC-027). */
@@ -179,9 +191,23 @@ function typed(open: OpenMark): string {
 	return open.draft;
 }
 
-/** A highlight's live range whose text left the page. */
-const deadRange = (range: Range | null | undefined): boolean =>
-	range != null && (range.collapsed || !range.startContainer.isConnected);
+/**
+ * A highlight's text changed under its live range since it was found: the
+ * range collapsed, left the page, or holds other text (a fix that set one
+ * text node of several keeps the range, with other text in it).
+ */
+function textMoved(text: Entry["text"]): boolean {
+	const range = text?.range;
+	if (range == null) return false;
+	return (
+		range.collapsed ||
+		!range.startContainer.isConnected ||
+		bareText(range.toString()) !== text?.said
+	);
+}
+
+/** Every how many ticks a highlight whose text was gone is looked for again. */
+const GONE_TICKS = 4;
 
 /** Let the page run between marks: loading a big case takes a while. */
 const yieldToPage = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -214,6 +240,8 @@ export class Reviewer {
 	#timer: ReturnType<typeof setInterval> | undefined;
 	/** A newer load or a clear stops a load that is still running. */
 	#generation = 0;
+	/** The page was looked at this many times by itself (`#watchPage`). */
+	#ticks = 0;
 	/** Which page (`pageKey`) the marks were last looked for on. */
 	#page = "";
 	/**
@@ -323,7 +351,11 @@ export class Reviewer {
 		this.#timer = setInterval(() => {
 			this.#checkPage();
 			// One search a tick: a new route replaces every element at once.
-			const replaced = this.#entries.find((e) => this.#replaced(e));
+			// Now and then also a highlight whose text was gone (DEC-066).
+			const gone = ++this.#ticks % GONE_TICKS === 0;
+			const replaced = this.#entries.find(
+				(e) => this.#replaced(e) || (gone && this.#textBack(e)),
+			);
 			if (replaced !== undefined) this.#findAgain(replaced);
 			// The marks the last route did not have, a few a tick.
 			else this.#lookAgain(STALE_BUDGET_MS);
@@ -616,17 +648,21 @@ export class Reviewer {
 			delete entry.text;
 			return entry;
 		}
-		const range = findText(el, h) ?? null;
+		const found = findText(el, h);
+		const range = typeof found === "string" ? null : found;
 		entry.text = {
 			element: el,
 			range,
+			...(range === null ? {} : { said: bareText(range.toString()) }),
+			...(found === "unread" ? { unread: true as const } : {}),
 			dark: isDarkGround(backdropOf(el)?.color),
 		};
 		const was = entry.elementStatus ?? entry.match.status;
-		if (range === null) {
+		if (found === "gone") {
 			entry.match.textChanged = true;
 			if (was === "found") entry.match.status = "probable";
 		} else {
+			// Found, or not read (a very long element): nothing is claimed.
 			delete entry.match.textChanged;
 			if (was !== "no-element") entry.match.status = was;
 		}
@@ -656,10 +692,16 @@ export class Reviewer {
 	 * collapsed, and the text is looked for again (DEC-066).
 	 */
 	#replaced(entry: Entry): boolean {
-		return (
-			this.#element(entry)?.isConnected === false ||
-			deadRange(entry.text?.range)
-		);
+		return this.#element(entry)?.isConnected === false || textMoved(entry.text);
+	}
+
+	/** A highlight whose text was gone, and is in its element again (text that came late, a fix undone). */
+	#textBack(entry: Entry): boolean {
+		const text = entry.text;
+		const h = entry.mark.highlight;
+		if (text === undefined || h === undefined || !entry.match.textChanged)
+			return false;
+		return typeof findText(text.element, h) !== "string";
 	}
 
 	/**
@@ -730,7 +772,10 @@ export class Reviewer {
 			this.#withText(entry);
 		this.#focused = markId;
 		const element = this.#element(entry);
-		if (element !== undefined)
+		// A highlight's text itself, not the middle of a tall element.
+		const range = entry.text?.range;
+		if (range != null && element !== undefined) scrollToMiddle(range);
+		else if (element !== undefined)
 			element.scrollIntoView({
 				block: "center",
 				inline: "nearest",

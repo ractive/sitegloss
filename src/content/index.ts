@@ -33,7 +33,7 @@ import { PageBlur } from "./blur.ts";
 import { HOST_ID, Overlay, storedBarPlace } from "./overlay.ts";
 
 import { LoadReplaced, Reviewer } from "./review.ts";
-import { findText, selectedText } from "./text-range.ts";
+import { findText, scrollToMiddle, selectedText } from "./text-range.ts";
 
 declare global {
 	var __sitegloss: boolean | undefined;
@@ -81,19 +81,20 @@ function mark(
 		return { ok: false, error: `Nothing that matches ${selector} is visible.` };
 	// The text to highlight, found before anything on the page changes.
 	const quote = text?.replace(/\s+/g, " ").trim();
-	const range = quote === undefined ? undefined : findText(el, { text: quote });
-	if (quote !== undefined && range === undefined)
+	const found = quote === undefined ? undefined : findText(el, { text: quote });
+	if (typeof found === "string")
 		return {
 			ok: false,
-			error: `The text is not in the element ${selector} names (it is matched with its white space collapsed, as the page shows it).`,
+			error:
+				found === "unread"
+					? `The element ${selector} names is too long to read whole: name a smaller element that holds the text.`
+					: `The text is not in the element ${selector} names (it is matched with its white space collapsed, as the page shows it).`,
 		};
+	const range = found;
 	const started = activity.begin("ai-mark", () => endAi(overlay));
 	if (!started.ok) return started;
-	el.scrollIntoView({
-		block: "center",
-		inline: "nearest",
-		behavior: "instant",
-	});
+	// The text itself in view, not the middle of a tall element.
+	scrollToMiddle(range ?? el);
 	const selected = range === undefined ? undefined : selectedText(range);
 	if (
 		selected !== undefined &&
@@ -103,9 +104,11 @@ function mark(
 		return {
 			ok: false,
 			error:
-				typeof selected === "string"
-					? "That text cannot be highlighted: it is typed text or in a form field."
-					: "That text is on more than 40 lines: a highlight holds no more.",
+				selected === "unseen"
+					? "That text is in the element but shows nowhere on the page (hidden)."
+					: typeof selected === "string"
+						? "That text cannot be highlighted: it is typed text or in a form field."
+						: "That text is on more than 40 lines: a highlight holds no more.",
 		};
 	}
 	const marked = selected?.element ?? el;

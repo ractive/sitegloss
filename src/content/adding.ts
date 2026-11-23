@@ -44,6 +44,7 @@ import {
 	createContext,
 	describeElement,
 	documentRect,
+	isEditable,
 } from "../lib/element.ts";
 import { boundsOfRects } from "../lib/highlight.ts";
 import { atShot, siblingsOf, withLook } from "../lib/look.ts";
@@ -85,7 +86,7 @@ import {
 	withSaveKey,
 } from "./overlay.ts";
 import { PageField } from "./page-field.ts";
-import { type NoText, selectedText } from "./text-range.ts";
+import { ELEMENT, type NoText, selectedText } from "./text-range.ts";
 
 export type Tool = "element" | "box" | "arrow" | "pen" | "note" | "highlight";
 
@@ -107,16 +108,31 @@ const TOOLS: { tool: Tool; label: string; title: string }[] = [
  * What the Highlight tool says where it cannot take the text (DEC-066):
  * somebody's input is never recorded, and a picture's text is no text.
  */
-const NO_TEXT: Record<NoText | "picture" | "frame", string> = {
+const NO_TEXT: Record<NoText | "picture" | "frame" | "component", string> = {
 	nothing: "Select some text on the page to highlight it.",
 	field:
 		"Text in a form field cannot be highlighted: mark the field with the Box tool.",
 	typed: "Text in an editor cannot be highlighted: mark it with the Box tool.",
+	large:
+		"This selection reaches too far into a very long page: select within one section.",
+	unseen: "That text is not visible on the page.",
 	picture:
 		"Text in an image or a canvas cannot be highlighted: mark it with the Box tool.",
 	frame:
 		"Text inside a frame cannot be highlighted: mark it with the Box tool.",
+	component:
+		"Text inside this component cannot be highlighted: mark it with the Box tool.",
 };
+
+/**
+ * How long a double click waits for a third before it takes its word
+ * (DEC-066): `click` says how many clicks it is, and a word taken at once
+ * would open its dialog, which the third press would close.
+ */
+const CLICKS_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 150
+		: 450;
 
 /** Elements whose text the Highlight tool cannot select (`NO_TEXT`). */
 const PICTURES = new Set([
@@ -267,6 +283,10 @@ export class MarkAdder {
 	#tool: Tool | null = null;
 	/** The page's selection when the Highlight tool's button was pressed: the press takes it away. */
 	#selectedAtPress: Range | undefined;
+	/** A double click waiting for a third (`CLICKS_MS`), and where it was. */
+	#clicks:
+		| { timer: ReturnType<typeof setTimeout>; x: number; y: number }
+		| undefined;
 	#hover: Element | null = null;
 	#drag: Drag | null = null;
 	#preview: Shape | null = null;
@@ -367,6 +387,9 @@ export class MarkAdder {
 		capture.addEventListener("pointermove", (e) => this.#move(e));
 		capture.addEventListener("pointerdown", (e) => this.#down(e));
 		capture.addEventListener("pointerup", (e) => this.#up(e));
+		// How many clicks a press is: `click` counts them, `pointerdown` does
+		// not (its `detail` is 0 in Chrome, measured).
+		capture.addEventListener("click", (e) => this.#clicked(e));
 		capture.addEventListener("pointercancel", () => {
 			this.#drag = null;
 			this.#preview = null;
@@ -505,6 +528,7 @@ export class MarkAdder {
 		capture.classList.toggle("active", tool !== null);
 		capture.classList.toggle("element", tool === "element");
 		capture.classList.toggle("text", tool === "highlight");
+		this.#stopClicks();
 		const pressed = this.#selectedAtPress;
 		this.#selectedAtPress = undefined;
 		this.#renderToolbar();
@@ -549,6 +573,9 @@ export class MarkAdder {
 		capture.style.pointerEvents = "none";
 		let caret: Caret | undefined;
 		try {
+			// Over Sitegloss's own (a pin, the toolbar), the caret comes back
+			// as the host's place in its parent (measured in Chrome): none.
+			if (doc.elementFromPoint(x, y) === this.overlay.host) return undefined;
 			if (typeof doc.caretPositionFromPoint === "function") {
 				const p = doc.caretPositionFromPoint(x, y);
 				if (p !== null) caret = { node: p.offsetNode, offset: p.offset };
@@ -566,6 +593,12 @@ export class MarkAdder {
 			caret.node === this.overlay.host
 		)
 			return undefined;
+		// Never into an editor: setting the selection there focuses it.
+		const at =
+			caret.node.nodeType === ELEMENT
+				? (caret.node as Element)
+				: caret.node.parentElement;
+		if (at !== null && isEditable(at)) return undefined;
 		return caret;
 	}
 
@@ -574,10 +607,45 @@ export class MarkAdder {
 		const el = elementAt(x, y, this.overlay.host);
 		if (el === null) return undefined;
 		if (el.closest("input, textarea, select") !== null) return NO_TEXT.field;
+		if (isEditable(el)) return NO_TEXT.typed;
 		if (el.closest("iframe, frame") !== null) return NO_TEXT.frame;
 		if (PICTURES.has(el.localName) || el.closest("svg") !== null)
 			return NO_TEXT.picture;
+		// A component's own text: the caret does not reach into its shadow root.
+		if (el.getRootNode() !== this.overlay.doc) return NO_TEXT.component;
 		return undefined;
+	}
+
+	/**
+	 * A double click takes its word once no third click came; a triple click
+	 * its paragraph at once (DEC-066).
+	 */
+	#clicked(e: MouseEvent): void {
+		if (this.#tool !== "highlight" || e.detail < 2 || this.#editing !== null)
+			return;
+		const caret = this.#caretAt(e.clientX, e.clientY);
+		if (caret === undefined || this.#noTextAt(e.clientX, e.clientY)) return;
+		this.#stopClicks();
+		const take = (clicks: number) => {
+			this.#clicks = undefined;
+			if (this.#tool !== "highlight" || this.#editing !== null) return;
+			this.#selectAround(caret, clicks);
+			const range = this.#selection();
+			if (range !== undefined) this.#highlight(range);
+		};
+		if (e.detail >= 3) take(3);
+		else
+			this.#clicks = {
+				timer: setTimeout(() => take(2), CLICKS_MS),
+				x: e.clientX,
+				y: e.clientY,
+			};
+	}
+
+	/** A double click waiting for a third is given up. */
+	#stopClicks(): void {
+		if (this.#clicks !== undefined) clearTimeout(this.#clicks.timer);
+		this.#clicks = undefined;
 	}
 
 	/** The selection from the drag's start to `to`, on the page, as the page would show it. */
@@ -704,8 +772,9 @@ export class MarkAdder {
 		if (drag === null || e.pointerId !== drag.pointerId) return;
 		const p = this.#toDocument(e);
 		if (this.#tool === "highlight") {
+			// Over Sitegloss's own or an editor there is no caret: the
+			// selection stays where it last was.
 			const to = this.#caretAt(e.clientX, e.clientY);
-			// A word or a paragraph a double click took stays, until it moves.
 			if (
 				to !== undefined &&
 				drag.caret !== undefined &&
@@ -757,8 +826,14 @@ export class MarkAdder {
 				this.#message = "";
 				this.#renderToolbar();
 			}
-			if (e.detail >= 2) this.#selectAround(caret, e.detail);
-			else this.#select(caret, caret);
+			// A press elsewhere is no third click: the word waits no more.
+			const waiting = this.#clicks;
+			if (
+				waiting !== undefined &&
+				Math.hypot(e.clientX - waiting.x, e.clientY - waiting.y) > 4
+			)
+				this.#stopClicks();
+			this.#select(caret, caret);
 			this.#drag = { pointerId: e.pointerId, start: p, points: [p], caret };
 			this.overlay.capture.setPointerCapture?.(e.pointerId);
 			return;
