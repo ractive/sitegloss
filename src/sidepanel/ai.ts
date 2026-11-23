@@ -48,6 +48,7 @@ import {
 	stillPaired,
 	switchShown,
 	type TurnedOn,
+	wentOffSentence,
 } from "./card.ts";
 import { byId, h } from "./dom.ts";
 import { copyText, startSetup } from "./setup.ts";
@@ -205,9 +206,15 @@ export function statusText(a: AiState): string {
 		`Not connected: ${a.problem}${a.retrying ? " Trying again…" : ""}`;
 	const replaced =
 		a.replaced && "Not connected: Sitegloss's connection is in use elsewhere.";
+	// Information, not a problem (`problemOf` says nothing of it): why it went off.
+	const wentOff = wentOffSentence(a);
 	return (
-		[a.relayNote, replaced ?? problem].filter(Boolean).join(" ") ||
-		"Not connected"
+		[
+			a.relayNote,
+			replaced ?? problem ?? (wentOff && `Not connected: ${wentOff}`),
+		]
+			.filter(Boolean)
+			.join(" ") || "Not connected"
 	);
 }
 
@@ -928,7 +935,10 @@ export async function startAi(
 			beforePairing ??= new Set(a.grants.map((g) => g.grantId));
 		else if (a.state === "connected") beforePairing = undefined;
 		byId("ai-state").dataset["state"] = view.status;
-		byId("ai-state-text").textContent = view.stateText;
+		// Only when it changes: a live region says it again at every assignment.
+		const stateText = byId("ai-state-text");
+		if (stateText.textContent !== view.stateText)
+			stateText.textContent = view.stateText;
 		// Also while connecting or retrying, so the user can stop it.
 		const shown = switchShown(view.switchOn, switchIntent, Date.now());
 		switchIntent = shown.intent;

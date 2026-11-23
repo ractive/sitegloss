@@ -514,6 +514,88 @@ describe("the worker's connection with client 0.18", () => {
 		},
 	);
 
+	/** A worker that started as a restart: it was on, the session's flag is gone. */
+	async function restarted() {
+		const first = await paired([]);
+		expect(await first.kv.get("aiWasOn")).toBe(true);
+		session.clear();
+		const w = await startWorker(first.kv);
+		workers.push(w);
+		return { w, kv: first.kv };
+	}
+
+	test("a restart while AI access was on says so, in the state and in the store, over another start, until it is on again", async () => {
+		const { w, kv } = await restarted();
+		expect(w.connection.state.wentOff).toBe("restart");
+		expect(w.connection.state.state).toBe("disconnected");
+		expect((await kv.get("aiWentOff")) as { reason: string }).toMatchObject({
+			reason: "restart",
+		});
+		expect(await kv.get("aiWasOn")).toBe(false);
+		// The next start still tells it: the store has it.
+		const again = await startWorker(kv);
+		workers.push(again);
+		expect(again.connection.state.wentOff).toBe("restart");
+		w.send({ type: "connect" });
+		await until(() => w.last().state === "connected");
+		expect(w.last().wentOff).toBeUndefined();
+		await Bun.sleep(50);
+		expect(await kv.get("aiWentOff")).toBeUndefined();
+	});
+
+	test.each([
+		["Stop AI access", { type: "stop" }],
+		["ticking Keep AI access on", { type: "keep-on", on: true }],
+		["changing the relay", { type: "set-relay", relay: "http://127.0.0.1:9" }],
+	] as const)(
+		"the reason is forgotten, in memory and in the store, by %s",
+		async (_name, command) => {
+			const { w, kv } = await restarted();
+			expect(w.connection.state.wentOff).toBe("restart");
+			w.send(command);
+			await until(() => w.connection.state.wentOff === undefined);
+			await Bun.sleep(50);
+			expect(await kv.get("aiWentOff")).toBeUndefined();
+			w.send({ type: "stop" });
+		},
+	);
+
+	test("a restart with Keep AI access on, or after the person's stop, says nothing", async () => {
+		const first = await paired([]);
+		first.w.send({ type: "stop" });
+		await until(() => first.w.last().state === "disconnected");
+		session.clear();
+		const afterStop = await startWorker(first.kv);
+		workers.push(afterStop);
+		expect(afterStop.connection.state.wentOff).toBeUndefined();
+		await first.kv.set({ aiWasOn: true, keepAiOn: true });
+		session.clear();
+		const kept = await startWorker(first.kv);
+		workers.push(kept);
+		expect(kept.connection.state.wentOff).toBeUndefined();
+	});
+
+	test("a record older than a week, or one with the session on or Keep AI access on, is not shown and is removed at start", async () => {
+		const first = await paired([]);
+		first.w.send({ type: "stop" });
+		await until(() => first.w.last().state === "disconnected");
+		const old = { reason: "idle", at: Date.now() - 8 * 24 * 3600 * 1000 };
+		await first.kv.set({ aiWentOff: old });
+		const stale = await startWorker(first.kv);
+		workers.push(stale);
+		expect(stale.connection.state.wentOff).toBeUndefined();
+		expect(await first.kv.get("aiWentOff")).toBeUndefined();
+		// Fresh, but the session is on (a failed removal left it).
+		await first.kv.set({ aiWentOff: { reason: "idle", at: Date.now() } });
+		session.clear();
+		session.set("aiOn", true);
+		const on = await startWorker(first.kv);
+		workers.push(on);
+		expect(on.connection.state.wentOff).toBeUndefined();
+		expect(await first.kv.get("aiWentOff")).toBeUndefined();
+		session.clear();
+	});
+
 	test("Stop AI access with Keep AI access on turns that off, here and in the store, and nothing connects again", async () => {
 		const { w, kv } = await paired([]);
 		w.send({ type: "keep-on", on: true });
@@ -615,6 +697,68 @@ describe("the worker's connection with client 0.18", () => {
 		}
 	});
 });
+
+describe.each([
+	["idle", { unpairedIdleTimeoutMs: 300, heartbeatMs: 200 }],
+	["expired", { sessionLifetimeMs: 300, heartbeatMs: 200 }],
+] as const)(
+	"a session the relay ends as %s, in the worker (DEC-072)",
+	(reason, config) => {
+		const relay = startTestRelay({
+			store: new SlowStore(),
+			maxSessionsPerIp: 50,
+			...config,
+		});
+		const workers: Worker[] = [];
+		afterAll(async () => {
+			for (const w of workers) w.send({ type: "stop" });
+			await Bun.sleep(50);
+			await relay.stop();
+		});
+
+		async function started(keepOn: boolean) {
+			session.clear();
+			alarms.clear();
+			const kv = memoryKv({ relay: relay.url, keepAiOn: keepOn });
+			const w = await startWorker(kv);
+			workers.push(w);
+			w.send({ type: "connect" });
+			return { w, kv };
+		}
+
+		test("without Keep AI access on the reason is kept, and forgotten on the next connect", async () => {
+			const { w, kv } = await started(false);
+			await until(() => w.last().wentOff === reason);
+			expect(w.last().state).toBe("disconnected");
+			expect(w.last().retrying).toBe(false);
+			expect(((await kv.get("aiWentOff")) as { reason: string }).reason).toBe(
+				reason,
+			);
+			expect(await kv.get("aiWasOn")).toBe(false);
+			expect(session.get("aiOn")).toBe(false);
+			// Turned on again: the first connected state carries no reason.
+			const seen = w.states.length;
+			w.send({ type: "connect" });
+			await until(() =>
+				w.states.slice(seen).some((s) => s.state === "connected"),
+			);
+			const connected = w.states
+				.slice(seen)
+				.find((s) => s.state === "connected");
+			expect(connected?.wentOff).toBeUndefined();
+		});
+
+		test("with Keep AI access on it connects again and keeps no reason", async () => {
+			const { w, kv } = await started(true);
+			await until(
+				() => w.states.filter((s) => s.state === "connected").length >= 2,
+				10_000,
+			);
+			expect(w.states.some((s) => s.wentOff !== undefined)).toBe(false);
+			expect(await kv.get("aiWentOff")).toBeUndefined();
+		});
+	},
+);
 
 describe("filling in the code on the relay's pairing page, in the worker, with the library's filler (DEC-044)", () => {
 	const relay = startTestRelay({ maxSessionsPerIp: 50 });
