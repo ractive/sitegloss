@@ -17,6 +17,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	addedImage,
 	type Case,
+	withAssigned,
 	withCaseComment,
 	withChoice,
 	withClosed,
@@ -34,7 +35,7 @@ import {
 	TOKENS_KEY,
 	type Tokens,
 } from "../src/lib/cloud/auth.ts";
-import type { Account } from "../src/lib/cloud/book.ts";
+import { type Account, KEYS, membersOf } from "../src/lib/cloud/book.ts";
 import { listen } from "../src/lib/cloud/sse.ts";
 import {
 	addMark,
@@ -336,6 +337,59 @@ serverTest("against a real server", () => {
 				(k) => k.id,
 			),
 		).toEqual([`k_${caseId}_2`]);
+
+		await removeCase(tess.device, caseId);
+		await tess.device.engine.request();
+		await tess.session.end(base);
+		await dana.session.end(base);
+	}, 120_000);
+
+	test("the hand-over: assigned on one device, read on the other with who gave it; a change that does not name it leaves it (DEC-071)", async () => {
+		const caseId = `c_ho${Date.now().toString(36)}`;
+		const tess = await real(base, "tess", "tess@example.com");
+		const dana = await real(base, "dana", "dana@example.com");
+		await signIn(tess.device);
+		await signIn(dana.device);
+		// The members are kept for the Assign menu.
+		const members =
+			membersOf(
+				tess.device.kv.data.get(KEYS.members),
+				((await tess.device.engine.account()) as Account).teamId,
+			) ?? [];
+		const danaRef = members.find((m) => m.name === "Dana Developer");
+		expect(danaRef).toBeDefined();
+		await startCase(tess.device, caseId);
+		await addMark(tess.device, caseId, "Total is cut off");
+		await tess.device.engine.request();
+		await change(tess.device, caseId, (c, now) =>
+			withAssigned(c, danaRef ?? null, now),
+		);
+		await tess.device.engine.request();
+		expect(status(tess.device)?.problems).toEqual([]);
+		expect(((await tess.device.store.getCase(caseId)) as Case).assign).toBe(
+			undefined,
+		);
+		await sync(dana.device);
+		const there = (await dana.device.store.getCase(caseId)) as Case;
+		expect(there.assignee?.name).toBe("Dana Developer");
+		expect(there.assignedBy?.user?.name).toBe("Tess Tester");
+		expect(there.createdBy?.name).toBe("Tess Tester");
+		// Dana fixes the mark: the case is back with Tess, still Dana's.
+		await change(dana.device, caseId, (c, now) =>
+			withChoice(c, c.marks[0]?.id as string, "fixed", "", now),
+		);
+		await dana.device.engine.request();
+		await sync(tess.device);
+		const back = (await tess.device.store.getCase(caseId)) as Case;
+		expect(back.assignee?.name).toBe("Dana Developer");
+		expect(back.marks[0]?.resolution?.kind).toBe("fixed");
+		// Nobody, from Tess.
+		await change(tess.device, caseId, (c, now) => withAssigned(c, null, now));
+		await tess.device.engine.request();
+		await sync(dana.device);
+		expect(((await dana.device.store.getCase(caseId)) as Case).assignee).toBe(
+			null,
+		);
 
 		await removeCase(tess.device, caseId);
 		await tess.device.engine.request();
