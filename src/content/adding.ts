@@ -701,7 +701,10 @@ export class MarkAdder {
 		const remove = doc.createElement("button");
 		remove.type = "button";
 		remove.dataset["action"] = "comment-remove";
-		remove.textContent = "Delete mark";
+		// This dialog opens once, as the mark is drawn: taking it back is a
+		// Cancel, not the deleting of a mark that was kept (the owner).
+		remove.textContent = "Cancel";
+		remove.title = "Take this mark back";
 		remove.addEventListener("click", () => {
 			this.#forget(draft);
 			this.#closeComment();

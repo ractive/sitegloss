@@ -22,7 +22,14 @@ import {
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
-import { FIELD, markElement, parkControl, saveAs, shadow } from "./steps.ts";
+import {
+	dialogField,
+	FIELD,
+	markElement,
+	parkControl,
+	saveAs,
+	shadow,
+} from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
 
@@ -339,6 +346,23 @@ inFullSet("the look", () => {
 			"rgb(255, 255, 255)",
 			"rgba(255, 255, 255, 0.75) 0px 0px 0px 1px",
 		]);
+		// The field in its frame is written as large as the dialog around it
+		// (Chrome gives the body of an extension's page 75 % of its size).
+		const field = await dialogField(page);
+		expect(
+			await field.eval<string>(
+				`getComputedStyle(document.getElementById("field")).fontSize`,
+			),
+		).toBe(
+			await page.eval<string>(
+				`getComputedStyle(${shadow(".popover")}).fontSize`,
+			),
+		);
+		expect(
+			await page.eval<string>(
+				`${shadow('[data-action="comment-remove"]')}.textContent`,
+			),
+		).toBe("Cancel");
 		await page.click(shadow('[data-action="comment-remove"]'));
 		await panel.eval(`${id("add-marks")}.click()`);
 		await panel.waitFor(
