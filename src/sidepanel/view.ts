@@ -2624,13 +2624,19 @@ let arrived:
 	| { caseId: string; markId: string; at: number; h: number }
 	| undefined;
 let arrivedTimer: ReturnType<typeof setTimeout> | undefined;
+/** The scroll after the expansion, and the end of the expansion's clipping. */
+let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+let expandTimer: ReturnType<typeof setTimeout> | undefined;
 
 const stillMotion = () =>
 	globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 /** The cue and the line after a Verify end with the case view (no replay on coming back). */
 function clearCue(): void {
+	if (closing) openMarks.delete(`${closing.caseId}:${closing.markId}`);
 	arrived = undefined;
+	clearTimeout(scrollTimer);
+	clearTimeout(expandTimer);
 	verifyLine = undefined;
 	pending = undefined;
 	closing = undefined;
@@ -2642,10 +2648,13 @@ function clearCue(): void {
 /** The cue's end: the marker off the row that has it. */
 function endCue(): void {
 	clearTimeout(arrivedTimer);
+	clearTimeout(scrollTimer);
+	clearTimeout(expandTimer);
 	const k = arrived;
 	arrived = undefined;
 	const row = k && parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
 	row?.removeAttribute("data-arrived");
+	row?.removeAttribute("data-expanding");
 	row?.style.removeProperty("--cue-elapsed");
 }
 
@@ -2654,6 +2663,15 @@ function cueRow(row: HTMLElement, elapsed: number, h: number): void {
 	row.setAttribute("data-arrived", "");
 	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
 	row.style.setProperty("--open-h", `${h}px`);
+	// Clipped only while the body grows: focus rings must show after.
+	clearTimeout(expandTimer);
+	if (!stillMotion() && elapsed < EXPAND_MS) {
+		row.setAttribute("data-expanding", "");
+		expandTimer = setTimeout(
+			() => row.removeAttribute("data-expanding"),
+			EXPAND_MS - elapsed,
+		);
+	}
 	clearTimeout(arrivedTimer);
 	arrivedTimer = setTimeout(() => {
 		row.removeAttribute("data-arrived");
@@ -2669,7 +2687,16 @@ function collapseRow(
 	elapsed: number,
 ): void {
 	if (row.dataset["mark"] === undefined) return;
-	setOpen(caseId, row, true);
+	showOpen(row);
+	// A row drawn anew is measured again: its body may differ from the press.
+	if (elapsed > 0) {
+		const now = row.querySelector<HTMLElement>(".body")?.offsetHeight;
+		if (now) {
+			h = now;
+			if (closing?.caseId === caseId && closing.markId === row.dataset["mark"])
+				closing.h = now;
+		}
+	}
 	row.setAttribute("data-collapsing", "");
 	row.style.setProperty("--collapse-h", `${h}px`);
 	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
@@ -2680,8 +2707,11 @@ function finishClosing(): void {
 	clearTimeout(closingTimer);
 	const k = closing;
 	closing = undefined;
-	const row = k && parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
-	if (!k || !row) return;
+	if (!k) return;
+	// Closed for good, whether or not its row is on screen (a filter, another case).
+	openMarks.delete(`${k.caseId}:${k.markId}`);
+	const row = parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
+	if (!row) return;
 	row.removeAttribute("data-collapsing");
 	row.style.removeProperty("--collapse-h");
 	row.style.removeProperty("--cue-elapsed");
@@ -2717,11 +2747,14 @@ function runPending(): void {
 		marks.querySelector<HTMLElement>(
 			`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
 		);
-	const row = k.to === undefined ? undefined : rowOf(k.to);
+	const found = k.to === undefined ? undefined : rowOf(k.to);
+	// Not a row that is gone, or was verified meanwhile: then nothing opens.
+	const row =
+		found?.dataset["status"] === "fixed" &&
+		!found.hasAttribute("data-verifying")
+			? found
+			: undefined;
 	if (row && k.to !== undefined) {
-		// Not one that was verified meanwhile.
-		if (row.dataset["status"] !== "fixed" || row.hasAttribute("data-verifying"))
-			return;
 		setOpen(k.caseId, row, true);
 		// "This one", as for a pin clicked on the page.
 		row.setAttribute("data-picked", "");
@@ -2733,9 +2766,10 @@ function runPending(): void {
 		// The row has grown by then: the scroll follows.
 		if (!stillMotion()) {
 			const to = k.to;
-			setTimeout(() => {
+			clearTimeout(scrollTimer);
+			scrollTimer = setTimeout(() => {
 				const r = parts?.current.id === k.caseId ? rowOf(to) : undefined;
-				if (r) scrollToOpened(r);
+				if (r?.hasAttribute("data-arrived")) scrollToOpened(r);
 			}, EXPAND_MS + 20);
 		}
 		// Its head, not its Verify: a second Enter must not verify it unseen.
@@ -2745,7 +2779,7 @@ function runPending(): void {
 			k.caseId,
 			`Mark ${k.number ?? ""} opened, to verify.`,
 		);
-	} else if (k.to === undefined) {
+	} else {
 		// Nothing waits: the verified row's head; where a filter has taken that
 		// row away, the list's first control, not nowhere.
 		(
@@ -4069,8 +4103,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const row = marks.querySelector<HTMLElement>(
 				`li.mark[data-mark="${quoted(arrived.markId)}"]`,
 			);
-			if (row && elapsed < ARRIVED_MS) cueRow(row, elapsed, arrived.h);
-			else if (elapsed >= ARRIVED_MS) arrived = undefined;
+			if (row && elapsed < ARRIVED_MS) {
+				// Measured again on the node that carries it on.
+				const now = row.querySelector<HTMLElement>(".body")?.offsetHeight;
+				if (now) arrived.h = now;
+				cueRow(row, elapsed, arrived.h);
+			} else if (elapsed >= ARRIVED_MS) arrived = undefined;
 		}
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
@@ -4124,6 +4162,14 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	li.querySelector(".mark-toggle")?.setAttribute("aria-expanded", String(open));
 	const body = li.querySelector<HTMLElement>(".body");
 	if (body) body.hidden = !open;
+}
+
+/** A row drawn open, without the open set's say: a collapse in progress is only how it looks. */
+function showOpen(li: HTMLElement): void {
+	li.toggleAttribute("data-open", true);
+	li.querySelector(".mark-toggle")?.setAttribute("aria-expanded", "true");
+	const body = li.querySelector<HTMLElement>(".body");
+	if (body) body.hidden = false;
 }
 
 /** A value inside a quoted attribute selector. */

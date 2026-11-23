@@ -1468,6 +1468,115 @@ describe("Verify closes its mark (DEC-061)", () => {
 			expect(row("m2").hasAttribute("data-collapsing")).toBe(true);
 		});
 
+		test("a filter or another case on screen during the collapse: the verified row is closed when shown again", () => {
+			const c = base("c_leak");
+			const actions = actionsWith({ verifyMark: () => undefined });
+			render(caseState(c), actions);
+			openRow("m1");
+			verify("m1");
+			jest.advanceTimersByTime(100);
+			// A filter on "to verify" takes the verified row away.
+			render(
+				caseState(stored(c, "2026-11-15T09:00:00Z"), (st) => {
+					st.markFilter = { caseId: c.id, group: "toVerify", upTo: 99 };
+				}),
+				actions,
+			);
+			expect(doc.querySelector('[data-mark="m1"]')).toBeNull();
+			jest.advanceTimersByTime(COLLAPSED);
+			render(caseState(stored(c, "2026-11-15T09:30:00Z")), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			// Another case within the 300 ms: no key is left either.
+			const d = base("c_leak2");
+			render(caseState(d), actions);
+			openRow("m1");
+			verify("m1");
+			jest.advanceTimersByTime(100);
+			render(caseState(base("c_leak_other")), actions);
+			jest.advanceTimersByTime(COLLAPSED);
+			render(caseState(stored(d, "2026-11-15T10:00:00Z")), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+		});
+
+		test("the held next row is verified or gone during the hold: the focus stays with the verified row's head and the last-mark line is said", () => {
+			const c: Case = {
+				...sampleCase("c_gone"),
+				marks: [mk(1, fixed), mk(2, fixed), mk(3)],
+			};
+			const actions = actionsWith({ verifyMark: () => undefined });
+			render(caseState(c), actions);
+			openRow("m1");
+			verify("m1");
+			jest.advanceTimersByTime(100);
+			const k = "2026-11-15T09:00:00Z";
+			render(
+				caseState({
+					...c,
+					updatedAt: k,
+					marks: [
+						mk(1, { ...fixed, verified: { at: k } }),
+						mk(2, fixed),
+						mk(3),
+					],
+				}),
+				actions,
+			);
+			// Held; meanwhile mark 2 is verified from the web app.
+			jest.advanceTimersByTime(100);
+			const k2 = "2026-11-15T09:00:01Z";
+			render(
+				caseState({
+					...c,
+					updatedAt: k2,
+					marks: [
+						mk(1, { ...fixed, verified: { at: k } }),
+						mk(2, { ...fixed, verified: { at: k2 } }),
+						mk(3),
+					],
+				}),
+				actions,
+			);
+			jest.advanceTimersByTime(COLLAPSED);
+			expect(doc.querySelectorAll("[data-arrived]").length).toBe(0);
+			expect(row("m2").hasAttribute("data-open")).toBe(false);
+			expect(doc.getElementById("case-hint")?.textContent).toBe(
+				"That was the last mark to verify.",
+			);
+			expect(
+				doc.activeElement ===
+					(row("m1").querySelector(".mark-toggle") as unknown),
+			).toBe(true);
+		});
+
+		test("a failed Verify during the collapse puts the row back; an unanswered one too, with one 'Not saved'", async () => {
+			const c = base("c_back");
+			let answer: Promise<string | undefined> =
+				Promise.resolve("Not saved: no.");
+			const actions = actionsWith({ verifyMark: () => answer });
+			render(caseState(c), actions);
+			openRow("m1");
+			verify("m1");
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
+			for (let i = 0; i < 4; i++) await Promise.resolve();
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+			expect(row("m1").hasAttribute("data-open")).toBe(true);
+			expect(row("m1").getAttribute("data-status")).toBe("fixed");
+			// Unanswered: closed by the collapse, then back after the wait.
+			answer = new Promise(() => {});
+			verify("m1");
+			jest.advanceTimersByTime(COLLAPSED);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			jest.advanceTimersByTime(5000);
+			expect(row("m1").hasAttribute("data-open")).toBe(true);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+			expect(row("m1").getAttribute("data-status")).toBe("fixed");
+			expect(doc.getElementById("case-hint")?.textContent).toBe(
+				"Not saved: the Verify got no answer.",
+			);
+		});
+
 		test("with reduced motion the row closes and the next opens at once, the highlight still marks it", () => {
 			const c = base("c_still");
 			const actions = actionsWith({ verifyMark: () => undefined });

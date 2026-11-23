@@ -2405,9 +2405,13 @@ ol.marks {
 	animation: verify-collapse 300ms ease-out var(--cue-elapsed, 0ms) forwards;
 }
 
-.mark[data-arrived] .body,
+.mark[data-expanding] .body,
 .mark[data-restoring] .body {
 	overflow: hidden;
+}
+
+.mark[data-arrived] .body,
+.mark[data-restoring] .body {
 	animation: verify-expand 300ms ease-out var(--cue-elapsed, 0ms);
 }
 
