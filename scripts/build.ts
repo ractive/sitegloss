@@ -122,7 +122,7 @@ export function createManifest(
 		action: { default_title: "Sitegloss", default_icon: icons },
 		background: { service_worker: "background.js", type: "module" },
 		side_panel: { default_path: "sidepanel/index.html" },
-		web_accessible_resources: FRAMES_ON_PAGES,
+		web_accessible_resources: FRAMES_ON_PAGES_CHROME,
 		permissions: [
 			"activeTab",
 			"alarms",
@@ -161,6 +161,17 @@ export function createManifest(
 export const FRAMES_ON_PAGES = [
 	{ resources: ["field/*"], matches: ["<all_urls>"] },
 ];
+
+/**
+ * Chrome's: the same, reachable only at the address of this browser
+ * session (`use_dynamic_url`), so a page cannot try the fixed address of
+ * Sitegloss's store id to learn that it is installed. Firefox gives every
+ * install an address of its own anyway (and has no such key).
+ */
+export const FRAMES_ON_PAGES_CHROME = FRAMES_ON_PAGES.map((r) => ({
+	...r,
+	use_dynamic_url: true,
+}));
 
 /** The Firefox build's add-on id (`browser_specific_settings.gecko.id`). */
 export const FIREFOX_ID = "sitegloss@ractive.ch";
