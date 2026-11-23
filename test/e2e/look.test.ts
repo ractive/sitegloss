@@ -1,7 +1,7 @@
 /**
  * End to end: the look (DEC-024) where only a real browser can tell. The side
  * panel never scrolls sideways at its narrowest and at a common width, a view
- * has at most one amber button, the dark scheme's tokens arrive, every stroke
+ * has at most one large primary button, the dark scheme's tokens arrive, every stroke
  * on the page has its casing, and the toolbar's rows are the ones meant.
  */
 
@@ -71,7 +71,7 @@ inFullSet("the look", () => {
 
 	/**
 	 * What reaches past the right edge of the panel's content, and the view's
-	 * amber buttons. The content's width is the scrolling element's
+	 * large primary buttons. The content's width is the scrolling element's
 	 * `clientWidth`: the window's less a classic scrollbar, where there is one.
 	 */
 	const measure = () =>
@@ -79,7 +79,7 @@ inFullSet("the look", () => {
 			scroll: number;
 			client: number;
 			past: string[];
-			amber: string[];
+			primary: string[];
 		}>(
 			`(() => {
 				const shown = (e) => e.getClientRects().length > 0;
@@ -90,24 +90,24 @@ inFullSet("the look", () => {
 					past: [...document.querySelectorAll("body *")]
 						.filter((e) => shown(e) && !e.closest(".visually-hidden") && e.getBoundingClientRect().right > root.clientWidth + 0.5)
 						.map((e) => e.tagName + "#" + e.id + "." + e.className),
-					amber: [...document.querySelectorAll("button.primary")].filter(shown).map((e) => e.id || e.textContent),
+					primary: [...document.querySelectorAll("button.primary")].filter(shown).map((e) => e.id || e.textContent),
 				};
 			})()`,
 		);
 
-	/** At each width: no sideways scroll, nothing past the edge, `amber` the amber buttons. */
-	async function holds(amber: string[]): Promise<void> {
+	/** At each width: no sideways scroll, nothing past the edge, `primary` the large primary buttons. */
+	async function holds(primary: string[]): Promise<void> {
 		for (const width of WIDTHS) {
 			await panelWidth(width);
 			const seen = await measure();
 			expect(seen.client).toBeLessThanOrEqual(width);
 			expect(seen.scroll).toBeLessThanOrEqual(seen.client);
 			expect(seen.past).toEqual([]);
-			expect(seen.amber).toEqual(amber);
+			expect(seen.primary).toEqual(primary);
 		}
 	}
 
-	test("Home, a case with its marks open, and Settings: no sideways scroll at 345, 360 and 420 px, at most one amber button", async () => {
+	test("Home, a case with its marks open, and Settings: no sideways scroll at 345, 360 and 420 px, at most one large primary button", async () => {
 		await panel.waitFor(`!${id("new-case")}.disabled`);
 		// Home, empty.
 		await holds(["new-case"]);
@@ -116,7 +116,7 @@ inFullSet("the look", () => {
 		await panel.eval(`${id("new-case")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
 		// The case is made and open, the toolbar adding to it (DEC-026): the
-		// tool bar's "Adding marks: Done" is the one amber button (DEC-064).
+		// tool bar's "Adding marks: Done" is the one primary button (DEC-064).
 		await panel.waitFor(
 			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
@@ -145,10 +145,10 @@ inFullSet("the look", () => {
 			`${id("add-marks")}.textContent === "Add marks"`,
 			20_000,
 		);
-		// At rest the tool bar is calm: no amber in the case (DEC-064).
+		// At rest the tool bar is calm: no primary button in the case (DEC-064).
 
 		// Home, with the page's case under This page: opening it is the one
-		// amber button, a new case a plain one.
+		// primary button, a new case a plain one.
 		await panel.eval(`${id("back")}.click()`);
 		await panel.waitFor(
 			`!${id("home")}.hidden && document.querySelectorAll("[data-case]").length === 1 && !${id("here")}.hidden`,
@@ -270,21 +270,21 @@ inFullSet("the look", () => {
 			});
 		await scheme("light");
 		expect(await read()).toEqual({
-			paper: "#f6f4ee",
-			ink: "#1b2130",
-			body: "rgb(246, 244, 238)",
-			text: "rgb(27, 33, 48)",
-			bar: "rgb(246, 244, 238)",
-			rule: "rgb(222, 218, 208)",
+			paper: "#fcf9ed",
+			ink: "#211e13",
+			body: "rgb(252, 249, 237)",
+			text: "rgb(33, 30, 19)",
+			bar: "rgb(252, 249, 237)",
+			rule: "rgb(219, 216, 203)",
 		});
 		await scheme("dark");
 		expect(await read()).toEqual({
-			paper: "#11141a",
-			ink: "#eceef3",
-			body: "rgb(17, 20, 26)",
-			text: "rgb(236, 238, 243)",
-			bar: "rgb(17, 20, 26)",
-			rule: "rgb(43, 49, 61)",
+			paper: "#181712",
+			ink: "#f2f0e9",
+			body: "rgb(24, 23, 18)",
+			text: "rgb(242, 240, 233)",
+			bar: "rgb(24, 23, 18)",
+			rule: "rgb(57, 55, 47)",
 		});
 		await panel.send("Emulation.setEmulatedMedia", { features: [] });
 	}, 60_000);

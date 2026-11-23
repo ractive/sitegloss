@@ -54,6 +54,14 @@ function ratio(a: string, b: string): number {
 
 const TEXT = 4.5;
 const EDGE = 3;
+/**
+ * A filled control without an edge (the default button, the web app's
+ * secondary): its fill apart from what it stands on, as the web theme holds
+ * it (sitegloss.dev's palette: 1.3:1 on the page and a card, 1.15:1 on the
+ * quiet fill). Its words carry the 4.5:1.
+ */
+const FILL = 1.3;
+const FILL_ON_QUIET = 1.15;
 
 /** A row of the panel's table: a token on each of some others. */
 type Row = [
@@ -67,70 +75,117 @@ type Row = [
 const SURFACES = ["--paper", "--sheet", "--wash"];
 
 const PANEL: Row[] = [
-	["--ink", SURFACES, [14.61, 16.07, 13.12], [15.89, 14.37, 12.38], TEXT],
-	["--ink-2", SURFACES, [6.11, 6.72, 5.49], [8.26, 7.48, 6.44], TEXT],
-	// A placeholder on a field (fields are the sheet): lighter than text (DEC-060).
-	["--placeholder", ["--sheet"], [4.63], [4.62], TEXT],
-	["--edge", ["--paper", "--sheet"], [3.51, 3.86], [4.39, 3.97], EDGE],
 	[
-		"--accent-ink",
-		["--accent", "--accent-hover"],
-		[8.77, 7.66],
-		[8.77, 9.96],
+		"--ink",
+		[...SURFACES, "--field"],
+		[15.81, 16.36, 14.44, 16.67],
+		[15.74, 14.61, 12.42, 13.44],
 		TEXT,
 	],
-	["--accent-edge", ["--paper", "--sheet"], [4.12, 4.53], [10.06, 9.1], EDGE],
-	["--on-strong", ["--strong"], [16.07], [15.89], TEXT],
+	// A button's words on its fill, hovered and pressed.
+	[
+		"--ink",
+		["--control", "--control-hover", "--control-press"],
+		[11.67, 10.35, 9.24],
+		[10.45, 9.11, 7.92],
+		TEXT,
+	],
+	[
+		"--ink-2",
+		[...SURFACES, "--field"],
+		[7.32, 7.57, 6.69, 7.72],
+		[9.63, 8.94, 7.6, 8.22],
+		TEXT,
+	],
+	// A placeholder on a field: lighter than text (DEC-060).
+	["--placeholder", ["--field"], [4.62], [4.73], TEXT],
+	[
+		"--edge",
+		["--paper", "--sheet", "--field"],
+		[3.46, 3.58, 3.65],
+		[4.28, 3.97, 3.65],
+		EDGE,
+	],
+	["--control", ["--paper", "--sheet"], [1.35, 1.4], [1.51, 1.4], FILL],
+	["--control", ["--wash"], [1.24], [1.19], FILL_ON_QUIET],
+	// The main action: the green with its text, and as a control on the panel.
+	[
+		"--on-strong",
+		["--strong", "--strong-hover"],
+		[12.76, 14.39],
+		[7.59, 8.48],
+		TEXT,
+	],
+	["--strong", ["--paper", "--sheet"], [12.76, 13.2], [7.59, 7.05], EDGE],
+	// The waiting dot's edge (amber on paper).
+	["--accent-edge", ["--paper", "--sheet"], [4.29, 4.44], [9.8, 9.09], EDGE],
 	// The knob of an "Allow all changes" switch that is on (DEC-037).
-	["--on-strong", ["--st-verified"], [6.44], [9.85], EDGE],
-	["--link", ["--paper", "--sheet"], [6.12, 6.73], [9.19, 8.32], TEXT],
-	["--focus", ["--paper", "--sheet"], [6.12, 6.73], [9.19, 8.32], TEXT],
+	["--on-strong", ["--st-verified"], [6.99], [9.99], EDGE],
+	["--link", ["--paper", "--sheet"], [7.06, 7.31], [10.04, 9.32], TEXT],
+	["--focus", ["--paper", "--sheet"], [12.76, 13.2], [7.59, 7.05], TEXT],
 	[
 		"--st-open",
 		["--paper", "--sheet", "--st-open-bg"],
-		[5.51, 6.06, 5.03],
-		[7.53, 6.81, 6.54],
+		[5.74, 5.94, 5.18],
+		[9.21, 8.55, 7.43],
 		TEXT,
 	],
 	[
 		"--st-verify",
 		["--paper", "--sheet", "--st-verify-bg"],
-		[6.4, 7.04, 5.87],
-		[8.88, 8.03, 7.08],
+		[5.46, 5.65, 4.98],
+		[9.49, 8.81, 7.52],
 		TEXT,
 	],
 	[
 		"--st-verified",
 		["--paper", "--sheet", "--st-verified-bg"],
-		[5.86, 6.44, 5.51],
-		[9.85, 8.91, 7.64],
+		[6.99, 7.23, 6.41],
+		[9.99, 9.27, 7.71],
 		TEXT,
 	],
 	[
 		"--st-dismissed",
 		["--paper", "--st-dismissed-bg"],
-		[6.11, 5.63],
-		[8.26, 6.26],
+		[7.32, 6.69],
+		[9.63, 7.6],
+		TEXT,
+	],
+	// A pin: the page's colours in both schemes, the white number on it, and
+	// the pin on the panel's paper.
+	[
+		"--on-pin",
+		["--pin-open", "--pin-verify", "--pin-verified", "--pin-dismissed"],
+		[4.71, 5.76, 5.08, 4.62],
+		[4.71, 5.76, 5.08, 4.62],
 		TEXT,
 	],
 	[
-		"--on-pin",
-		["--st-open", "--st-verify", "--st-verified", "--st-dismissed"],
-		[6.06, 7.04, 6.44, 6.72],
-		[7.53, 8.88, 9.85, 8.26],
-		TEXT,
+		"--paper",
+		["--pin-open", "--pin-verify", "--pin-verified", "--pin-dismissed"],
+		[4.47, 5.46, 4.82, 4.38],
+		[3.81, 3.12, 3.53, 3.88],
+		EDGE,
 	],
 	[
 		"--danger",
 		["--paper", "--sheet", "--danger-bg"],
-		[5.94, 6.54, 5.46],
-		[8.36, 7.56, 7.25],
+		[8.08, 8.36, 7.32],
+		[9.17, 8.52, 7.35],
 		TEXT,
 	],
-	["--on-danger", ["--danger"], [6.54], [8.36], TEXT],
-	["--warn", ["--warn-bg"], [6.83], [9.53], TEXT],
-	["--ink", ["--warn-bg", "--danger-bg"], [14.22, 13.41], [12.59, 13.78], TEXT],
-	["--warn-edge", ["--paper"], [4.25], [6.26], EDGE],
+	// A destructive button: red words on the default button's fill.
+	[
+		"--danger",
+		["--control", "--control-hover"],
+		[5.96, 5.29],
+		[6.09, 5.31],
+		TEXT,
+	],
+	["--on-danger", ["--danger"], [8.08], [9.17], TEXT],
+	["--warn", ["--warn-bg"], [6.67], [7.56], TEXT],
+	["--ink", ["--warn-bg", "--danger-bg"], [14.43, 14.33], [12.35, 12.6], TEXT],
+	["--warn-edge", ["--paper"], [4.05], [4.21], EDGE],
 ];
 
 /**
@@ -139,33 +194,34 @@ const PANEL: Row[] = [
  */
 const USED: Row[] = [
 	// A history's verb on the open mark's sheet.
-	["--st-dismissed", ["--sheet"], [6.72], [7.48], TEXT],
+	["--st-dismissed", ["--sheet"], [7.57], [8.94], TEXT],
 	// "Paused: …" in the sync section, on paper.
-	["--warn", ["--paper"], [7.01], [12.02], TEXT],
+	["--warn", ["--paper"], [7.3], [9.63], TEXT],
 	// The banner's problem line, and quiet text and links on a notice.
-	["--danger", ["--warn-bg"], [5.79], [6.63], TEXT],
-	["--ink-2", ["--warn-bg", "--danger-bg"], [5.95, 5.61], [6.55, 7.17], TEXT],
-	["--link", ["--warn-bg", "--wash"], [5.95, 5.49], [7.29, 7.16], TEXT],
+	["--danger", ["--warn-bg"], [7.38], [7.2], TEXT],
+	["--ink-2", ["--warn-bg", "--danger-bg"], [6.68, 6.63], [7.56, 7.71], TEXT],
+	["--link", ["--warn-bg", "--wash"], [6.45, 6.45], [7.88, 7.92], TEXT],
 	// A reopened mark's line while its row is hovered.
-	["--st-open", ["--wash"], [4.95], [5.87], TEXT],
-	// A default button's edge on a wash, a notice and a failed banner.
+	["--st-open", ["--wash"], [5.25], [7.27], TEXT],
+	// A field's or a chip's edge on a wash, a notice and a failed banner.
 	[
 		"--edge",
 		["--wash", "--warn-bg", "--danger-bg"],
-		[3.15, 3.41, 3.22],
-		[3.42, 3.48, 3.81],
+		[3.16, 3.16, 3.14],
+		[3.38, 3.36, 3.43],
 		EDGE,
 	],
 	// The banner's and a notice's own edge against their fill.
-	["--warn-edge", ["--warn-bg"], [4.14], [4.97], EDGE],
-	["--danger", ["--danger-bg"], [5.46], [7.25], EDGE],
+	["--warn-edge", ["--warn-bg"], [3.7], [3.3], EDGE],
+	["--danger", ["--danger-bg"], [7.32], [7.35], EDGE],
 ];
 
 describe("the panel's tokens", () => {
 	test("both schemes define every colour, and dark changes the ones it must", () => {
 		expect(Object.keys(light).length).toBeGreaterThanOrEqual(29);
-		expect(light["--paper"]).toBe("#f6f4ee");
-		expect(dark["--paper"]).toBe("#11141a");
+		// The web app's page, cream 1 in both schemes (sitegloss.dev's DEC-034).
+		expect(light["--paper"]).toBe("#fcf9ed");
+		expect(dark["--paper"]).toBe("#181712");
 		// The ink band and its colours are gone (DEC-024).
 		expect(css).not.toMatch(/--band|--on-ink|--mark\b|--amber/);
 	});
@@ -196,19 +252,53 @@ describe("the page's fixed colours", () => {
 	const STROKES = [4.71, 5.76, 5.08, 4.97];
 
 	const rows: [string, string, string, number, number][] = [
-		["toolbar text on the bar", L.barText, L.bar, 16.07, TEXT],
-		["muted text on the bar", L.barMuted, L.bar, 9.88, TEXT],
-		["toolbar text on hover", L.barText, L.barHover, 11.73, TEXT],
-		["muted text on hover", L.barMuted, L.barHover, 7.21, TEXT],
-		["ink on amber (pressed tool, Add mark N)", L.bar, L.amber, 8.77, TEXT],
-		["ink on amber, hovered", L.bar, L.amberHover, 7.66, TEXT],
-		["the bar on a white page", L.bar, WHITE, 16.07, EDGE],
+		["toolbar text on the bar", L.barText, L.bar, 15.81, TEXT],
+		["muted text on the bar", L.barMuted, L.bar, 8.94, TEXT],
+		["toolbar text on hover", L.barText, L.barHover, 9.85, TEXT],
+		["muted text on hover", L.barMuted, L.barHover, 5.57, TEXT],
+		[
+			"the bar's ink on the green (pressed tool, Add mark N)",
+			L.bar,
+			L.action,
+			7.05,
+			TEXT,
+		],
+		["the bar's ink on the green, hovered", L.bar, L.actionHover, 7.87, TEXT],
+		["the bar on a white page", L.bar, WHITE, 16.67, EDGE],
 		["its white ring on a black page", L.casing, BLACK, 21, EDGE],
-		["popover text", L.popoverText, L.popover, 16.07, TEXT],
-		["popover muted text", L.popoverMuted, L.popover, 6.72, TEXT],
-		["popover placeholder", L.popoverPlaceholder, L.popover, 4.63, TEXT],
-		["popover field edge", L.popoverEdge, L.popover, 3.86, EDGE],
-		["popover amber button's edge", L.amberEdge, L.popover, 4.53, EDGE],
+		["popover text", L.popoverText, L.popover, 16.67, TEXT],
+		["popover muted text", L.popoverMuted, L.popover, 7.72, TEXT],
+		["popover placeholder", L.popoverPlaceholder, L.popover, 4.62, TEXT],
+		["popover field edge", L.popoverEdge, L.popover, 3.65, EDGE],
+		[
+			"popover main button on the popover",
+			L.popoverAction,
+			L.popover,
+			13.45,
+			EDGE,
+		],
+		[
+			"popover main button's text",
+			L.popoverActionText,
+			L.popoverAction,
+			12.76,
+			TEXT,
+		],
+		[
+			"popover main button's text, hovered",
+			L.popoverActionText,
+			L.popoverActionHover,
+			14.39,
+			TEXT,
+		],
+		["popover button's text", L.popoverText, L.popoverControl, 11.67, TEXT],
+		[
+			"popover button's text, hovered",
+			L.popoverText,
+			L.popoverControlHover,
+			10.35,
+			TEXT,
+		],
 		["the hover outline on white", HOVER_COLOUR, WHITE, 4.63, EDGE],
 	];
 	for (const [name, a, b, want, needs] of rows)
@@ -233,7 +323,14 @@ describe("the page's fixed colours", () => {
 
 	test("the bars and the popover are one look in both schemes: the page's is not asked", () => {
 		expect<string>(L.bar).toBe(light["--ink"] as string);
-		expect<string>(L.amber).toBe(light["--accent"] as string);
+		// The bars are the panel's dark scheme, the popover its light one.
+		expect<string>(L.action).toBe(dark["--strong"] as string);
+		expect<string>(L.actionHover).toBe(dark["--strong-hover"] as string);
+		expect<string>(L.barMuted).toBe(dark["--ink-2"] as string);
+		expect<string>(L.popoverAction).toBe(light["--strong"] as string);
+		expect<string>(L.popoverActionText).toBe(light["--on-strong"] as string);
+		expect<string>(L.popoverControl).toBe(light["--control"] as string);
+		expect<string>(L.logo).toBe(light["--accent"] as string);
 		expect<string>(L.popoverEdge).toBe(light["--edge"] as string);
 		expect<string>(L.popoverMuted).toBe(light["--ink-2"] as string);
 		expect<string>(L.popoverPlaceholder).toBe(light["--placeholder"] as string);

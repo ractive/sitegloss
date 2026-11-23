@@ -1,27 +1,34 @@
 /* The panel's look (src/sidepanel/style.css), the few tokens a picture needs. */
+@import "../fonts/fonts.css";
+
 :root {
 	color-scheme: light dark;
-	--paper: #f6f4ee;
-	--sheet: #ffffff;
-	--wash: #ebe8e0;
-	--ink: #1b2130;
-	--ink-2: #535c6e;
-	--rule: #dedad0;
-	--edge: #7b8291;
-	--focus: #1a55c2;
-	--font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--paper: #fcf9ed;
+	--sheet: #fefdf7;
+	--wash: #f1efe3;
+	--control: #dbd8cb;
+	--control-hover: #cfccbf;
+	--control-press: #c4c1b4;
+	--ink: #211e13;
+	--ink-2: #565346;
+	--rule: #dbd8cb;
+	--focus: #00362a;
+	--font:
+		"Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--paper: #11141a;
-		--sheet: #1a1e27;
-		--wash: #242a37;
-		--ink: #eceef3;
-		--ink-2: #a6aebd;
-		--rule: #2b313d;
-		--edge: #737c8e;
-		--focus: #8fb8ff;
+		--paper: #181712;
+		--sheet: #201e18;
+		--wash: #2d2b24;
+		--control: #39372f;
+		--control-hover: #424038;
+		--control-press: #4b4940;
+		--ink: #f2f0e9;
+		--ink-2: #c0beb4;
+		--rule: #39372f;
+		--focus: #53ba9e;
 	}
 }
 
@@ -90,12 +97,13 @@ body {
 	white-space: nowrap;
 }
 
+/* The panel's default button: the darker cream, no edge. */
 button {
 	min-height: 30px;
 	padding: 4px 12px;
-	border: 1px solid var(--edge);
+	border: 1px solid transparent;
 	border-radius: 6px;
-	background: var(--sheet);
+	background: var(--control);
 	color: var(--ink);
 	font: inherit;
 	font-weight: 600;
@@ -103,11 +111,15 @@ button {
 }
 
 button:hover:not(:disabled) {
-	background: var(--wash);
+	background: var(--control-hover);
+}
+
+button:active:not(:disabled) {
+	background: var(--control-press);
 }
 
 button:disabled {
-	border-color: var(--rule);
+	background: var(--wash);
 	color: var(--ink-2);
 	cursor: default;
 }

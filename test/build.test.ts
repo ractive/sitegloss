@@ -306,7 +306,37 @@ describe("build", () => {
 				"tldts\n\nCopyright (c) 2017 Thomas Parisot, 2018 Rémi Berson",
 			);
 			expect(text).not.toContain("CDN build");
+			// The web app's typefaces (SIL OFL 1.1).
+			expect(text).toContain("Copyright 2016 The Inter Project Authors");
+			expect(text).toContain("Copyright 2019 The Manrope Project Authors");
+			expect(text).toContain("SIL Open Font License, Version 1.1");
 		}
+	});
+
+	test("the fonts: one copy at the root for the extension's own pages, none for a web page", async () => {
+		const outdir = tempDir();
+		await build({ outdir });
+		const names = [...new Bun.Glob("**/*").scanSync({ cwd: outdir })];
+		expect(names.filter((n) => n.endsWith(".woff2")).sort()).toEqual([
+			"fonts/inter-latin-wght-normal.woff2",
+			"fonts/manrope-latin-wght-normal.woff2",
+		]);
+		const css = async (dir: string) =>
+			(
+				await Promise.all(
+					names
+						.filter((n) => n.startsWith(`${dir}/`) && n.endsWith(".css"))
+						.map((n) => Bun.file(join(outdir, n)).text()),
+				)
+			).join("");
+		for (const page of ["sidepanel", "viewer"])
+			expect(await css(page)).toContain(
+				"url(/fonts/inter-latin-wght-normal.woff2)",
+			);
+		// The comment field sits in a page's dialog, in the page's face.
+		expect(await css("field")).not.toContain("woff2");
+		const content = await Bun.file(join(outdir, "content.js")).text();
+		expect(content).not.toContain("woff2");
 	});
 
 	test("only the development build's panel offers the development server (DEC-041)", async () => {
