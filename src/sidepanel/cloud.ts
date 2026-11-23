@@ -192,6 +192,7 @@ export function startCloud(
 							teams: account.teams.map((t) => ({
 								id: t.id,
 								name: t.name,
+								...(t.slug ? { slug: t.slug } : {}),
 								permissions: [...(t.permissions ?? [])],
 							})),
 							teamId: account.teamId,

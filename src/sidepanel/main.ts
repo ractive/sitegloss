@@ -4,6 +4,7 @@
  * view.ts draws it (DEC-011).
  */
 
+import { caseInstructions } from "../lib/agent-instructions.ts";
 import {
 	BROWSER,
 	FIREFOX,
@@ -105,6 +106,7 @@ import {
 	type PendingShow,
 	tryShow,
 } from "./mark-link.ts";
+import { AI_COPIED, COPY_FAILED, linkCopied, whereIs } from "./next-step.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
@@ -1181,6 +1183,40 @@ function followHint(): (text: CaseHint | undefined) => void {
 	};
 }
 
+/** How long the next step says what its copy did (DEC-069). */
+const COPIED_MS = 8000;
+
+/**
+ * The next step's copies (DEC-069): the case's address in the web app, or
+ * the instructions for an AI app with it. Offered only where the team has
+ * the case, so the address opens; the clipboard is written in the click.
+ */
+async function copyStep(c: Case, what: "link" | "ai"): Promise<void> {
+	const where = whereIs(state.cloud, c);
+	if (where.kind !== "team" || where.link === undefined) return;
+	const text =
+		what === "link"
+			? where.link
+			: caseInstructions({
+					id: c.id,
+					title: c.title,
+					url: where.link,
+					mcpUrl: where.mcp,
+				});
+	let said: string;
+	try {
+		await navigator.clipboard.writeText(text);
+		said = what === "link" ? linkCopied(where.team) : AI_COPIED;
+	} catch {
+		said = COPY_FAILED;
+	}
+	const at = Date.now();
+	update((s) => (s.copied = { caseId: c.id, text: said, at }));
+	setTimeout(() => {
+		if (state.copied?.at === at) update((s) => (s.copied = undefined));
+	}, COPIED_MS);
+}
+
 /** The loaded case's results no longer describe the tab: drop them (and the marks). */
 async function forgetLoaded(
 	options: { hint?: string; clearTab?: boolean } = {},
@@ -2001,6 +2037,22 @@ const actions: Actions = {
 		),
 	setCaseClosed: (caseId, closed) =>
 		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
+
+	copyCaseLink: (c) => void copyStep(c, "link"),
+	copyForAiApp: (c) => void copyStep(c, "ai"),
+
+	startVerifying(c) {
+		const first = [...c.marks]
+			.sort((x, y) => x.number - y.number)
+			.find((a) => markStatus(a) === "fixed");
+		if (first === undefined) return;
+		// As a status chip and a picked pin: those marks, on every page, the first open.
+		actions.filterMarks(c.id, "toVerify");
+		actions.filterPage(c.id, undefined);
+		update(
+			(s) => (s.picked = { caseId: c.id, markId: first.id, at: Date.now() }),
+		);
+	},
 
 	cancelLink: () => update((s) => (s.linking = undefined)),
 

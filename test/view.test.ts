@@ -5882,3 +5882,120 @@ test("two hosts' home pages are two pages, named with their hosts; other pages b
 		"/t/a/settings",
 	);
 });
+
+describe("what comes next on the open case (DEC-069)", () => {
+	const AT = "2026-11-04T10:00:00Z";
+	const TEAM = {
+		id: "t_1",
+		name: "Pedal & Pine web",
+		slug: "pedal-pine",
+		permissions: ["case:create", "case:close"],
+	};
+	const signedIn = (s: PanelState, modes: PanelState["cloud"]["modes"]) => {
+		s.cloud.account = {
+			name: "Tess",
+			email: "tess@example.com",
+			userId: "u_tess",
+			server: "https://app.sitegloss.dev",
+			teams: [TEAM],
+			teamId: "t_1",
+			expired: false,
+		};
+		s.cloud.modes = modes;
+	};
+	const step = (action: string) =>
+		el("next-step").querySelector(
+			`[data-step="${action}"]`,
+		) as unknown as HTMLButtonElement | null;
+
+	test("a named region under the counts, whose buttons are the panel's own actions", () => {
+		const done: string[] = [];
+		const actions = actionsWith({
+			addMarks: (c) => void done.push(`add ${c.id}`),
+			cloudShare: (id) => void done.push(`share ${id}`),
+			setCaseClosed: (id, closed) => void done.push(`close ${id} ${closed}`),
+			startVerifying: (c) => void done.push(`verify ${c.id}`),
+		});
+		const empty = sampleCase();
+		render(caseState(empty), actions);
+		expect(el("next-step").getAttribute("aria-label")).toBe("Next step");
+		expect(el("case-counts").nextElementSibling?.id).toBe("next-step");
+		step("add-marks")?.click();
+
+		const marked = withOneMark(sampleCase());
+		render(
+			caseState(marked, (s) => signedIn(s, { c_1: "local" })),
+			actions,
+		);
+		step("share")?.click();
+
+		const fixed = withOneMark(sampleCase());
+		const one = fixed.marks[0] as Mark;
+		fixed.marks = [{ ...one, resolution: { kind: "fixed", at: AT } }];
+		render(caseState(fixed), actions);
+		step("verify")?.click();
+
+		const settled = {
+			...fixed,
+			marks: [{ ...one, resolution: { kind: "wontfix" as const, at: AT } }],
+		};
+		render(caseState(settled), actions);
+		step("close")?.click();
+		expect(done).toEqual([
+			"add c_1",
+			"share c_1",
+			"verify c_1",
+			"close c_1 true",
+		]);
+
+		// Closed: no block at all.
+		render(caseState({ ...settled, closed: { at: AT } }), actions);
+		expect(el("next-step").hidden).toBe(true);
+	});
+
+	test("its sentence is written once, not again on a render that leaves it as it was", () => {
+		const c = withOneMark(sampleCase());
+		render(caseState(c), noActions);
+		const words = el("next-step-text").firstChild;
+		render(caseState(c), noActions);
+		expect(el("next-step-text").firstChild).toBe(words);
+	});
+
+	test("Add marks is off where the tool bar's is, and says why", () => {
+		const state = caseState(sampleCase(), (s) => {
+			s.tab = { id: 1, url: "", loading: false } as PanelState["tab"];
+		});
+		render(state, noActions);
+		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(true);
+		expect(step("add-marks")?.disabled).toBe(true);
+		expect(step("add-marks")?.title).toBe(el("add-marks").title);
+	});
+
+	test("the copies, once the team has the case; what a copy did is said under it", () => {
+		const done: string[] = [];
+		const c = withOneMark(sampleCase());
+		const state = caseState(c, (s) => {
+			signedIn(s, { c_1: "synced" });
+			s.cloud.status = {
+				state: "synced",
+				problems: [],
+				undecided: 0,
+				waiting: 0,
+				lastSyncedAt: "2026-11-05T10:00:00Z",
+			};
+			s.copied = { caseId: "c_1", text: "Link copied.", at: 1 };
+		});
+		render(
+			state,
+			actionsWith({
+				copyCaseLink: (x) => void done.push(`link ${x.id}`),
+				copyForAiApp: (x) => void done.push(`ai ${x.id}`),
+			}),
+		);
+		step("copy-link")?.click();
+		step("copy-ai")?.click();
+		expect(done).toEqual(["link c_1", "ai c_1"]);
+		expect(el("next-step-note").textContent).toBe("Link copied.");
+		expect(el("next-step-note").getAttribute("role")).toBe("status");
+	});
+});
