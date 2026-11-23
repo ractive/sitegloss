@@ -1017,7 +1017,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 });
 
 describe("Verify closes its mark (DEC-061)", () => {
-	test("Verify closes the row; the focus goes to the next mark to verify, else the row's head", async () => {
+	test("Verify closes the row and opens the next mark to verify; with none left, the focus stays on the row's head", async () => {
 		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
 		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
 			id: `m${k}`,
@@ -1053,7 +1053,8 @@ describe("Verify closes its mark (DEC-061)", () => {
 			) as unknown as HTMLButtonElement
 		).click();
 		expect(verified).toEqual(["m1"]);
-		// Stored as verified: drawn closed, the focus on mark 3, the next to verify.
+		// Stored as verified: drawn closed; mark 3, the next to verify, opens by
+		// itself with the focus on its head (not on its Verify), shown as "this one".
 		const done: Case = {
 			...c,
 			updatedAt: "2026-11-15T09:00:00Z",
@@ -1065,6 +1066,31 @@ describe("Verify closes its mark (DEC-061)", () => {
 		};
 		render(caseState(done), actions);
 		expect(row("m1").hasAttribute("data-open")).toBe(false);
+		expect(row("m3").hasAttribute("data-open")).toBe(true);
+		expect(row("m3").hasAttribute("data-picked")).toBe(true);
+		expect(row("m2").hasAttribute("data-open")).toBe(false);
+		expect(
+			window.document.activeElement ===
+				(row("m3").querySelector(".mark-toggle") as unknown),
+		).toBe(true);
+		// The last one verified: nothing else opens, the focus stays on its row.
+		(
+			row("m3").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		const all: Case = {
+			...done,
+			updatedAt: "2026-11-16T09:00:00Z",
+			marks: [
+				done.marks[0] as Mark,
+				m(2),
+				m(3, { ...fixed, verified: { at: "2026-11-16T09:00:00Z" } }),
+			],
+		};
+		render(caseState(all), actions);
+		expect(row("m3").hasAttribute("data-open")).toBe(false);
+		expect(row("m2").hasAttribute("data-open")).toBe(false);
 		expect(
 			window.document.activeElement ===
 				(row("m3").querySelector(".mark-toggle") as unknown),

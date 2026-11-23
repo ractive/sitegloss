@@ -2275,7 +2275,15 @@ const REOPEN_TITLE =
  * is in the list: a Verify that was not saved, and a change of that mark
  * minutes later, take no focus from a field (DEC-064's review).
  */
-let verifiedNow: { caseId: string; markId: string; at: number } | undefined;
+let verifiedNow:
+	| {
+			caseId: string;
+			markId: string;
+			at: number;
+			/** The next mark to verify as the list stood at the click: the verified one may leave a filtered list. */
+			next: string | undefined;
+	  }
+	| undefined;
 /** How long a Verify waits for its row to be drawn as verified. */
 export const VERIFIED_WAIT_MS = 5000;
 
@@ -2286,7 +2294,19 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		VERIFIED_TITLE,
 		() => {
 			openMarks.delete(`${c.id}:${a.id}`);
-			verifiedNow = { caseId: c.id, markId: a.id, at: Date.now() };
+			const order = [
+				...document.querySelectorAll<HTMLElement>("section.marks li.mark"),
+			].map((li) => ({
+				id: li.dataset["mark"] ?? "",
+				status: li.dataset["status"] ?? "",
+			}));
+			const next = afterVerify(order, a.id)?.markId;
+			verifiedNow = {
+				caseId: c.id,
+				markId: a.id,
+				at: Date.now(),
+				next: next === a.id ? undefined : next,
+			};
 			actions.verifyMark(c, a);
 		},
 		true,
@@ -3399,21 +3419,33 @@ function renderCase(state: PanelState, actions: Actions): void {
 						status: li.dataset["status"] ?? "",
 					}),
 				);
-				const to = afterVerify(order, v.markId);
 				const head = (id: string) =>
 					marks.querySelector<HTMLElement>(
 						`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
 					);
-				// The next mark to verify where it is on screen; one out of
-				// sight would scroll the list away from the row just verified
-				// (nothing jumps): then the closed row's head.
-				const next = to ? head(to.markId) : null;
-				const r = next?.getBoundingClientRect();
-				const seen =
-					r !== undefined &&
-					r.top >= 0 &&
-					r.bottom <= document.documentElement.clientHeight;
-				(seen ? next : head(v.markId))?.focus({ preventScroll: true });
+				// The next mark to verify opens by itself, in view, so that
+				// verifying a row of them is one press each (the owner). The
+				// one known at the click, which a filtered list still has
+				// when the verified mark has left it; else the list as it is.
+				const known = order.find(
+					(m) => m.id === v.next && m.status === "fixed",
+				)?.id;
+				const to = known ?? afterVerify(order, v.markId)?.markId;
+				const row =
+					to !== undefined && to !== v.markId
+						? marks.querySelector<HTMLElement>(
+								`li.mark[data-mark="${quoted(to)}"]`,
+							)
+						: null;
+				if (row) {
+					setOpen(c.id, row, true);
+					// "This one", as for a pin clicked on the page.
+					row.setAttribute("data-picked", "");
+					releaseHeld();
+					row.scrollIntoView?.({ block: "nearest" });
+					// Its head, not its Verify: a second Enter must not verify it unseen.
+					head(to as string)?.focus({ preventScroll: true });
+				} else head(v.markId)?.focus({ preventScroll: true });
 			}
 		}
 		if (picked !== undefined) {
