@@ -11,27 +11,35 @@
  * A site is never stored: it is derived where it is shown.
  */
 
-import { getDomain } from "tldts";
+import { parse } from "tldts";
 import { type Case, casePages, pageKey, shotUrl } from "./case.ts";
 
-/** The suffixes whose names are never a site: kept for local networks and tests. */
-const LOCAL_SUFFIXES = [
-	"localhost",
-	"local",
-	"test",
-	"internal",
-	"invalid",
-	"home.arpa",
-];
-
 /**
- * The site of an address, or null: not http or https, `localhost` and the
- * names under it, an IP address, a host without a dot, a name under a local
- * or test suffix. `.example` is a site. A host that is a public suffix itself
+ * The site of an address, or null: not http or https; a host whose ending is
+ * on neither section of the list (`.lan`, `.corp`, `.local`, `.test`), except
+ * `.example`, which demos and tests use; `localhost` and `home.arpa` and the
+ * names under them; an IP address; a host without a dot or with an empty
+ * label. Trailing dots are dropped. A host that is a public suffix itself
  * (`github.io`) is its own site. Lower case; an international name in its
  * ASCII form (`xn--bcher-kva.de`), as the address parser gives the host.
  */
 export function siteOf(address: string): string | null {
+	const kept = known.get(address);
+	if (kept !== undefined) return kept;
+	const site = siteRule(address);
+	if (known.size >= KNOWN_KEPT) known.clear();
+	known.set(address, site);
+	return site;
+}
+
+/**
+ * The sites of the addresses asked about lately: the rule is pure and the
+ * panel draws often, so an address is parsed and looked up once.
+ */
+const known = new Map<string, string | null>();
+const KNOWN_KEPT = 5000;
+
+function siteRule(address: string): string | null {
 	let url: URL;
 	try {
 		url = new URL(address);
@@ -39,17 +47,31 @@ export function siteOf(address: string): string | null {
 		return null;
 	}
 	if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-	const host = url.hostname.replace(/\.$/, "");
+	const host = url.hostname.replace(/\.+$/, "");
+	// An empty label: a leading dot or two dots in a row.
+	if (host === "" || host.split(".").includes("")) return null;
 	// An IPv6 address is in brackets; the parser writes every IPv4 form as four numbers.
 	if (host.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
 	if (!host.includes(".")) return null;
-	if (LOCAL_SUFFIXES.some((end) => host === end || host.endsWith(`.${end}`)))
+	if (NEVER.some((end) => host === end || host.endsWith(`.${end}`)))
 		return null;
-	return (
-		getDomain(host, { allowPrivateDomains: true, extractHostname: false }) ??
-		host
-	);
+	const found = parse(host, {
+		allowPrivateDomains: true,
+		extractHostname: false,
+	});
+	// An ending the list does not know is an intranet's (`.lan`, `.corp`):
+	// no site, but for `.example`, which demos and tests use.
+	if (!found.isIcann && !found.isPrivate && found.publicSuffix !== "example")
+		return null;
+	return found.domain ?? host;
 }
+
+/**
+ * Endings that are never a site, whatever the list says: `localhost` (not on
+ * it either) and `home.arpa`, the home network's (RFC 8375), which the list
+ * has in its ICANN section.
+ */
+const NEVER = ["localhost", "home.arpa"];
 
 /**
  * The sites of a set of addresses: the site with the most pages first (a
@@ -78,5 +100,36 @@ export function caseAddresses(c: Case): string[] {
 	];
 }
 
-/** A case's sites, most pages first, then by name; none where it was marked only on local addresses. */
-export const caseSites = (c: Case): string[] => sitesOf(caseAddresses(c));
+/**
+ * A case's sites, most pages first, then by name; none where it was marked
+ * only on local addresses. Counted over every screenshot, also one of a page
+ * past the list's 200.
+ */
+export const caseSites = (c: Case): string[] =>
+	keptFor(sitesOfCase, c, () => sitesOf(caseAddresses(c)));
+
+const sitesOfCase = new WeakMap<Case, Kept<string[]>>();
+
+/** A value derived from a case, with what it was derived from in short. */
+export interface Kept<T> {
+	print: string;
+	value: T;
+}
+
+/**
+ * A value derived from a case, kept per case object for as long as the case
+ * looks the same (its change time, its pages and screenshots counted): the
+ * panel draws many times a second, and a changed case is a new object.
+ */
+export function keptFor<T>(
+	kept: WeakMap<Case, Kept<T>>,
+	c: Case,
+	make: () => T,
+): T {
+	const print = `${c.updatedAt}|${c.shots.length}|${c.pages?.length ?? 0}|${c.page.url}`;
+	const hit = kept.get(c);
+	if (hit !== undefined && hit.print === print) return hit.value;
+	const value = make();
+	kept.set(c, { print, value });
+	return value;
+}

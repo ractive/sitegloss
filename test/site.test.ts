@@ -103,6 +103,20 @@ describe("a case's pages by site", () => {
 	});
 });
 
+describe("past the list's 200 pages", () => {
+	test("a site only screenshots past the cut are on gets no heading, though the case counts it", () => {
+		const many = Array.from(
+			{ length: 200 },
+			(_, i) => `https://a.example.com/${i}`,
+		);
+		const c = caseOn(many, ["https://b.example.org/later"]);
+		expect(caseSites(c)).toEqual(["example.com", "example.org"]);
+		expect(siteGroups(c).map((g) => [g.name, g.pages.length])).toEqual([
+			["example.com", 200],
+		]);
+	});
+});
+
 describe("a case's card says its sites and its number of pages", () => {
 	test("one site, several pages", () => {
 		expect(

@@ -506,9 +506,17 @@ describe("the sitegloss.dev API's types (DEC-039)", () => {
 		expect(worker).toContain("sitegloss-cloud");
 		expect(worker).not.toContain("openapi-typescript");
 		// The public suffix list is the panel's and the worker's, never in the
-		// script that runs in every web page (DEC-067).
-		expect(worker).toContain("allowPrivateDomains");
+		// script that runs in every web page (DEC-067). `xn--p1ai` (.рф) is an
+		// entry of the list's data, whichever code reaches it.
+		const LIST = "xn--p1ai";
+		expect(worker).toContain(LIST);
+		const panelCode = await Promise.all(
+			[...new Bun.Glob("sidepanel/*.js").scanSync({ cwd: outdir })].map((f) =>
+				Bun.file(join(outdir, f)).text(),
+			),
+		);
+		expect(panelCode.some((t) => t.includes(LIST))).toBe(true);
 		const content = await Bun.file(join(outdir, "content.js")).text();
-		expect(content).not.toContain("allowPrivateDomains");
+		expect(content).not.toContain(LIST);
 	}, 60_000);
 });
