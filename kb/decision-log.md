@@ -3855,7 +3855,7 @@ The service's side is its DEC-040; the format both build to is one contract.
 
 2026-11-23. The owner: "yes, bump it to 0.23.0". `@ractive-ch/tab-mcp-client` goes from
 0.22.0 to 0.23.0; the relay used by the tests stays `@ractive-ch/tab-mcp` 0.13.3, its
-latest.
+latest. (DEC-067 is taken by the panel's pages grouped by site, which is on a branch.)
 
 - **Breaking in the library (its DEC-222): `webmcp` is on by default.** A `TabMcp` then
   also registers its tools with the browser's WebMCP in its own document. Sitegloss has
