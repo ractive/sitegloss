@@ -1984,6 +1984,22 @@ Both addresses of the second are known, in one module with the first
   not asked anything while the second is chosen, its tokens go nowhere else, and
   back at the first the case goes on with the marks it had.
 
+**The development server is not offered in a build that goes to people** (owner,
+2026-11-23: "there's no way to connect the extension to the dev environment [...] It
+obviously should only be possible for me."). The chooser still has "Sitegloss" and
+"Another address…" there, and "Development server" only in the development build (the
+one loaded unpacked) and the test builds. A build knows by the define
+`SITEGLOSS_DEV_SERVER`, set in `scripts/build.ts` as `SITEGLOSS_FIREFOX` and
+`SITEGLOSS_TEST_BUILD` are: false for `--store` (Chrome and Firefox) and for anything
+packed with `--zip`, which is what the release's four zips are (the unpacked one with the
+fixed key too: it goes to people), true otherwise; without the define (unit tests) it is
+offered. (Not the manifest's `key`: the Firefox builds have none, and the release's
+unpacked zip has it.) What does not change: somebody already set to the development server
+keeps working and still sees it named, in the choice and in the Team section's note; the
+address typed under "Another address…" works as ever, self-hosting included; the lock is on
+the server, which creates no accounts (service DEC-044), so this takes only the signpost
+away. A local `bun run zip` therefore also leaves the option out.
+
 ## DEC-042: One MCP address for every installation, tab-mcp client 0.18 (owner)
 
 2026-11-20. The hosted relay `tab-mcp.ractive.ch` moved to relay 0.12.0, which has one
@@ -3945,6 +3961,20 @@ the display. The page filter's menu does not group by site (the web's does).
   the panel, never in `content.js`.
 - `CLAUDE.md` names `tldts` beside the tab-mcp client, and where it may be loaded.
 
+**The sites are a line under the title; the card's last line keeps the pages**
+(owner, 2026-11-23, about the web app's card, which now has it: "Make the 'Sites:
+comparis.ch, ractive.ch' a subtitle below the title. I think for the eye it's easier to pick
+up the sites than reading the titles. Or maybe even just 'comparis.ch | ractive.ch', with
+this centred dot in between instead of the pipe."). The panel's card says it the same way:
+right under the title, in the secondary text style, the names alone joined by " · "
+("sitegloss.dev"; "comparis.ch · ractive.ch"; more than three, "comparis.ch · ractive.ch and
+2 more sites"); a case on local addresses only says its first page's host; no line without a
+page. A screen reader hears "Site: ", "Sites: " or "On: " before it (a hidden word; the
+card's name says "on the site …"), which the card does not show. Where "Site: … · n pages"
+stood, only the pages: "15 pages", or the only page's address. The summary for the developer
+and the state badge and assignee (DEC-071) keep their places; the grouping inside an open
+case does not change.
+
 ## DEC-069: What comes next on the open case, and the hand-over's small part
 
 2026-11-23. The owner, on 22 November: the panel should tell the user the next step once
@@ -4258,3 +4288,26 @@ user is another browser. The panel said only "AI access is off · paired apps st
   Connection with a test relay that ends them: record, store, forgotten on connect, nothing
   with keep-on; a restart, kept over a second start, forgotten on connect, Stop, ticking
   keep-on and a change of relay; nothing after a stop; a stale record).
+
+## DEC-074: tab-mcp client 0.24.0: WebMCP that comes late, pictures through the extension; none of it reaches Sitegloss (owner)
+
+2026-11-23. The owner's plan: the candidate first, then the release. `@ractive-ch/tab-mcp-client`
+goes from 0.23.0 to 0.24.0 (tested first as 0.24.0-rc.1 on a branch); the relay used by the tests
+stays `@ractive-ch/tab-mcp` 0.13.3.
+
+- **What 0.24.0 changes in the library:** a `TabMcp` that found no WebMCP when it was made listens
+  on `document` for `tab-mcp-webmcp` (`WEBMCP_EVENT`, from `./extension`) and mirrors its tools
+  when WebMCP arrives later; a WebMCP call the tab-mcp browser extension announces gets the whole
+  MCP result (pictures included) instead of text; `client.via` is `'tab-mcp-extension'` also for
+  read-only tools, and the new `client.allowed` says whether the user allowed the call (code that
+  read `via` as "the user allowed it" must read `allowed`); `WebMcpClient` has the new field
+  `allowed`.
+- **Not reached:** Sitegloss has one `TabMcp`, in the service worker, with `webmcp: false`
+  (DEC-068). The library returns before it touches `document` in that case, so there is no
+  listener and no mirror. Nothing in Sitegloss reads `client.via` as permission; the worker looks
+  only at `client.kind`, `name` and `host`. No code change.
+- **Checked:** on 0.24.0-rc.1: type check, Biome, both builds, `bun run verify` and the full
+  Chromium end-to-end set (the connection, pairing and tools files all pass; two toolbar layout
+  tests fail the same way on main). On 0.24.0: the published package equals the candidate except
+  for the version strings and the bundler's own chunk and debug ids; then type check, Biome,
+  both builds and `bun run verify` again.
