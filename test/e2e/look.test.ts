@@ -187,21 +187,25 @@ inFullSet("the look", () => {
 			20_000,
 		);
 		await holds([]);
+		// What a token resolves to in the panel: the values are the style
+		// sheet's (test/contrast.test.ts holds those), the question is which
+		// token each part takes.
+		const resolved = `((value) => { const e = document.createElement("i"); e.style.color = value; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; })`;
 		// The status block: a chip per status with marks, tinted in its colour.
 		expect(
-			await panel.eval<string[][]>(
-				`[...document.querySelectorAll("#case-status .chip")].map((c) => [c.dataset.group, getComputedStyle(c).color, getComputedStyle(c).backgroundColor])`,
+			await panel.eval<[string, boolean, boolean][]>(
+				`(() => { const r = ${resolved}; const name = { open: "open", toVerify: "verify" }; return [...document.querySelectorAll("#case-status .chip")].map((c) => [c.dataset.group, getComputedStyle(c).color === r("var(--st-" + name[c.dataset.group] + ")"), getComputedStyle(c).backgroundColor === r("var(--st-" + name[c.dataset.group] + "-bg)")]); })()`,
 			),
 		).toEqual([
-			["open", "rgb(194, 15, 76)", "rgb(252, 228, 236)"],
-			["toVerify", "rgb(67, 71, 201)", "rgb(232, 233, 253)"],
+			["open", true, true],
+			["toVerify", true, true],
 		]);
-		// The pins: the status's colour, on the rail.
+		// The pins: the status's pin colour (the page's), on the rail.
 		expect(
-			await panel.eval<string[]>(
-				`[...document.querySelectorAll(".mark .number")].map((n) => getComputedStyle(n).backgroundColor)`,
+			await panel.eval<boolean[]>(
+				`(() => { const r = ${resolved}; return [...document.querySelectorAll(".mark .number")].map((n, i) => getComputedStyle(n).backgroundColor === r(["var(--pin-verify)", "var(--pin-open)", "var(--pin-open)"][i])); })()`,
 			),
-		).toEqual(["rgb(67, 71, 201)", "rgb(194, 15, 76)", "rgb(194, 15, 76)"]);
+		).toEqual([true, true, true]);
 
 		// A long link (DEC-028): cut in its line, never wider than the panel,
 		// its form too.
