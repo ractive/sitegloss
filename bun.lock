@@ -5,7 +5,7 @@
     "": {
       "name": "sitegloss",
       "dependencies": {
-        "@ractive-ch/tab-mcp-client": "0.22.0",
+        "@ractive-ch/tab-mcp-client": "0.23.0",
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.7",
@@ -56,7 +56,7 @@
 
     "@ractive-ch/tab-mcp": ["@ractive-ch/tab-mcp@0.13.3", "", { "bin": { "tab-mcp": "main.js" } }, "sha512-u2I3/0boV5Jks+k5YX8DqOapUgXK09ZHU9SrNMzQrv5ci+6PesKs2ErBQFh6/jPpycLbPsbLIquZqNYOLU7wgA=="],
 
-    "@ractive-ch/tab-mcp-client": ["@ractive-ch/tab-mcp-client@0.22.0", "", { "dependencies": { "@cfworker/json-schema": "4.1.6" }, "peerDependencies": { "react": ">=18.3.0 <20" }, "optionalPeers": ["react"] }, "sha512-moywRLvO+u5ZgEPB8UhMeTbWZrBExqcJDRxxl2hteTuw604ZIuHOUkd9aR5gEJLIVr7bYdYkb3wvlvp87zDcIQ=="],
+    "@ractive-ch/tab-mcp-client": ["@ractive-ch/tab-mcp-client@0.23.0", "", { "dependencies": { "@cfworker/json-schema": "4.1.6" }, "peerDependencies": { "react": ">=18.3.0 <20" }, "optionalPeers": ["react"] }, "sha512-PyiFomPVglGst6xvoFgBb1w+EU6xycDioMrsE5Is6gsbOM/2B3KURn2Qmi/qlg/tzS5nCtAaaYlmwtQnZva1jA=="],
 
     "@redocly/ajv": ["@redocly/ajv@8.11.2", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2", "uri-js-replace": "^1.0.1" } }, "sha512-io1JpnwtIcvojV7QKDUSIuMN/ikdOUd1ReEnUnMKGfDVridQZ31J0MmIuqwuRjWDZfmvr+Q0MqCcfHM2gTivOg=="],
 

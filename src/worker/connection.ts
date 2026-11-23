@@ -452,6 +452,11 @@ export class Connection {
 			app: APP_ID,
 			appName: "Sitegloss",
 			storage: this.#storage,
+			// Off, as it always was here (the library's default until 0.23.0):
+			// these tools are for the AI apps that connect over the relay, not
+			// for whatever calls WebMCP in this document, and the mirror is a
+			// chunk loaded with import(), which a service worker refuses.
+			webmcp: false,
 			onConfirm: (request) => this.#decide(mcp, request),
 		});
 		const tools = createTools({
