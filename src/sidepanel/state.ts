@@ -15,6 +15,7 @@ import type { CloudStatus, SyncMode } from "../lib/cloud/book.ts";
 import type { CheckedExport } from "../lib/export.ts";
 import type { MarkMatch, OverlayState } from "../lib/messages.ts";
 import type { SyncStatus, SyncTargetKind } from "../lib/sync.ts";
+import type { Copied } from "./next-step.ts";
 import type { ChosenPage } from "./page-filter.ts";
 import type { Size } from "./size.ts";
 
@@ -197,6 +198,11 @@ export interface PanelState {
 	 * and brings it into view, once per click (`at`).
 	 */
 	picked: { caseId: string; markId: string; at: number } | undefined;
+	/**
+	 * What the next step's last copy did (DEC-069), said in its block for
+	 * a few seconds (`COPIED_MS` in main.ts), or until the next copy.
+	 */
+	copied: (Copied & { caseId: string; at: number }) | undefined;
 	/** A mark's Delete, clicked once: the second click deletes. */
 	markDeleteArmed: { markId: string; mark: string; at: number } | undefined;
 	/**
@@ -253,7 +259,13 @@ export interface PanelState {
 					/** Where they are signed in. */
 					server: string;
 					/** Their teams, with what they may do in each (`case:create`, …). */
-					teams: { id: string; name: string; permissions: string[] }[];
+					teams: {
+						id: string;
+						name: string;
+						/** Its part of the web app's addresses (`/t/<slug>/…`); none from a server before it. */
+						slug?: string;
+						permissions: string[];
+					}[];
 					/** The team the cases sync with; none chosen yet: `undefined`. */
 					teamId: string | undefined;
 					/** The server refused the sign-in: sign in again. */
@@ -264,6 +276,11 @@ export interface PanelState {
 		status: CloudStatus | undefined;
 		/** How each case syncs, by its id; one not named was made since. */
 		modes: Record<string, SyncMode>;
+		/**
+		 * The cases the server has, as the sync last knew it, by id: the
+		 * team's id (DEC-069). None named: not known to be there.
+		 */
+		atTeam: Record<string, string>;
 		/** The browser's sign-in window is open. */
 		signingIn: boolean;
 		/** What the panel itself could not do (the sign-in, the address). */
@@ -337,6 +354,7 @@ export const initialState = (): PanelState => ({
 	markFilter: undefined,
 	markPage: undefined,
 	picked: undefined,
+	copied: undefined,
 	markDeleteArmed: undefined,
 	findingDeleteArmed: undefined,
 	imageDeleteArmed: undefined,
@@ -359,6 +377,7 @@ export const initialState = (): PanelState => ({
 		account: undefined,
 		status: undefined,
 		modes: {},
+		atTeam: {},
 		signingIn: false,
 		problem: undefined,
 		live: undefined,
