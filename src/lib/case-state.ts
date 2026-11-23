@@ -92,9 +92,15 @@ export const stateOf = (c: Case): CaseState =>
 /** Who it is assigned to as shown here (`assigneeOf`), `null` for nobody or not known. */
 export const assignedTo = (c: Case): UserRef | null => assigneeOf(c) ?? null;
 
-/** Whose turn it is on case `c`, as this browser knows it. */
-export const turnOf = (c: Case): Turn =>
-	caseTurn(stateOf(c), assignedTo(c) !== null);
+/**
+ * Whose turn it is on case `c`, as this browser knows it. `reporterHere`
+ * false: whoever started it left the team, so the reporter's turn is
+ * nobody's (the service's `turnOf`; the shared rule stays as it is).
+ */
+export function turnOf(c: Case, reporterHere = true): Turn {
+	const turn = caseTurn(stateOf(c), assignedTo(c) !== null);
+	return turn === "reporter" && !reporterHere ? "nobody" : turn;
+}
 
 /**
  * Whether case `c` is one of the cases of the person signed in as `me`

@@ -9,6 +9,7 @@ import {
 	firstToVerify,
 	linkCopied,
 	nextStep,
+	reporterGoneFrom,
 	type StepAction,
 	type Where,
 	whereIs,
@@ -414,5 +415,31 @@ describe("the team's case with an assignee: whose turn it is (DEC-071)", () => {
 				withMarks("open"),
 			),
 		).toEqual({ ...TEAM_HAS, offline: true });
+	});
+});
+
+describe("whoever started the case left the team (DEC-071, the service's rule)", () => {
+	const TESS = { id: "u_tess", name: "Tess" };
+	const DANA = { id: "u_dana", name: "Dana" };
+	const step = (c: Case) =>
+		nextStep({ ...c, createdBy: TESS, assignee: DANA }, TEAM_HAS, {
+			adding: false,
+			mayClose: true,
+			me: DANA.id,
+			reporterGone: reporterGoneFrom({ ...c, createdBy: TESS }, [DANA]),
+		});
+
+	test("the reporter's turn is nobody's: whoever may verifies and closes", () => {
+		expect(step(withMarks("fixed"))).toEqual({
+			text: "Every open mark is fixed, and whoever started the case is no longer in the team: check them on the page that has the fix, and verify them.",
+			actions: ["verify"],
+		});
+		expect(step(withMarks("verified"))).toEqual({
+			text: "Every mark is settled, and whoever started the case is no longer in the team: close the case.",
+			actions: ["close"],
+		});
+		expect(
+			reporterGoneFrom({ ...withMarks(), createdBy: TESS }, undefined),
+		).toBe(false);
 	});
 });

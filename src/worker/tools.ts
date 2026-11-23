@@ -188,7 +188,12 @@ function handOverView(c: Case, hand: HandOver | undefined, full: boolean) {
 	const assignee = assignedTo(c);
 	return {
 		state,
-		turn: turnOf(c),
+		turn: turnOf(
+			c,
+			c.createdBy === undefined ||
+				hand.members === undefined ||
+				hand.members.some((m) => m.id === c.createdBy?.id),
+		),
 		...(told
 			? { assignee: assignee && { id: assignee.id, name: assignee.name } }
 			: {}),

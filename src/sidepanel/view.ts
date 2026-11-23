@@ -70,7 +70,12 @@ import {
 	mineTest,
 	NONE_MINE,
 } from "./my-cases.ts";
-import { nextStep, type StepAction, whereIs } from "./next-step.ts";
+import {
+	nextStep,
+	reporterGoneFrom,
+	type StepAction,
+	whereIs,
+} from "./next-step.ts";
 import {
 	nextStepParts,
 	renderNextStep,
@@ -2096,6 +2101,7 @@ function renderStep(
 		mayClose,
 		...(me === undefined ? {} : { me }),
 		mayAssign,
+		reporterGone: reporterGoneFrom(c, members),
 	});
 	const off: Partial<Record<StepAction, string>> = {};
 	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;

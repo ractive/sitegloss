@@ -4062,7 +4062,8 @@ proposal (one assignee per case, the state worked out from the marks, "my cases"
 both ways): "Yes. [...] I also want to filter for 'my cases' in the extension", with the
 flow described "on the website, the web app and the extension". The contract between
 service and extension is one document; the service's side is its DEC-042 (pull request
-ractive/sitegloss.dev#54). This is the extension's side of step 2; step 1 is DEC-069.
+ractive/sitegloss.dev#54; the API types here are from its document as of 7a9247b, after
+its review). This is the extension's side of step 2; step 1 is DEC-069.
 
 - **The rule is the server's, copied.** `src/lib/case-state.ts` has `caseState`,
   `caseTurn` and `isMine` as the service's `packages/api/src/v1/case-state.ts` has
@@ -4111,6 +4112,11 @@ ractive/sitegloss.dev#54). This is the extension's side of step 2; step 1 is DEC
   whose server told no assignee, reads as before. The words follow the service's
   `apps/app/src/lib/next-step.ts`, kept in step by hand; they differ where the panel's
   counts stand right above (the sentence does not repeat them).
+- **A reporter who left the team** (the service's review, its `turnOf`): their turn is
+  nobody's, and whoever may verifies and closes ("Every open mark is fixed, and whoever
+  started the case is no longer in the team: ..."). Known here from the members list:
+  a reporter not on it, while it is known, has left. The shared rule and its vectors
+  stay as they are; `get_case` and `list_cases` say `turn: nobody` then too.
 - **Assign is a menu button** ("Assign", "Reassign" where someone has it, a chevron
   pointing down, as the owner asked of a menu on 23 November): the person looking first
   as "You", the others by name, then "Nobody"; radio items, the one who has it checked;

@@ -1343,7 +1343,7 @@
 			"CaseTurn": {
 				"type": "string",
 				"enum": ["assignee", "reporter", "nobody"],
-				"description": "Whose turn it is (DEC-042): assignee in new and in progress while the case has one (nobody while it has none: it is unassigned); reporter (who started the case) in empty, to verify and settled; nobody in closed."
+				"description": "Whose turn it is (DEC-042): assignee in new and in progress while the case has one (nobody while it has none: it is unassigned); reporter (who started the case) in empty, to verify and settled, while they are a member of the team (nobody once they left it, or when none is on record); nobody in closed."
 			},
 			"ChangeEvent": {
 				"type": "object",

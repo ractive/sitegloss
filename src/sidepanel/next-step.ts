@@ -236,6 +236,19 @@ function forAssignee(
 	};
 }
 
+/** Said where the reporter's turn is nobody's: they left the team (DEC-071, the service's words). */
+const GONE = "and whoever started the case is no longer in the team";
+
+/** Whether whoever started `c` left the team, as far as its members are known. */
+export const reporterGoneFrom = (
+	c: Case,
+	members: readonly { id: string }[] | undefined,
+): boolean =>
+	members !== undefined &&
+	members.length > 0 &&
+	c.createdBy !== undefined &&
+	!members.some((m) => m.id === c.createdBy?.id);
+
 /** What the block says of an assignment made here that the server does not have yet (DEC-071). */
 export const assignWaits = (where: Where): string =>
 	where.kind === "team" && where.offline
@@ -251,6 +264,8 @@ export const assignWaits = (where: Where): string =>
  * In the team's case, with `me` (who is signed in): whose turn it is
  * (DEC-071). `mayAssign`: the role lets them change the case and the team's
  * members are known, so the Assign menu is offered with the open marks.
+ * `reporterGone`: whoever started the case is no member of the team any
+ * more, so their turn is nobody's and whoever may takes it.
  */
 export function nextStep(
 	c: Case,
@@ -260,7 +275,14 @@ export function nextStep(
 		mayClose,
 		me,
 		mayAssign = false,
-	}: { adding: boolean; mayClose: boolean; me?: string; mayAssign?: boolean },
+		reporterGone = false,
+	}: {
+		adding: boolean;
+		mayClose: boolean;
+		me?: string;
+		mayAssign?: boolean;
+		reporterGone?: boolean;
+	},
 ): NextStep | undefined {
 	if (c.closed !== undefined) return undefined;
 	if (c.marks.length === 0)
@@ -274,16 +296,20 @@ export function nextStep(
 	// not known yet (on its way to the server) is the viewer: it was made here.
 	const turns =
 		where.kind === "team" && me !== undefined && assignee !== undefined;
+	// Whoever started it left the team: their turn is nobody's, and whoever
+	// may does it (the service's rule, DEC-042).
+	const gone = turns && reporterGone;
 	const reporter =
-		turns && c.createdBy !== undefined && c.createdBy.id !== me
+		turns && !gone && c.createdBy !== undefined && c.createdBy.id !== me
 			? c.createdBy
 			: undefined;
+	const left = gone ? `, ${GONE}` : "";
 	const waits = turns && c.assign !== undefined ? ` ${assignWaits(where)}` : "";
 	if (n.open === 0 && n.toVerify === 0)
 		return reporter === undefined
 			? {
 					text: turns
-						? "Every mark is settled: close the case."
+						? `Every mark is settled${left}: close the case.`
 						: "Every mark is settled.",
 					actions: mayClose ? ["close"] : [],
 				}
@@ -308,7 +334,7 @@ export function nextStep(
 			: { text: `${open.text}${waits}`, actions: open.actions };
 	const check =
 		turns && open === undefined
-			? "Every open mark is fixed: check them on the page that has the fix, and verify them."
+			? `Every open mark is fixed${left}: check them on the page that has the fix, and verify them.`
 			: "Check the fixed marks on the page that has the fix.";
 	return {
 		text: `${open === undefined ? check : `${check} ${open.text}`}${waits}`,
