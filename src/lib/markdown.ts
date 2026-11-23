@@ -39,6 +39,7 @@ const KIND: Record<ShapeKind, string> = {
 	arrow: "arrow",
 	pen: "freehand mark",
 	note: "note",
+	unknown: "mark of a newer kind",
 };
 
 /**
@@ -212,7 +213,7 @@ const namesPage = (several: boolean, shot: Shot | undefined): boolean =>
 /** A mark; `page`: its page's address, said where the case has several. */
 function markSection(a: Mark, page: string | undefined): string {
 	const lines = [
-		`### ${a.number}. ${KIND[a.shape.kind]}${a.author === "ai" ? " (by an AI app)" : ""}`,
+		`### ${a.number}. ${a.highlight ? "highlight" : KIND[a.shape.kind]}${a.author === "ai" ? " (by an AI app)" : ""}`,
 		"",
 	];
 	lines.push(a.comment ? block(a.comment) : "_No comment._", "");
@@ -227,6 +228,14 @@ function markSection(a: Mark, page: string | undefined): string {
 		);
 	lines.push(...status(a));
 	if (page !== undefined) lines.push(`- Page: ${address(page)}`);
+	// The text the mark is on (DEC-066), as the server's case.md has it:
+	// page text, one line, nothing in it Markdown.
+	if (a.highlight)
+		lines.push(`- Highlighted text: ${inline(a.highlight.text)}`);
+	if (a.shape.kind === "unknown")
+		lines.push(
+			`- Kind: ${inline(a.shape.given.kind)}, made with a newer Sitegloss`,
+		);
 	if (a.element) {
 		lines.push(`- Element: ${inline(summarize(a.element))}`);
 		if (a.element.selector)

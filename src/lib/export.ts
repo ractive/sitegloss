@@ -14,6 +14,7 @@ import {
 	MAX_TITLE,
 	newId,
 	plainUrl,
+	shapeOut,
 	validateCase,
 	withPagesAgreed,
 } from "./case.ts";
@@ -102,8 +103,15 @@ async function caseFiles(
 	folder: string,
 ): Promise<CaseFile[]> {
 	// Which app made the last change is this browser's note for its sync
-	// (DEC-046), not part of the case: a file never carries it.
-	const written = withoutSyncNotes(c);
+	// (DEC-046), not part of the case: a file never carries it. A shape of a
+	// kind this version does not know goes out as it came (DEC-066).
+	const kept = withoutSyncNotes(c);
+	const written = {
+		...kept,
+		marks: kept.marks.map((a) =>
+			a.shape.kind === "unknown" ? { ...a, shape: shapeOut(a.shape) } : a,
+		),
+	};
 	const files: CaseFile[] = [
 		{
 			name: `${folder}case.json`,

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { Case, Finding, Mark } from "../src/lib/case.ts";
+import {
+	type Case,
+	type Finding,
+	type Mark,
+	validateCase,
+	withComment,
+} from "../src/lib/case.ts";
 import type { Op } from "../src/lib/cloud/api.ts";
 import { emptyBook } from "../src/lib/cloud/book.ts";
 import { deriveOps } from "../src/lib/cloud/wire.ts";
@@ -1104,5 +1110,116 @@ describe("sizes of a file of all cases", () => {
 		await expect(
 			storeImport(new MemoryStore(), read[1] as (typeof read)[number]),
 		).rejects.toThrow("In case-1/:");
+	});
+});
+
+describe("what a newer Sitegloss wrote (DEC-066)", () => {
+	/** A case file as a newer version may write it: a kind of mark and fields this one does not know. */
+	const newer = (): Record<string, unknown> => ({
+		...sampleCase("c_new"),
+		board: { lane: "triage" },
+		shots: [
+			{
+				id: "s1",
+				image: "shots/s1.webp",
+				scrollX: 0,
+				scrollY: 0,
+				viewport: { width: 1280, height: 800, dpr: 2 },
+				capturedAt: "2026-11-04T10:00:00Z",
+				device: "phone",
+			},
+		],
+		marks: [
+			{
+				...mark(1),
+				shape: { kind: "circle", centre: { x: 40, y: 50 }, radius: 12 },
+				tilt: 3,
+			},
+			mark(2),
+		],
+	});
+
+	const zipOf = (c: Record<string, unknown>) =>
+		writeZip([
+			{
+				name: "case.json",
+				data: new TextEncoder().encode(JSON.stringify(c)),
+			},
+			...["shots/s1.webp", "crops/m1.webp", "crops/m2.webp"].map((name) => ({
+				name,
+				data: webpBytes(),
+			})),
+		]);
+
+	test("an unknown kind of mark is imported, changed and exported as it came, its unknown fields too", async () => {
+		const store = new MemoryStore();
+		const c = await importCase(store, await zipOf(newer()));
+		const [circle] = c.marks;
+		expect(circle?.shape).toEqual({
+			kind: "unknown",
+			given: { kind: "circle", centre: { x: 40, y: 50 }, radius: 12 },
+		});
+		// A change in the panel goes through the format's check again.
+		const changed = validateCase(
+			withComment(c, "m1", "Rounder", "2026-11-05T10:00:00Z"),
+		);
+		await putCase(store, changed);
+		const files = await readZip(await exportCase(store, changed));
+		const json = JSON.parse(new TextDecoder().decode(files.get("case.json")));
+		expect(json.board).toEqual({ lane: "triage" });
+		expect(json.shots[0].device).toBe("phone");
+		expect(json.marks[0].shape).toEqual({
+			kind: "circle",
+			centre: { x: 40, y: 50 },
+			radius: 12,
+		});
+		expect(json.marks[0].tilt).toBe(3);
+		expect(json.marks[0].comment).toBe("Rounder");
+		expect(new TextDecoder().decode(files.get("case.md"))).toContain(
+			"- Kind: circle, made with a newer Sitegloss",
+		);
+		// To the server: the shape as it came, and a comment as a patch.
+		const { ops } = deriveOps(
+			changed,
+			emptyBook(changed.id, "synced", "team_1"),
+			() => ({
+				sha256: "0".repeat(64),
+				width: 10,
+				height: 10,
+				bytes: 30,
+			}),
+			(prefix) => `${prefix}_1`,
+		);
+		const created = ops.find(
+			(op): op is Extract<Op, { type: "mark.create" }> =>
+				op.type === "mark.create" && op.mark.number === 1,
+		);
+		expect(created?.mark.shape as unknown).toEqual(json.marks[0].shape);
+	});
+
+	test("a version that knows the kind draws it: the store's copy is looked at anew", () => {
+		const kept = validateCase({
+			...newer(),
+			marks: [
+				{
+					...mark(1),
+					shape: {
+						kind: "unknown",
+						given: { kind: "box", rect: { x: 1, y: 2, width: 3, height: 4 } },
+					},
+				},
+			],
+		});
+		expect(kept.marks[0]?.shape).toEqual({
+			kind: "box",
+			rect: { x: 1, y: 2, width: 3, height: 4 },
+		});
+		// No kind at all is no newer mark: the file is broken.
+		expect(() =>
+			validateCase({
+				...newer(),
+				marks: [{ ...mark(1), shape: { radius: 2 } }],
+			}),
+		).toThrow("must name a kind of shape");
 	});
 });
