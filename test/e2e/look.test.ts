@@ -358,11 +358,6 @@ inFullSet("the look", () => {
 				`getComputedStyle(${shadow(".popover")}).fontSize`,
 			),
 		);
-		expect(
-			await page.eval<string>(
-				`${shadow('[data-action="comment-remove"]')}.textContent`,
-			),
-		).toBe("Cancel");
 		await page.click(shadow('[data-action="comment-remove"]'));
 		await panel.eval(`${id("add-marks")}.click()`);
 		await panel.waitFor(

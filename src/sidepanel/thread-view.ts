@@ -123,48 +123,72 @@ export function commentMeta(c: Case, k: CaseComment, withMark = true): string {
  */
 function commentHead(c: Case, k: CaseComment, withMark: boolean): HTMLElement {
 	const line = commentMeta(c, k, withMark);
-	const name = k.user?.name ?? (k.app ? undefined : "You");
-	const who =
-		name !== undefined && line.startsWith(name)
-			? name
-			: (line.split(" · ")[0] ?? "");
+	// As `commentMeta` begins: a person's name alone stands out, "via …" does not.
+	const by = byline(k.user, k.app) ?? "You";
+	const name = k.user?.name;
+	const who = name && by.startsWith(name) ? name : by;
 	return h(
 		"p",
 		{ class: "meta comment-meta" },
-		h("strong", { class: "comment-who" }, who),
+		...(who === "" ? [] : [h("strong", { class: "comment-who" }, who)]),
 		line.slice(who.length),
 	);
 }
 
-/** A line that starts a list item: "- ", "* ", "• " or "1. " / "1) ". */
-const LIST_LINE = /^\s*([-*•–]|\d{1,3}[.)])\s+(.*)$/;
+/**
+ * A line that starts a list item: its indentation, "-", "*", "•", "–" or
+ * "1." / "1)", the blanks after it, the rest. `s`: the rest is whatever
+ * follows, so no input makes the match try again and again.
+ */
+const LIST_LINE = /^([ \t]*)([-*•–]|\d{1,3}[.)])([ \t]+)(.*)$/s;
+
+/** A list item: its marker as typed in a column of its own, the text hanging beside it. */
+function listItem(found: RegExpExecArray): HTMLElement {
+	const [, indent = "", marker = "", gap = "", rest = ""] = found;
+	const columns = [...indent].reduce((n, ch) => n + (ch === "\t" ? 4 : 1), 0);
+	// The column's width, by the marker's kind: glyph widths differ, so this is near, not exact.
+	const hang =
+		(/\d/.test(marker) ? marker.length * 0.62 + 0.45 : 1.05) + columns * 0.28;
+	// A div, not a paragraph: a copy of the list has one line end between its items.
+	const item = h(
+		"div",
+		{ class: "comment-li", role: "listitem" },
+		h("span", { class: "comment-marker" }, `${indent}${marker}${gap}`),
+		rest,
+	);
+	item.style.setProperty("--hang", `${hang.toFixed(2)}em`);
+	return item;
+}
 
 /**
  * A comment's text laid out as it was written (an AI app's report above
  * all): blank lines part paragraphs, and a line that starts a list item
- * hangs under its marker. Text only, every character kept: nothing is read
- * as markup, a link or an emphasis.
+ * hangs beside its marker. Text only: every character of every line is
+ * kept, in order (blank lines become the gap between blocks, a line end is
+ * a line end whichever kind it was), and nothing is read as markup, a link
+ * or an emphasis.
  */
 export function commentBlocks(text: string): HTMLElement[] {
 	const blocks: HTMLElement[] = [];
 	let lines: string[] = [];
+	let list: HTMLElement | undefined;
 	const flush = () => {
 		if (lines.length > 0) blocks.push(h("p", {}, lines.join("\n")));
 		lines = [];
 	};
-	for (const line of text.split("\n")) {
-		const item = LIST_LINE.exec(line);
-		if (item !== null) {
+	for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+		const found = LIST_LINE.exec(line);
+		if (found !== null) {
 			flush();
-			blocks.push(
-				h(
-					"p",
-					{ class: "comment-li" },
-					h("span", { class: "comment-marker" }, `${item[1]} `),
-					h("span", {}, item[2] ?? ""),
-				),
-			);
-		} else if (line.trim() === "") flush();
+			if (list === undefined) {
+				list = h("div", { class: "comment-list", role: "list" });
+				blocks.push(list);
+			}
+			list.append(listItem(found));
+			continue;
+		}
+		list = undefined;
+		if (line.trim() === "") flush();
 		else lines.push(line);
 	}
 	flush();

@@ -3706,25 +3706,40 @@ describe("the thread and closing (DEC-046)", () => {
 		expect(done).toEqual(["add Checked on staging m1"]);
 	});
 
-	test("a comment's text is laid out as written: paragraphs apart, list lines under their marker, every character kept and none read as markup", async () => {
+	test("a comment's text is laid out as written: paragraphs apart, list lines beside their marker, every character of every line kept and none read as markup", async () => {
 		const { commentBlocks } = await import("../src/sidepanel/thread-view.ts");
-		const text =
-			"Done: <b>24</b> of 25.\nSee https://shop.example/x\n\n- one\n- two, **not bold**\n\n1. first\n2) second\nlast line";
-		const blocks = commentBlocks(text);
+		const laid = (text: string) =>
+			commentBlocks(text).flatMap((b) =>
+				b.getAttribute("role") === "list"
+					? [...b.children].map((li) => `li:${li.textContent}`)
+					: [`p:${b.textContent}`],
+			);
 		expect(
-			blocks.map((b) => [b.className, b.children.length, b.textContent]),
+			laid(
+				"Done: <b>24</b> of 25.\r\nSee https://shop.example/x  \n\n\n- one\n  - nested,  two  blanks\n* **not bold**\n\n1. first\n2)\tsecond\nlast line",
+			),
 		).toEqual([
-			["", 0, "Done: <b>24</b> of 25.\nSee https://shop.example/x"],
-			["comment-li", 2, "- one"],
-			["comment-li", 2, "- two, **not bold**"],
-			["comment-li", 2, "1. first"],
-			["comment-li", 2, "2) second"],
-			["", 0, "last line"],
+			"p:Done: <b>24</b> of 25.\nSee https://shop.example/x  ",
+			"li:- one",
+			"li:  - nested,  two  blanks",
+			"li:* **not bold**",
+			"li:1. first",
+			"li:2)\tsecond",
+			"p:last line",
 		]);
-		// Text only: no element comes out of what was written.
-		expect(blocks.some((b) => b.querySelector("b, a, strong") !== null)).toBe(
-			false,
-		);
+		// No list where none was written, and no element out of the text.
+		expect(laid("1.5 km\n-5 degrees\n-\nA - B")).toEqual([
+			"p:1.5 km\n-5 degrees\n-\nA - B",
+		]);
+		expect(
+			commentBlocks("<b>x</b> [a](https://shop.example)").some(
+				(b) => b.querySelector("b, a") !== null,
+			),
+		).toBe(false);
+		// A long line of blanks costs no more than its length.
+		const t = performance.now();
+		commentBlocks(`- ${" ".repeat(20_000)}x\u2028`);
+		expect(performance.now() - t).toBeLessThan(50);
 	});
 
 	test("a mark shows its last three comments, the earlier ones folded (as the web's markThread)", async () => {

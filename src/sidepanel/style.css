@@ -269,8 +269,11 @@ button.page-link {
 	overflow-wrap: anywhere;
 }
 
-/* Quiet until it is armed: then the one filled, so the second click is meant. */
-/* A destructive action is a button like its neighbours, in red words: not a link (the web app's rule). */
+/*
+ * A destructive action is a button like its neighbours, in red words, not a
+ * link (the web app's rule); armed, it is the one filled, so the second
+ * click is meant.
+ */
 button.danger {
 	margin-left: auto;
 	color: var(--danger);
@@ -1989,22 +1992,6 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	color: var(--ink-2);
 }
 
-/* Its word on the gutter while it is quiet; a button once it is armed. */
-.case-footer button.danger {
-	margin-left: 0;
-}
-
-.case-footer button.danger:not([data-armed]) {
-	padding-inline: 0;
-	border-radius: 3px;
-}
-
-.case-footer button.danger:not([data-armed]):hover:not(:disabled) {
-	background: none;
-	text-decoration: underline;
-	text-underline-offset: 2px;
-}
-
 :where(#case-view) > .meta {
 	margin: var(--s4);
 }
@@ -3188,29 +3175,38 @@ ol.comments {
 	margin-left: 0;
 }
 
-/* Paragraphs apart, a list item hanging under its marker; the text as written. */
+/* Paragraphs apart, a list item hanging beside its marker; the text as written. */
 .comment-text {
 	display: grid;
 	gap: var(--s2);
 }
 
-.comment-text > p {
+.comment-text p,
+.comment-li {
 	margin: 0;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
 
-.comment-text > .comment-li {
+.comment-list {
 	display: grid;
-	grid-template-columns: max-content minmax(0, 1fr);
-	white-space: normal;
+	gap: var(--s1);
 }
 
-.comment-li + .comment-li {
-	margin-top: calc(-1 * var(--s1));
+/*
+ * The marker is in the line, not a box beside it, so a copy gives the line
+ * as written; its column is as wide as the item says (--hang), and the
+ * lines that wrap start where the text does.
+ */
+.comment-li {
+	padding-left: var(--hang, 1em);
+	text-indent: calc(-1 * var(--hang, 1em));
 }
 
 .comment-marker {
+	display: inline-block;
+	min-width: var(--hang, 1em);
+	text-indent: 0;
 	white-space: pre;
 	color: var(--ink-2);
 }
