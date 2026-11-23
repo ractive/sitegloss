@@ -3459,6 +3459,20 @@ settled: what follows is what was built, and why, to be judged.
     the last mark to verify.", unless no mark is open either, when the Next step block
     already says that every mark is settled. **Reduced motion:** the same fades, no slide.
     The cue is only for a Verify, not for a click or a pin on the page. Focus rules unchanged.
+  - *The cue was too fast (owner, 24 November):* "it's hard to even notice it goes so fast.
+    What about first collapsing the current mark with an animation?" Now a sequence the eye
+    follows: the pressed row collapses in height (300 ms, ease-out) while it takes its
+    verified look; only then does the next row open (also when the answer came sooner: the
+    opening is held until the collapse is done, and runs at once when the answer is later);
+    its body expands (300 ms) and the highlight stays at full strength for 700 ms, then fades
+    over 1.2 s (tint 30%, with the border). Heights are keyframes between measured pixel
+    values (`--collapse-h`, `--open-h`, one read at the press and at the opening) with a
+    negative delay (`--cue-elapsed`), so a row drawn anew by the rebuild at the answer
+    continues the collapse and the highlight where they were; the held opening is module
+    state run by a timer or the next render, so a second rebuild does not lose it. A
+    failed or unanswered Verify puts the row back with its own 200 ms expand. Reduced
+    motion: no height animation, the row closes and the next opens at once, the highlight
+    still holds and fades. A press on the newly opened row works at once; nothing blocks input.
 - **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
   own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
   bottom keeps the comments about the case as a whole (and one about a deleted mark).

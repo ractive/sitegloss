@@ -9,7 +9,7 @@
  */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { Case } from "../../src/lib/case.ts";
+import { CASE_FORMAT, type Case } from "../../src/lib/case.ts";
 import type { Page } from "./browser.ts";
 import {
 	browserBinary,
@@ -194,4 +194,67 @@ inFullSet("Verify", () => {
 			at: expect.any(String),
 		});
 	}, 90_000);
+
+	test("Verify pressed on an open row: the row collapses, the stored state follows, the next row opens", async () => {
+		const at = "2026-11-22T10:00:00.000Z";
+		const marks = [1, 2, 3].map((n) => ({
+			id: `m${n}`,
+			number: n,
+			shot: "s1",
+			comment: `Comment ${n}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 40, y: 60 + n * 20 } },
+			crop: `crops/m${n}.webp`,
+			element: null,
+			resolution: { kind: "fixed", at },
+		}));
+		const c = {
+			format: CASE_FORMAT,
+			id: "c_collapse",
+			title: "Collapse first",
+			createdAt: at,
+			updatedAt: at,
+			page: {
+				url: `${h.base}/v1`,
+				title: "Members",
+				lang: "en",
+				viewport: { width: 1280, height: 800, dpr: 2 },
+				userAgent: "test",
+			},
+			shots: [
+				{
+					id: "s1",
+					image: "shots/s1.webp",
+					scrollX: 0,
+					scrollY: 0,
+					viewport: { width: 1280, height: 800, dpr: 2 },
+					capturedAt: at,
+				},
+			],
+			marks,
+		} as unknown as Case;
+		await putCases(h, [c]);
+		const panel = await panelHome(h);
+		await openCase(panel, "Collapse first");
+		await panel.waitFor(`${row("m1")}?.dataset.status === "fixed"`);
+		await panel.click(`${row("m1")}.querySelector(".mark-toggle")`);
+		await panel.waitFor(`${row("m1")}.hasAttribute("data-open")`);
+		await panel.click(
+			`${row("m1")}.querySelector('.body [data-mark-action="verify"]')`,
+		);
+		// The state, not the time: stored as verified, then the next row is open.
+		await until(
+			async () =>
+				(await storedCases()).find((x) => x.id === c.id)?.marks[0]?.resolution
+					?.verified,
+			(verified) => verified !== undefined,
+		);
+		await panel.waitFor(
+			`${row("m2")}?.hasAttribute("data-open") && ${row("m2")}?.hasAttribute("data-picked")`,
+		);
+		await panel.waitFor(`!${row("m1")}.hasAttribute("data-open")`);
+		expect(await panel.eval<string>(`${row("m1")}.dataset.status`)).toBe(
+			"verified",
+		);
+	}, 60_000);
 });
