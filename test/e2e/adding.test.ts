@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
-import type { Page } from "./browser.ts";
+import { type Page, SLOW } from "./browser.ts";
 import {
 	browserBinary,
 	type Harness,
@@ -75,10 +75,17 @@ const escapeTheField = async (h: Harness, page: Page) => {
 	const field = await dialogField(page);
 	const key = { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 };
 	await page.send("Input.dispatchKeyEvent", { type: "keyDown", ...key });
+	const timeoutMs = 5000 * SLOW;
 	await until(
-		() => h.browser.targets(),
-		(targets) => !targets.some((t) => t.targetId === field.targetId),
-	);
+		async () =>
+			(await h.browser.targets()).some((t) => t.targetId === field.targetId),
+		(there) => !there,
+		timeoutMs,
+	).catch(() => {
+		throw new Error(
+			`the comment field's frame is still there ${timeoutMs} ms after Escape`,
+		);
+	});
 	await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...key });
 };
 
