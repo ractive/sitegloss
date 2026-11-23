@@ -15,6 +15,7 @@ import {
 	CASE_FORMAT,
 	type Case,
 	type CasePage,
+	caseExtras,
 	casePages,
 	cropImage,
 	type FindingApp,
@@ -35,7 +36,7 @@ import {
 	validateCase,
 	withPagesOfShots,
 } from "./case.ts";
-import type { RenderedMark } from "./marks.ts";
+import { isDarkGround, type RenderedMark } from "./marks.ts";
 import { queryOf } from "./query.ts";
 import type { CaseStore, StoredImage } from "./store.ts";
 
@@ -162,7 +163,11 @@ export async function saveCase(
 			.slice(0, MAX_ALSO_DRAWN)
 			.filter((m) => m.shot === shot.id && m.number < lowest);
 		const image = draw
-			? await draw(stored.blob, [...others, ...drafts], shot.viewport.dpr)
+			? await draw(
+					stored.blob,
+					[...others, ...drafts.map(drawnOf)],
+					shot.viewport.dpr,
+				)
 			: stored;
 		screenshots.set(shot.id, image);
 		const cut = await crop(
@@ -258,6 +263,10 @@ export async function saveCase(
 				crop: cropImage(id),
 				element: draft.element,
 				...(draft.ends === undefined ? {} : { ends: draft.ends }),
+				// The text it marks (DEC-066); `validateCase` holds it to the limits.
+				...(draft.highlight === undefined
+					? {}
+					: { highlight: draft.highlight }),
 				...(app === undefined ? {} : { createdVia: app }),
 			});
 			const image = crops.get(draft);
@@ -271,6 +280,8 @@ export async function saveCase(
 		// list stays when its last mark goes) is not written into it now.
 		const value = withPagesOfShots(
 			validateCase({
+				// What a newer Sitegloss wrote on the case stays (DEC-066).
+				...(current === undefined ? {} : caseExtras(current)),
 				format: CASE_FORMAT,
 				id: request.caseId,
 				title: current?.title ?? (request.title.trim() || "Untitled case"),
@@ -435,6 +446,23 @@ function checkRoom(c: Case, request: SaveRequest): void {
 		throw new SaveError(
 			`“${c.title}” holds marks on ${MAX_PAGES} pages, the most a case can; start a new case for marks on further pages.`,
 		);
+}
+
+/**
+ * A new mark as it is painted on its screenshot: a highlight as its strokes
+ * (DEC-066), on a dark ground where its element's backdrop is dark.
+ */
+export function drawnOf(d: MarkDraft): RenderedMark {
+	return {
+		number: d.number,
+		shape: d.shape,
+		...(d.highlight === undefined
+			? {}
+			: {
+					lines: d.highlight.rects,
+					dark: isDarkGround(d.element?.backdrop?.color),
+				}),
+	};
 }
 
 /** A rectangle grown by `pad` and kept inside the viewport. */

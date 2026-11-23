@@ -1,5 +1,5 @@
 /**
- * Adding marks to a page: the tools (element, box, arrow, pen, note), a comment for
+ * Adding marks to a page: the tools (element, box, arrow, pen, note, highlight), a comment for
  * each mark, undo, and adding the marks to a case.
  *
  * The toolbar always adds to a case (DEC-014, DEC-026): the one "New case for
@@ -21,6 +21,7 @@
 import {
 	type Case,
 	type ElementDetails,
+	type Highlight,
 	imageScale,
 	LANGUAGE,
 	MAX_COMMENT,
@@ -43,8 +44,11 @@ import {
 	createContext,
 	describeElement,
 	documentRect,
+	isEditable,
 } from "../lib/element.ts";
+import { boundsOfRects } from "../lib/highlight.ts";
 import { atShot, siblingsOf, withLook } from "../lib/look.ts";
+import { isDarkGround, type RenderedMark } from "../lib/marks.ts";
 import type {
 	CaptureResult,
 	MarkTarget,
@@ -82,8 +86,9 @@ import {
 	withSaveKey,
 } from "./overlay.ts";
 import { PageField } from "./page-field.ts";
+import { ELEMENT, type NoText, selectedText } from "./text-range.ts";
 
-export type Tool = "element" | "box" | "arrow" | "pen" | "note";
+export type Tool = "element" | "box" | "arrow" | "pen" | "note" | "highlight";
 
 const TOOLS: { tool: Tool; label: string; title: string }[] = [
 	{ tool: "element", label: "Element", title: "Pick an element" },
@@ -91,7 +96,60 @@ const TOOLS: { tool: Tool; label: string; title: string }[] = [
 	{ tool: "arrow", label: "Arrow", title: "Draw an arrow" },
 	{ tool: "pen", label: "Pen", title: "Draw freehand" },
 	{ tool: "note", label: "Note", title: "Place a note" },
+	{
+		tool: "highlight",
+		label: "Highlight",
+		title:
+			"Highlight text: select it on the page, or choose this with text selected",
+	},
 ];
+
+/**
+ * What the Highlight tool says where it cannot take the text (DEC-066):
+ * somebody's input is never recorded, and a picture's text is no text.
+ */
+const NO_TEXT: Record<NoText | "picture" | "frame" | "component", string> = {
+	nothing: "Select some text on the page to highlight it.",
+	field:
+		"Text in a form field cannot be highlighted: mark the field with the Box tool.",
+	typed: "Text in an editor cannot be highlighted: mark it with the Box tool.",
+	large:
+		"This selection reaches too far into a very long page: select within one section.",
+	unseen: "That text is not visible on the page.",
+	picture:
+		"Text in an image or a canvas cannot be highlighted: mark it with the Box tool.",
+	frame:
+		"Text inside a frame cannot be highlighted: mark it with the Box tool.",
+	component:
+		"Text inside this component cannot be highlighted: mark it with the Box tool.",
+};
+
+/**
+ * How long a double click waits for a third before it takes its word
+ * (DEC-066): `click` says how many clicks it is, and a word taken at once
+ * would open its dialog, which the third press would close.
+ */
+const CLICKS_MS =
+	typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD
+		? 150
+		: 450;
+
+/** Elements whose text the Highlight tool cannot select (`NO_TEXT`). */
+const PICTURES = new Set([
+	"img",
+	"canvas",
+	"svg",
+	"video",
+	"picture",
+	"object",
+	"embed",
+]);
+
+/** A place in the page's text, as a caret is (the Highlight tool's drag). */
+interface Caret {
+	node: Node;
+	offset: number;
+}
 
 interface Draft {
 	number: number;
@@ -103,6 +161,11 @@ interface Draft {
 	details: ElementDetails | null;
 	/** An arrow's or an open stroke's elements at its two ends (DEC-047). */
 	ends?: MarkEnds;
+	/**
+	 * A highlight's text and its line boxes in document coordinates
+	 * (DEC-066); `dark`: on a dark ground (`HIGHLIGHT_LOOK`).
+	 */
+	highlight?: Omit<Highlight, "rects"> & { lines: Rect[]; dark: boolean };
 	/** The element's box then, in document coordinates. */
 	anchor: Rect | null;
 	/** The page's address then. */
@@ -114,7 +177,14 @@ interface Draft {
 	 * `box`: the element in the document at the shot, if it moved since
 	 * `details`; `siblings`: its neighbours' boxes measured then (DEC-048).
 	 */
-	shot?: { view: View; shape: Shape; box?: Rect; siblings?: SiblingBox[] };
+	shot?: {
+		view: View;
+		shape: Shape;
+		/** A highlight's line boxes on the shot (DEC-066). */
+		lines?: Rect[];
+		box?: Rect;
+		siblings?: SiblingBox[];
+	};
 	/** The case it was queued for: it never goes into another one unasked. */
 	queuedFor?: { caseId: string; title: string };
 	/** Why its screenshot could not be taken, if it could not. */
@@ -132,6 +202,8 @@ interface Drag {
 	pointerId: number;
 	start: Point;
 	points: Point[];
+	/** The Highlight tool's: where the selection starts (DEC-066). */
+	caret?: Caret;
 }
 
 async function ask<T extends object>(request: WorkerRequest): Promise<T> {
@@ -209,6 +281,12 @@ export class MarkAdder {
 	/** The target case's marks saved from this page: shown, no longer changed. */
 	#savedMarks: Draft[] = [];
 	#tool: Tool | null = null;
+	/** The page's selection when the Highlight tool's button was pressed: the press takes it away. */
+	#selectedAtPress: Range | undefined;
+	/** A double click waiting for a third (`CLICKS_MS`), and where it was. */
+	#clicks:
+		| { timer: ReturnType<typeof setTimeout>; x: number; y: number }
+		| undefined;
 	#hover: Element | null = null;
 	#drag: Drag | null = null;
 	#preview: Shape | null = null;
@@ -292,10 +370,26 @@ export class MarkAdder {
 		this.#alertEl.className = "status";
 		this.#alertEl.dataset["role"] = "alert";
 		this.#alertEl.setAttribute("role", "alert");
+		// Pressing the Highlight tool's button takes the page's selection
+		// away; what it was is what the tool highlights (DEC-066).
+		overlay.toolbar.addEventListener(
+			"pointerdown",
+			(e) => {
+				const on = (e.target as Element | null)?.closest?.(
+					'[data-action="tool-highlight"]',
+				);
+				this.#selectedAtPress =
+					on && this.#tool !== "highlight" ? this.#selection() : undefined;
+			},
+			true,
+		);
 		const capture = overlay.capture;
 		capture.addEventListener("pointermove", (e) => this.#move(e));
 		capture.addEventListener("pointerdown", (e) => this.#down(e));
 		capture.addEventListener("pointerup", (e) => this.#up(e));
+		// How many clicks a press is: `click` counts them, `pointerdown` does
+		// not (its `detail` is 0 in Chrome, measured).
+		capture.addEventListener("click", (e) => this.#clicked(e));
 		capture.addEventListener("pointercancel", () => {
 			this.#drag = null;
 			this.#preview = null;
@@ -433,8 +527,201 @@ export class MarkAdder {
 		const capture = this.overlay.capture;
 		capture.classList.toggle("active", tool !== null);
 		capture.classList.toggle("element", tool === "element");
+		capture.classList.toggle("text", tool === "highlight");
+		this.#stopClicks();
+		const pressed = this.#selectedAtPress;
+		this.#selectedAtPress = undefined;
 		this.#renderToolbar();
 		this.#render();
+		// Text selected before the tool was chosen is what it highlights.
+		if (tool === "highlight" && this.#editing === null) {
+			const range = pressed ?? this.#selection();
+			if (range !== undefined && !range.collapsed) this.#highlight(range);
+		}
+	}
+
+	// --- the Highlight tool (DEC-066) ----------------------------------------
+
+	/** The page's selection, when it is of the page and not empty. */
+	#selection(): Range | undefined {
+		const sel = this.overlay.doc.getSelection();
+		if (sel === null || sel.rangeCount === 0 || sel.isCollapsed)
+			return undefined;
+		const range = sel.getRangeAt(0);
+		const node = range.commonAncestorContainer;
+		// A copy: the live one changes with the selection.
+		return node.getRootNode() === this.overlay.root ||
+			this.overlay.host.contains(node)
+			? undefined
+			: range.cloneRange();
+	}
+
+	/**
+	 * The place in the page's text under a point of the window. The layer
+	 * that takes the pointer is let through for the call alone, which is
+	 * synchronous: the page gets no event of it.
+	 */
+	#caretAt(x: number, y: number): Caret | undefined {
+		const doc = this.overlay.doc as Document & {
+			caretPositionFromPoint?: (
+				x: number,
+				y: number,
+			) => { offsetNode: Node; offset: number } | null;
+			caretRangeFromPoint?: (x: number, y: number) => Range | null;
+		};
+		const capture = this.overlay.capture;
+		capture.style.pointerEvents = "none";
+		let caret: Caret | undefined;
+		try {
+			// Over Sitegloss's own (a pin, the toolbar), the caret comes back
+			// as the host's place in its parent (measured in Chrome): none.
+			if (doc.elementFromPoint(x, y) === this.overlay.host) return undefined;
+			if (typeof doc.caretPositionFromPoint === "function") {
+				const p = doc.caretPositionFromPoint(x, y);
+				if (p !== null) caret = { node: p.offsetNode, offset: p.offset };
+			} else if (typeof doc.caretRangeFromPoint === "function") {
+				const r = doc.caretRangeFromPoint(x, y);
+				if (r !== null)
+					caret = { node: r.startContainer, offset: r.startOffset };
+			}
+		} finally {
+			capture.style.pointerEvents = "";
+		}
+		if (
+			caret === undefined ||
+			caret.node.getRootNode() === this.overlay.root ||
+			caret.node === this.overlay.host
+		)
+			return undefined;
+		// Never into an editor: setting the selection there focuses it.
+		const at =
+			caret.node.nodeType === ELEMENT
+				? (caret.node as Element)
+				: caret.node.parentElement;
+		if (at !== null && isEditable(at)) return undefined;
+		return caret;
+	}
+
+	/** Why the text under a point cannot be highlighted, if it cannot. */
+	#noTextAt(x: number, y: number): string | undefined {
+		const el = elementAt(x, y, this.overlay.host);
+		if (el === null) return undefined;
+		if (el.closest("input, textarea, select") !== null) return NO_TEXT.field;
+		if (isEditable(el)) return NO_TEXT.typed;
+		if (el.closest("iframe, frame") !== null) return NO_TEXT.frame;
+		if (PICTURES.has(el.localName) || el.closest("svg") !== null)
+			return NO_TEXT.picture;
+		// A component's own text: the caret does not reach into its shadow root.
+		if (el.getRootNode() !== this.overlay.doc) return NO_TEXT.component;
+		return undefined;
+	}
+
+	/**
+	 * A double click takes its word once no third click came; a triple click
+	 * its paragraph at once (DEC-066).
+	 */
+	#clicked(e: MouseEvent): void {
+		if (this.#tool !== "highlight" || e.detail < 2 || this.#editing !== null)
+			return;
+		const caret = this.#caretAt(e.clientX, e.clientY);
+		if (caret === undefined || this.#noTextAt(e.clientX, e.clientY)) return;
+		this.#stopClicks();
+		const take = (clicks: number) => {
+			this.#clicks = undefined;
+			if (this.#tool !== "highlight" || this.#editing !== null) return;
+			this.#selectAround(caret, clicks);
+			const range = this.#selection();
+			if (range !== undefined) this.#highlight(range);
+		};
+		if (e.detail >= 3) take(3);
+		else
+			this.#clicks = {
+				timer: setTimeout(() => take(2), CLICKS_MS),
+				x: e.clientX,
+				y: e.clientY,
+			};
+	}
+
+	/** A double click waiting for a third is given up. */
+	#stopClicks(): void {
+		if (this.#clicks !== undefined) clearTimeout(this.#clicks.timer);
+		this.#clicks = undefined;
+	}
+
+	/** The selection from the drag's start to `to`, on the page, as the page would show it. */
+	#select(from: Caret, to: Caret): void {
+		const sel = this.overlay.doc.getSelection();
+		try {
+			sel?.setBaseAndExtent(from.node, from.offset, to.node, to.offset);
+		} catch {
+			// A place the selection cannot reach: it stays as it was.
+		}
+	}
+
+	/** A double click takes a word, a triple click its paragraph, as on the page. */
+	#selectAround(at: Caret, clicks: number): void {
+		const sel = this.overlay.doc.getSelection() as
+			| (Selection & {
+					modify?: (
+						alter: string,
+						direction: string,
+						granularity: string,
+					) => void;
+			  })
+			| null;
+		if (sel === null || typeof sel.modify !== "function") return;
+		const unit = clicks >= 3 ? "paragraphboundary" : "word";
+		try {
+			sel.collapse(at.node, at.offset);
+			sel.modify("move", "backward", unit);
+			sel.modify("extend", "forward", unit);
+		} catch {
+			// As it was.
+		}
+	}
+
+	/**
+	 * A selection becomes a highlight: the mark's dialog opens at it with the
+	 * stroke drawn, the page's own selection goes. Where it cannot, the
+	 * toolbar says why.
+	 */
+	#highlight(range: Range): void {
+		const found = selectedText(range);
+		if (typeof found === "string") {
+			this.#message = NO_TEXT[found];
+			this.#renderToolbar();
+			return;
+		}
+		this.overlay.doc.getSelection()?.removeAllRanges();
+		const s = this.#scroll();
+		const lines = found.lines.map((r) => ({
+			...r,
+			x: r.x + s.x,
+			y: r.y + s.y,
+		}));
+		const context = createContext(this.overlay.doc);
+		const details = withLook(
+			describeElement(found.element, context),
+			found.element,
+			s,
+			this.overlay.host,
+		);
+		this.#add(
+			{ kind: "box", rect: boundsOfRects(lines) },
+			found.element,
+			undefined,
+			{
+				...found.highlight,
+				lines,
+				dark: isDarkGround(details.backdrop?.color),
+			},
+			details,
+		);
+		if (found.cut) {
+			this.#message =
+				"Only the first 500 characters and 40 lines are highlighted: a highlight holds no more.";
+			this.#renderToolbar();
+		}
 	}
 
 	// --- pointer -------------------------------------------------------------
@@ -484,6 +771,18 @@ export class MarkAdder {
 		const drag = this.#drag;
 		if (drag === null || e.pointerId !== drag.pointerId) return;
 		const p = this.#toDocument(e);
+		if (this.#tool === "highlight") {
+			// Over Sitegloss's own or an editor there is no caret: the
+			// selection stays where it last was.
+			const to = this.#caretAt(e.clientX, e.clientY);
+			if (
+				to !== undefined &&
+				drag.caret !== undefined &&
+				Math.hypot(p.x - drag.start.x, p.y - drag.start.y) >= 3
+			)
+				this.#select(drag.caret, to);
+			return;
+		}
 		if (this.#tool === "pen") {
 			const last = drag.points.at(-1);
 			if (last === undefined || Math.hypot(p.x - last.x, p.y - last.y) >= 3)
@@ -500,6 +799,19 @@ export class MarkAdder {
 	#down(e: PointerEvent): void {
 		if (e.button !== 0 || this.#tool === null) return;
 		e.preventDefault();
+		// A double click's word waits for a third click only: any other press
+		// (a pin, beside a popover, elsewhere) gives it up (DEC-066).
+		const waiting = this.#clicks;
+		if (
+			waiting !== undefined &&
+			!(
+				this.#tool === "highlight" &&
+				Math.hypot(e.clientX - waiting.x, e.clientY - waiting.y) <= 4 &&
+				this.#editing === null &&
+				this.overlay.reviewAt(e.clientX, e.clientY) === undefined
+			)
+		)
+			this.#stopClicks();
 		if (this.#editing !== null) {
 			this.#commitComment();
 			return;
@@ -513,6 +825,25 @@ export class MarkAdder {
 		}
 		if (this.overlay.dismissPopover()) return;
 		const p = this.#toDocument(e);
+		if (this.#tool === "highlight") {
+			const why = this.#noTextAt(e.clientX, e.clientY);
+			const caret =
+				why === undefined ? this.#caretAt(e.clientX, e.clientY) : undefined;
+			if (caret === undefined) {
+				this.#message = why ?? NO_TEXT.nothing;
+				this.#renderToolbar();
+				this.overlay.doc.getSelection()?.removeAllRanges();
+				return;
+			}
+			if (this.#message !== "") {
+				this.#message = "";
+				this.#renderToolbar();
+			}
+			this.#select(caret, caret);
+			this.#drag = { pointerId: e.pointerId, start: p, points: [p], caret };
+			this.overlay.capture.setPointerCapture?.(e.pointerId);
+			return;
+		}
 		this.#drag = { pointerId: e.pointerId, start: p, points: [p] };
 		this.overlay.capture.setPointerCapture?.(e.pointerId);
 	}
@@ -583,6 +914,11 @@ export class MarkAdder {
 					markedElementAt(e.clientX, e.clientY, host),
 				);
 				break;
+			case "highlight": {
+				const range = this.#selection();
+				if (range !== undefined) this.#highlight(range);
+				break;
+			}
 			case null:
 				break;
 		}
@@ -613,6 +949,8 @@ export class MarkAdder {
 		shape: Shape,
 		element: Element | null,
 		ends?: { start: Element | null; end: Element | null },
+		highlight?: Draft["highlight"],
+		described?: ElementDetails,
 	): void {
 		const context = createContext(this.overlay.doc);
 		const details = (el: Element | null) =>
@@ -626,15 +964,17 @@ export class MarkAdder {
 			details:
 				element === null
 					? null
-					: withLook(
+					: (described ??
+						withLook(
 							describeElement(element, context),
 							element,
 							this.#scroll(),
 							this.overlay.host,
-						),
+						)),
 			...(ends === undefined
 				? {}
 				: { ends: { start: details(ends.start), end: details(ends.end) } }),
+			...(highlight === undefined ? {} : { highlight }),
 			anchor: element === null ? null : documentRect(element, this.#scroll()),
 			url: location.href,
 			scroll: this.#scroll(),
@@ -701,7 +1041,10 @@ export class MarkAdder {
 		const remove = doc.createElement("button");
 		remove.type = "button";
 		remove.dataset["action"] = "comment-remove";
-		remove.textContent = "Delete mark";
+		// This dialog opens once, as the mark is drawn: taking it back is a
+		// Cancel, not the deleting of a mark that was kept (the owner).
+		remove.textContent = "Cancel";
+		remove.title = "Take this mark back";
 		remove.addEventListener("click", () => {
 			this.#forget(draft);
 			this.#closeComment();
@@ -789,8 +1132,11 @@ export class MarkAdder {
 		});
 	}
 
-	/** A mark in window coordinates: with its element, if that is still there. */
-	#onWindow(draft: Draft): Shape {
+	/**
+	 * How far a mark's document coordinates are from the window's now: with
+	 * its element, if that is still there; `box`: the element's box then.
+	 */
+	#delta(draft: Draft): { x: number; y: number; box?: DOMRect } {
 		const s = this.#scroll();
 		const box = draft.element?.isConnected
 			? draft.element.getBoundingClientRect()
@@ -800,16 +1146,41 @@ export class MarkAdder {
 			draft.anchor === null ||
 			(box.width === 0 && box.height === 0)
 		)
-			return translateShape(draft.shape, -s.x, -s.y);
-		if (draft.shape.kind === "element") {
-			const { x, y, width, height } = box;
+			return { x: -s.x, y: -s.y };
+		return { x: box.x - draft.anchor.x, y: box.y - draft.anchor.y, box };
+	}
+
+	/** A mark in window coordinates: with its element, if that is still there. */
+	#onWindow(draft: Draft): Shape {
+		const d = this.#delta(draft);
+		if (draft.shape.kind === "element" && d.box !== undefined) {
+			const { x, y, width, height } = d.box;
 			return { kind: "element", rect: { x, y, width, height } };
 		}
-		return translateShape(
-			draft.shape,
-			box.x - draft.anchor.x,
-			box.y - draft.anchor.y,
-		);
+		return translateShape(draft.shape, d.x, d.y);
+	}
+
+	/** A highlight's line boxes in window coordinates, as `#onWindow` moves its box. */
+	#linesOnWindow(draft: Draft): Rect[] | undefined {
+		if (draft.highlight === undefined) return undefined;
+		const d = this.#delta(draft);
+		return draft.highlight.lines.map((r) => ({
+			...r,
+			x: r.x + d.x,
+			y: r.y + d.y,
+		}));
+	}
+
+	/** A mark as the overlay draws it now. */
+	#drawnNow(draft: Draft): RenderedMark {
+		const lines = this.#linesOnWindow(draft);
+		return {
+			number: draft.number,
+			shape: this.#onWindow(draft),
+			...(lines === undefined
+				? {}
+				: { lines, dark: draft.highlight?.dark === true }),
+		};
 	}
 
 	/** Marks whose element left (another route, a menu that closed) stay off the page. */
@@ -828,9 +1199,7 @@ export class MarkAdder {
 				? this.#hover.getBoundingClientRect()
 				: null;
 		const rendered = (marks: Draft[]) =>
-			marks
-				.filter((d) => this.#onPage(d))
-				.map((d) => ({ number: d.number, shape: this.#onWindow(d) }));
+			marks.filter((d) => this.#onPage(d)).map((d) => this.#drawnNow(d));
 		this.overlay.render(
 			rendered(this.#drafts),
 			this.#preview === null ? null : toWindow(this.#preview),
@@ -1215,8 +1584,9 @@ export class MarkAdder {
 	#shootLater(draft: Draft): void {
 		const same = !this.#scrolled && !this.#mutated;
 		const shape = this.#onWindow(draft);
+		const lines = this.#linesOnWindow(draft);
 		this.#shots = this.#shots
-			.then(() => this.#shoot(draft, same, shape))
+			.then(() => this.#shoot(draft, same, shape, lines))
 			.catch((error: unknown) => {
 				draft.shotError = errorText(error);
 				this.#message = `No screenshot of mark ${draft.number} yet: ${draft.shotError}`;
@@ -1224,12 +1594,21 @@ export class MarkAdder {
 			});
 	}
 
-	async #shoot(draft: Draft, same: boolean, drawn: Shape): Promise<void> {
+	async #shoot(
+		draft: Draft,
+		same: boolean,
+		drawn: Shape,
+		lines: Rect[] | undefined,
+	): Promise<void> {
 		if (draft.shot !== undefined || !this.#drafts.includes(draft)) return;
 		const shown = this.#shown;
 		if (same && shown !== undefined && shown.shot.url === draft.url) {
 			shown.marks.push(draft);
-			draft.shot = { view: shown, shape: drawn };
+			draft.shot = {
+				view: shown,
+				shape: drawn,
+				...(lines === undefined ? {} : { lines }),
+			};
 			return;
 		}
 		await this.#take(draft, drawn);
@@ -1291,6 +1670,7 @@ export class MarkAdder {
 			this.#unblur = this.#pageBlur.hold(this.#blurForms);
 			let image: CaptureResult;
 			let shape: Shape;
+			let lines: Rect[] | undefined;
 			let box: Rect | undefined;
 			let siblings: SiblingBox[] | undefined;
 			let scroll: Point;
@@ -1300,6 +1680,7 @@ export class MarkAdder {
 				await frame();
 				await frame();
 				shape = this.#onWindow(draft);
+				lines = this.#linesOnWindow(draft);
 				scroll = this.#scroll();
 				box = this.#boxOn(draft, scroll);
 				// The neighbours at the same moment as the box (DEC-048).
@@ -1335,6 +1716,7 @@ export class MarkAdder {
 			draft.shot = {
 				view,
 				shape,
+				...(lines === undefined ? {} : { lines }),
 				...(box ? { box } : {}),
 				...(siblings ? { siblings } : {}),
 			};
@@ -1426,7 +1808,9 @@ export class MarkAdder {
 
 	/** What the case stores for a draft that has its screenshot. */
 	#markOf(d: Draft): MarkDraft {
-		const { view, shape, box, siblings } = d.shot as NonNullable<Draft["shot"]>;
+		const { view, shape, lines, box, siblings } = d.shot as NonNullable<
+			Draft["shot"]
+		>;
 		return {
 			id: markIdOf(d.number),
 			number: d.number,
@@ -1438,6 +1822,21 @@ export class MarkAdder {
 			// its neighbours as they were then, not when it was drawn (DEC-048).
 			element: d.details && box ? atShot(d.details, box, siblings) : d.details,
 			...(d.ends === undefined ? {} : { ends: d.ends }),
+			// The text and its lines where the shot shows them (DEC-066).
+			...(d.highlight === undefined || lines === undefined
+				? {}
+				: {
+						highlight: {
+							text: d.highlight.text,
+							...(d.highlight.before === undefined
+								? {}
+								: { before: d.highlight.before }),
+							...(d.highlight.after === undefined
+								? {}
+								: { after: d.highlight.after }),
+							rects: lines,
+						},
+					}),
 			cropRect: cropRectFor(shapeBounds(shape), view.shot.viewport),
 		};
 	}
@@ -1633,7 +2032,19 @@ export class MarkAdder {
 					d.shot !== undefined &&
 					d.number < draft.number &&
 					this.#added.includes(d)
-						? [{ shot: view.shot.id, number: d.number, shape: d.shot.shape }]
+						? [
+								{
+									shot: view.shot.id,
+									number: d.number,
+									shape: d.shot.shape,
+									...(d.shot.lines === undefined
+										? {}
+										: {
+												lines: d.shot.lines,
+												dark: d.highlight?.dark === true,
+											}),
+								},
+							]
 						: [],
 				);
 				try {

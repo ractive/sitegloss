@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
-import type { Page } from "./browser.ts";
+import { type Page, SLOW } from "./browser.ts";
 import {
 	browserBinary,
 	type Harness,
@@ -17,6 +17,7 @@ import { fullTest } from "./mode.ts";
 import {
 	countColour,
 	type Db,
+	dialogField,
 	imagesOf,
 	keyboardTarget,
 	markElement,
@@ -64,14 +65,28 @@ const drawnAre = async (
 	expect(got).toEqual(want);
 };
 
-const pressEscape = async (page: Page) => {
-	for (const type of ["keyDown", "keyUp"])
-		await page.send("Input.dispatchKeyEvent", {
-			type,
-			key: "Escape",
-			code: "Escape",
-			windowsVirtualKeyCode: 27,
-		});
+/**
+ * Escape in the open dialog's comment field. Its keydown closes the dialog,
+ * and the field's frame goes with it (DEC-064); the keyup comes once the
+ * frame is gone, and lands in the page, as a person's does. A keyup Chrome
+ * routed to the frame as it went would get no answer from Chrome at all.
+ */
+const escapeTheField = async (h: Harness, page: Page) => {
+	const field = await dialogField(page);
+	const key = { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 };
+	await page.send("Input.dispatchKeyEvent", { type: "keyDown", ...key });
+	const timeoutMs = 5000 * SLOW;
+	await until(
+		async () =>
+			(await h.browser.targets()).some((t) => t.targetId === field.targetId),
+		(there) => !there,
+		timeoutMs,
+	).catch(() => {
+		throw new Error(
+			`the comment field's frame is still there ${timeoutMs} ms after Escape`,
+		);
+	});
+	await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...key });
 };
 
 /** The toolbar's buttons, by what they say. */
@@ -203,7 +218,7 @@ inBothSets("adding marks to a case", () => {
 		await page.click(shadow('[data-action="tool-note"]'));
 		await page.click(`document.querySelector("[data-truth=tip]")`);
 		await typeInField(page, "Say how much");
-		await pressEscape(page);
+		await escapeTheField(h, page);
 		await page.waitFor(`${status} === "Mark 3 added to “Straight in”"`, 20_000);
 		await panel.waitFor(`document.querySelectorAll(".mark").length === 3`);
 

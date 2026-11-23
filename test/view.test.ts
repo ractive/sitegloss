@@ -3772,6 +3772,42 @@ describe("the thread and closing (DEC-046)", () => {
 		expect(done).toEqual(["add Checked on staging m1"]);
 	});
 
+	test("a comment's text is laid out as written: paragraphs apart, list lines beside their marker, every character of every line kept and none read as markup", async () => {
+		const { commentBlocks } = await import("../src/sidepanel/thread-view.ts");
+		const laid = (text: string) =>
+			commentBlocks(text).flatMap((b) =>
+				b.getAttribute("role") === "list"
+					? [...b.children].map((li) => `li:${li.textContent}`)
+					: [`p:${b.textContent}`],
+			);
+		expect(
+			laid(
+				"Done: <b>24</b> of 25.\r\nSee https://shop.example/x  \n\n\n- one\n  - nested,  two  blanks\n* **not bold**\n\n1. first\n2)\tsecond\nlast line",
+			),
+		).toEqual([
+			"p:Done: <b>24</b> of 25.\nSee https://shop.example/x  ",
+			"li:- one",
+			"li:  - nested,  two  blanks",
+			"li:* **not bold**",
+			"li:1. first",
+			"li:2)\tsecond",
+			"p:last line",
+		]);
+		// No list where none was written, and no element out of the text.
+		expect(laid("1.5 km\n-5 degrees\n-\nA - B")).toEqual([
+			"p:1.5 km\n-5 degrees\n-\nA - B",
+		]);
+		expect(
+			commentBlocks("<b>x</b> [a](https://shop.example)").some(
+				(b) => b.querySelector("b, a") !== null,
+			),
+		).toBe(false);
+		// A long line of blanks costs no more than its length.
+		const t = performance.now();
+		commentBlocks(`- ${" ".repeat(20_000)}x\u2028`);
+		expect(performance.now() - t).toBeLessThan(50);
+	});
+
 	test("a mark shows its last three comments, the earlier ones folded (as the web's markThread)", async () => {
 		const { markThreadShown } = await import("../src/sidepanel/thread-view.ts");
 		expect(markThreadShown([1, 2, 3, 4, 5], false)).toEqual({

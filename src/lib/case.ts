@@ -98,14 +98,147 @@ export interface Viewport {
 }
 
 /** A mark, in CSS pixels of its screenshot (or of the document while drawing). */
-export type Shape =
+export type Shape = KnownShape | UnknownShape;
+
+/** The shapes this version draws. */
+export type KnownShape =
 	| { kind: "element"; rect: Rect }
 	| { kind: "box"; rect: Rect }
 	| { kind: "arrow"; from: Point; to: Point }
 	| { kind: "pen"; points: Point[] }
 	| { kind: "note"; at: Point };
 
+/**
+ * A shape of a kind this version does not know (DEC-066): made with a newer
+ * Sitegloss, through a file or a team. The mark is kept with it, `given`
+ * exactly as it came, and given back so (`shapeOut`) in a file and to the
+ * server: nothing is lost, nothing is refused. It is not drawn. Only here,
+ * in memory and in this browser's store; read again, it is looked at anew
+ * (`validateCase`), so a version that knows the kind draws it.
+ */
+export interface UnknownShape {
+	kind: "unknown";
+	given: { kind: string } & Record<string, unknown>;
+}
+
 export type ShapeKind = Shape["kind"];
+
+/**
+ * A name a kind of shape may have (DEC-066): the rule for one this version
+ * does not know, in a file and from the server alike. 1 to 64 characters,
+ * any but control characters.
+ */
+export const isKindName = (kind: unknown): kind is string =>
+	typeof kind === "string" &&
+	kind.length >= 1 &&
+	kind.length <= 64 &&
+	![...kind].some((ch) => {
+		const code = ch.charCodeAt(0);
+		return code < 0x20 || code === 0x7f;
+	});
+
+/**
+ * The most a shape of an unknown kind may hold, and an unknown field, as
+ * JSON (DEC-066): a pen stroke of 5000 points is under 200 KB.
+ */
+export const MAX_UNKNOWN_SHAPE = 256 * 1024;
+export const MAX_EXTRA = 16 * 1024;
+/** The most unknown fields kept on one case, screenshot or mark, and on a whole case together (as JSON). */
+export const MAX_EXTRA_KEYS = 32;
+export const MAX_EXTRAS = 256 * 1024;
+
+/** A shape as a file and the server have it: an unknown one as it came. */
+export const shapeOut = (shape: Shape): Shape | UnknownShape["given"] =>
+	shape.kind === "unknown" ? shape.given : shape;
+
+/** The kind a mark's shape has in a file or at the server, an unknown one's too. */
+export const givenKind = (shape: Shape): string =>
+	shape.kind === "unknown" ? shape.given.kind : shape.kind;
+
+/**
+ * A mark made by selecting text on the page (DEC-066; the server's DEC-040):
+ * the shape is a box round `rects`, and this says which text it was. A
+ * client that does not know it sees the box with the same comment.
+ */
+export interface Highlight {
+	/** The selected text, whitespace collapsed: 1 to 500 characters. */
+	text: string;
+	/** The text right before it in its element: at most 32 characters. */
+	before?: string;
+	/** The text right after it in its element: at most 32 characters. */
+	after?: string;
+	/** Its line boxes, top to bottom, in the shape's coordinates: 1 to 40. */
+	rects: Rect[];
+}
+
+/** What a highlight may hold: the server's limits (its `HIGHLIGHT_LIMITS`). */
+export const HIGHLIGHT_LIMITS = {
+	text: 500,
+	context: 32,
+	rects: 40,
+} as const;
+
+const finiteRect = (v: unknown): v is Rect => {
+	if (typeof v !== "object" || v === null) return false;
+	const r = v as Record<string, unknown>;
+	return [r["x"], r["y"], r["width"], r["height"]].every(
+		(n) => typeof n === "number" && Number.isFinite(n),
+	);
+};
+
+/** Whether `r` lies inside `box`, give or take 4 px (the server's tolerance). */
+function within(r: Rect, box: Rect): boolean {
+	// A box drawn right to left has a negative size: its edges, as the server reads them.
+	const left = Math.min(box.x, box.x + box.width);
+	const right = Math.max(box.x, box.x + box.width);
+	const top = Math.min(box.y, box.y + box.height);
+	const bottom = Math.max(box.y, box.y + box.height);
+	return (
+		r.x >= left - 4 &&
+		r.y >= top - 4 &&
+		r.x + r.width <= right + 4 &&
+		r.y + r.height <= bottom + 4
+	);
+}
+
+/**
+ * A highlight within what a case and the server keep, or none: all of it or
+ * nothing, and the mark kept either way, as the server does (an extra, like
+ * an element's look; DEC-021 there). Only on a box.
+ */
+export function highlightWithin(
+	v: unknown,
+	shape: Shape,
+): Highlight | undefined {
+	if (shape.kind !== "box" || typeof v !== "object" || v === null)
+		return undefined;
+	const o = v as Record<string, unknown>;
+	const { text, before, after, rects } = o;
+	const context = (s: unknown) =>
+		s === undefined ||
+		(typeof s === "string" && textLength(s) <= HIGHLIGHT_LIMITS.context);
+	if (
+		typeof text !== "string" ||
+		text.trim() === "" ||
+		textLength(text) > HIGHLIGHT_LIMITS.text ||
+		!context(before) ||
+		!context(after) ||
+		!Array.isArray(rects) ||
+		rects.length < 1 ||
+		rects.length > HIGHLIGHT_LIMITS.rects ||
+		!rects.every(finiteRect) ||
+		// Each a box of its own, inside the shape's (4 px of tolerance): the
+		// server's rule too.
+		!rects.every((r) => r.width > 0 && r.height > 0 && within(r, shape.rect))
+	)
+		return undefined;
+	return {
+		text,
+		...(typeof before === "string" ? { before } : {}),
+		...(typeof after === "string" ? { after } : {}),
+		rects: rects.map(({ x, y, width, height }) => ({ x, y, width, height })),
+	};
+}
 
 /** What Sitegloss knows about a mark's element (see element.ts). */
 export interface ElementDetails {
@@ -424,6 +557,12 @@ export interface Mark {
 	 * `element` stays the element the mark is about (an arrow's: its head's).
 	 */
 	ends?: MarkEnds;
+	/**
+	 * The text it marks, for a mark made with the Highlight tool (DEC-066):
+	 * its shape is a box round the text's lines, its element the one that
+	 * holds all of the text. Set once, with the mark.
+	 */
+	highlight?: Highlight;
 }
 
 /**
@@ -908,9 +1047,11 @@ export function nextNumbers(c: Case | undefined): {
 	};
 }
 
-/** The smallest rectangle around a shape. */
+/** The smallest rectangle around a shape; an unknown one has none (a zero box at 0, 0). */
 export function shapeBounds(shape: Shape): Rect {
 	switch (shape.kind) {
+		case "unknown":
+			return { x: 0, y: 0, width: 0, height: 0 };
 		case "element":
 		case "box":
 			return shape.rect;
@@ -973,8 +1114,20 @@ export function shapeOnBox(shape: Shape, from: Rect, to: Rect): Shape {
 			return { kind: "arrow", from: p(shape.from), to: p(shape.to) };
 		case "pen":
 			return { kind: "pen", points: shape.points.map(p) };
+		case "unknown":
+			return shape;
 	}
 }
+
+/** A highlight's lines moved by `dx`, `dy`. */
+export const translateHighlight = (
+	h: Highlight,
+	dx: number,
+	dy: number,
+): Highlight => ({
+	...h,
+	rects: h.rects.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy })),
+});
 
 /**
  * Which page an address is (DEC-038). A case lists each page once, and a page
@@ -1347,6 +1500,8 @@ export function translateShape(shape: Shape, dx: number, dy: number): Shape {
 			return { kind: "arrow", from: p(shape.from), to: p(shape.to) };
 		case "pen":
 			return { kind: "pen", points: shape.points.map(p) };
+		case "unknown":
+			return shape;
 	}
 }
 
@@ -1429,9 +1584,29 @@ function shape(v: unknown, path: string): Shape {
 			};
 		case "note":
 			return { kind: "note", at: point(o["at"], `${path}.at`) };
+		case "unknown": {
+			// As this browser keeps one (`UnknownShape`): looked at anew, so a
+			// kind this version knows is drawn again.
+			const given = o["given"];
+			if (typeof given === "object" && given !== null && !Array.isArray(given))
+				return shape(given, `${path}.given`);
+			return unknownShape(o, path);
+		}
 		default:
-			fail(`${path}.kind`, "unknown shape");
+			return unknownShape(o, path);
 	}
+}
+
+/**
+ * A shape of a kind this version does not know, kept as it came (DEC-066):
+ * a newer Sitegloss made it. Only a kind that is no name at all is refused.
+ */
+function unknownShape(o: Obj, path: string): UnknownShape {
+	const kind = o["kind"];
+	if (!isKindName(kind)) fail(`${path}.kind`, "must name a kind of shape");
+	if (JSON.stringify(o).length > MAX_UNKNOWN_SHAPE)
+		fail(path, `is larger than ${MAX_UNKNOWN_SHAPE / 1024} KB`);
+	return { kind: "unknown", given: { ...o, kind } };
 }
 
 function optionalString(o: Obj, key: string, path: string, out: Obj): void {
@@ -1497,9 +1672,97 @@ function language(v: unknown, path: string): string {
 	return s;
 }
 
+/**
+ * The keys a case, a screenshot and a mark have in this version. What else a
+ * file or this browser's store holds there is a newer Sitegloss's (DEC-066):
+ * kept as it is (`extrasOf`), so that a change and an export here give it
+ * back. Only at these three levels: an element's details stay their
+ * allow-list (DEC-009), and nothing kept so is shown, sent to the server or
+ * to an AI app, whose views name their fields.
+ */
+const CASE_KEYS = new Set([
+	"format",
+	"id",
+	"title",
+	"createdAt",
+	"updatedAt",
+	"page",
+	"pages",
+	"shots",
+	"marks",
+	"verdict",
+	"link",
+	"importedAt",
+	"lastNumber",
+	"closed",
+	"comments",
+	"summaryBy",
+	"via",
+	"createdVia",
+	"deletedVia",
+]);
+const SHOT_KEYS = new Set([
+	"id",
+	"image",
+	"scrollX",
+	"scrollY",
+	"viewport",
+	"capturedAt",
+	"url",
+	"query",
+]);
+const MARK_KEYS = new Set([
+	"id",
+	"number",
+	"shot",
+	"comment",
+	"author",
+	"shape",
+	"crop",
+	"element",
+	"ends",
+	"resolution",
+	"reopens",
+	"findings",
+	"images",
+	"heldImages",
+	"createdBy",
+	"createdVia",
+	"commentBy",
+	"via",
+	"highlight",
+]);
+
+/** A case's fields this version does not know (DEC-066), for code that rebuilds a case from its named fields. */
+export const caseExtras = (c: Case): Record<string, unknown> =>
+	extrasOf(c as unknown as Obj, CASE_KEYS, { left: MAX_EXTRAS });
+
+/** The fields of `o` this version does not know, as they are (`CASE_KEYS`). */
+function extrasOf(
+	o: Obj,
+	known: ReadonlySet<string>,
+	/** What the whole case may still keep (`MAX_EXTRAS`), shared by its parts. */
+	budget: { left: number },
+): Obj {
+	const out: Obj = {};
+	let keys = 0;
+	for (const [key, value] of Object.entries(o)) {
+		if (known.has(key) || value === undefined) continue;
+		// Bounded: what nothing here reads does not grow a case without end.
+		const size = key.length + (JSON.stringify(value)?.length ?? 0);
+		if (size > MAX_EXTRA || size > budget.left || keys >= MAX_EXTRA_KEYS)
+			continue;
+		out[key] = value;
+		budget.left -= size;
+		keys++;
+	}
+	return out;
+}
+
 /** Check that `value` is a case in format `sitegloss/2` and return it typed. */
 export function validateCase(value: unknown): Case {
 	const o = obj(value, "case");
+	const extras = { left: MAX_EXTRAS };
 	const format = o["format"];
 	if (format === OLD_CASE_FORMAT)
 		throw new CaseError(
@@ -1524,6 +1787,7 @@ export function validateCase(value: unknown): Case {
 		if (image !== shotImage(shotId))
 			fail(`case.shots[${i}].image`, `must be ${shotImage(shotId)}`);
 		return {
+			...extrasOf(s, SHOT_KEYS, extras),
 			id: shotId,
 			image,
 			scrollX: num(s["scrollX"], `case.shots[${i}].scrollX`),
@@ -1566,13 +1830,19 @@ export function validateCase(value: unknown): Case {
 		const author = a["author"];
 		if (author !== "user" && author !== "ai")
 			fail(`${p}.author`, `must be "user" or "ai"`);
+		const drawn = shape(a["shape"], `${p}.shape`);
+		const highlight = highlightWithin(a["highlight"], drawn);
 		return {
+			// What a newer Sitegloss wrote and this one does not know (DEC-066).
+			...extrasOf(a, MARK_KEYS, extras),
 			id: markId,
 			number,
 			shot,
 			comment: str(a["comment"], `${p}.comment`, MAX_COMMENT),
 			author,
-			shape: shape(a["shape"], `${p}.shape`),
+			shape: drawn,
+			// Outside the limits it goes, and the mark stays (the server's rule).
+			...(highlight === undefined ? {} : { highlight }),
 			crop,
 			element: element(a["element"], `${p}.element`),
 			...(a["ends"] === undefined
@@ -1632,6 +1902,7 @@ export function validateCase(value: unknown): Case {
 	const link = o["link"];
 	const pages = o["pages"];
 	return {
+		...extrasOf(o, CASE_KEYS, extras),
 		format: CASE_FORMAT,
 		id: id(o["id"], "case.id"),
 		title: str(o["title"], "case.title", MAX_TITLE),

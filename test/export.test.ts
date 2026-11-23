@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { Case, Finding, Mark } from "../src/lib/case.ts";
+import {
+	type Case,
+	type Finding,
+	type Mark,
+	pendingImage,
+	validateCase,
+	withComment,
+} from "../src/lib/case.ts";
 import type { Op } from "../src/lib/cloud/api.ts";
 import { emptyBook } from "../src/lib/cloud/book.ts";
 import { deriveOps } from "../src/lib/cloud/wire.ts";
@@ -17,6 +24,7 @@ import {
 	webpSize,
 } from "../src/lib/export.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
+import { saveCase } from "../src/lib/save.ts";
 import { type CaseStore, MemoryStore } from "../src/lib/store.ts";
 import { readZip, writeZip } from "../src/lib/zip.ts";
 import { putCase, sampleCase } from "./fixtures.ts";
@@ -1104,5 +1112,179 @@ describe("sizes of a file of all cases", () => {
 		await expect(
 			storeImport(new MemoryStore(), read[1] as (typeof read)[number]),
 		).rejects.toThrow("In case-1/:");
+	});
+});
+
+describe("what a newer Sitegloss wrote (DEC-066)", () => {
+	/** A case file as a newer version may write it: a kind of mark and fields this one does not know. */
+	const newer = (): Record<string, unknown> => ({
+		...sampleCase("c_new"),
+		board: { lane: "triage" },
+		shots: [
+			{
+				id: "s1",
+				image: "shots/s1.webp",
+				scrollX: 0,
+				scrollY: 0,
+				viewport: { width: 1280, height: 800, dpr: 2 },
+				capturedAt: "2026-11-04T10:00:00Z",
+				device: "phone",
+			},
+		],
+		marks: [
+			{
+				...mark(1),
+				shape: { kind: "circle", centre: { x: 40, y: 50 }, radius: 12 },
+				tilt: 3,
+			},
+			mark(2),
+		],
+	});
+
+	const zipOf = (c: Record<string, unknown>) =>
+		writeZip([
+			{
+				name: "case.json",
+				data: new TextEncoder().encode(JSON.stringify(c)),
+			},
+			...["shots/s1.webp", "crops/m1.webp", "crops/m2.webp"].map((name) => ({
+				name,
+				data: webpBytes(),
+			})),
+		]);
+
+	test("an unknown kind of mark is imported, changed and exported as it came, its unknown fields too", async () => {
+		const store = new MemoryStore();
+		const c = await importCase(store, await zipOf(newer()));
+		const [circle] = c.marks;
+		expect(circle?.shape).toEqual({
+			kind: "unknown",
+			given: { kind: "circle", centre: { x: 40, y: 50 }, radius: 12 },
+		});
+		// A change in the panel goes through the format's check again.
+		const changed = validateCase(
+			withComment(c, "m1", "Rounder", "2026-11-05T10:00:00Z"),
+		);
+		await putCase(store, changed);
+		const files = await readZip(await exportCase(store, changed));
+		const json = JSON.parse(new TextDecoder().decode(files.get("case.json")));
+		expect(json.board).toEqual({ lane: "triage" });
+		expect(json.shots[0].device).toBe("phone");
+		expect(json.marks[0].shape).toEqual({
+			kind: "circle",
+			centre: { x: 40, y: 50 },
+			radius: 12,
+		});
+		expect(json.marks[0].tilt).toBe(3);
+		expect(json.marks[0].comment).toBe("Rounder");
+		expect(new TextDecoder().decode(files.get("case.md"))).toContain(
+			"- Kind: circle, made with a newer Sitegloss",
+		);
+		// Shared with a team: API v1 takes no kind it does not name, so the
+		// mark waits here (a newer version sends it); the other one goes.
+		const { ops } = deriveOps(
+			changed,
+			emptyBook(changed.id, "synced", "team_1"),
+			() => ({
+				sha256: "0".repeat(64),
+				width: 10,
+				height: 10,
+				bytes: 30,
+			}),
+			(prefix) => `${prefix}_1`,
+		);
+		const created = ops.filter(
+			(op): op is Extract<Op, { type: "mark.create" }> =>
+				op.type === "mark.create",
+		);
+		expect(created.map((op) => op.mark.number)).toEqual([2]);
+		// Adding a mark rebuilds the case: what a newer version wrote stays.
+		await store.putImage(changed.id, pendingImage("p_new"), {
+			blob: new Blob([webpBytes() as Uint8Array<ArrayBuffer>]),
+			width: 10,
+			height: 10,
+		});
+		const added = await saveCase(
+			store,
+			{
+				caseId: changed.id,
+				isNew: false,
+				title: "",
+				page: changed.page,
+				shots: [
+					{
+						id: "p_new",
+						image: pendingImage("p_new"),
+						scrollX: 0,
+						scrollY: 0,
+						viewport: { width: 1280, height: 800, dpr: 2 },
+						capturedAt: "2026-11-05T10:00:00Z",
+					},
+				],
+				marks: [
+					{
+						...mark(3),
+						shot: "p_new",
+						cropRect: { x: 0, y: 0, width: 10, height: 10 },
+					},
+				],
+			},
+			async (_image, rects) =>
+				rects.map(() => ({ blob: new Blob(["c"]), width: 10, height: 10 })),
+		);
+		expect((added as unknown as { board: unknown }).board).toEqual({
+			lane: "triage",
+		});
+	});
+
+	test("unknown fields are bounded: 32 on one part, 16 KB each, 256 KB on a whole case", () => {
+		const many = Object.fromEntries(
+			Array.from({ length: 40 }, (_, i) => [`x${i}`, i]),
+		);
+		const big = "y".repeat(15 * 1024);
+		const kept = validateCase({
+			...newer(),
+			...many,
+			huge: "z".repeat(17 * 1024),
+			marks: Array.from({ length: 20 }, (_, i) => ({
+				...mark(i + 1),
+				note: big,
+			})),
+		});
+		const extras = (o: object, known: string[]) =>
+			Object.keys(o).filter((k) => !known.includes(k));
+		expect(
+			extras(kept, [...Object.keys(sampleCase()), "shots", "marks"]).length,
+		).toBeLessThanOrEqual(32);
+		expect("huge" in kept).toBe(false);
+		const notes = kept.marks.filter((a) => "note" in a).length;
+		expect(notes).toBeGreaterThan(10);
+		expect(notes).toBeLessThan(20);
+	});
+
+	test("a version that knows the kind draws it: the store's copy is looked at anew", () => {
+		const kept = validateCase({
+			...newer(),
+			marks: [
+				{
+					...mark(1),
+					shape: {
+						kind: "unknown",
+						given: { kind: "box", rect: { x: 1, y: 2, width: 3, height: 4 } },
+					},
+				},
+			],
+		});
+		expect(kept.marks[0]?.shape).toEqual({
+			kind: "box",
+			rect: { x: 1, y: 2, width: 3, height: 4 },
+		});
+		// No kind at all is no newer mark: the file is broken.
+		expect(() =>
+			validateCase({
+				...newer(),
+				marks: [{ ...mark(1), shape: { radius: 2 } }],
+			}),
+		).toThrow("must name a kind of shape");
 	});
 });

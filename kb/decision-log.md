@@ -3726,6 +3726,147 @@ list of a case's pages sat in the second column of the facts block, beside the l
   focus is in it hands the focus to the heading.
 - A case with one page keeps its address among the facts, under the label "Page".
 
+## DEC-066: The Highlight tool, and marks of a kind made with a newer Sitegloss
+
+2026-11-23. On `highlight`. The owner, with the logo's swipe behind "gloss": "I'd like to
+be able to highlight a text and then add a note to this highlighted text and this could
+then be marked like in the sitegloss logo." On the lead's proposal of a Highlight tool:
+"I like The 'highlighted' tool. Do it." On compatibility: "For now it's ok. But for the
+future, make it backwards compatible and load the mark somehow as 'Unknown' or however."
+The service's side is its DEC-040; the format both build to is one contract.
+
+- **The format.** A highlight is no new kind of shape: a mark with shape `box` (the box
+  round the text's lines) and an optional `highlight`: `text` (whitespace collapsed, 1 to
+  500 characters), `before` and `after` (at most 32 each, the text right around it in its
+  element), `rects` (1 to 40 line boxes, in the shape's coordinates, each with a width and
+  a height above zero and inside the shape's box, 4 px of tolerance). Its element is the
+  nearest element that holds all of the selection. Outside the limits the highlight is
+  dropped and the mark kept, here as at the server. A version that does not know the
+  field sees a box with the same comment.
+- **Selecting through the layer that takes the pointer.** The tools' layer covers the page
+  and stops every press there, so a page's link or button is never activated. For the
+  Highlight tool it stays: on the press and each move the place in the page's text under
+  the pointer is read with `caretPositionFromPoint` (`caretRangeFromPoint` where that is
+  missing) while the layer is let through for that synchronous call alone, and the page's
+  own selection is set to it (`setBaseAndExtent`). Over Sitegloss's own (a pin, the
+  toolbar) Chrome gives the caret as the host's place in its parent (measured: `(HTML, 3)`),
+  so a point where `elementFromPoint` is the host has no caret, and a drag keeps its last
+  one; a caret inside an editor is refused too, as setting the selection there focuses
+  it. A double click takes a word, a triple click a paragraph: counted by `click`, since
+  `pointerdown`'s `detail` is 0 in Chrome (measured, presses 1 to 3); a double click waits
+  450 ms for a third before it takes its word, or its dialog would be closed by the third
+  press. A selection made before the tool is chosen counts too, taken at the press of the
+  button (the press would clear it). Probed in Chrome, listeners of the page
+  in the capture phase on `window`: during a drag the page hears `pointerdown`,
+  `pointermove`, `pointerup` and `click` retargeted to Sitegloss's host (as with every
+  tool), no `mousedown`, and `selectionchange`; it can read which of its own text is
+  selected, as with any selection. Typing the comment it hears no key (the field's frame,
+  DEC-064). The selection is cleared when the dialog opens. Nothing typed into fields and
+  editors is read: such text cannot be highlighted, and their text is left out of
+  `before` and `after`.
+- **Limits, said in the toolbar.** Text in a form field, an editor, an image, a canvas,
+  an SVG, a frame or a component's shadow root (the caret does not reach into one): the
+  dialog does not open, the hint names the Box tool. Text that is there but shows nowhere
+  says so. An element's text is read up to 50,000 text nodes with words (one look at that many: about 66 ms in Chrome; 200,000 took 337 ms); past that a
+  selection says it reaches too far, and a quote not found is not called changed. A selection
+  longer than 500 characters or 40 lines is cut to that and the toolbar says so. Frames
+  as for the other tools: the page's top document only.
+- **The stroke (decided here).** The logo's swipe (`swipe` in `logo.ts`: its uneven
+  corners and its lean) round each line box, a little wider than the text, in the logo's
+  amber. It turns as the swipe does only as far as its ends move no more than the logo's,
+  or a long line would climb onto the next. The pin sits just left of the first line,
+  centred on it: above it, it covered the line before; on it, the first letters. On a
+  light ground the stroke is multiplied with the page, in a layer of its own outside the
+  overlay's stacking context (inside it, there is nothing to multiply with); on a dark
+  ground (the element's backdrop below the luminance where black and white text are equal)
+  it is laid over the page at 30 % opacity. Text under it, measured (a unit test holds
+  it): ink #1b2130 on white 16.1:1 becomes 9.8:1, grey #535c6e 6.7:1 becomes 5.5:1, #767676
+  4.5:1 becomes 3.9:1 (as under a real marker); #eceef3 on #121212 16.1:1 becomes 7.1:1,
+  on #1b2130 13.8:1 becomes 6.1:1. 40 % was the first choice; it took light text on the
+  ink colour down to 4.5:1. The same stroke is painted into the screenshot and the crop.
+- **States (decided here).** The stroke stays amber in every state: it is the highlight.
+  The pin takes the status colour, as every mark's; verified and dismissed fade the
+  stroke as they fade every mark; an unsure match (probable, a tie, the text changed) adds
+  a dashed edge in the status colour round each line, as the other marks are dashed;
+  the mark looked for adds a solid one. Not found: not drawn, as before.
+- **Finding it again.** The element as for every mark, then the text in it (`quoteIn`:
+  of several places, the one whose text around it is most like `before` and `after`),
+  drawn on the lines that text has now, from a live range. Where the text is not in the
+  element any more, often the fix itself, the element is drawn as a box, a found match is
+  only probable (`textChanged` in the match), and the panel says "Text changed" and why.
+  While the case is drawn, a change under the live range (it collapsed, left the page, or
+  holds other text: a fix that set one of its text nodes) has it looked for again. A text
+  that was gone is looked for again only after the page changed (a MutationObserver
+  counts changes, Sitegloss's own host left out), one such highlight every 2 s, in turn:
+  each look reads all of its element's text. Show, and an AI app's add_mark, scroll to the
+  text's first line in every pane it is inside (innermost first), then the window; text
+  that shows nowhere scrolls its element into view. A highlight in an element too long to
+  read says so in the panel ("Text not looked for") and to an AI app (`textUnread`).
+- **Where it shows.** The panel's row quotes the text on one line, cut, beside the status;
+  the toolbar names the tool with a tooltip; get_case carries the highlight (its text and
+  the number of lines in a large case); add_mark takes an optional `text` to highlight
+  inside the selector's element; the match views say `textChanged`; case.md has
+  "Highlighted text:" as the server's does; files and the team carry it as is.
+- **Marks of a kind this version does not know.** Until now a file or a team's case with
+  one was refused ("unknown shape") and that case stopped syncing. Now such a shape is
+  kept as `{ kind: "unknown", given }`, `given` exactly as it came; a file and the server
+  get `given` back (`shapeOut`), and a read looks at it anew, so a version that knows the
+  kind draws it. The mark is listed with its number, comment, status and thread, named
+  "Newer kind" with a hint to update, and can be commented, settled and reopened; it is
+  not drawn and has no pin on the page (its element is outlined while it is looked for);
+  Show is not offered when it has no element. A shape without a kind's name (1 to 64
+  characters, no control characters), or larger than 256 KB, is still refused: that is a
+  broken file, not a newer one; from the server a kind without such a name is kept under
+  "unnamed", and a shape over the size as its kind alone (the server keeps all of it).
+  **Not sent to a team that does not have it**: API v1 takes only the kinds it names, so
+  `mark.create` would be refused for good. Such a mark waits here, comments about it wait
+  with it, and the sync counts both as nothing to send; a newer version sends them. The panel's hint says so.
+- **Unknown fields, where they survive.** `validateCase` keeps every field it does not
+  know on a case, a screenshot and a mark (it ran on every change, so they were lost on
+  the first comment), each up to 16 KB as JSON, at most 32 on one part and 256 KB on a
+  whole case; what is over is left out without a word (the import has no place for such a
+  note, and no version writes fields that large). So they survive an import, a change in the
+  panel, adding a mark (`saveCase` carries the case's), the store and an export. Not on an element's details, whose allow-list is a privacy rule (DEC-009), nor
+  inside a resolution, a finding, a comment or an image. They are never sent: the sync
+  builds what it sends from known fields, and a teammate's mark comes in from the
+  server's known fields only. An AI app's views name their fields, so it sees none of
+  them. **A rule for later versions:** a field from a file is kept unmarked, so a field
+  that only the browser may write (as `via` and `createdVia` now) cannot be told from one
+  a crafted file brought, once a later version knows it. Such a field must be dropped on
+  import by name, as `storeImport` drops those of today, and dropped again when read
+  from a case that has `importedAt`, unless the field is about something done here after
+  the import.
+- **What the released version (0.3.1) does with a highlight.** Its case format is the old
+  one; a file of this version is refused by it, and the other way round. Through the
+  team: it drops `highlight` when it takes in a teammate's mark, but what it sends of a
+  change to that mark (comment, status, findings) is a `mark.patch` that does not carry
+  it, and the server keeps it. Only a `mark.create` built by 0.3.1 (a mark the server
+  does not have) comes without it, which a teammate's existing highlight never needs. A
+  highlight made now is therefore not lost by a teammate on 0.3.1; they see a box.
+- **case.md and page text.** `inline()` now also escapes a scheme's colon before `//`,
+  the dot after `www` and `@`, as the server's does: a previewer makes no live link of an
+  address in someone else's text (highlighted text, titles, element names).
+- **What remains.** Auto-scrolling while dragging near the window's edge, as a native
+  selection does, is not built. Text in a component's shadow root and in frames cannot be
+  selected with the tool (refused with a hint). Firefox runs the same code (it has `caretPositionFromPoint`)
+  and was not driven through a highlight by hand.
+
+## DEC-068: tab-mcp client 0.23.0: the WebMCP mirror, on by default there, stays off here (owner)
+
+2026-11-23. The owner: "yes, bump it to 0.23.0". `@ractive-ch/tab-mcp-client` goes from
+0.22.0 to 0.23.0; the relay used by the tests stays `@ractive-ch/tab-mcp` 0.13.3, its
+latest. (DEC-067 is taken by the panel's pages grouped by site, which is on a branch.)
+
+- **Breaking in the library (its DEC-222): `webmcp` is on by default.** A `TabMcp` then
+  also registers its tools with the browser's WebMCP in its own document. Sitegloss has
+  one `TabMcp`, in the service worker (`src/worker/connection.ts`), and it now says
+  `webmcp: false`: its tools are for the AI apps that connect over the relay, not for
+  whatever calls WebMCP in an extension's document, and the mirror is a chunk loaded
+  with `import()`, which a service worker refuses and the build test forbids. Nothing
+  changes for a user: the mirror was off before, by the old default (DEC-062).
+- **Not reached:** several `TabMcp` of one app in a page now tell the tab-mcp browser
+  extension one list of AI apps. Sitegloss has one, and not in a page.
+
 ## DEC-067: A case's sites: on its card, and its pages grouped by site in its head (owner, a try)
 
 2026-11-23. The owner: "To make word 'site' of the name 'sitegloss' appear somewhere, let's
