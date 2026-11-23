@@ -2253,7 +2253,7 @@ const actions: Actions = {
 
 	verifyMark(c, a) {
 		const now = new Date().toISOString();
-		void changeMark(c, a, (current, id) => ({
+		return changeMark(c, a, (current, id) => ({
 			value: withVerified(current, id, undefined, now),
 		}));
 	},

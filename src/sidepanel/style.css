@@ -2376,6 +2376,92 @@ ol.marks {
 	}
 }
 
+/*
+ * A Verify (DEC-061): at the press the row says "verified" (its status colour
+ * is set by the panel at once) and its body closes in a short fade; the next
+ * mark to verify opens with the same ease and a highlight that fades in about
+ * a second, drawn once on the node the Verify opened. Opacity and transform
+ * only; the highlight has a border, so that forced colours show it too.
+ */
+.mark[data-verifying],
+.mark[data-verifying] .pill {
+	--tone: var(--st-verified);
+	--tint: var(--st-verified-bg);
+}
+
+.mark[data-verifying] .pill::before {
+	content: "✓" / "";
+}
+
+.mark[data-verifying] .body {
+	animation: verify-close 160ms ease-in forwards;
+}
+
+.mark[data-verifying] :is(.head-verify, [data-mark-action="verify"]) {
+	opacity: 0.6;
+}
+
+.mark[data-arrived] .body {
+	animation: verify-open 200ms ease-out var(--cue-elapsed, 0ms);
+}
+
+.mark[data-arrived] > .mark-head::after {
+	content: "";
+	position: absolute;
+	inset: 0 var(--s2);
+	border: 2px solid var(--accent-edge);
+	border-radius: var(--r-card);
+	background: color-mix(in srgb, var(--accent) 20%, transparent);
+	pointer-events: none;
+	animation: verify-glow 1s ease-out var(--cue-elapsed, 0ms) forwards;
+}
+
+@keyframes verify-close {
+	to {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+}
+
+@keyframes verify-open {
+	from {
+		opacity: 0;
+		transform: translateY(-6px);
+	}
+}
+
+@keyframes verify-glow {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+/* Without movement: the body fades only; the highlight is the same fade. */
+@media (prefers-reduced-motion: reduce) {
+	.mark[data-verifying] .body {
+		animation-name: verify-close-still;
+	}
+
+	.mark[data-arrived] .body {
+		animation-name: verify-open-still;
+	}
+}
+
+@keyframes verify-close-still {
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes verify-open-still {
+	from {
+		opacity: 0;
+	}
+}
+
 /* The whole head opens and closes the mark; Show sits beside it. */
 .mark-toggle {
 	flex: 1;
