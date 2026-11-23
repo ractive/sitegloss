@@ -176,11 +176,14 @@ inBothSets("marking and saving", () => {
 			`${shadow('[data-role="status"]')}?.textContent === "Mark 3 added to “Krankenkasse vergleichen (v1)”"`,
 			20_000,
 		);
+		// The loaded case finds all three; of them only what is in the
+		// window is drawn (DEC-075): 1 and 2 are scrolled away above.
+		await page.waitFor(`${shadow("svg.marks")}.dataset.found === "1,2,3"`);
 		expect(
 			await page.eval<string[]>(
 				`[...new Set([...${shadow("svg.marks")}.querySelectorAll("g[data-number], [data-review]")].map((g) => g.dataset.number ?? g.dataset.review))].sort()`,
 			),
-		).toEqual(["1", "2", "3"]);
+		).toEqual(["3"]);
 
 		// The title, as a person types it in the panel's Rename.
 		await saveAs(page, "Prämienrechner");
@@ -510,6 +513,8 @@ inBothSets("marking and saving", () => {
 					`${row("m2")}.querySelector(".history").textContent`,
 				),
 			).toMatch(/^Won't fix .+ · Legal wants it$/);
+			// Marks 1 and 2 at the top: a mark is drawn only in view (DEC-075).
+			await v1.page.eval("window.scrollTo(0, 0)");
 			await v1.page.waitFor(`${review(2)}?.hasAttribute("data-resolved")`);
 			// Its outline fades; its pin stays solid, to be found.
 			expect(
@@ -570,7 +575,9 @@ inBothSets("marking and saving", () => {
 					`document.getElementById("case-hint").textContent`,
 				),
 			).not.toContain("Not saved");
-			await v1.page.waitFor(`${review(3)} === null`);
+			await v1.page.waitFor(
+				`${shadow("svg.marks")}.dataset.found === "1,2" && ${review(3)} === null`,
+			);
 			expect(await v1.page.eval<string>(bar)).toBe("1 of 1 found");
 			const db = await h.control.eval<Db>(READ_DB);
 			const saved = db.cases.find((c) => c.title === "Settled marks");
@@ -888,11 +895,10 @@ inFullSet("loading in another environment", () => {
 					),
 				).toBe(truth);
 			}
+			// Found, drawn where in view (DEC-075).
 			expect(
-				await v2.page.eval<number>(
-					`${shadow("svg.marks")}.querySelectorAll("[data-review]").length`,
-				),
-			).toBe(3);
+				await v2.page.eval<string>(`${shadow("svg.marks")}.dataset.found`),
+			).toBe("1,2,3");
 
 			// "Show" scrolls the page to the contact paragraph.
 			await h.control.eval(
@@ -905,11 +911,10 @@ inFullSet("loading in another environment", () => {
 			// Marks drawn while a case is loaded: its outlines stay out of the screenshot.
 			await showToolbar(h, v2.page, v2.tabId);
 			await markElement(v2.page, "[data-truth=tip]", "Still unclear");
+			// Found, drawn where in view (DEC-075).
 			expect(
-				await v2.page.eval<number>(
-					`${shadow("svg.marks")}.querySelectorAll("[data-review]").length`,
-				),
-			).toBe(3);
+				await v2.page.eval<string>(`${shadow("svg.marks")}.dataset.found`),
+			).toBe("1,2,3");
 			// The panel shows the loaded case, not this toolbar's: named as setup.
 			await nameCase(
 				h,
