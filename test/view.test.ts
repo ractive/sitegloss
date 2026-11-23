@@ -23,6 +23,7 @@ let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
 let ago: (iso: string, now?: number) => string;
 let webAppNote: (state: PanelState) => string | undefined;
 let TALKING_AFTER_MS: number;
+let holdTalkingFor: (ms: number) => void;
 let pagePath: (url: string) => string;
 let noneFoundText: (
 	c: Case,
@@ -59,6 +60,7 @@ beforeAll(async () => {
 		webAppNote,
 		noneFoundText,
 		TALKING_AFTER_MS,
+		holdTalkingFor,
 		pagePath,
 	} = await import("../src/sidepanel/view.ts"));
 	({ ago } = await import("../src/sidepanel/cloud-view.ts"));
@@ -4075,6 +4077,9 @@ describe("the AI app", () => {
 		const c = sampleCase("c_talk");
 		const on = { active: true, connected: true, apps: 1 };
 		const talking = () => "talking" in el("ai-button").dataset;
+		// The real hold is seconds long (TALKING_AFTER_MS): not sat out here.
+		const HOLD = 60;
+		holdTalkingFor(HOLD);
 		render(caseState(c, ai({ ...on, status: "Connected: Claude" })), noActions);
 		expect(talking()).toBe(false);
 		const name = () => el("ai-button").textContent;
@@ -4091,7 +4096,7 @@ describe("the AI app", () => {
 		);
 		// A moment after the call: still on, then off.
 		expect(talking()).toBe(true);
-		await Bun.sleep(TALKING_AFTER_MS + 50);
+		await Bun.sleep(HOLD + 50);
 		expect(talking()).toBe(false);
 		// The connection drops while the glow is on: it goes at once, not a
 		// moment after, beside a dot that is no longer green.
@@ -4123,6 +4128,8 @@ describe("the AI app", () => {
 			noActions,
 		);
 		expect(talking()).toBe(false);
+		// The hold as shipped, for whatever renders a talking chip after this.
+		holdTalkingFor(TALKING_AFTER_MS);
 	});
 
 	test("its connection shows in the case view too; no Stop in the top bar, the pill leads to the switch (DEC-061)", () => {
