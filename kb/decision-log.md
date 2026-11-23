@@ -3850,3 +3850,19 @@ The service's side is its DEC-040; the format both build to is one contract.
   selection does, is not built. Text in a component's shadow root and in frames cannot be
   selected with the tool (refused with a hint). Firefox runs the same code (it has `caretPositionFromPoint`)
   and was not driven through a highlight by hand.
+
+## DEC-068: tab-mcp client 0.23.0: the WebMCP mirror, on by default there, stays off here (owner)
+
+2026-11-23. The owner: "yes, bump it to 0.23.0". `@ractive-ch/tab-mcp-client` goes from
+0.22.0 to 0.23.0; the relay used by the tests stays `@ractive-ch/tab-mcp` 0.13.3, its
+latest.
+
+- **Breaking in the library (its DEC-222): `webmcp` is on by default.** A `TabMcp` then
+  also registers its tools with the browser's WebMCP in its own document. Sitegloss has
+  one `TabMcp`, in the service worker (`src/worker/connection.ts`), and it now says
+  `webmcp: false`: its tools are for the AI apps that connect over the relay, not for
+  whatever calls WebMCP in an extension's document, and the mirror is a chunk loaded
+  with `import()`, which a service worker refuses and the build test forbids. Nothing
+  changes for a user: the mirror was off before, by the old default (DEC-062).
+- **Not reached:** several `TabMcp` of one app in a page now tell the tab-mcp browser
+  extension one list of AI apps. Sitegloss has one, and not in a page.
