@@ -273,7 +273,17 @@ export type WorkerRequest =
 	 * of the case once the mark is in it. A page can read an image pasted or
 	 * dropped in the page, so the panel takes them.
 	 */
-	| { type: "panel:images"; caseId: string; number: number }
+	| {
+			type: "panel:images";
+			caseId: string;
+			number: number;
+			/**
+			 * What the panel opens for the mark: its image dialog (the
+			 * default), or its comment, resolve or reopen form, where the
+			 * page's own field could not load (DEC-064).
+			 */
+			what?: PanelMarkWhat;
+	  }
 	/**
 	 * From the side panel: the mark the page's "Add another image…" left, taken
 	 * (answered as `ImagesForAnswer`, then forgotten). The panel touches no
@@ -301,8 +311,18 @@ export interface ImagesForAnswer {
 /** Where the worker leaves the panel's next "Add images" (DEC-063), in session storage. */
 export const IMAGES_FOR_KEY = "sitegloss.imagesFor";
 
+/** What the side panel is asked to open for a mark of the page. */
+export type PanelMarkWhat = "images" | "comment" | "resolve" | "reopen";
+export const PANEL_MARK_WHAT: readonly PanelMarkWhat[] = [
+	"images",
+	"comment",
+	"resolve",
+	"reopen",
+];
+
 /** What `IMAGES_FOR_KEY` holds: the mark of which case, from which tab, when. */
 export interface ImagesFor {
+	what?: PanelMarkWhat;
 	caseId: string;
 	number: number;
 	tabId: number;

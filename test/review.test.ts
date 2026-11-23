@@ -35,7 +35,7 @@ function textField(popover: HTMLElement) {
 			f.receive({ type: "input", value });
 		},
 		getAttribute: (name: string) =>
-			name === "aria-label" ? f.element.title : null,
+			name === "aria-label" ? f.frame.title : null,
 		dispatchEvent(e: Event) {
 			if (e.type === "keydown" && (e as KeyboardEvent).key === "Escape")
 				f.receive({ type: "escape", value: f.value });

@@ -196,15 +196,19 @@ function start(): void {
 	const overlay = new Overlay(document);
 	const adder = new MarkAdder(overlay, pageBlur, activity);
 	const reviewer = new Reviewer(overlay);
-	adder.onAddImages = (caseId, number) => {
+	adder.onAddImages = (caseId, number, what) => {
 		chrome.runtime
 			.sendMessage({
 				type: "panel:images",
 				caseId,
 				number,
+				...(what === undefined ? {} : { what }),
 			} satisfies WorkerRequest)
 			.catch(() => undefined);
 	};
+	// A loaded mark's dialog whose field the page refused: the panel's form.
+	reviewer.onPanel = (caseId, number, what) =>
+		adder.onAddImages?.(caseId, number, what);
 	const state = () => {
 		const s = adder.state();
 		const loaded = reviewer.caseId;

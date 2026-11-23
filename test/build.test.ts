@@ -71,10 +71,19 @@ describe("manifest", () => {
 		expect(m["optional_permissions"]).toEqual(["downloads"]);
 		expect(m["optional_host_permissions"]).toEqual(["<all_urls>"]);
 		expect(m["host_permissions"]).toBeUndefined();
-		// A WebSocket that carries messages keeps the service worker alive from
-		// Chrome 116 (DEC-015); the settings in IndexedDB need nothing newer
-		// (DEC-016).
-		expect(m["minimum_chrome_version"]).toBe("116");
+		// Chrome 130: the first that honours `use_dynamic_url` (DEC-064). A
+		// WebSocket that carries messages keeps the service worker alive from
+		// 116 (DEC-015).
+		expect(m["minimum_chrome_version"]).toBe("130");
+		// One page reachable from web pages, the comment field's, and only
+		// at this session's address (DEC-064).
+		expect(m["web_accessible_resources"]).toEqual([
+			{
+				resources: ["field/*"],
+				matches: ["<all_urls>"],
+				use_dynamic_url: true,
+			},
+		]);
 	});
 
 	test("test builds get host access, and downloads without asking", () => {
@@ -135,6 +144,11 @@ describe("Firefox manifest", () => {
 		])
 			expect(m[key]).toBeUndefined();
 		expect(JSON.stringify(m)).not.toContain("gecko_android");
+		// The comment field's page, with no key Firefox does not know: each
+		// install has an address of its own there (DEC-064).
+		expect(m["web_accessible_resources"]).toEqual([
+			{ resources: ["field/*"], matches: ["<all_urls>"] },
+		]);
 		// The same commands as Chrome's: the icon's click, Alt+Shift+O.
 		expect(m["commands"]).toEqual(createManifest("1.2.3", {})["commands"]);
 	});

@@ -265,3 +265,60 @@ describe("two buttons named Edit in one card (mark 47, DEC-063)", () => {
 		expect(classify(rank(stored, all))).not.toBe("found");
 	});
 });
+
+describe("a name that stays while the text changes is still the element (DEC-064's review)", () => {
+	const page = (body: string) => {
+		const window = new Window({ url: "https://www.example.com/app" });
+		const doc = window.document as unknown as Document;
+		doc.write(
+			`<header><nav aria-label="Main"><a href="/">Home</a></nav>${body}</header><main><h1>Inbox</h1></main>`,
+		);
+		return doc;
+	};
+	const found = (stored: ElementDetails, doc: Document, selector: string) => {
+		const { elements, all } = details(doc);
+		const ranked = rank(stored, all);
+		return [
+			elements[ranked[0]?.index ?? -1] === doc.querySelector(selector),
+			classify(ranked),
+		];
+	};
+
+	test("a badge's count changed: 12 here, 3 there", () => {
+		const stored = describeElement(
+			page(
+				`<button class="Bell" aria-label="Notifications">12</button>`,
+			).querySelector("button") as Element,
+		);
+		const there = page(
+			`<button class="Bell" aria-label="Notifications">3</button>`,
+		);
+		expect(found(stored, there, "button")).toEqual([true, "found"]);
+	});
+
+	test("a labelled region whose content is other data", () => {
+		const region = (rows: string) =>
+			page(`<section aria-label="Recent cases"><p>${rows}</p></section>`);
+		const stored = describeElement(
+			region("Checkout button too pale, 3 marks").querySelector(
+				"section",
+			) as Element,
+		);
+		const there = region("Settings page spacing, 7 marks");
+		expect(found(stored, there, "section")).toEqual([true, "found"]);
+	});
+
+	test("the same Edit under another user's name is found", () => {
+		const card = (who: string) =>
+			page(
+				`<article><p>Done</p><button aria-label="Edit the comment by ${who}">Edit</button></article>`,
+			);
+		const stored = describeElement(
+			card("Dana Developer via Claude Code").querySelector("button") as Element,
+		);
+		expect(found(stored, card("Tess Tester"), "button")).toEqual([
+			true,
+			"found",
+		]);
+	});
+});

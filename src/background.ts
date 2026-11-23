@@ -52,6 +52,7 @@ import {
 	isCloudRequest,
 	isWorkerRequest,
 	type NumberCheck,
+	PANEL_MARK_WHAT,
 	type SaveResult,
 	type UndoResult,
 	type WorkerRequest,
@@ -419,7 +420,8 @@ async function handle(
 				tab?.id === undefined ||
 				!isSafeId(request.caseId) ||
 				!Number.isInteger(request.number) ||
-				request.number < 1
+				request.number < 1 ||
+				(request.what !== undefined && !PANEL_MARK_WHAT.includes(request.what))
 			)
 				throw new Error("invalid request");
 			// Before any await: the click's gesture opens the panel.
@@ -428,6 +430,7 @@ async function handle(
 				[IMAGES_FOR_KEY]: {
 					caseId: request.caseId,
 					number: request.number,
+					what: request.what ?? "images",
 					tabId: tab.id,
 					at: Date.now(),
 				} satisfies ImagesFor,

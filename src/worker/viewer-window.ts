@@ -32,8 +32,28 @@ export function viewerUrl(
 	);
 }
 
+/** One after the other per browser window: two quick clicks, one window. */
+const queues = new Map<number, Promise<unknown>>();
+
 /** Show the picture in the browser window's viewer, opening one if it has none. */
-export async function openViewer(
+export function openViewer(
+	caseId: string,
+	markId: string,
+	pictureId: string,
+	from: number,
+): Promise<number> {
+	const before = queues.get(from) ?? Promise.resolve();
+	const next = before
+		.catch(() => undefined)
+		.then(() => showInViewer(caseId, markId, pictureId, from));
+	queues.set(from, next);
+	void next.finally(() => {
+		if (queues.get(from) === next) queues.delete(from);
+	});
+	return next;
+}
+
+async function showInViewer(
 	caseId: string,
 	markId: string,
 	pictureId: string,
@@ -43,11 +63,16 @@ export async function openViewer(
 	const all = await viewers();
 	const open = all[String(from)];
 	if (open !== undefined) {
-		const shown = await chrome.tabs
-			.update(open.tabId, { url })
-			.then(() => chrome.windows.update(open.windowId, { focused: true }))
-			.then(() => true)
-			.catch(() => false);
+		// Only the tab still in the viewer's window: one moved out of it (to a
+		// window of its own) is the person's now, not navigated.
+		const tab = await chrome.tabs.get(open.tabId).catch(() => undefined);
+		const shown =
+			tab?.windowId === open.windowId &&
+			(await chrome.tabs
+				.update(open.tabId, { url })
+				.then(() => chrome.windows.update(open.windowId, { focused: true }))
+				.then(() => true)
+				.catch(() => false));
 		if (shown) return open.windowId;
 	}
 	const browser = await chrome.windows.get(from);

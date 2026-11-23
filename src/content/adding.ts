@@ -50,6 +50,7 @@ import type {
 	MarkTarget,
 	NumberCheck,
 	OverlayState,
+	PanelMarkWhat,
 	SaveResult,
 	UndoResult,
 	WorkerRequest,
@@ -197,7 +198,9 @@ export class MarkAdder {
 	 * adds the images, never this page (a page reads what is pasted or
 	 * dropped in it). Called within the click, for its gesture.
 	 */
-	onAddImages: ((caseId: string, number: number) => void) | undefined;
+	onAddImages:
+		| ((caseId: string, number: number, what?: PanelMarkWhat) => void)
+		| undefined;
 	/**
 	 * Marks drawn and not in the case yet: a comment being typed, one on its
 	 * way, one that could not be added. The case holds every other (DEC-026).
@@ -669,12 +672,20 @@ export class MarkAdder {
 		const label = doc.createElement("div");
 		label.className = "label";
 		label.append(pin, "Comment");
+		const caseId = this.#target?.caseId;
 		const field = new PageField(doc, {
 			label: `Comment for mark ${draft.number}`,
 			value: draft.comment,
 			maxLength: MAX_COMMENT,
 		});
 		field.onSubmit = () => this.#commitComment();
+		// The page refused the field's frame: the mark goes in, and its
+		// comment is written in the side panel (DEC-064).
+		field.onPanel = () => {
+			if (caseId === undefined) return;
+			this.onAddImages?.(caseId, draft.number, "comment");
+			this.#commitComment();
+		};
 		// Escape in the field, as on the page: the comment is done.
 		field.onEscape = () => {
 			if (this.#editing === draft) this.#commitComment();
@@ -698,7 +709,6 @@ export class MarkAdder {
 		const row = doc.createElement("div");
 		row.className = "row";
 		row.append(remove, done);
-		const caseId = this.#target?.caseId;
 		const image = doc.createElement("button");
 		image.type = "button";
 		image.dataset["action"] = "comment-image";

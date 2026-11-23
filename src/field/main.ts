@@ -4,7 +4,12 @@
  * content script over it, never through the page.
  */
 
-import type { FieldInit, FromField, ToField } from "../lib/field-protocol.ts";
+import {
+	type FieldInit,
+	type FromField,
+	fieldKey,
+	type ToField,
+} from "../lib/field-protocol.ts";
 import { framePort } from "../lib/frame-port.ts";
 import { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
 
@@ -31,23 +36,19 @@ document.documentElement.toggleAttribute(
 	init.enterSubmits === true,
 );
 field.value = init.value;
-field.disabled = false;
+field.disabled = init.disabled === true;
 
+say({ type: "ready" });
+field.addEventListener("focus", () => say({ type: "focus", on: true }));
+field.addEventListener("blur", () => say({ type: "focus", on: false }));
 field.addEventListener("input", () =>
 	say({ type: "input", value: field.value }),
 );
 field.addEventListener("keydown", (e) => {
-	if (e.key === "Escape") {
-		e.preventDefault();
-		say({ type: "escape", value: field.value });
-	} else if (
-		e.key === "Enter" &&
-		!e.shiftKey &&
-		(e.metaKey || e.ctrlKey || init.enterSubmits === true)
-	) {
-		e.preventDefault();
-		say({ type: "submit", value: field.value });
-	}
+	const what = fieldKey(e, init.enterSubmits === true);
+	if (what === undefined) return;
+	e.preventDefault();
+	say({ type: what, value: field.value });
 });
 // The frame's height follows the field's, within its limits.
 new ResizeObserver(() =>

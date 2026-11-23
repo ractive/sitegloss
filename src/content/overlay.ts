@@ -19,6 +19,7 @@ import {
 	badgePosition,
 	badgeRadius,
 	MARK_COLOUR,
+	pinFontSize,
 	type RenderedMark,
 } from "../lib/marks.ts";
 import { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
@@ -150,7 +151,9 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	color: ${L.popoverText}; background: ${L.popover};
 }
 .popover textarea::placeholder { color: ${L.popoverPlaceholder}; opacity: 1; }
-/* A field of the extension's own (DEC-064): its frame, as tall as the field in it says. */
+/* A field of the extension's own (DEC-064): its frame, as tall as the field in it says; where it cannot load, a line and the way to the side panel. */
+.popover .field-fallback { display: grid; gap: 6px; justify-items: start; }
+.popover .field-fallback .field-problem { margin: 0; color: #a4161a; }
 .popover iframe.field { display: block; box-sizing: border-box; width: calc(100% + 6px); height: 92px; margin: -3px; border: 0; background: transparent; color-scheme: light; }
 .popover textarea:focus-visible, .popover button:focus-visible { outline: 2px solid ${HOVER_COLOUR}; outline-offset: 1px; }
 .popover .row { display: flex; gap: 6px; justify-content: space-between; margin-top: 8px; }
@@ -453,6 +456,8 @@ export class Overlay {
 	/** The case's marks are hidden: the bar is the pill that brings them back (DEC-061). */
 	#marksHidden = false;
 	#barPlace: BarPlace = BAR_HOME;
+	/** Where the person left the bar; `#barPlace` is that, kept inside this window. */
+	#wanted: BarPlace = BAR_HOME;
 	/** The bar was moved by the person (dragged, a key, reset): its place to keep. */
 	onBarMoved: ((place: BarPlace) => void) | undefined;
 	#marking = false;
@@ -582,10 +587,20 @@ export class Overlay {
 
 	/** Put the bar at `place` (kept inside the window); `moved`: the person did, keep it. */
 	setBarPlace(place: BarPlace, moved = false): void {
+		this.#wanted = place;
+		this.#drawBar();
+		if (moved) this.onBarMoved?.(this.#barPlace);
+	}
+
+	/**
+	 * The bar where the person left it, inside this window: a window that
+	 * shrinks moves it in, one that grows back puts it where it was.
+	 */
+	#drawBar(): void {
 		const bar = this.reviewBar;
 		const win = this.doc.defaultView;
 		this.#barPlace = clampBar(
-			place,
+			this.#wanted,
 			bar.offsetWidth,
 			bar.offsetHeight,
 			win?.innerWidth ?? 1024,
@@ -593,7 +608,6 @@ export class Overlay {
 		);
 		bar.style.right = `${this.#barPlace.right}px`;
 		bar.style.top = `${this.#barPlace.top}px`;
-		if (moved) this.onBarMoved?.(this.#barPlace);
 	}
 
 	get barPlace(): BarPlace {
@@ -694,7 +708,7 @@ export class Overlay {
 		});
 		// A smaller window: it stays in it (where it was kept is not changed).
 		this.doc.defaultView?.addEventListener("resize", () => {
-			if (!bar.hidden) this.setBarPlace(this.#barPlace);
+			if (!bar.hidden) this.#drawBar();
 		});
 	}
 
@@ -790,8 +804,7 @@ export class Overlay {
 		this.reviewBar.hidden =
 			!(this.#reviewing || this.#marksHidden) || this.#addingMarks;
 		// Shown again, it is measured where it is kept: inside this window.
-		if (barWas && !this.reviewBar.hidden && !this.layer.hidden)
-			this.setBarPlace(this.#barPlace);
+		if (barWas && !this.reviewBar.hidden && !this.layer.hidden) this.#drawBar();
 		this.#review.style.display = this.#reviewing ? "" : "none";
 		// Stay on top of elements the page appended later.
 		if (shown && this.host.nextElementSibling !== null) this.#place(true);
@@ -842,7 +855,31 @@ export class Overlay {
 		const doc = this.doc;
 		const parent =
 			doc.fullscreenElement ?? modalDialog(doc) ?? doc.documentElement;
-		if (last || this.host.parentElement !== parent) parent.append(this.host);
+		const moving = this.host.parentElement !== parent;
+		if (!last && !moving) return;
+		// Moved for nothing but the order: not while a comment field is open,
+		// whose frame a move would load again (DEC-064).
+		if (
+			!moving &&
+			!this.popover.hidden &&
+			this.popover.querySelector("iframe.field")
+		)
+			return;
+		// Where the browser can, a move that keeps the frames as they are
+		// (`moveBefore`); else the field's frame loads again and gets back its
+		// text, label and focus (`PageField`).
+		const move = (
+			parent as { moveBefore?: (node: Node, child: Node | null) => void }
+		).moveBefore;
+		try {
+			if (typeof move === "function") {
+				move.call(parent, this.host, null);
+				return;
+			}
+		} catch {
+			// Not movable so: appended as before.
+		}
+		parent.append(this.host);
 	}
 
 	/** Hide all of Sitegloss while a screenshot is taken. */
@@ -1046,7 +1083,7 @@ export class Overlay {
 			x: at.x,
 			y: at.y,
 			fill: "#fff",
-			"font-size": 11,
+			"font-size": pinFontSize(mark.number),
 			"font-weight": 700,
 			"font-family": "system-ui, sans-serif",
 			"text-anchor": "middle",

@@ -221,6 +221,17 @@ export class Reviewer {
 	#hidden = false;
 	/** The bar's "Add marks": the page's own adding to the case (index.ts). */
 	onAddMarks: ((c: Case) => void) | undefined;
+	/**
+	 * The page refused a field's frame (DEC-064): the side panel opens the
+	 * mark's comment, resolve or reopen form. Called within the click.
+	 */
+	onPanel:
+		| ((
+				caseId: string,
+				number: number,
+				what: "comment" | "resolve" | "reopen",
+		  ) => void)
+		| undefined;
 	/** The marks were hidden or shown from the page (its bar or its pill). */
 	onHiddenChange: ((hidden: boolean) => void) | undefined;
 
@@ -852,6 +863,7 @@ export class Reviewer {
 			};
 			note.onSubmit = save;
 			note.onEscape = back;
+			note.onPanel = () => this.#toPanel(now.c.id, mark.number, "resolve");
 			content = [
 				label,
 				choices,
@@ -896,6 +908,7 @@ export class Reviewer {
 			};
 			note.onSubmit = reopen;
 			note.onEscape = back;
+			note.onPanel = () => this.#toPanel(now.c.id, mark.number, "reopen");
 			content = [
 				label,
 				help,
@@ -920,6 +933,7 @@ export class Reviewer {
 			field.onSubmit = () => void this.#done();
 			// What was typed is dropped, as the panel's Cancel does.
 			field.onEscape = () => this.#closeMark();
+			field.onPanel = () => this.#toPanel(now.c.id, mark.number, "comment");
 			open.field = field;
 			// The panel's commands for a mark of this status, in its order.
 			const commands: HTMLButtonElement[] = [];
@@ -1074,6 +1088,16 @@ export class Reviewer {
 	 * "Add another image…": a comment typed is stored first, then the panel
 	 * is asked to open its dialog for the mark, and the popover goes.
 	 */
+	/** The side panel takes the mark's form; the popover goes (DEC-064). */
+	#toPanel(
+		caseId: string,
+		number: number,
+		what: "comment" | "resolve" | "reopen",
+	): void {
+		this.onPanel?.(caseId, number, what);
+		this.#closeMark();
+	}
+
 	async #addImage(open: OpenMark): Promise<void> {
 		const now = this.#openMark();
 		if (now === undefined || now.open !== open || open.busy) return;

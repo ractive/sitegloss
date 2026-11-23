@@ -117,7 +117,10 @@ export function createManifest(
 		version,
 		description:
 			"Mark what is wrong on a web page, open the marks in another environment to fix it, and talk them through with your AI app.",
-		minimum_chrome_version: "116",
+		// 130: the first that keeps the comment field's page at the session's
+		// address (`use_dynamic_url`, DEC-064); before it, any site could
+		// learn by that page that Sitegloss is installed.
+		minimum_chrome_version: "130",
 		icons,
 		action: { default_title: "Sitegloss", default_icon: icons },
 		background: { service_worker: "background.js", type: "module" },

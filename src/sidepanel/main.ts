@@ -2647,7 +2647,10 @@ function askImages(s: PanelState): void {
 			: undefined;
 	if (c === undefined || a === undefined) return;
 	imagesFor = undefined;
-	void showAddImages(c, a);
+	// Images, or the form whose field the page refused (DEC-064).
+	if (want.what === undefined || want.what === "images")
+		void showAddImages(c, a);
+	else actions.editMark(c, a, want.what);
 }
 
 /**

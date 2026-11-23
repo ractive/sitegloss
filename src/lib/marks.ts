@@ -43,8 +43,13 @@ export function arrowHead(from: Point, to: Point): [Point, Point] {
  * pins went to 24; two digits still fit. Pictures taken before keep theirs.
  */
 export const badgeRadius = (shape: Shape) => (shape.kind === "note" ? 12 : 10);
-/** The pin's number: bold, two digits inside the smaller pin. */
-export const PIN_FONT = "700 11px system-ui, sans-serif";
+/**
+ * The pin's number, bold: 11 px holds two digits in the 20 px pin; mark 100
+ * and on get 9 px, so three still sit inside its casing (DEC-064's review).
+ */
+export const pinFontSize = (n: number) => (String(n).length > 2 ? 9 : 11);
+export const pinFont = (n: number) =>
+	`700 ${pinFontSize(n)}px system-ui, sans-serif`;
 
 function paintShape(
 	ctx: OffscreenCanvasRenderingContext2D,
@@ -103,7 +108,7 @@ export function paintMark(
 	ctx.lineWidth = 2;
 	ctx.stroke();
 	ctx.fillStyle = "#fff";
-	ctx.font = PIN_FONT;
+	ctx.font = pinFont(mark.number);
 	ctx.textAlign = "center";
 	ctx.textBaseline = "middle";
 	ctx.fillText(String(mark.number), at.x, at.y);

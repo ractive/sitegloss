@@ -474,6 +474,25 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		overlay.setReviewing(false);
 	});
 
+	test("a window that shrinks moves the bar in; grown back, the bar is where the person left it (DEC-064's review)", () => {
+		overlay.setReviewing(true);
+		const width = window.innerWidth;
+		const set = (w: number) => {
+			Object.defineProperty(window, "innerWidth", {
+				value: w,
+				configurable: true,
+			});
+			window.dispatchEvent(new window.Event("resize"));
+		};
+		overlay.setBarPlace({ right: 600, top: 40 });
+		set(400);
+		expect(overlay.barPlace.right).toBeLessThan(600);
+		set(1280);
+		expect(overlay.barPlace).toEqual({ right: 600, top: 40 });
+		set(width);
+		overlay.setReviewing(false);
+	});
+
 	test("a wider page lays it out again", () => {
 		overlay.setAddingMarks(true);
 		withRoomFrom("rows icons");
@@ -550,4 +569,18 @@ describe("a loaded mark's pin and the one popover (DEC-027)", () => {
 		expect(told).toEqual(["first", "third"]);
 		expect(overlay.popover.hidden).toBe(true);
 	});
+});
+
+test("a pin holds three digits: mark 100 and on in a smaller number (DEC-064's review)", async () => {
+	const { pinFontSize, badgeRadius } = await import("../src/lib/marks.ts");
+	expect([
+		pinFontSize(9),
+		pinFontSize(99),
+		pinFontSize(100),
+		pinFontSize(999),
+	]).toEqual([11, 11, 9, 9]);
+	// Three bold digits at 9 px are about 16 px wide: inside the 20 px pin.
+	expect(3 * 9 * 0.6).toBeLessThan(
+		2 * badgeRadius({ kind: "box", rect: { x: 0, y: 0, width: 1, height: 1 } }),
+	);
 });

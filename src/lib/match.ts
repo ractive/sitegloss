@@ -10,6 +10,8 @@ export type MatchStatus = "found" | "probable" | "ambiguous" | "lost";
 
 export const FOUND = 0.75;
 export const PROBABLE = 0.5;
+/** How much a name that says more than the text counts against that text (`identity`). */
+export const NAME_WEIGHT = 0.7;
 /** Two candidates closer than this are a tie. */
 export const TIE = 0.03;
 
@@ -178,20 +180,23 @@ export function identity(
 	const names = (key: Naming) => same(key) && !repeated.has(key);
 	if (names("testId") || names("id")) return 1;
 	// A name that says more than the visible text (an `aria-label` beyond
-	// "Edit") is what tells such elements apart, and the text must still be
-	// the text: in one card of the web app, "Edit" for the mark's text, and
-	// "Edit" and "Delete" for a comment, named "Edit the comment by …" and
-	// "Delete the comment by …" (mark 47, DEC-063). Neither the same text
-	// with another name nor the same name's words with another text is the
-	// element.
+	// "Edit") is what tells such elements apart, so it weighs most; the text
+	// counts too, but cannot make up for another name. In one card of the web
+	// app, "Edit" for the mark's text and "Edit" and "Delete" for a comment,
+	// named "Edit the comment by …" and "Delete the comment by …" (mark 47,
+	// DEC-063): the same text under another name is not the element. And a
+	// text that changed under the same name still is (a "Notifications"
+	// button whose badge read 12 and now 3; a labelled region whose content
+	// is another environment's data), as is the same text under a name with
+	// another user's name in it (DEC-064's review).
 	if (
 		stored.name &&
 		stored.text &&
 		grams(stored.name).text !== grams(stored.text).text
 	)
-		return Math.min(
-			textSimilarity(stored.name, candidate.name ?? ""),
-			textSimilarity(stored.text, candidate.text ?? ""),
+		return (
+			NAME_WEIGHT * textSimilarity(stored.name, candidate.name ?? "") +
+			(1 - NAME_WEIGHT) * textSimilarity(stored.text, candidate.text ?? "")
 		);
 	const texts: number[] = [];
 	if (stored.name)

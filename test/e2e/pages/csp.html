@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+	<head>
+		<!-- A page that refuses every frame (DEC-064's review): what becomes of Sitegloss's comment field. -->
+		<meta http-equiv="Content-Security-Policy" content="frame-src 'none'; child-src 'none'" />
+		<meta charset="utf-8" />
+		<meta name="csrf-token" content="e2e-csrf-secret" />
+		<title>Krankenkasse vergleichen (v1)</title>
+		<style>
+			body { margin: 0; font: 16px/1.5 sans-serif; }
+			.Header_root__a1B2c { display: flex; gap: 16px; align-items: center; padding: 12px 24px; background: #eef; }
+			.Nav_link__x9Y8z { color: #225; }
+			.Hero_title__Q7r2s { margin: 32px 24px 8px; }
+			.Form_root__k3L9m { margin: 0 24px; display: grid; gap: 8px; max-width: 320px; }
+			.Button_primary__p4T6u { padding: 8px 16px; background: #fc0; border: 0; }
+			.Teaser_card__m2N5b { margin: 24px; padding: 16px; border: 1px solid #ccc; }
+			.filler { height: 1400px; }
+			footer { padding: 24px; background: #eee; }
+		</style>
+	</head>
+	<body>
+		<header class="Header_root__a1B2c">
+			<strong>Acme</strong>
+			<nav aria-label="Hauptmenü">
+				<a class="Nav_link__x9Y8z" href="/versicherungen">Versicherungen</a>
+				<a class="Nav_link__x9Y8z" href="/hypotheken">Hypotheken</a>
+				<a class="Nav_link__x9Y8z" href="/login">Anmelden</a>
+			</nav>
+		</header>
+		<main>
+			<h1 class="Hero_title__Q7r2s">Krankenkassen vergleichen</h1>
+			<form class="Form_root__k3L9m" id=":r3:">
+				<label>Postleitzahl <input name="zip" placeholder="z.B. 8000" /></label>
+				<label>Jahrgang <input name="year" placeholder="z.B. 1985" /></label>
+				<button class="Button_primary__p4T6u" type="submit" data-truth="submit">Prämien berechnen</button>
+			</form>
+			<section class="Teaser_card__m2N5b" aria-label="Tipps">
+				<h2>Tipps zum Sparen</h2>
+				<p data-truth="tip">Mit einer höheren Franchise sparen Sie bis zu 1500 Franken im Jahr.</p>
+			</section>
+			<div class="filler"></div>
+			<section class="Teaser_card__m2N5b" aria-label="Kontakt">
+				<h2>Kontakt</h2>
+				<p data-truth="contact">Unser Team hilft Ihnen gerne weiter.</p>
+			</section>
+		</main>
+		<footer>© Acme</footer>
+	</body>
+</html>

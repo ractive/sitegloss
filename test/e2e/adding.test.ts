@@ -729,13 +729,11 @@ inBothSets("adding marks to a case", () => {
 		90_000,
 	);
 
-	fullTest(
-		"what is typed or pasted in the page's dialog never reaches the page's own scripts (DEC-064)",
-		async () => {
-			const { page, tabId } = await h.open("v1");
-			// The page's listeners, on window and document, capture phase,
-			// before anything of Sitegloss's.
-			await page.eval(`(() => {
+	test("what is typed or pasted in the page's dialog never reaches the page's own scripts (DEC-064)", async () => {
+		const { page, tabId } = await h.open("v1");
+		// The page's listeners, on window and document, capture phase,
+		// before anything of Sitegloss's.
+		await page.eval(`(() => {
 				globalThis.heard = [];
 				const hear = (e) => {
 					const d = e.clipboardData ?? e.dataTransfer ?? null;
@@ -747,60 +745,80 @@ inBothSets("adding marks to a case", () => {
 					document.addEventListener(type, hear, true);
 				}
 			})()`);
-			const caseId = await showToolbar(h, page, tabId);
-			await page.click(shadow('[data-action="tool-element"]'));
-			await page.waitFor(
-				`${shadow('[data-action="tool-element"]')}.getAttribute("aria-pressed") === "true"`,
-			);
-			const at = await page.eval<{ x: number; y: number }>(
-				`(() => { const r = document.querySelector("h1").getBoundingClientRect(); return { x: r.x + r.width - 30, y: r.y + r.height / 2 }; })()`,
-			);
-			await page.mouse("mouseMoved", at.x, at.y);
-			await page.clickAt(at.x, at.y);
-			await page.waitFor(
-				`${shadow(".popover")} && !${shadow(".popover")}.hidden`,
-			);
-			// A clipboard with a sentence from a ticket.
-			await h.browser.send("Browser.grantPermissions", {
-				origin: h.base,
-				permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
-			});
-			await page.activate();
-			await page.eval(`navigator.clipboard.writeText("from the ticket")`);
-			await page.eval("globalThis.heard.length = 0");
-			// Keys pressed, then a paste, where the person's keyboard goes.
-			const keys = await keyboardTarget(page);
-			for (const ch of "Too pale ") {
-				const code = ch === " " ? "Space" : `Key${ch.toUpperCase()}`;
-				await keys.send("Input.dispatchKeyEvent", {
-					type: "keyDown",
-					key: ch,
-					code,
-					text: ch,
-					unmodifiedText: ch,
-				});
-				await keys.send("Input.dispatchKeyEvent", {
-					type: "keyUp",
-					key: ch,
-					code,
-				});
-			}
+		const caseId = await showToolbar(h, page, tabId);
+		await page.click(shadow('[data-action="tool-element"]'));
+		await page.waitFor(
+			`${shadow('[data-action="tool-element"]')}.getAttribute("aria-pressed") === "true"`,
+		);
+		const at = await page.eval<{ x: number; y: number }>(
+			`(() => { const r = document.querySelector("h1").getBoundingClientRect(); return { x: r.x + r.width - 30, y: r.y + r.height / 2 }; })()`,
+		);
+		await page.mouse("mouseMoved", at.x, at.y);
+		await page.clickAt(at.x, at.y);
+		await page.waitFor(
+			`${shadow(".popover")} && !${shadow(".popover")}.hidden`,
+		);
+		// A clipboard with a sentence from a ticket.
+		await h.browser.send("Browser.grantPermissions", {
+			origin: h.base,
+			permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
+		});
+		await page.activate();
+		await page.eval(`navigator.clipboard.writeText("from the ticket")`);
+		await page.eval("globalThis.heard.length = 0");
+		// Keys pressed, then a paste, where the person's keyboard goes.
+		const keys = await keyboardTarget(page);
+		for (const ch of "Too pale ") {
+			const code = ch === " " ? "Space" : `Key${ch.toUpperCase()}`;
 			await keys.send("Input.dispatchKeyEvent", {
-				type: "rawKeyDown",
-				key: "v",
-				code: "KeyV",
-				windowsVirtualKeyCode: 86,
-				modifiers: 4,
-				commands: ["paste"],
+				type: "keyDown",
+				key: ch,
+				code,
+				text: ch,
+				unmodifiedText: ch,
 			});
 			await keys.send("Input.dispatchKeyEvent", {
 				type: "keyUp",
-				key: "v",
-				code: "KeyV",
-				windowsVirtualKeyCode: 86,
-				modifiers: 4,
+				key: ch,
+				code,
 			});
-			await page.click(shadow('[data-action="comment-done"]'));
+		}
+		await keys.send("Input.dispatchKeyEvent", {
+			type: "rawKeyDown",
+			key: "v",
+			code: "KeyV",
+			windowsVirtualKeyCode: 86,
+			modifiers: 4,
+			commands: ["paste"],
+		});
+		await keys.send("Input.dispatchKeyEvent", {
+			type: "keyUp",
+			key: "v",
+			code: "KeyV",
+			windowsVirtualKeyCode: 86,
+			modifiers: 4,
+		});
+		await page.click(shadow('[data-action="comment-done"]'));
+		const saved = await until(
+			async () =>
+				(await h.control.eval<Db>(READ_DB)).cases.find((c) => c.id === caseId)
+					?.marks[0]?.comment,
+			(comment) => comment !== undefined,
+			20_000,
+		);
+		// The comment has it all; the page heard nothing of it.
+		expect(saved).toBe("Too pale from the ticket");
+		expect(await page.eval<string[]>("globalThis.heard")).toEqual([]);
+		await page.send("Page.close");
+	}, 60_000);
+
+	fullTest(
+		"a page that refuses every frame still gets the comment field: the extension's frame is exempt (DEC-064's review)",
+		async () => {
+			const { page, tabId } = await h.open("csp");
+			const caseId = await showToolbar(h, page, tabId);
+			await markElement(page, "h1", "Typed on a strict page");
+			// The field came up (no way out offered) and the comment went in.
 			const saved = await until(
 				async () =>
 					(await h.control.eval<Db>(READ_DB)).cases.find((c) => c.id === caseId)
@@ -808,9 +826,7 @@ inBothSets("adding marks to a case", () => {
 				(comment) => comment !== undefined,
 				20_000,
 			);
-			// The comment has it all; the page heard nothing of it.
-			expect(saved).toBe("Too pale from the ticket");
-			expect(await page.eval<string[]>("globalThis.heard")).toEqual([]);
+			expect(saved).toBe("Typed on a strict page");
 			await page.send("Page.close");
 		},
 		60_000,
