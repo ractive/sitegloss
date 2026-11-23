@@ -359,7 +359,8 @@ restarts; a tool always allowed asks again once an update of Sitegloss changes w
 says it does. The tab-mcp client library keeps them, beside the connection's secret. An AI app can be steered by text on a page it reads, so allow
 always only what you would not need to check.
 
-Sitegloss needs Chrome 116 or later. The connection's settings and its address secret
+Sitegloss needs Chrome 130 or later (the first that keeps the page of its comment
+field on web pages at an address of the browser session's own, DEC-064). The connection's settings and its address secret
 are in a database of the extension's own (IndexedDB in the extension's origin), which
 only its background service worker uses and the scripts Sitegloss runs in web pages
 cannot reach; the side panel changes them through the worker. Whether AI access is on

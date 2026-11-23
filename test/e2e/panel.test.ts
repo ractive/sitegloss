@@ -30,10 +30,13 @@ import {
 import { fullDescribe, fullTest } from "./mode.ts";
 import {
 	type Db,
+	FIELD,
+	fieldValue,
 	markElement,
 	putCases as putStored,
 	READ_DB,
 	resetPanel,
+	retypeField,
 	saveAs,
 	settingsOf,
 	shadow,
@@ -216,6 +219,8 @@ inBothSets("the side panel's page", () => {
 			await fresh([sampleCase("c_keys")]);
 			await openCase("c_keys");
 			await h.control.activate();
+			// Delete case is in the case's "…" menu (DEC-061).
+			await h.control.eval(`${id("case-more")}.click()`);
 			await h.control.eval(`${id("delete-case")}.focus()`);
 			const enter = async () => {
 				for (const type of ["keyDown", "keyUp"])
@@ -272,6 +277,8 @@ inBothSets("the side panel's page", () => {
 				// The first click arms it (where the button is then does not
 				// matter); the second goes to the spot it was armed at, which a
 				// hand sees: below the case's thread, it is scrolled to first.
+				// Delete case is in the case's "…" menu (DEC-061).
+				await panel.eval(`${id("case-more")}.click()`);
 				await panel.eval(
 					`${id("delete-case")}.scrollIntoView({ block: "center" })`,
 				);
@@ -482,7 +489,7 @@ inBothSets("the side panel's page", () => {
 				`history.pushState({}, "", location.pathname.replace("v1", "v2"))`,
 			);
 			await h.control.waitFor(
-				`${id("none-found")}.textContent.includes("This case has no marks on this page.")`,
+				`${id("none-found")}.textContent === "This case's page is not in this tab."`,
 			);
 			expect(await h.control.eval<number>(`globalThis.loads`)).toBe(before);
 			expect(await pageCase(a.tabId)).toBe(a.caseId);
@@ -610,9 +617,11 @@ inBothSets("the side panel's page", () => {
 				return send(tabId, message);
 			}`);
 			await openCase(saved?.id as string);
-			// One of two found: it is looked for again.
+			// One of two found: it is looked for again. (The status line says
+			// it only once the searches again are over, DEC-064's review: the
+			// marks' rows say it at once.)
 			await h.control.waitFor(
-				`${id("case-hint")}.textContent.includes("1 of 2 marks found")`,
+				`[...document.querySelectorAll(".match")].filter((m) => m.dataset.status === "found").length === 1`,
 			);
 			await page.click(shadow('[data-action="review-hide"]'));
 			await until(
@@ -634,7 +643,7 @@ inBothSets("the side panel's page", () => {
 	);
 
 	slowTest(
-		"a page with none of the case's marks: the panel says where they are",
+		"a page that is none of the case's: one quiet line, and the facts' address opens the page (DEC-063)",
 		async () => {
 			await fresh();
 			const { page, tabId } = await h.open("v1");
@@ -656,14 +665,10 @@ inBothSets("the side panel's page", () => {
 			await h.control.waitFor(`!${id("none-found")}.hidden`, 10_000);
 			expect(
 				await h.control.eval<string>(`${id("none-found")}.textContent`),
-			).toContain(
-				`This case has no marks on this page. They are on ${new URL(h.base).host}/v1.`,
-			);
+			).toBe("This case's page is not in this tab.");
 			expect(await h.control.eval(`${id("case-hint")}.hidden`)).toBe(true);
-			// Its button opens the case's page, where the mark is found.
-			await h.control.eval(
-				`${id("none-found")}.querySelector('[data-action="open-case-page"]').click()`,
-			);
+			// The page's address in the facts opens it, where the mark is found.
+			await h.control.eval(`${id("open-page")}.click()`);
 			await h.control.waitFor(
 				`document.querySelector(".match")?.dataset.status === "found"`,
 				15_000,
@@ -995,7 +1000,7 @@ inBothSets("the side panel's page", () => {
 				// As closing and opening the side panel.
 				await openPanel();
 				await h.control.waitFor(
-					`!${id("case-view")}.hidden && ${id("verdict")}?.dataset.case === "${caseId}" && ${id("add-marks")}.textContent === "Done adding"`,
+					`!${id("case-view")}.hidden && ${id("verdict")}?.dataset.case === "${caseId}" && ${id("add-marks")}.textContent === "Adding marks: Done"`,
 					10_000,
 				);
 				// What the page found shows, without a draw again.
@@ -1075,7 +1080,7 @@ inBothSets("the side panel's page", () => {
 					"the marks back on the page",
 				);
 				await h.control.waitFor(
-					`${id("load-case")}.textContent === "Hide marks" && ${id("add-marks")}.textContent === "Done adding"`,
+					`${id("load-case")}.textContent === "Hide marks" && ${id("add-marks")}.textContent === "Adding marks: Done"`,
 				);
 				// A mark added now is the case's, drawn as the others are.
 				await markElement(page, "[data-truth=tip]", "And this");
@@ -1086,14 +1091,13 @@ inBothSets("the side panel's page", () => {
 						)) === 2,
 					"the new mark among the loaded ones",
 				);
-				// Hide still hides, also while adding.
+				// Hide hides, and ends the adding: hidden marks and adding do not
+				// go together (DEC-061).
 				await h.control.eval(`${id("load-case")}.click()`);
 				await until(
 					async () => (await pageCase(tabId)) === null,
 					"the marks to go again",
 				);
-				expect(await toolbarUp(tabId)).toBe(true);
-				await h.control.eval(`${id("add-marks")}.click()`);
 				await until(async () => !(await toolbarUp(tabId)), "the toolbar to go");
 				await page.send("Page.close");
 			},
@@ -1110,7 +1114,7 @@ inBothSets("the side panel's page", () => {
 					`.review [data-review="${before.number}"] [data-number] text`,
 				);
 				const popover = shadow(".popover");
-				const field = shadow(".popover textarea");
+				const field = FIELD;
 				const row = `document.querySelector('[data-mark="${before.id}"]')`;
 				await page.waitFor(pin);
 				expect(
@@ -1118,12 +1122,12 @@ inBothSets("the side panel's page", () => {
 				).toBe(false);
 				await page.click(pin);
 				await page.waitFor(`!${popover}.hidden && ${field} !== null`);
-				expect(await page.eval<string>(`${field}.value`)).toBe(before.comment);
+				expect(await fieldValue(page)).toBe(before.comment);
 				// The panel shows the mark, with its other actions.
 				await h.control.waitFor(`${row}.hasAttribute("data-open")`);
 
 				// Done stores the changed comment; the panel and the case have it.
-				await page.eval(`${field}.value = "Changed on the page"`);
+				await retypeField(page, "Changed on the page");
 				await page.click(shadow('[data-action="mark-done"]'));
 				await until(
 					async () =>
@@ -1148,9 +1152,8 @@ inBothSets("the side panel's page", () => {
 					`(() => { const r = ${pin}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
 				);
 				await page.clickAt(at.x, at.y);
-				await page.waitFor(
-					`!${popover}.hidden && ${field}?.value === "Changed on the page"`,
-				);
+				await page.waitFor(`!${popover}.hidden && ${field} !== null`);
+				expect(await fieldValue(page)).toBe("Changed on the page");
 				expect(
 					await page.eval<number>(
 						`${shadow("svg.marks")}.querySelectorAll(".drafts [data-number]").length`,
@@ -1344,7 +1347,7 @@ inBothSets("the side panel's page", () => {
 					);
 					expect(
 						await panel.eval<string>(`${id("add-marks")}.textContent`),
-					).toBe("Done adding");
+					).toBe("Adding marks: Done");
 					// Not a double click's second: that would do nothing.
 					await Bun.sleep(PAST_GUARD_MS);
 					await panel.eval(`${back}.click()`);
@@ -1355,8 +1358,10 @@ inBothSets("the side panel's page", () => {
 					);
 					expect(await pageCase(tabId)).toBeNull();
 				} finally {
-					// Stop works while it is hidden too (no app connected).
-					await panel.eval(`${id("stop-ai")}.click()`);
+					// AI access off, as the AI view's switch does.
+					await panel.eval(
+						`${id("ai-switch")}.checked && ${id("ai-switch")}.click()`,
+					);
 					await page.send("Page.close");
 					await relay.stop();
 				}

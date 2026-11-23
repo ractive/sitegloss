@@ -57,9 +57,11 @@ import {
 	teamOf,
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
-import { foundLine, noneHere } from "./follow.ts";
+import { findsOn, foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
+import { openAt, pageHosts } from "./page-hosts.ts";
+import { holdClickedInPlace } from "./scroll-anchor.ts";
 import { type Size, sameSize } from "./size.ts";
 import type { AiCall, AiProblem, Exported, PanelState } from "./state.ts";
 import {
@@ -69,8 +71,12 @@ import {
 } from "./sync-view.ts";
 import {
 	commentCount,
+	markThreadView,
+	onThreadChange,
 	renderThread,
 	type ThreadActions,
+	type ThreadContext,
+	threadStateKey,
 } from "./thread-view.ts";
 
 /** What the user can do; main.ts carries it out and updates the state. */
@@ -109,6 +115,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
+	/** A mark's picture in the viewer, a tab of the extension's own (DEC-060). */
+	openPicture(c: Case, a: Mark, pictureId: string): void;
 	/**
 	 * A mark's link (DEC-050): open where it was made (`made`), or the same
 	 * path and query on the host in front (`here`), in the tab in front, and
@@ -155,6 +163,8 @@ const bar = byId<HTMLElement>("bar");
 const back = byId<HTMLButtonElement>("back");
 const home = byId<HTMLElement>("home");
 const caseView = byId<HTMLElement>("case-view");
+// What a click acts on stays where it was on screen (DEC-060).
+const releaseHeld = holdClickedInPlace(caseView);
 const settingsView = byId<HTMLElement>("settings");
 const pageText = byId<HTMLParagraphElement>("page");
 const hint = byId<HTMLParagraphElement>("hint");
@@ -177,7 +187,6 @@ const aiAction = byId<HTMLSpanElement>("ai-action");
 const aiCall = byId<HTMLParagraphElement>("ai-call");
 const aiProblem = byId<HTMLDivElement>("ai-problem");
 const aiProblemText = byId<HTMLParagraphElement>("ai-problem-text");
-const stopAi = byId<HTMLButtonElement>("stop-ai");
 const keepOn = byId<HTMLInputElement>("keep-on");
 const importError = byId<HTMLDivElement>("import-error");
 const importDone = byId<HTMLParagraphElement>("import-done");
@@ -227,34 +236,34 @@ export function access(state: PanelState): "yes" | "ask" | "never" {
 }
 
 /**
- * The page in front shows none of the case's marks (DEC-022): none was
- * found, or the case has none of this page, and then where they are
- * (DEC-057).
+ * The one quiet line where the marks start (DEC-063), or nothing. A case of
+ * many pages has marks on some only, so a page without any is normal: the
+ * pages list and the page filter say where they are. Said is only that the
+ * tab shows none of the case's pages, or that this page's marks were all
+ * looked for and none was found (`allLost`). A case of one page gets no
+ * button here: its address in the facts above opens it.
  */
-export function noneFoundText(c: Case, url: string | undefined): string {
-	if (
-		url !== undefined &&
-		url !== "" &&
-		c.marks.some((a) => onPageInFront(c, a, url))
-	)
-		return "None of this case's marks were found on this page.";
-	// The pages its marks are on, the first few by name (DEC-038): not the
-	// page in front, nor a page without marks (the first page of a case
-	// marked elsewhere).
-	const counts = marksByPage(c);
-	const front = url ? pageInFront(c, url) : undefined;
-	const pages = casePages(c)
-		.filter(
-			(p) =>
-				(counts.get(pageKey(p.url)) ?? 0) > 0 &&
-				(front === undefined || pageKey(p.url) !== pageKey(front.url)),
-		)
-		.map((p) => shortUrl(p.url));
-	const here = "This case has no marks on this page.";
-	if (pages.length === 0) return here;
-	const named = pages.slice(0, 3).join(", ");
-	const more = pages.length > 3 ? ` and ${pages.length - 3} more` : "";
-	return `${here} They are on ${named}${more}.`;
+export function noneFoundText(
+	c: Case,
+	url: string | undefined,
+	allLost: boolean,
+): string | undefined {
+	if (url === undefined || !isWebPage(url)) return undefined;
+	if (pageInFront(c, url) === undefined)
+		return casePages(c).length > 1
+			? "None of this case's pages is in this tab."
+			: "This case's page is not in this tab.";
+	return allLost ? "None of this page's marks were found here." : undefined;
+}
+
+/**
+ * A page of the case as the list and the filter name it (DEC-063): its path,
+ * whatever the host, as a page is the same on every host; but a home page is
+ * its host's own (`pageKey`), so two hosts' home pages are named with their
+ * hosts, not both "/" (DEC-064's review).
+ */
+export function pagePath(url: string): string {
+	return shortPath(url, /^https?:\/\//.test(pageKey(url)));
 }
 
 /** `shop.example/cart and 2 more pages`: a case's pages in the list. */
@@ -376,9 +385,19 @@ const sizeOf = (s: Size) => `${s.width}×${s.height}`;
 
 const percent = (score: number) => `${Math.round(score * 100)}%`;
 
-function setHint(el: HTMLElement, text: string | undefined): void {
+function setHint(
+	el: HTMLElement,
+	text: string | undefined,
+	again = false,
+): void {
 	el.hidden = text === undefined;
-	el.textContent = text ?? "";
+	// Written only when it changed: a status line repeats what it is given,
+	// and a render for something else must not make it speak again; `again`:
+	// an action wrote it anew, the same words too, to be said again.
+	if (again && text !== undefined) {
+		el.textContent = "";
+		el.textContent = text;
+	} else if (el.textContent !== (text ?? "")) el.textContent = text ?? "";
 }
 
 /** Under Export while Chrome's prompt is open: what the answer does. */
@@ -448,17 +467,84 @@ function renderSaved(
 
 // --- home ----------------------------------------------------------------------
 
-/** A case: opening it draws its marks on the tab in front (DEC-022). */
+/** "shop.example/cart · 8 pages": where the case is; the address is cut, the count stays. */
+function whereLine(c: Case): HTMLElement {
+	const pages = casePages(c);
+	return h(
+		"span",
+		{ class: "card-where" },
+		h("span", { class: "where-url" }, shortUrl(pages[0]?.url ?? c.page.url)),
+		pages.length > 1
+			? h("span", { class: "where-more" }, ` · ${pages.length} pages`)
+			: null,
+	);
+}
+
+/** The case's bar as the card's top edge; an empty track while it has no marks. */
+function caseBand(c: Case): HTMLElement {
+	const band =
+		statusBar(c) ??
+		h("span", { class: "progress empty", "aria-hidden": "true" });
+	band.classList.add("band");
+	return band;
+}
+
+/** "25 open", "6 to verify", …: a chip per status with marks, each with its sign. */
+function caseChips(c: Case): HTMLElement {
+	const n = caseCounts(c);
+	const groups = STATUS_GROUPS.filter((g) => n[g] > 0);
+	return h(
+		"span",
+		{ class: "card-chips" },
+		...(groups.length === 0
+			? [h("span", { class: "none" }, "No marks yet")]
+			: groups.map((g) =>
+					h(
+						"span",
+						{ "data-kind": g },
+						h("span", { class: "sign", "aria-hidden": "true" }, CHIP_SIGN[g]),
+						` ${n[g]} ${GROUP_LABEL[g].toLowerCase()}`,
+					),
+				)),
+	);
+}
+
+/**
+ * The start of the summary for the developer, for one line: the style sheet
+ * cuts it; more than a wide panel shows is not drawn.
+ */
+function summaryStart(c: Case): string | undefined {
+	const text = c.verdict?.replace(/\s+/g, " ").trim();
+	return text ? text.slice(0, 200) : undefined;
+}
+
+/**
+ * The card's name, in one sentence: title, state, counts, where, when. Of the
+ * summary only that there is one: the whole would be read on every card.
+ */
+function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
+	const count = c.marks.length;
+	const counts = marksText(c);
+	const state = [
+		c.closed !== undefined ? "closed" : undefined,
+		team ? "shared with the team" : undefined,
+		deviceOnly ? "on this device only" : undefined,
+	].filter(Boolean);
+	return `${c.title}${state.length > 0 ? `, ${state.join(", ")}` : ""}: ${count === 0 ? "no marks" : `${count} mark${count === 1 ? "" : "s"}, ${counts}`}, on ${pagesLine(c)}, changed ${formatDate(c.updatedAt)}${summaryStart(c) ? ", with a summary for the developer" : ""}`;
+}
+
+/**
+ * A case, as one object wherever the panel lists it: a card, the whole of
+ * it the control, its bar along its top edge and its counts as chips;
+ * opening it draws its marks on the tab in front (DEC-022).
+ */
 function caseItem(
 	c: Case,
 	actions: Actions,
 	deviceOnly = false,
-	/** Under "This page", a closed case says so: elsewhere it stands under Closed. */
-	sayClosed = false,
+	team = false,
 ): HTMLLIElement {
-	const count = c.marks.length;
-	// The bar beside it is a picture; the words say the same.
-	const counts = countsText(caseCounts(c));
+	const summary = summaryStart(c);
 	return h(
 		"li",
 		{},
@@ -466,32 +552,34 @@ function caseItem(
 			"button",
 			{
 				type: "button",
+				class: "case-card",
 				"data-case": c.id,
+				...(c.closed !== undefined ? { "data-closed": true } : {}),
+				"aria-label": cardName(c, deviceOnly, team),
 				title: `Open “${c.title}” and show its marks on the page in this tab`,
 				onclick: () => actions.openCase(c.id),
 			},
-			h("span", { class: "title" }, c.title),
-			sayClosed && c.closed !== undefined
-				? h("span", { class: "tag closed-tag" }, "Closed")
-				: null,
-			// Signed in, a case the team does not have says so (DEC-039).
-			deviceOnly
-				? h("span", { class: "tag device-only" }, "This device only")
-				: null,
-			h("span", { class: "meta" }, pagesLine(c)),
+			// No band without marks: an empty one read as a progress bar (DEC-064).
+			c.marks.length > 0 ? caseBand(c) : null,
 			h(
 				"span",
-				{ class: "meta" },
-				`${count} mark${count === 1 ? "" : "s"}${counts ? ` (${counts})` : ""}, ${formatDate(c.updatedAt)}`,
+				{ class: "card-head" },
+				h("span", { class: "title" }, c.title),
+				c.closed !== undefined
+					? h("span", { class: "tag closed-tag" }, "Closed")
+					: null,
+				// Signed in: shared with the team, or not (DEC-039).
+				team ? h("span", { class: "tag team-tag" }, "Team") : null,
+				deviceOnly
+					? h("span", { class: "tag device-only" }, "This device only")
+					: null,
 			),
-			statusBar(c),
-			c.verdict
-				? h(
-						"span",
-						{ class: "meta" },
-						`Summary for the developer: ${c.verdict.slice(0, 80)}`,
-					)
-				: null,
+			// The summary is the case's own words: under the title, in the
+			// text's colour, apart from the facts (DEC-064).
+			summary ? h("span", { class: "card-summary" }, summary) : null,
+			whereLine(c),
+			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
+			caseChips(c),
 		),
 	);
 }
@@ -503,13 +591,15 @@ let importKey: string | undefined;
 function renderCases(state: PanelState, actions: Actions): void {
 	const url = state.tab?.url ?? "";
 	const local = (c: Case) => caseSync(state.cloud, c.id).kind === "local";
+	const team = (c: Case) => caseSync(state.cloud, c.id).kind === "synced";
 	const key = JSON.stringify([
 		url,
 		state.cases.map((c) => [
 			c.id,
 			c.updatedAt,
 			c.importedAt,
-			local(c),
+			c.verdict,
+			caseSync(state.cloud, c.id).kind,
 			c.closed !== undefined,
 		]),
 	]);
@@ -546,7 +636,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 					h(
 						"ul",
 						{ class: "cases", "data-group": "here" },
-						...own.map((c) => caseItem(c, actions, local(c), true)),
+						...own.map((c) => caseItem(c, actions, local(c), team(c))),
 					),
 				]
 			: []),
@@ -554,6 +644,12 @@ function renderCases(state: PanelState, actions: Actions): void {
 	// One case: opening it is the view's one amber button, a new case steps
 	// back. Several: each row opens its case, and none is the one.
 	openHere.hidden = one === undefined;
+	// One case: its Open button is part of its card; several: none.
+	const unit = hereCases.querySelector("li");
+	if (one && unit) {
+		unit.classList.add("with-action");
+		unit.append(openHere);
+	} else hereCases.after(openHere);
 	openHere.onclick = one ? () => actions.openCase(one.id) : null;
 	openHere.title = one
 		? `Open “${one.title}” and show its marks on the page in this tab`
@@ -576,9 +672,9 @@ function renderCases(state: PanelState, actions: Actions): void {
 				: h(
 						"ul",
 						{ class: "cases", "data-group": "other" },
-						...other.map((c) => caseItem(c, actions, local(c))),
+						...other.map((c) => caseItem(c, actions, local(c), team(c))),
 					),
-		...(closed.length === 0 ? [] : [closedGroup(closed, actions, local)]),
+		...(closed.length === 0 ? [] : [closedGroup(closed, actions, local, team)]),
 	);
 }
 
@@ -590,6 +686,7 @@ function closedGroup(
 	closed: Case[],
 	actions: Actions,
 	local: (c: Case) => boolean,
+	team: (c: Case) => boolean,
 ): HTMLElement {
 	const group = h(
 		"details",
@@ -610,7 +707,7 @@ function closedGroup(
 		h(
 			"ul",
 			{ class: "cases", "data-group": "closed" },
-			...closed.map((c) => caseItem(c, actions, local(c))),
+			...closed.map((c) => caseItem(c, actions, local(c), team(c))),
 		),
 	);
 	return group;
@@ -812,39 +909,29 @@ const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 	m !== undefined && (m.candidates.length > 0 || m.status === "no-element");
 
 /**
- * Pictures shown large (`caseId:markId` for the crop, `caseId:markId:imageId`
- * for an added image); the rest are small.
- */
-const zoomed = new Set<string>();
-
-/**
- * A picture of a mark as a tile, small at first: a click shows it large
- * across the row (as the crop was shown before the row), another small again.
+ * A picture of a mark as a tile: a click opens it at its size in the viewer,
+ * the viewer, with the mark's other pictures (DEC-060; in one step since
+ * DEC-061): over the page in a frame of the extension's own, or in a window
+ * of its own (DEC-064). It never goes through the web page being marked.
  */
 function pictureTile(
-	key: string,
 	src: string,
 	label: string,
 	title: string,
+	open: () => void,
 ): HTMLElement {
-	const button: HTMLButtonElement = h(
+	return h(
 		"button",
 		{
 			type: "button",
 			class: "tile",
-			"data-action": "zoom",
-			"aria-pressed": String(zoomed.has(key)),
-			"aria-label": label,
-			title,
-			onclick: () => {
-				const large = !zoomed.delete(key);
-				if (large) zoomed.add(key);
-				button.setAttribute("aria-pressed", String(large));
-			},
+			"data-action": "open-larger",
+			"aria-label": `${label}: shows it large`,
+			title: `${title} Click to see it large; Escape closes it.`,
+			onclick: open,
 		},
 		h("img", { src, alt: "" }),
 	);
-	return button;
 }
 
 /** "22 Nov" in the browser's language. */
@@ -878,10 +965,10 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			{ class: "picture", "data-picture": "screenshot" },
 			shot
 				? pictureTile(
-						`${c.id}:${a.id}`,
 						shot,
 						`Screenshot of mark ${a.number}, taken by Sitegloss`,
 						"Taken by Sitegloss when the mark was made. It stays with the mark.",
+						() => x.actions.openPicture(c, a, "screenshot"),
 					)
 				: missing("The screenshot is missing."),
 			h("figcaption", {}, "Screenshot"),
@@ -905,14 +992,14 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				{ class: "picture", "data-picture": image.id },
 				url
 					? pictureTile(
-							`${c.id}:${a.id}:${image.id}`,
 							url,
 							waiting
 								? `Image ${n} on mark ${a.number}, not sent: the mark already holds ${MAX_MARK_IMAGES} images`
 								: `Image ${n} of ${added.length} on mark ${a.number}${whence}`,
 							image.added.imported
-								? `Added ${shortDate(image.added.at)}, from an imported file. Click to show it larger, or small again`
-								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}. Click to show it larger, or small again`,
+								? `Added ${shortDate(image.added.at)}, from an imported file.`
+								: `Added${who ? ` by ${who}` : ""}, ${shortDate(image.added.at)}.`,
+							() => x.actions.openPicture(c, a, image.id),
 						)
 					: missing("The image is missing."),
 				h(
@@ -1043,6 +1130,19 @@ interface CaseParts {
 	/** The title and its Rename button; the rename form instead while renaming. */
 	titleRow: HTMLElement;
 	renameButton: HTMLButtonElement;
+	/** "…": Rename, the link, Export, Delete case (DEC-061). */
+	more: HTMLButtonElement;
+	menu: HTMLElement;
+	linkMenu: HTMLButtonElement;
+	/** The status counts under the title. */
+	counts: HTMLElement;
+	/** The facts' rows that come and go with what they hold. */
+	teamRow: HTMLElement;
+	/** "Show all n" under the first three pages. */
+	/** "Pages 12": opens and closes the list of pages (DEC-063). */
+	pagesToggle: HTMLButtonElement;
+	pagesLabel: HTMLElement;
+	pagesCount: HTMLElement;
 	rename: HTMLElement;
 	renameField: HTMLInputElement;
 	renameSave: HTMLButtonElement;
@@ -1064,6 +1164,8 @@ interface CaseParts {
 	/** The case's pages, where it has several (DEC-038). */
 	pages: HTMLUListElement;
 	pagesKey: string;
+	/** The action hint last written (`caseHintSeq`). */
+	hintSeq: number;
 	/** Whether the case syncs with the team, and "Share with team" (DEC-039). */
 	team: HTMLElement;
 	teamText: HTMLElement;
@@ -1082,18 +1184,16 @@ interface CaseParts {
 	/** Sitegloss may not run on the tab in front. */
 	access: Notice;
 	/** None of the case's marks were found on the tab in front (DEC-022). */
-	noneFound: Notice;
+	/** The quiet line where the marks start (DEC-063). */
+	noneFound: HTMLElement;
 	/** What the tab in front shows of the case, in one line. */
 	tabLine: HTMLElement;
-	/** The tab in front is the team's own web app (`webAppNote`). */
-	webApp: HTMLElement;
 	/** Show, or Hide where the case is loaded on the tab in front. */
 	loadButton: HTMLButtonElement;
 	loadedHere: boolean;
-	/** "Add marks", or "Done adding" while the toolbar adds to the case. */
+	/** "Add marks", or "Adding marks: Done" while the toolbar adds to the case. */
 	addMarks: HTMLButtonElement;
 	/** The same under the last mark of the list, where it has marks. */
-	addMarksEnd: HTMLButtonElement;
 	adding: boolean;
 	/** "← All cases" is finishing the marks, or could not (DEC-023). */
 	leaving: HTMLElement;
@@ -1155,12 +1255,65 @@ function holdDelete(button: HTMLElement | undefined): void {
 	};
 }
 
+/**
+ * The list of pages opened or closed by the person, per case, this session
+ * (DEC-063). Not chosen: closed for more than `PAGES_SHOWN`, open where the
+ * tab shows none of the case's pages. A choice wins over that, so the list
+ * does not open again by itself at the next render (DEC-064's review).
+ * Closed, it still shows the page in front.
+ */
+const openPages = new Map<string, boolean>();
+
+/** Up to this many pages, the list is just shown: nothing to open or close. */
+const PAGES_SHOWN = 3;
+
+/**
+ * The list of pages, open or closed (DEC-063); `noneHere`: the tab shows none
+ * of the case's pages, and the list is open so the person sees where to go.
+ */
+function foldPages(p: CaseParts, noneHere: boolean): void {
+	const rows = [...p.pages.children] as HTMLElement[];
+	const many = rows.length > PAGES_SHOWN;
+	const open = !many || (openPages.get(p.current.id) ?? noneHere);
+	for (const li of rows) li.hidden = !open && !li.hasAttribute("data-here");
+	p.pagesToggle.hidden = !many;
+	p.pagesLabel.hidden = many;
+	p.pagesToggle.setAttribute("aria-expanded", String(open));
+	p.pagesCount.textContent = String(rows.length);
+}
+
+// The case's menu closes on a press outside it.
+document.addEventListener(
+	"pointerdown",
+	(e) => {
+		const p = parts;
+		if (p === undefined || p.menu.hidden) return;
+		const t = e.target as Node;
+		if (p.menu.contains(t) || p.more.contains(t)) return;
+		p.menu.hidden = true;
+		p.more.setAttribute("aria-expanded", "false");
+	},
+	true,
+);
+
+/**
+ * Whether the tab's size differs from the marks' enough to offer "Match
+ * size" (DEC-061): 24 px of width (a layout's breakpoint can sit that
+ * close; a classic scrollbar is 15 px) or 100 px of height.
+ */
+export function sizeMatters(tab: Size, made: Size): boolean {
+	return (
+		Math.abs(tab.width - made.width) >= 24 ||
+		Math.abs(tab.height - made.height) >= 100
+	);
+}
+
 function createParts(c: Case, actions: Actions): CaseParts {
 	const verdict: HTMLTextAreaElement = h("textarea", {
 		id: "verdict",
 		rows: "2",
-		placeholder:
-			"What should change, as agreed. Whoever loads this case sees it first.",
+		// Help under the label, not a placeholder that looks like text (DEC-060).
+		"aria-describedby": "verdict-help",
 		maxlength: String(MAX_VERDICT),
 		"data-case": c.id,
 		oninput: () => actions.typeVerdict(c.id, verdict.value),
@@ -1178,18 +1331,95 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const madeOn = h("span");
 	const sizeText = h("span");
 	const title = h("h2", { class: "case-title" });
-	const renameButton = h(
+	// The case's rare actions, in one menu (DEC-061, the web's case page).
+	const closeMenu = (back = false) => {
+		menu.hidden = true;
+		more.setAttribute("aria-expanded", "false");
+		if (back) more.focus();
+	};
+	const item = (
+		id: string,
+		label: string,
+		title: string,
+		onclick: () => void,
+		keepOpen = false,
+	) =>
+		h(
+			"button",
+			{
+				type: "button",
+				role: "menuitem",
+				id,
+				title,
+				onclick: () => {
+					onclick();
+					if (!keepOpen) closeMenu();
+				},
+			},
+			label,
+		);
+	const renameButton = item(
+		"rename-case",
+		"Rename…",
+		"Change this case's title; it is saved at once",
+		() => actions.startRename(created.current),
+	);
+	const linkMenu = item(
+		"case-link-menu",
+		"Add a link…",
+		"A ticket, a design or a pull request this case is about; it is saved at once",
+		() => actions.startLink(created.current),
+	);
+	const exportItem = item(
+		"export-case",
+		"Export…",
+		"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
+		() => actions.exportCase(created.current),
+	);
+	const more: HTMLButtonElement = h(
 		"button",
 		{
 			type: "button",
-			class: "quiet",
-			id: "rename-case",
-			"aria-label": "Rename this case",
-			title: "Change this case's title; it is saved at once",
-			onclick: () => actions.startRename(created.current),
+			class: "quiet more",
+			id: "case-more",
+			"aria-haspopup": "menu",
+			"aria-expanded": "false",
+			"aria-controls": "case-menu",
+			"aria-label": "More actions on this case",
+			title: "Rename, add a link, export or delete this case",
+			onclick: () => {
+				const open = menu.hidden;
+				menu.hidden = !open;
+				more.setAttribute("aria-expanded", String(open));
+				if (open)
+					menu.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+			},
 		},
-		"Rename",
+		"…",
 	);
+	const menu: HTMLElement = h("div", {
+		class: "case-menu",
+		id: "case-menu",
+		role: "menu",
+		"aria-label": "More actions on this case",
+		hidden: true,
+		onkeydown: (e: Event) => {
+			const k = e as KeyboardEvent;
+			const items = [
+				...menu.querySelectorAll<HTMLElement>("button:not(:disabled)"),
+			];
+			const at = items.indexOf(document.activeElement as HTMLElement);
+			if (k.key === "Escape") {
+				k.preventDefault();
+				closeMenu(true);
+			} else if (k.key === "ArrowDown" || k.key === "ArrowUp") {
+				k.preventDefault();
+				const step = k.key === "ArrowDown" ? 1 : -1;
+				items[(at + step + items.length) % items.length]?.focus();
+			} else if (k.key === "Tab") closeMenu();
+		},
+	});
+
 	const renameField: HTMLInputElement = h("input", {
 		type: "text",
 		id: "rename-field",
@@ -1246,7 +1476,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		id: "case-link-field",
 		"aria-label": "Link of this case",
 		"aria-describedby": "case-link-hint",
-		placeholder: "https://… a ticket, a design, a pull request",
+		// Only the address's form: what a link is for is the button's title.
+		placeholder: "https://…",
 		autocomplete: "off",
 		spellcheck: "false",
 		oninput: () => actions.typeLink(linkField.value),
@@ -1313,11 +1544,46 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		},
 		"Share with team",
 	);
+	const pagesCount = h("span", { class: "count" });
+	const pagesToggle: HTMLButtonElement = h(
+		"button",
+		{
+			type: "button",
+			class: "link pages-toggle",
+			id: "case-pages-toggle",
+			"aria-controls": "case-pages",
+			"aria-expanded": "false",
+			hidden: true,
+			onclick: () => {
+				const key = created.current.id;
+				const open = pagesToggle.getAttribute("aria-expanded") === "true";
+				openPages.set(key, !open);
+				created.pagesKey = "";
+				foldPages(created, false);
+			},
+		},
+		h("span", { class: "chevron", "aria-hidden": "true" }),
+		"Pages ",
+		pagesCount,
+	);
 	const created: CaseParts = {
 		current: c,
 		title,
-		titleRow: h("div", { class: "case-title-row" }, title, renameButton),
+		titleRow: h(
+			"div",
+			{ class: "case-title-row" },
+			title,
+			h("div", { class: "case-more" }, more, menu),
+		),
 		renameButton,
+		more,
+		menu,
+		linkMenu,
+		counts: h("p", { class: "meta case-counts", id: "case-counts" }),
+		teamRow: h("div", { class: "fact", hidden: true }),
+		pagesToggle,
+		pagesLabel: h("span", {}, "Pages"),
+		pagesCount,
 		rename: h(
 			"div",
 			{ class: "rename", id: "rename", hidden: true },
@@ -1343,9 +1609,10 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		renameSave,
 		renameHint,
 		renameOpen: false,
-		meta: h("p", { class: "meta case-meta" }, page, about, madeAt, madeOn),
+		meta: h("p", { class: "case-meta" }, page, about),
 		pages: h("ul", { class: "case-pages", id: "case-pages", hidden: true }),
 		pagesKey: "",
+		hintSeq: 0,
 		team: h(
 			"p",
 			{ class: "meta case-team", id: "case-team", hidden: true },
@@ -1394,22 +1661,13 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		sizeText,
 		origin: h("p", { class: "hint", id: "case-origin", hidden: true }),
 		access: accessNotice("case-access", () => actions),
-		noneFound: notice(
-			"none-found",
-			h(
-				"button",
-				{
-					type: "button",
-					"data-action": "open-case-page",
-					title:
-						"Open the page the marks were made on in a new tab; the case's marks are drawn there",
-					onclick: () => actions.openPage(created.current),
-				},
-				"Open the case's page",
-			),
-		),
+		noneFound: h("p", {
+			class: "hint none-here",
+			id: "none-found",
+			role: "status",
+			hidden: true,
+		}),
 		tabLine: h("p", { class: "tab-line", id: "tab-line", hidden: true }),
-		webApp: h("p", { class: "meta", id: "case-web-app", hidden: true }),
 		// A button with an edge, not a link: it was overlooked (the owner). It
 		// sits in the marks' bar: the marks are what it shows.
 		loadButton: h("button", {
@@ -1428,18 +1686,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				type: "button",
 				id: "add-marks",
 				class: "primary",
-				onclick: () =>
-					created.adding
-						? actions.doneAdding(created.current)
-						: actions.addMarks(created.current),
-			},
-			"Add marks",
-		),
-		addMarksEnd: h(
-			"button",
-			{
-				type: "button",
-				id: "add-marks-end",
 				onclick: () =>
 					created.adding
 						? actions.doneAdding(created.current)
@@ -1477,7 +1723,12 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		thread: h("section"),
 		summaryBy: h("p", { class: "meta", id: "summary-by", hidden: true }),
 		saved: h("div", { id: "export-saved", hidden: true }),
-		hint: h("p", { class: "hint", id: "case-hint", hidden: true }),
+		hint: h("p", {
+			class: "hint",
+			id: "case-hint",
+			role: "status",
+			hidden: true,
+		}),
 		verdict,
 		verdictStatus,
 		saveVerdict: h(
@@ -1497,46 +1748,37 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		shots: h("section"),
 		shotsKey: "",
 	};
+	// The menu holds Rename, the link, Export and Delete case (DEC-061).
+	menu.append(renameButton, linkMenu, exportItem, created.deleteButton);
+	created.deleteButton.setAttribute("role", "menuitem");
+	created.teamRow.append(h("dt", {}, "Team"), h("dd", {}, created.team));
+	const fact = (label: string, ...value: (Node | string)[]) =>
+		h("div", { class: "fact" }, h("dt", {}, label), h("dd", {}, ...value));
 	const header = h(
 		"section",
 		{ class: "case-header" },
+		// The head: the title, its counts, one action (DEC-061).
 		created.titleRow,
 		created.rename,
 		created.closedLine,
-		created.meta,
-		created.pages,
-		created.team,
-		created.linkRow,
-		created.origin,
-		h(
-			"div",
-			{ class: "row case-actions" },
-			created.addMarks,
-			h(
-				"button",
-				{
-					type: "button",
-					id: "export-case",
-					title:
-						"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
-					onclick: () => actions.exportCase(created.current),
-				},
-				"Export",
-			),
-		),
+		created.counts,
 		created.leaving,
 		created.saved,
-		// What the tab in front shows of the case (DEC-022, DEC-023).
+		// The case's facts, one quiet block of label and value.
 		h(
-			"div",
-			{ class: "this-tab", id: "this-tab" },
-			created.access.el,
-			created.noneFound.el,
-			created.webApp,
-			created.tabLine,
-			created.hint,
-			created.size,
+			"dl",
+			{ class: "case-facts", id: "case-facts" },
+			h(
+				"div",
+				{ class: "fact" },
+				h("dt", {}, created.pagesLabel, pagesToggle),
+				h("dd", {}, created.meta, created.pages),
+			),
+			created.teamRow,
+			fact("Link", created.linkRow),
+			fact("Made at", h("span", {}, created.madeAt, ", ", created.madeOn)),
 		),
+		created.origin,
 		// What the whole case comes to: the case's, not a mark's. Stored as
 		// verdict, its name before (DEC-019).
 		h(
@@ -1549,20 +1791,49 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				verdictStatus,
 				created.saveVerdict,
 			),
+			h(
+				"p",
+				{ class: "meta field-help", id: "verdict-help" },
+				"What should change, as agreed. Whoever loads this case sees it first.",
+			),
 			verdict,
 			created.summaryBy,
 		),
 	);
+	// What the tab in front shows of the case (DEC-022, DEC-023): under the
+	// head, where the marks start, so the head does not move with the tab.
+	const thisTab = h(
+		"section",
+		{ class: "this-tab", id: "this-tab" },
+		created.access.el,
+		created.noneFound,
+		created.tabLine,
+		created.hint,
+		created.size,
+	);
 	caseView.replaceChildren(
 		header,
+		thisTab,
 		created.marks,
 		created.thread,
 		created.shots,
+		// Closing files the case away: at the end; Delete case is in the menu.
+		h("section", { class: "case-footer" }, created.closeButton),
+		// Always in reach while a case is open (DEC-063): adding marks, and
+		// the marks shown or not on the tab. Sticky at the panel's bottom, it
+		// rests after the content, so it never covers the last row.
 		h(
-			"section",
-			{ class: "case-footer" },
-			created.deleteButton,
-			created.closeButton,
+			"div",
+			{
+				class: "case-dock",
+				id: "case-dock",
+				// The scroll hold lends its room above the bar (DEC-063).
+				"data-room-before": "",
+				role: "toolbar",
+				"aria-label": "Marks on this tab",
+			},
+			created.addMarks,
+			created.loadButton,
 		),
 	);
 	return created;
@@ -1619,7 +1890,7 @@ function renderTitle(state: PanelState, p: CaseParts, c: Case): void {
 		// The keyboard is back where the rename started.
 		const at = document.activeElement;
 		if (at === null || at === document.body || p.rename.contains(at))
-			queueMicrotask(() => p.renameButton.focus());
+			queueMicrotask(() => p.more.focus());
 		return;
 	}
 	if (p.renameField.value !== renaming.text)
@@ -1683,14 +1954,6 @@ function renderLink(state: PanelState, p: CaseParts, c: Case): void {
 }
 
 // --- a mark's status and its actions ---------------------------------------
-
-/** "2 open, 1 to verify, 1 dismissed": the groups with marks; nothing while every mark is open. */
-function countsText(n: Record<StatusGroup, number>): string | undefined {
-	if (n.toVerify + n.verified + n.dismissed === 0) return undefined;
-	return STATUS_GROUPS.filter((g) => n[g] > 0)
-		.map((g) => `${n[g]} ${GROUP_LABEL[g].toLowerCase()}`)
-		.join(", ");
-}
 
 /** "3 open", "1 open, 2 to verify", "no marks": for the import prompt. */
 function marksText(c: Case): string {
@@ -1903,14 +2166,42 @@ const VERIFIED_TITLE = "The fix holds on the page you checked";
 const REOPEN_TITLE =
 	"Open the mark again, with a note on what is still wrong; how it was settled stays in its history";
 
+/**
+ * A mark just verified (DEC-061): its row closes, and once it is drawn as
+ * verified the focus goes to the next mark waiting to be verified, else to
+ * the closed row's head. Only for a while, and only where the focus still
+ * is in the list: a Verify that was not saved, and a change of that mark
+ * minutes later, take no focus from a field (DEC-064's review).
+ */
+let verifiedNow: { caseId: string; markId: string; at: number } | undefined;
+/** How long a Verify waits for its row to be drawn as verified. */
+export const VERIFIED_WAIT_MS = 5000;
+
 const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton(
 		"Verify",
 		"verify",
 		VERIFIED_TITLE,
-		() => actions.verifyMark(c, a),
+		() => {
+			openMarks.delete(`${c.id}:${a.id}`);
+			verifiedNow = { caseId: c.id, markId: a.id, at: Date.now() };
+			actions.verifyMark(c, a);
+		},
 		true,
 	);
+
+/** Where the focus goes after a Verify: the next mark to verify, else the row's head. */
+export function afterVerify(
+	order: readonly { id: string; status: string }[],
+	verified: string,
+): { markId: string } | undefined {
+	const at = order.findIndex((m) => m.id === verified);
+	if (at < 0) return undefined;
+	const next =
+		order.slice(at + 1).find((m) => m.status === "fixed") ??
+		order.slice(0, at).find((m) => m.status === "fixed");
+	return { markId: next?.id ?? verified };
+}
 
 const reopenButton = (c: Case, a: Mark, actions: Actions) =>
 	markButton("Reopen…", "reopen", REOPEN_TITLE, () =>
@@ -1992,7 +2283,15 @@ function focusOnOpen(form: string, field: HTMLElement): void {
 		return;
 	}
 	focusedForm = form;
-	queueMicrotask(() => field.focus());
+	queueMicrotask(() => {
+		// A field out of sight is scrolled into view by its focus: the row
+		// held after the click that opened the form lets go, or the two pull
+		// against each other and a press on Save lands on what moved (DEC-061).
+		const r = field.getBoundingClientRect();
+		if (r.top < 0 || r.bottom > document.documentElement.clientHeight)
+			releaseHeld();
+		field.focus();
+	});
 }
 
 /** The four ways Resolve… and Change… settle a mark. */
@@ -2011,12 +2310,12 @@ function resolveForm(
 	actions: Actions,
 ): HTMLElement {
 	const name = `resolution-${a.id}`;
+	const noteId = `resolution-note-${a.id}`;
 	const noteField: HTMLInputElement = h("input", {
 		type: "text",
 		class: "note",
-		placeholder: "Note (optional): what was done, or why",
+		id: noteId,
 		maxlength: String(MAX_COMMENT),
-		"aria-label": `Note for mark ${a.number}`,
 		value: note,
 		oninput: () => actions.typeMark({ text: noteField.value }),
 		onkeydown: (e) => {
@@ -2050,6 +2349,12 @@ function resolveForm(
 					CHOICE_LABEL[k],
 				),
 			),
+		),
+		// A label that shows, not a placeholder in its place (DEC-060).
+		h(
+			"label",
+			{ class: "note-label", for: noteId },
+			"Note (optional): what was done, or why",
 		),
 		noteField,
 		h(
@@ -2156,8 +2461,8 @@ function reopenForm(
 		"textarea",
 		{
 			maxlength: String(MAX_REOPEN_NOTE),
-			placeholder: "What is still wrong? The developer reads this first.",
 			"aria-label": `What is still wrong with mark ${a.number}`,
+			"aria-describedby": `reopen-help-${a.id}`,
 			oninput: () => {
 				// No redraw while typing: the button follows the text itself.
 				done.disabled = empty(field.value);
@@ -2178,7 +2483,17 @@ function reopenForm(
 	return h(
 		"div",
 		{ class: "mark-form", "data-form": "reopen" },
-		h("fieldset", {}, h("legend", {}, `Reopen mark ${a.number}`), field),
+		h(
+			"fieldset",
+			{},
+			h("legend", {}, `Reopen mark ${a.number}`),
+			h(
+				"p",
+				{ class: "meta field-help", id: `reopen-help-${a.id}` },
+				"What is still wrong? The developer reads this first.",
+			),
+			field,
+		),
 		h(
 			"div",
 			{ class: "row" },
@@ -2270,9 +2585,6 @@ function pageChooser(
 			label,
 			count === undefined ? null : h("span", { class: "count" }, ` ${count}`),
 		);
-	const hosts = new Set(
-		pages.filter((pg) => isWebPage(pg.url)).map((pg) => hostOf(pg.url)),
-	);
 	const select = h(
 		"select",
 		{
@@ -2286,9 +2598,8 @@ function pageChooser(
 		h("option", { value: "" }, picked ? "All pages" : "Other page…"),
 		...pages.map((pg) => {
 			const n = marksOn(pg.url);
-			const path = isWebPage(pg.url)
-				? shortPath(pg.url, hosts.size > 1)
-				: pg.url;
+			// A page is its path whatever the host (DEC-063).
+			const path = isWebPage(pg.url) ? pagePath(pg.url) : pg.url;
 			const title = pg.title.trim();
 			// A page without marks would show nothing.
 			return h(
@@ -2352,18 +2663,26 @@ function renderPages(
 	// Counted once for all the pages, not once per page.
 	const counts = marksByPage(c);
 	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
+	// One row per page whatever the host (DEC-063): its hosts under it.
+	const hostsOf = pageHosts(c);
+	// The host most pages were marked on: said only of a page marked on
+	// another, or on more than one (the list stays two lines a page).
+	const usual = (() => {
+		const count = new Map<string, number>();
+		for (const { origins } of hostsOf.values())
+			for (const o of origins) count.set(o, (count.get(o) ?? 0) + 1);
+		return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+	})();
 	const key = JSON.stringify([
 		pages.map((page) => [page.url, page.title, marksOn(page.url)]),
 		here?.url ?? null,
 		byPage.page?.url ?? null,
+		[...hostsOf.entries()],
+		tabOrigin(tabUrl),
 	]);
 	if (key === p.pagesKey) return;
 	p.pagesKey = key;
 	p.pages.hidden = pages.length === 0;
-	// The host only where it tells the pages apart.
-	const hosts = new Set(
-		pages.filter((page) => isWebPage(page.url)).map((page) => hostOf(page.url)),
-	);
 	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
 	// the title it was on), in the same row.
 	const at = document.activeElement as HTMLElement | null;
@@ -2382,12 +2701,15 @@ function renderPages(
 			const front = here !== undefined && here.url === page.url;
 			const title = page.title.trim();
 			const web = isWebPage(page.url);
-			const path = web ? shortPath(page.url, hosts.size > 1) : page.url;
+			const path = web ? pagePath(page.url) : page.url;
+			const hosts = hostsOf.get(pageKey(page.url));
+			// On the tab's host when it was marked there, else on its last.
+			const target = openAt(page.url, hosts, tabUrl);
 			// An address is cut at its start: its end tells two pages apart.
 			const address = () => h("bdi", { dir: "ltr" }, path);
 			// The page in front is said by `aria-current` alone, once.
 			const name = title || address();
-			const whole = title ? `${title}\n${page.url}` : page.url;
+			const whole = title ? `${title}\n${target}` : target;
 			const tooltip = web
 				? `${whole}\nOpens in a new tab; the case's marks are drawn there`
 				: whole;
@@ -2408,7 +2730,7 @@ function renderPages(
 								class: `link ${nameClass}`,
 								title: tooltip,
 								...(front ? { "aria-current": "page" } : {}),
-								onclick: () => actions.openPage(p.current, page.url),
+								onclick: () => actions.openPage(p.current, target),
 							},
 							name,
 						)
@@ -2417,6 +2739,14 @@ function renderPages(
 				pageCount(p.current, page, marks, byPage, actions),
 				title
 					? h("span", { class: "page-address cut-start" }, address())
+					: null,
+				// Marked on more than one host, or not on the usual one: on which, the last first.
+				hosts && (hosts.origins.length > 1 || hosts.origins[0] !== usual)
+					? h(
+							"span",
+							{ class: "page-hosts" },
+							hosts.origins.map((o) => hostOf(o)).join(", "),
+						)
 					: null,
 			);
 		}),
@@ -2464,12 +2794,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const web = !several && isWebPage(c.page.url);
 	p.page.hidden = !web;
 	p.page.textContent = web ? shortUrl(c.page.url) : "";
-	p.about.hidden = web;
-	p.about.textContent = several
-		? `${pages.length} pages`
-		: web
-			? ""
-			: c.page.url;
+	// Several: the list says it, under the Pages label (DEC-061).
+	p.about.hidden = web || several;
+	p.about.textContent = several ? "" : web ? "" : c.page.url;
 	renderPages(
 		p,
 		c,
@@ -2478,14 +2805,32 @@ function renderCase(state: PanelState, actions: Actions): void {
 		pageFilter(c, state.markPage, state.tab?.url),
 		actions,
 	);
+	// The tab shows none of the case's pages: the list is open (DEC-063).
+	const tabUrl = state.tab?.url;
+	const noneInTab =
+		several &&
+		tabUrl !== undefined &&
+		isWebPage(tabUrl) &&
+		pageInFront(c, tabUrl) === undefined;
+	foldPages(p, noneInTab);
+	// The status counts under the title, as the bar and chips count them.
+	const n = c.marks.length;
+	p.counts.textContent =
+		n === 0
+			? "No marks yet"
+			: `${n} mark${n === 1 ? "" : "s"}: ${marksText(c)}`;
+	p.linkMenu.textContent =
+		c.link === undefined ? "Add a link…" : "Change link…";
 	// The window the marks of the page in front were made in (DEC-038).
 	const madeAt = viewportAt(c, state.tab?.url);
 	p.madeAt.textContent = sizeOf(madeAt);
 	p.madeOn.textContent = formatDate(c.createdAt);
+	// Offered only when the difference can change the page's layout (DEC-061).
 	const size = state.tab?.size;
-	p.size.hidden = size === undefined || sameSize(size, madeAt);
+	p.size.hidden =
+		size === undefined || sameSize(size, madeAt) || !sizeMatters(size, madeAt);
 	p.sizeText.textContent = size
-		? `This tab is ${sizeOf(size)}, the marks were made at ${sizeOf(madeAt)}. `
+		? `This tab is ${sizeOf(size)}; the marks were made at ${sizeOf(madeAt)}. `
 		: "";
 	setHint(
 		p.origin,
@@ -2505,8 +2850,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.adding =
 		state.overlay?.visible === true && state.overlay.target?.caseId === c.id;
 	p.addMarks.disabled = !ok || state.leaving?.phase === "finishing";
-	p.addMarks.textContent = p.adding ? "Done adding" : "Add marks";
-	p.addMarks.classList.toggle("primary", !p.adding);
+	// Calm at rest, always in reach; amber only while adding is on, and it
+	// says so (DEC-064).
+	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
+	p.addMarks.classList.toggle("primary", p.adding);
+	// Its words say what it does; no pressed state beside them (DEC-064's review).
 	p.addMarks.title = !ok
 		? NEEDS_ACCESS
 		: p.adding
@@ -2514,12 +2862,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 			: "Each mark you draw on the page goes into this case when its comment is done";
 	// The same button at the end of a long list of marks; not amber, which
 	// is the view's one button that starts drawing (DEC-024).
-	p.addMarksEnd.disabled = p.addMarks.disabled;
-	p.addMarksEnd.textContent = p.addMarks.textContent;
-	p.addMarksEnd.title = p.addMarks.title;
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
-	setHint(p.webApp, webAppNote(state));
 	// The case has no mark of this page (DEC-057), or the search is over and
 	// found none of those it has.
 	const none =
@@ -2536,16 +2880,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.loadButton.title = p.loadedHere
 		? "Take this case's marks off the page in this tab; they stay off on this tab until you show them again"
 		: "Look for each mark's element on the page in this tab and draw the marks there";
-	p.noneFound.el.hidden = !none;
-	p.noneFound.text.textContent = none ? noneFoundText(c, state.tab?.url) : "";
-	p.noneFound.button.hidden =
-		!none ||
-		!isWebPage(c.page.url) ||
-		pageInFront(c, state.tab?.url ?? "") !== undefined;
+	const allLost =
+		none &&
+		here !== undefined &&
+		findsOn(c, [...here.matches.values()], here.url).own.length > 0;
+	setHint(p.noneFound, noneFoundText(c, state.tab?.url, allLost));
 	// With a team (DEC-039): whether the case is the team's, and what a
 	// delete then means.
 	const sync = caseSync(state.cloud, c.id);
 	p.team.hidden = sync.kind === "off";
+	p.teamRow.hidden = p.team.hidden;
 	p.team.dataset["sync"] = sync.kind;
 	p.teamText.textContent =
 		sync.kind === "synced"
@@ -2573,17 +2917,13 @@ function renderCase(state: PanelState, actions: Actions): void {
 			? `Closed ${formatDate(c.closed.at)}${byline(c.closed.user, c.closed.app) ? ` by ${byline(c.closed.user, c.closed.app)}` : ""}.`
 			: undefined,
 	);
-	renderThread(
-		p.thread,
-		c,
-		{
-			me: state.cloud.account?.userId,
-			mayComment:
-				sync.kind !== "synced" ||
-				(team?.permissions.includes("comment:create") ?? true),
-		},
-		actions,
-	);
+	const threadContext: ThreadContext = {
+		me: state.cloud.account?.userId,
+		mayComment:
+			sync.kind !== "synced" ||
+			(team?.permissions.includes("comment:create") ?? true),
+	};
+	renderThread(p.thread, c, threadContext, actions);
 	const armed = state.deleteArmedAt !== undefined;
 	p.deleteButton.toggleAttribute("data-armed", armed);
 	holdDelete(armed && sync.mayDelete ? p.deleteButton : undefined);
@@ -2613,14 +2953,22 @@ function renderCase(state: PanelState, actions: Actions): void {
 	// What the draw found counts the matches as they are now: a mark saved
 	// since, while adding, is counted as the next draw would count it.
 	const caseHint = state.caseHint;
-	setHint(
-		p.hint,
-		typeof caseHint !== "object"
-			? caseHint
-			: state.loaded?.caseId === c.id
-				? foundLine(c, state.loaded)
-				: undefined,
-	);
+	// What a draw found is the page filter's counts and each mark's word
+	// now (DEC-061): no sentence on screen; a screen reader still hears it
+	// (a status line, kept out of sight). What went wrong is said as before.
+	const foundNow =
+		typeof caseHint === "object" && state.loaded?.caseId === c.id
+			? foundLine(c, state.loaded)
+			: undefined;
+	// Said once the draw has settled, not at every step of its count
+	// (DEC-064's review): while it settles, the line says what it said.
+	const settling = foundNow !== undefined && state.loaded?.settling === true;
+	const again = typeof caseHint === "string" && state.caseHintSeq !== p.hintSeq;
+	p.hintSeq = state.caseHintSeq;
+	if (!settling) {
+		setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow, again);
+		p.hint.classList.toggle("visually-hidden", foundNow !== undefined);
+	}
 
 	// A filter ends once none of its marks are left (nothing to show), or a
 	// mark was added (it would not show, as if it was not saved).
@@ -2713,6 +3061,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
 		notSent ?? null,
 		ok,
+		// A mark's comments: one in edit, a Delete asked once, earlier ones shown.
+		threadStateKey(c.id),
+		threadContext,
 	]);
 	if (marksKey !== p.marksKey) {
 		const sorted = [...onPage.marks]
@@ -2745,6 +3096,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
 				notSent,
 				actions,
+				thread: threadContext,
 				canReach: ok,
 				changed: () => syncToggleAll(),
 			});
@@ -2789,7 +3141,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 					h("span", { class: "count" }, String(c.marks.length)),
 				),
 				// Kept across redraws, like the status block under the bar.
-				h("div", { class: "marks-tools" }, toggleAll, p.loadButton),
+				h("div", { class: "marks-tools" }, toggleAll),
 			),
 			p.status,
 			!narrowed || c.marks.length === 0
@@ -2810,7 +3162,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 						),
 					),
 			items.length > 0 ? h("ol", { class: "marks" }, ...items) : null,
-			items.length > 0 ? h("div", { class: "row" }, p.addMarksEnd) : null,
 			items.length > 0
 				? null
 				: c.marks.length === 0
@@ -2846,11 +3197,52 @@ function renderCase(state: PanelState, actions: Actions): void {
 		p.marks = marks;
 		if (kept !== undefined && !kept.hidden) kept.focus();
 		refocus?.(marks);
+		// Verified and drawn so: the next mark to verify has the focus.
+		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
+			verifiedNow = undefined;
+		const v = verifiedNow;
+		const focusHere = (() => {
+			const at = document.activeElement;
+			return at === null || at === document.body || marks.contains(at);
+		})();
+		if (
+			v?.caseId === c.id &&
+			focusHere &&
+			c.marks.find((m) => m.id === v.markId)?.resolution
+		) {
+			const done = c.marks.find((m) => m.id === v.markId);
+			if (done && markStatus(done) !== "fixed") {
+				verifiedNow = undefined;
+				const order = [...marks.querySelectorAll<HTMLElement>("li.mark")].map(
+					(li) => ({
+						id: li.dataset["mark"] ?? "",
+						status: li.dataset["status"] ?? "",
+					}),
+				);
+				const to = afterVerify(order, v.markId);
+				const head = (id: string) =>
+					marks.querySelector<HTMLElement>(
+						`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
+					);
+				// The next mark to verify where it is on screen; one out of
+				// sight would scroll the list away from the row just verified
+				// (nothing jumps): then the closed row's head.
+				const next = to ? head(to.markId) : null;
+				const r = next?.getBoundingClientRect();
+				const seen =
+					r !== undefined &&
+					r.top >= 0 &&
+					r.bottom <= document.documentElement.clientHeight;
+				(seen ? next : head(v.markId))?.focus({ preventScroll: true });
+			}
+		}
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
 			const row = items.find((li) => li.dataset["mark"] === picked.markId);
 			// Its head under the sticky bars, its actions in view where they fit.
 			row?.setAttribute("data-picked", "");
+			// The panel's own scroll: a row held after a click lets go.
+			releaseHeld();
 			row?.scrollIntoView?.({ block: "nearest" });
 		}
 		p.marksKey = marksKey;
@@ -2913,16 +3305,32 @@ function focusInMarks(
 	list: HTMLElement,
 ): ((next: HTMLElement) => void) | undefined {
 	const at = document.activeElement as HTMLElement | null;
-	if (at === null || at.tagName !== "BUTTON" || !list.contains(at))
-		return undefined;
+	if (at === null || !list.contains(at)) return undefined;
+	// A field being typed in at a mark (a comment, an edit, a note): the
+	// same field after the redraw, with its caret (DEC-064's review).
+	if (at.tagName === "TEXTAREA" || at.tagName === "INPUT")
+		return fieldAgain(at as HTMLTextAreaElement | HTMLInputElement);
+	if (at.tagName !== "BUTTON") return undefined;
 	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
-	const which = ["data-mark-action", "data-finding-action", "data-action"].find(
-		(name) => at.hasAttribute(name),
+	// The row's head is found again by its class (a second redraw, when
+	// the pictures come, must not drop the focus the first one put there).
+	const which = [
+		"data-mark-action",
+		"data-finding-action",
+		"data-action",
+		"class",
+	].find((name) =>
+		name === "class"
+			? at.classList.contains("mark-toggle")
+			: at.hasAttribute(name),
 	);
 	if (markId === undefined || which === undefined) return undefined;
-	const value = at.getAttribute(which) as string;
+	const value =
+		which === "class" ? "mark-toggle" : (at.getAttribute(which) as string);
 	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
 	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
+	// A comment's Edit or Delete: that comment's, not the first one's.
+	const comment = at.closest("[data-comment]")?.getAttribute("data-comment");
 	// The marks around it, for when its row goes (a mark deleted).
 	const marks = [...list.querySelectorAll<HTMLElement>("li.mark")].map(
 		(li) => li.dataset["mark"],
@@ -2960,11 +3368,31 @@ function focusInMarks(
 				? `[data-picture="${quoted(picture)}"] `
 				: finding != null
 					? `[data-finding="${quoted(finding)}"] `
-					: "";
+					: comment != null
+						? `[data-comment="${quoted(comment)}"] `
+						: "";
 		const same = row.querySelector<HTMLElement>(
-			`${within}[${which}="${quoted(value)}"]`,
+			which === "class"
+				? ".mark-toggle"
+				: `${within}[${which}="${quoted(value)}"]`,
 		);
 		if (same !== null) return same.focus();
+		// A comment's Edit: its field now, to type in.
+		if (comment != null) {
+			const field = row.querySelector<HTMLElement>(
+				`[data-comment="${quoted(comment)}"] textarea`,
+			);
+			if (field !== null) return field.focus();
+		}
+		// A mark's action that went with its status (Verify, Save): the same
+		// row's next control, the first of its actions now.
+		if (which === "data-mark-action") {
+			const next =
+				[...row.querySelectorAll<HTMLElement>("[data-mark-action]")].find(
+					(b) => b.getClientRects().length > 0,
+				) ?? row.querySelector<HTMLElement>(".mark-toggle");
+			if (next !== null) return next.focus();
+		}
 		// Gone with its picture: the next picture's control, else the way to
 		// add one; gone with its finding: the mark's head.
 		const after =
@@ -2982,6 +3410,45 @@ function focusInMarks(
 				: row.querySelector<HTMLElement>("[data-action=add-image]")) ??
 			row.querySelector<HTMLElement>(".mark-toggle");
 		fallback?.focus();
+	};
+}
+
+/**
+ * The field `at` in a mark's row found again after the list is drawn anew:
+ * by its mark and what holds it (a comment, a form, the mark's comments),
+ * with the caret where it was.
+ */
+function fieldAgain(
+	at: HTMLTextAreaElement | HTMLInputElement,
+): ((next: HTMLElement) => void) | undefined {
+	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
+	if (markId === undefined) return undefined;
+	const holder =
+		[
+			["data-comment", at.closest("[data-comment]")],
+			["data-form", at.closest("[data-form]")],
+			["data-mark-thread", at.closest("[data-mark-thread]")],
+		].find(([, e]) => e !== null) ?? [];
+	const [attr, el] = holder as [string | undefined, Element | null | undefined];
+	const scope =
+		attr && el ? `[${attr}="${quoted(el.getAttribute(attr) ?? "")}"] ` : "";
+	const cls = at.classList[0] ? `[class~="${quoted(at.classList[0])}"]` : "";
+	const selector = `li.mark[data-mark="${quoted(markId)}"] ${scope}${at.tagName.toLowerCase()}${cls}`;
+	const start = at.selectionStart;
+	const end = at.selectionEnd;
+	return (next) => {
+		const field = next.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+			selector,
+		);
+		if (field === null) return;
+		field.focus({ preventScroll: true });
+		if (start !== null && end !== null) {
+			try {
+				field.setSelectionRange(start, end);
+			} catch {
+				// A field without a caret (a radio): the focus is enough.
+			}
+		}
 	};
 }
 
@@ -3008,6 +3475,8 @@ interface MarkContext {
 	canReach: boolean;
 	/** A mark opened or closed by its own head. */
 	changed: () => void;
+	/** Who may write a mark's comments (DEC-061). */
+	thread: ThreadContext;
 }
 
 /**
@@ -3097,18 +3566,23 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					? reopenForm(c, a, edit.text, actions)
 					: commentForm(c, a, edit.text, actions)
 			: markActions(c, a, x.armed, actions),
+		// Its comments, at the mark, after what can be done with it (DEC-061).
+		markThreadView(c, a, x.thread, actions),
 	);
-	const sub = markSubline(
-		c,
-		a,
-		m,
-		edit === undefined,
-		actions,
-		x.elsewhere,
-		x.tabUrl,
-	);
+	const sub = markSubline(c, a, m, actions, x.elsewhere, x.tabUrl);
+	// A mark to verify: Verify in its title line, small, so a closed row is
+	// two lines like every other (DEC-064); Reopen… and the rest when open.
+	const headVerify =
+		markStatus(a) === "fixed" && edit === undefined
+			? (() => {
+					const b = verifyButton(c, a, actions);
+					b.className = "small head-verify";
+					b.setAttribute("aria-label", `Verify mark ${a.number}`);
+					return b;
+				})()
+			: null;
 	li.append(
-		h("div", { class: "mark-head" }, toggle, show),
+		h("div", { class: "mark-head" }, toggle, headVerify, show),
 		...(sub ? [sub] : []),
 		body,
 	);
@@ -3270,14 +3744,13 @@ function showElsewhere(
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
  * its AI findings; why it came back, for a reopened one. A mark of another
- * page names that page as a link. A mark to verify offers Verify and
- * Reopen… here, so verifying needs no expanding.
+ * page names that page as a link. (A mark to verify has Verify in its
+ * title line, DEC-064.)
  */
 function markSubline(
 	c: Case,
 	a: Mark,
 	m: MarkMatch | undefined,
-	buttons: boolean,
 	actions: Actions,
 	elsewhere = false,
 	tabUrl?: string,
@@ -3323,14 +3796,6 @@ function markSubline(
 					"span",
 					{ class: "tag comments-count" },
 					`${talk} comment${talk === 1 ? "" : "s"}`,
-				)
-			: null,
-		status === "fixed" && buttons
-			? h(
-					"span",
-					{ class: "head-actions" },
-					verifyButton(c, a, actions),
-					reopenButton(c, a, actions),
 				)
 			: null,
 	].filter((x) => x !== null);
@@ -3496,9 +3961,33 @@ function renderAi({ ai }: PanelState): void {
 		ai.problem === undefined ? "" : sentence(ai.status);
 	// The one-click stop for an app that may be acting now: with no app
 	// connected, the pill leads to the switch, which is enough.
-	stopAi.hidden = !(ai.active && ai.connected && ai.apps > 0);
 	keepOn.checked = ai.keepOn;
 	setHint(aiCall, ai.lastCall && callText(ai.lastCall));
+	// Only a connection that is up has an app talking.
+	showTalking(ai.connected && ai.working);
+}
+
+/** How long the chip keeps saying an app talks after its last call ended. */
+export const TALKING_AFTER_MS = 1500;
+let talkingUntil: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * While an AI app's tool call runs, and a moment after, the chip glows
+ * (DEC-063): a style alone, nothing in its name, so a screen reader hears
+ * no chatter; the AI card says the last call in words.
+ */
+function showTalking(working: boolean): void {
+	if (working) {
+		clearTimeout(talkingUntil);
+		talkingUntil = undefined;
+		aiButton.dataset["talking"] = "";
+		return;
+	}
+	if (!("talking" in aiButton.dataset) || talkingUntil !== undefined) return;
+	talkingUntil = setTimeout(() => {
+		talkingUntil = undefined;
+		delete aiButton.dataset["talking"];
+	}, TALKING_AFTER_MS);
 }
 
 // The test build's guards and delays below are short (DEC-053): its clicks
@@ -3564,6 +4053,8 @@ function renderBack(state: PanelState, actions: Actions): void {
 /** Draw the panel from `state`. */
 export function render(state: PanelState, actions: Actions): void {
 	lastActions = actions;
+	// A mark's comment opened for editing, or a Delete asked: drawn again.
+	onThreadChange(() => render(state, actions));
 	renderSyncBanner(state, actions);
 	renderCloudBanner(state, actions);
 	renderAi(state);

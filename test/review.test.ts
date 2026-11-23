@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import type { Overlay } from "../src/content/overlay.ts";
+import { fieldOf } from "../src/content/page-field.ts";
 import {
 	LoadReplaced,
 	NO_PANEL,
@@ -17,6 +18,31 @@ import { describeElement } from "../src/lib/element.ts";
 import type { MarkAnswer, MarkRequest } from "../src/lib/messages.ts";
 import { isMarkRequest } from "../src/lib/messages.ts";
 import { sampleCase } from "./fixtures.ts";
+
+/**
+ * The open popover's comment field, a frame of the extension's own (DEC-064),
+ * driven as a textarea: a value set is typed in the frame, an Escape pressed
+ * in it is said by it.
+ */
+function textField(popover: HTMLElement) {
+	const f = fieldOf(popover.querySelector("iframe.field"));
+	if (f === undefined) throw new Error("no comment field");
+	return {
+		get value() {
+			return f.value;
+		},
+		set value(value: string) {
+			f.receive({ type: "input", value });
+		},
+		getAttribute: (name: string) =>
+			name === "aria-label" ? f.frame.title : null,
+		dispatchEvent(e: Event) {
+			if (e.type === "keydown" && (e as KeyboardEvent).key === "Escape")
+				f.receive({ type: "escape", value: f.value });
+			return true;
+		},
+	};
+}
 
 let doc: Document;
 /** Puts happy-dom's own `getBoundingClientRect` back. */
@@ -44,6 +70,10 @@ function stubOverlay(document: Document) {
 		items: [] as readonly Item[],
 		setReviewing(on: boolean) {
 			this.reviewing = on;
+		},
+		marksHidden: false,
+		setMarksHidden(on: boolean) {
+			this.marksHidden = on;
 		},
 		renderReview(items: readonly Item[]) {
 			this.items = items;
@@ -182,6 +212,51 @@ describe("elements replaced after loading", () => {
 		expect(
 			overlay.reviewBar.querySelectorAll('[data-role="review-status"]'),
 		).toHaveLength(1);
+	});
+
+	test("Hide marks keeps the case and leaves the pill that shows them again; Add marks on the bar adds to the case (DEC-061)", async () => {
+		doc.body.innerHTML = PAGE;
+		const c = caseOf($("button"));
+		await reviewer.load(c);
+		const said: boolean[] = [];
+		const added: string[] = [];
+		reviewer.onHiddenChange = (hidden) => void said.push(hidden);
+		reviewer.onAddMarks = (x) => void added.push(x.id);
+		(
+			overlay.reviewBar.querySelector(
+				'[data-action="review-add"]',
+			) as HTMLButtonElement
+		).click();
+		expect(added).toEqual([c.id]);
+		(
+			overlay.reviewBar.querySelector(
+				'[data-action="review-hide"]',
+			) as HTMLButtonElement
+		).click();
+		// Nothing drawn, the case kept, the pill named for it.
+		expect(reviewer.hidden).toBe(true);
+		expect(reviewer.caseId).toBe(c.id);
+		expect(overlay.reviewing).toBe(false);
+		expect(overlay.marksHidden).toBe(true);
+		expect(overlay.items).toHaveLength(0);
+		const pill = overlay.reviewBar.querySelector('[data-action="review-show"]');
+		expect(pill?.getAttribute("aria-label")).toBe(
+			`Show the marks of “${c.title}”`,
+		);
+		expect(
+			overlay.reviewBar.querySelector('[data-action="review-hide"]'),
+		).toBeNull();
+		(pill as HTMLButtonElement).click();
+		expect(said).toEqual([true, false]);
+		expect(reviewer.hidden).toBe(false);
+		expect(overlay.reviewing).toBe(true);
+		expect(overlay.items).toHaveLength(1);
+		// An AI app showing a mark brings hidden marks back too.
+		reviewer.hide();
+		expect(reviewer.show("m1")?.status).toBe("found");
+		expect(reviewer.hidden).toBe(false);
+		reviewer.onHiddenChange = undefined;
+		reviewer.onAddMarks = undefined;
 	});
 
 	test("a clear while the case is loading stops the load: nothing is drawn after it", async () => {
@@ -575,8 +650,7 @@ describe("a load that draws a newer copy at its end", () => {
 
 describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 	const PAGE = `<main><h1>Prämien</h1><button>Berechnen</button><p>Tipp</p></main>`;
-	const field = () =>
-		overlay.popover.querySelector("textarea") as HTMLTextAreaElement;
+	const field = () => textField(overlay.popover);
 	const button = (action: string) =>
 		overlay.popover.querySelector(
 			`[data-action="${action}"]`,
@@ -843,9 +917,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 			["wontfix", false],
 			["cantreproduce", false],
 		]);
-		const note = overlay.popover.querySelector(
-			"input.note",
-		) as HTMLInputElement;
+		const note = textField(overlay.popover);
 		expect(note.value).toBe("");
 		(
 			overlay.popover.querySelector(
@@ -923,8 +995,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		overlay.onPick?.(1);
 		button("mark-reopen").click();
 		await settled();
-		const note = () =>
-			overlay.popover.querySelector("textarea") as HTMLTextAreaElement;
+		const note = () => textField(overlay.popover);
 		expect(note().getAttribute("aria-label")).toBe(
 			"What is still wrong with mark 1",
 		);
@@ -966,9 +1037,7 @@ describe("a loaded mark's pin clicked on the page (DEC-027)", () => {
 		button("mark-change").click();
 		await settled();
 		expect(radios().find(([, checked]) => checked)?.[0]).toBe("wontfix");
-		expect(
-			(overlay.popover.querySelector("input.note") as HTMLInputElement).value,
-		).toBe("By design");
+		expect(textField(overlay.popover).value).toBe("By design");
 	});
 
 	test("the case changes under the popover: other commands, the comment typed stays, one changed elsewhere shows", async () => {
@@ -1117,8 +1186,7 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 		const logo = $("a.Logo_home");
 		// The logo's popover open, a comment typed: the route change closes it.
 		overlay.onPick?.(1);
-		(overlay.popover.querySelector("textarea") as HTMLTextAreaElement).value =
-			"Larger";
+		textField(overlay.popover).value = "Larger";
 		route("/kk/pay", PAY_PAGE);
 		expect(location.href).toBe(PAY);
 		// The logo is still there, and still not the payment page's mark.
@@ -1211,8 +1279,7 @@ describe("a case of several pages on the page in front (DEC-038)", () => {
 
 describe("the popover and a mark that takes another number", () => {
 	const PAGE = `<main><h1>Prämien</h1><button>Berechnen</button><p>Tipp</p></main>`;
-	const field = () =>
-		overlay.popover.querySelector("textarea") as HTMLTextAreaElement;
+	const field = () => textField(overlay.popover);
 	const button = (action: string) =>
 		overlay.popover.querySelector(
 			`[data-action="${action}"]`,

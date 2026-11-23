@@ -3340,6 +3340,104 @@ access switch and to ask about it when AI access is first turned on.
   not, answered or not, taken over; the question's course; when an answer is kept),
   `test/view.test.ts` (the question's markup, its two answers, the focus when it goes).
 
+## DEC-060: Nothing jumps; pictures at their size in a tab of the extension's own; placeholders only as hints (owner)
+
+2026-11-22. The owner, on a case of 25 marks: Verify "lets the content jump around", the
+screenshots cannot be seen larger than the panel, and the placeholders "almost look like
+there's real text in it". The rules of the redesign (rules 5, 6 and 7, shared with the web
+app) apply.
+
+- **Nothing jumps.** Measured in the real panel before the change, a Verify moved the acted
+  row 190 px down at 340 px wide (134 px at 460); so did Resolve's and Reopen's Save and the
+  second click of Delete mark (95 to 190 px), and the focus fell to the page's start. The
+  open case's mark list is drawn anew for every change, its pictures come after it, and the
+  browser's own scroll anchoring cannot hold a row that is replaced. So the panel holds it
+  (`src/sidepanel/scroll-anchor.ts`): a click on a mark's control or a filter chip notes where the
+  row (or chip) was on screen; for 2.5 s, every frame, the page is scrolled by however far
+  it moved, and when the row went (deleted, or left out by a filter) the mark that takes
+  its place is held there instead. The person's own scroll (wheel, touch, a key, a press
+  elsewhere) ends it. The row may still change below its top (two buttons fewer). The focus
+  goes to the same row's next control that shows (its head when none does); the row's head
+  is found again after a second redraw. After: 0 px for each of these at 340 and 460 px.
+- **Pictures at their size.** "Open larger" on a picture shown large opens the viewer, an
+  extension page (`viewer/index.html`) in a new tab: the picture fitted to the window
+  (never larger than it is) or at its actual size, its caption (which mark of which case;
+  for an added image who added it and when), the mark's other pictures with Previous and
+  Next, ← → and F from the keyboard. It reads the case and its pictures from the extension's
+  own store, so it works for a case that is not synced, and asks nothing of a server. Not in
+  the web page: a picture of one site never goes through another site's page (as the add
+  dialog, DEC-058). An extension page needs no permission and no `web_accessible_resources`
+  (it is opened by the extension itself); the store build only gains the page's files.
+- **Placeholders.** A field with a label that shows gets no placeholder that repeats it;
+  a comment box gets none. A hint worth keeping becomes help under the label (the summary,
+  a reopen's note), a note without a label gets one that shows (a resolution's note). What
+  stays is only an address's form (`https://…`, a case's link, another server), in
+  `--placeholder`: `#6e7583` on the white field (4.63:1), `#7f8797` on the dark one
+  (4.62:1), clearly lighter than typed text (16.07:1 and 14.37:1); the page's dialogs, white
+  in both schemes, use the same light value. `test/contrast.test.ts` holds both pairs.
+- Tests: `test/scroll-anchor.test.ts` (which element is held and how far), `test/viewer.test.ts`
+  (the pictures, their order and captions, the address), `test/view.test.ts` (the fields'
+  help and labels, no placeholder on the comment box, "Open larger"), `test/build.test.ts`
+  (the viewer in both builds), `test/contrast.test.ts`.
+
+## DEC-061: Panel round 3, a draft for the owner to judge: the bar, Stop, the case's head, Verify, comments at the mark
+
+2026-11-22. What the owner asked for over several messages and was parked "to discuss" is
+built as a draft on `panel-round-3`, for the owner to look at on their own machine. Not
+settled: what follows is what was built, and why, to be judged.
+
+- **The bar on the page moves.** Dragged by its body (the pill by any part, once the pointer
+  moved 4 px; a press without a move is its click), by the arrow keys on a handle (Shift: four
+  times as far; Home puts it back), and back to the top right with a double click. It stays
+  inside the window, also when the window gets smaller. Its place is the profile's, kept by
+  the service worker (`bar:place`): a content script may not reach `storage.local` here, and
+  a page has no say in it (two numbers or nothing, `storedBarPlace`).
+- **Two states only.** "Hide marks", on the bar or in the panel, hides the marks and keeps
+  the case: the bar becomes a pill with the logo ("Show the marks of «case»") at the same
+  place, which brings them back. Closing the case in the panel takes it off for good. Adding
+  marks shows hidden marks; hiding them ends the adding. The panel and the page are one
+  switch: the page's news says which case is hidden (`hiddenCase`), and a pill pressed on the
+  page shows the marks in the panel too.
+- **"Add marks" on the bar**, beside "Hide marks", in the panel's words; none of the two is
+  primary. While marks are added the bar steps aside (hidden): the toolbar is up with its
+  Done, and nothing of Sitegloss covers what is being marked. Taken from `bar-gives-way`:
+  the bar hidden while adding, "Hide marks" as the word. Left: hiding it while the side panel
+  is open (a bar that moves does not cover, and a bar that comes and goes with the panel
+  confuses), with the worker plumbing for it.
+- **No Stop in the top bar.** The AI pill leads to the AI view, whose switch does what Stop
+  did (the same command); the switch's tooltip says that it stops at once.
+- **The case's head** after the web's case page: the title and a "…" menu (Rename…, Add a
+  link…/Change link…, Export…, Delete case, which asks twice), the counts, one action (Add
+  marks), then one quiet block of facts: Pages (folded to three, "Show all n"), Team, Link,
+  Made at. "This tab is your team's web app…" is no longer in the case (Home still says it,
+  DEC-045). "n of m marks found" is said only to a screen reader (a status line kept out of
+  sight): the page filter's counts and each mark's word show it. "Match size" shows only when
+  the tab's width differs by 24 px or more (a breakpoint can sit that close; a classic
+  scrollbar is 15 px) or its height by 100 px or more. What the tab shows (the access notice,
+  no marks found here, the size, adding) is under the head, where the marks start, so the head
+  does not move with the tab.
+- **Verify closes its mark**; the focus goes to the next mark waiting to be verified (after
+  it, else before it) where it is on screen, else to the closed row's head: a focus out of
+  sight would scroll the list away. Reopen… does not close it. Round 2's hold keeps the row
+  in place, and now lends room below the list while it holds (taken back at the person's
+  next own scroll or press): a row that closes near the list's end no longer lets the
+  browser scroll the page back by itself.
+- **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
+  own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
+  bottom keeps the comments about the case as a whole (and one about a deleted mark).
+- **A picture opens in one step**: its tile opens the viewer; the in-panel large view is
+  gone. The viewer's caption is two lines (case, mark, which picture; who and when), and
+  Escape or Close closes its tab.
+- **The focus lost after Reopen's Save (round 2's measurement at 460 px)**: the press never
+  reached Save. The hold of the click that opened the form scrolled the list back while the
+  test scrolled it, so the press landed on the field. A real person's scroll ends a hold;
+  what could still pull against it was the panel's own scroll (a form's field focused out of
+  sight, a Tab): both now let the hold go.
+- Tests: `test/overlay.test.ts` (the bar's place, steps aside, the pill), `test/review.test.ts`
+  (hide, the pill, Add marks on the bar), `test/view.test.ts` (no Stop; the menu, counts and
+  facts; Match size's threshold; Verify closing and the focus; comments at the mark; the tile),
+  `test/viewer.test.ts` (the caption), `test/card.test.ts` unchanged.
+
 ## DEC-062: tab-mcp client 0.22.0 changes nothing for Sitegloss (owner)
 
 2026-11-23. The owner: "if there's no change, I recommend just bumping the library to the
@@ -3361,3 +3459,245 @@ taken by the panel's rounds 2 and 3, which are on branches.)
   code (`./extension`, DEC-049) writes into one input, which the page still is.
 - Tests: none added. `bun run verify`, and the connection and always-allowed end-to-end
   files against the new relay, were run once with the new versions.
+
+## DEC-063: Panel round 4, a draft for the owner to judge: full width, a tool bar, folding lists, the matcher's names, images from the page's dialog
+
+2026-11-23. On `panel-round-4`, after round 3's pictures. The owner: "Make it left
+aligned. It's a pity to spoil this space on the left." and "The rest is fine", plus what he
+asked in chat that night (the findings page's D10, D12, D13).
+
+- **An opened mark uses the panel's width.** Its body starts at the panel's gutter, under
+  the pin; it covers the rail there. The pictures are four a row (three below 360 px), so
+  three pictures and "Add another image…" fit one row at 400 px. Verify and Reopen… show
+  once: in the row's head while it is closed, in the body while it is open.
+- **"Add marks" always in reach (D10).** The open case ends in a tool bar, sticky at the
+  panel's bottom: "Add marks" (or "Done adding", dark while adding is on) and "Show marks" /
+  "Hide marks". Being last in the flow, it rests after the content at the end, so it never
+  covers the last row. The head's Add marks, the one under the list and Hide marks in the
+  list's bar are gone. The scroll hold (DEC-060) lends its room above the bar, so the bar
+  stays at the window's bottom while a row is held. On the page's bar, "Add marks" is amber.
+- **The pages list (D13).** More than three pages: the label is a disclosure "Pages n",
+  closed at first, showing only the page in front when the tab shows one; its state is kept
+  per case for the session. Where the tab shows none of the case's pages it is open. One row
+  per page across hosts: a page is its `pageKey` (path and hash route, DEC-038, DEC-057), as
+  the list already was; a row now names its hosts under it, the last marked first, where the
+  page was marked on more than one or not on the host most pages were marked on, and a click
+  opens it on the tab's host when it was marked there, else on the host it was marked on
+  last. Titles that differ between hosts: the row keeps the title the case's list of pages
+  has (the first one recorded); the others show in no place. The owner's "Settings ·
+  Sitegloss" twice is most likely two paths, not two hosts: the team's slug differs between
+  app.sitegloss.dev and the local demo data (`/t/e2e-test-88406e/…` against the demo team's),
+  and those stay two pages; the case itself could not be read to confirm it.
+- **Comments.** The case's "Comments n" is a disclosure: open when the case has comments,
+  closed when it has none, as the person leaves it per case for the session. "Seen" is not
+  tracked; this is the brief's simplest rule. At a mark, "Add comment" is a button that
+  opens the box with the focus in it; Cancel closes it.
+- **The warning "no marks on this page" goes.** In a case of many pages a page without
+  marks is normal. One quiet line where the marks start, only: "None of this case's pages is
+  in this tab." (with the pages list open), "This case's page is not in this tab." for a case
+  of one page, without a button, since the page's address in the facts two lines above
+  opens it, or "None of this page's marks were found here." when the page's own marks were
+  all looked for and none was found.
+- **The page filter's menu** stood past the panel's edge: the filter is a grid item, whose
+  minimum was the menu's longest option (503 px in a 340 px panel, measured). It now has no
+  minimum, and the menu shrinks with an ellipsis (324 px of 340).
+- **The matcher (mark 47).** In the web app's case page the mark's text and a comment each
+  have a button reading "Edit", named "Edit the text of mark 47" and "Edit the comment by
+  Dana Developer via Claude Code". `identity` took the better of name and text, so the text
+  alone made the other Edit identified (score 0.85, "found") when the comment's was not on
+  the page, during a load or while it was edited. A name that says more than the text now
+  decides together with the text: the lower of the two similarities. The other Edit scores
+  0.43 (lost), the comment's Delete, which shares the name's words, 0.40. With both on the
+  page the right one is found (1.0). The own-page rule is unchanged.
+- **Mark 48's offset box: not reproduced.** Ruled out: a box drawn before the page settles
+  and never redrawn; the reviewer redraws every mark on each scroll, on resize and twice a
+  second from the element's box at that moment. Left: a box is placed in proportion to the
+  element it was recorded on; recorded on a container whose width changed between then and
+  now (another window width, another environment), a box around a button inside it
+  shrinks; and a page that zooms or transforms the root moves fixed boxes. Neither can be
+  told without the mark's recorded details.
+- **The AI chip shows that an app is talking.** The worker counts the tool calls running
+  (`toolcall`, `toolcallend`); while one runs and 1.5 s after the last, the chip's dot
+  pulses a ring in its green; with reduced motion a steady ring. A box shadow only: nothing
+  moves. The chip's name does not change and no live region speaks: calls come in bursts,
+  and the AI card already says the last call in words.
+- **Images from the page's mark dialog (D12): tested first.** In Chrome, with trusted input
+  from CDP, into a textarea in a closed shadow root and into Sitegloss's own dialog, a
+  listener of the page on `window` or `document` in the capture phase:
+
+  | What the person does | The page sees | The page can read the file |
+  | --- | --- | --- |
+  | Pastes an image | `paste`, its target the shadow host | Yes: `clipboardData.files`, bytes read |
+  | Drops a file | `dragenter`, `dragover` with the type "Files", then `drop` | Yes: `dataTransfer.files`, bytes read |
+  | Picks a file with a file input | `input`, its target the host; no `change` | No: the input is out of reach |
+
+  So the dialog takes no pasted or dropped image. It has "Add another image…" (the words of
+  a loaded mark's popover): the mark is done, the worker opens the side panel with the
+  click's gesture (it opened a closed panel in the test) and the panel's own dialog opens
+  for the mark once it is in the case. A file picker in the page's dialog would be safe, but
+  is not built: the panel's dialog picks, pastes and drops with the same limits (six per
+  mark, PNG, JPEG or WebP, re-encoded), and a second way of adding images would diverge.
+  The wish passes through the worker (session storage), for the panel beside that tab only:
+  the panel itself touches no storage.
+- Tests: `test/match.test.ts` (two buttons named Edit in one card: failed before),
+  `test/page-hosts.test.ts`, `test/view.test.ts` (the tool bar, the disclosures, the quiet
+  line, the chip, Add comment at a mark), `test/e2e/panel.test.ts` (the quiet line).
+
+## DEC-064: Panel round 5, a draft for the owner to judge: the picture in a window of its own, the page's fields in a frame, corners, the weak points
+
+2026-11-23. On `panel-round-5`. The owner, on round 4: a picture opening in a new tab is
+"super confusing", it should be a modal that Escape or an ✕ closes; the paste into the
+mark's dialog on the page that the page can read: "fix it"; buttons and elements "a bit
+less rounded"; the lead's weak points: "all valid. Please fix them."
+
+- **Probes first (Chrome, trusted input from CDP; listeners of the page on `window` and
+  `document`, capture phase, registered before Sitegloss's content script):**
+
+  | Shown or typed | Inside the closed shadow root | In a frame of another origin in it |
+  | --- | --- | --- |
+  | Keys typed | every `keydown`, `keypress`, `keyup` with `key`; `beforeinput` and `input` with `data` | nothing |
+  | Text pasted | `paste` with the text in `clipboardData`; `beforeinput`/`input` with it as `data` | nothing |
+  | A picture | its bytes in the page's process; a `blob:` URL the page can fetch if it learns it (not listed in resource timing) | nothing of it; `window.length` 0; `window[0]` and navigating the frame refused |
+  | What the page still learns | that the host exists and covers a point (`elementsFromPoint`) | the same; that the focus moved to the host (`focusin`, `blur`); for an http frame resource timing lists its address, for the extension's frame nothing |
+
+  The order of listeners cannot help: Sitegloss's content script is injected when needed,
+  after every script of the page; only a content script registered at `document_start`
+  (which needs the host permission ahead) runs before a page's own. The frame does not
+  depend on order.
+- **The page's fields in a frame.** A new mark's comment, a loaded mark's comment and the
+  resolve and reopen notes on the page are `field/index.html`, a page of the extension in a
+  frame (`src/content/page-field.ts`), talking to the content script over a MessageChannel
+  handed to it once; nothing is posted to the page's window and no address carries data.
+  End-to-end test (`adding.test.ts`): keys and a paste of text in the dialog; on round 4
+  the page heard every key and the pasted text, now nothing, and the comment is saved.
+- **What the field's frame needs in the manifest, for the stores.** A page of the
+  extension in a frame on a web page has to be listed in `web_accessible_resources`:
+  `field/*` (its HTML, script, style sheet and source map), for `<all_urls>`, since a
+  person may mark any page Sitegloss is allowed on. Nothing else is listed (the viewer
+  opens in a window of the extension's own and needs no entry). What a page could learn
+  that it could not before: in Chrome, any page could load
+  `chrome-extension://<the store id>/field/index.html` and so learn that Sitegloss is
+  installed, on every site, also where Sitegloss was never used; before, a page could
+  only see Sitegloss's host element, on a tab where the person had opened Sitegloss.
+  So Chrome's entry has `use_dynamic_url: true`: only this browser session's address
+  works (Chrome 130 and later; older versions ignore the key). Measured in Chrome 156: a
+  page's fetch of the fixed address is refused (it was answered 200 without the key), and
+  the field still loads from `chrome.runtime.getURL`. So Sitegloss now needs Chrome 130
+  (October 2024) or later; Chrome 116 to 129, and Edge before 130, can no longer install
+  or update it. Firefox has no such key and needs
+  none: each install has an address of its own (`moz-extension://<a random id>`), so a
+  page cannot try one. The field page shows nothing and reads nothing until the content
+  script hands it its port; loaded by a page itself, it is an empty, disabled field.
+- **The picture in a window of its own (the owner's choice).** The owner, between the
+  two candidates: "That would be great if you wouldn't need to modify the page that is
+  actually shown." So a tile's click asks the worker for the viewer in a small window
+  of the extension's own (`type: "popup"`, `src/worker/viewer-window.ts`), centred over
+  the panel's browser window; the viewer sizes it to the picture once loaded, within the
+  screen (measured: a 640×300 picture in 674×476, a 1200×2400 one in 1234×1168 on a
+  1920×1200 screen, both centred). One per browser window: the next picture is shown in
+  it (the same window id). Escape or ✕ Close closes it and focuses the browser window
+  again; the panel puts the focus back on the tile. It closes when the case is left or
+  closed and when its browser window closes (the worker hears it; measured). No tab in
+  the tab strip; "Open in a tab" stays in the viewer. Nothing of it touches the page in
+  front (no mutation measured). An overlay on the page was built first and taken out
+  before this was pushed again; its probe had run: the page saw no frame, resource or
+  key, only that Sitegloss's host covered it.
+- **Full screen on macOS and small screens: not checked.** The test browser has no
+  macOS full-screen space; a popup of a full-screen window may open in a space of its
+  own there. Nothing is done differently for it yet; on a small screen the window is
+  the screen less 16 px on each side.
+- **Firefox (160, headless, the Firefox end-to-end set):** the field's frame works:
+  the focus is in it when the dialog opens, text typed goes in (inserted as an input
+  method does), Ctrl with Enter and Escape close the dialog with the comment kept, and
+  the page's listeners heard nothing. A real paste could not be driven there (no
+  trusted clipboard in that harness). A picture opens in a window of type "popup" with
+  one tab, and Close closes it; how Firefox draws the popup's reduced address bar was
+  not seen (headless).
+- **Corners:** controls 6 px (the top bar's buttons, the page filter's menu, the page
+  counts, a tile's remove), cards and the mark's body 8 px, the page's bar and dialog
+  10 px with 6 px buttons; status chips and pins stay round.
+- **A closed mark to verify** has Verify, small and secondary, in its title line; Reopen…
+  only in the body. Its row is two lines like the others (104 px before, 88 at 340 px
+  where the title wraps beside the two buttons).
+- **The tool bar is calmer:** 6 px padding, 30 px buttons, Add marks in the secondary
+  look at rest; while adding it is amber and reads "Adding marks: Done". What is scrolled
+  into view stops above the bar (`scroll-padding-bottom`).
+- **The case card:** the summary right under the title in the text's colour, 13 px, a gap
+  before the facts; no band without marks.
+- **The pin in new screenshots** is 20 px (a note's 24), its number 11 px; on the page the
+  same. Pictures taken before keep their pins.
+- **The list rebuilt on every change (not changed):** a list that updates its rows in
+  place would key each row by mark with a key of its own (status, comment, match, open,
+  thread), replace only the rows whose key changed and move rows by `insertBefore`. It
+  touches `renderCase`'s list block and `markItem` in `src/sidepanel/view.ts` (about 600
+  of its 3980 lines to read, 250 to 400 to change), makes most of
+  `src/sidepanel/scroll-anchor.ts` (203 lines) unneeded, and changes about ten tests in
+  `test/view.test.ts` that hold rows found before a render.
+- **The `extension` test that failed now and then ("v1 on v2", mark 4 probable at 98%):**
+  its mark 4 was the filler above the footer, not the footer. The screenshot of mark 3
+  scrolled the page while the test aimed at the footer, and the click landed one element
+  higher; v2 has the filler. The test now waits for that screenshot (5 of 5 passed after,
+  3 of 5 failed before).
+- Tests: `test/view.test.ts`, `test/review.test.ts` (the frame field driven by its
+  messages), end-to-end `adding` (keys and paste never reach the page), `images` (Add
+  another image… from the page's dialog), `look`, `panel`, `extension`, `verify`, and in
+  Firefox the field (focus on open, typing, Ctrl+Enter, Escape, nothing heard by the page)
+  and the viewer's popup window.
+- **Review of pull request 53 (23 findings), what changed of the above:**
+  - Matching: a name that says more than the text weighs 0.7 and the text 0.3, instead of
+    both having to match (that lost a "Notifications" button whose badge changed, a
+    labelled region with other data, an Edit under another user's name). The other Edit
+    and the Delete beside it still come out lost or probable, never found.
+  - The field's frame: the hello names a token the content script put in the frame's
+    address fragment, carries one port and is taken once; the frame says it is ready, and
+    where it does not come up within 4 s the dialog says so and offers "Write it in the
+    side panel", which opens that mark's comment, resolve or reopen form there. Measured:
+    a page with `frame-src 'none'` does not stop the field in Chrome or in Firefox (both
+    exempt the extension's frame). A frame that loads again (the overlay moved into a
+    modal dialog of the page) gets back its text, label, state and focus; where the
+    browser has `moveBefore` it is not loaded again, and the overlay is not moved for
+    order alone while a field is open. Enter and Escape of an input method do nothing.
+  - The scroll hold's room is no longer taken back at a press; it goes back only as it
+    scrolls out of sight, so nothing on screen moves. The status line says what a draw
+    found once it settled (after the searches again), and only when that changed.
+- **Second review of those fixes (8 findings):**
+  - Matching, reworked again so the four cases hold together (one test for all four):
+    the same text under another name is never found (the two "Edit"); a text that changed
+    under a name only that element carries is found when the text is short (a count, 12
+    then 3); a name several candidates carry ("Open case" on every row) counts only with
+    the text; and a text long enough to compare that is another text altogether leaves
+    the candidate probable at best, also when one row is left and its name is now on no
+    other element. The price: a labelled region whose whole content changed is drawn as
+    probable, not found; nothing recorded tells it from the one row left of a list
+    (recording whether the name was shared when the mark was made would, and needs the
+    case format to grow).
+  - The field's token is used once: every load of the frame gets a new address and token
+    before anything is handed, the frame takes one hello per load, and the frame cannot
+    be seen or typed in until it answered that load's hello. Measured in Chrome 156 and
+    Firefox 160, with the page's own listeners and a PerformanceObserver: the page sees
+    no resource or navigation entry for the field's frame, before or after it moves the
+    overlay itself (a plain append, which loads the frame again), `window.length` stays 0
+    and `window[0]` is undefined; so the page cannot read the frame's address or token.
+    After the page's move the field was at its second address with a new token.
+  - Also: a late "ready" puts the focus into the field; the focus is restored after a
+    move from what the overlay saw before it, not from the frame's blur; an action's hint
+    is said again when it repeats; a draw that stops early stops settling; the viewer's
+    queue leaves no rejection unhandled; tests now exercise what their names say.
+- **The picture viewer, after the owner tried it** ("much better now", three points):
+  - "Actual size" changes something only for a picture larger than the window; one that
+    fits (or fits exactly) shows at 100% and the control is disabled with "This picture
+    is shown at its actual size". The control reads "Actual size (100%)" while fitted
+    and "Fit to window" at the actual size, the zoom beside it ("Fitted: 77%", "100%");
+    the picture stays centred in both states (at its actual size the view starts on its
+    middle), and the bar does not move. Measured: 400×200 and 640×300 shown at 100%,
+    nothing to switch; 2400×900 fitted at 77% and 800×2400 at 41%, their centres the
+    same before and after the switch, every control of the bar at the same place.
+  - The window opens at its size and place in one step: the panel reads the picture's
+    size from the store, the worker works out the bounds before `chrome.windows.create`
+    (with the frame above the page the last viewer measured, 88 px at first), the
+    page paints the viewer's ground from its first frame and shows the picture once it
+    is decoded. Measured: each window's bounds took one value from creation on; a reused
+    window changes its bounds and its picture together. (The headless test browser kept
+    its first window at its default 1280×800, which a real browser does not.)
+  - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
+

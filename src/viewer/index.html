@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Sitegloss picture</title>
+		<!-- The viewer's own ground from the first frame, in both schemes: no
+		     white flash before the style sheet (DEC-064). -->
+		<style>
+			html { background: #f6f4ee; color-scheme: light dark; }
+			@media (prefers-color-scheme: dark) { html { background: #11141a; } }
+		</style>
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+	<body>
+		<!-- A mark's pictures at their size (DEC-060): an extension page, so a picture
+		     never goes through the web page being marked. In a window of its own, or in
+		     a tab (DEC-064). -->
+		<header class="bar">
+			<p id="caption" class="caption" aria-live="polite"><span id="caption-title">Loading…</span><span id="caption-detail" class="detail"></span></p>
+			<div class="tools">
+				<span id="position" class="position" hidden></span>
+				<button id="previous" type="button" hidden aria-keyshortcuts="ArrowLeft" title="The previous picture of this mark (←)">Previous</button>
+				<button id="next" type="button" hidden aria-keyshortcuts="ArrowRight" title="The next picture of this mark (→)">Next</button>
+				<span id="zoom" class="zoom" aria-live="polite"></span>
+				<button id="size" type="button" aria-keyshortcuts="F" disabled>Actual size (100%)</button>
+				<button id="in-tab" type="button" hidden title="Open this picture in a tab of its own">Open in a tab</button>
+				<button id="close" type="button" aria-keyshortcuts="Escape" title="Close (Escape)"><span aria-hidden="true">✕</span> Close</button>
+			</div>
+		</header>
+		<main id="stage" class="stage" data-fit="">
+			<img id="picture" alt="" hidden />
+			<p id="problem" class="problem" hidden></p>
+		</main>
+		<script type="module" src="./main.ts"></script>
+	</body>
+</html>

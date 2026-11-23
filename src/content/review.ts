@@ -60,6 +60,7 @@ import {
 	ring,
 	withSaveKey,
 } from "./overlay.ts";
+import { PageField } from "./page-field.ts";
 
 interface Entry {
 	mark: Mark;
@@ -147,7 +148,8 @@ interface OpenMark {
 	/** The status its commands were drawn for. */
 	status: MarkStatus;
 	/** Of the view shown now. */
-	field: HTMLTextAreaElement | undefined;
+	/** The comment's field: a frame of the extension's own (DEC-064). */
+	field: PageField | undefined;
 	problem: HTMLElement;
 	controls: HTMLButtonElement[];
 	remove: HTMLButtonElement | undefined;
@@ -212,6 +214,26 @@ export class Reviewer {
 	readonly #ask: AskPanel;
 	/** How often the page is looked at without a scroll: 500 ms, unless a unit test gives its own. */
 	readonly #tickMs: number;
+	/**
+	 * The case's marks are hidden (DEC-061): the case is kept, nothing is
+	 * drawn or looked for, and the bar is the pill that brings them back.
+	 */
+	#hidden = false;
+	/** The bar's "Add marks": the page's own adding to the case (index.ts). */
+	onAddMarks: ((c: Case) => void) | undefined;
+	/**
+	 * The page refused a field's frame (DEC-064): the side panel opens the
+	 * mark's comment, resolve or reopen form. Called within the click.
+	 */
+	onPanel:
+		| ((
+				caseId: string,
+				number: number,
+				what: "comment" | "resolve" | "reopen",
+		  ) => void)
+		| undefined;
+	/** The marks were hidden or shown from the page (its bar or its pill). */
+	onHiddenChange: ((hidden: boolean) => void) | undefined;
 
 	constructor(
 		overlay: Overlay,
@@ -233,6 +255,60 @@ export class Reviewer {
 
 	get caseId(): string | undefined {
 		return this.#case?.id;
+	}
+
+	/** Whether the loaded case's marks are hidden (the pill shows). */
+	get hidden(): boolean {
+		return this.#hidden;
+	}
+
+	/** The loaded case, for the bar's "Add marks" and the page's news. */
+	get loaded(): Case | undefined {
+		return this.#case;
+	}
+
+	/**
+	 * Hide the case's marks and keep the case (DEC-061): the bar becomes the
+	 * pill, which shows them again. Only a clear (the case closed in the
+	 * panel) takes them off for good.
+	 */
+	hide(): void {
+		if (this.#case === undefined || this.#hidden) return;
+		this.#closeMark();
+		this.#hidden = true;
+		clearInterval(this.#timer);
+		this.#timer = undefined;
+		this.#renderBar();
+		this.overlay.renderReview([]);
+		this.overlay.setMarksHidden(true);
+		this.overlay.setReviewing(false);
+	}
+
+	/** Show the hidden marks again, looked for where they are now. */
+	reveal(): void {
+		if (!this.#hidden) return;
+		this.#hidden = false;
+		this.#renderBar();
+		this.overlay.setMarksHidden(false);
+		this.overlay.setReviewing(true);
+		this.#watchPage();
+		for (const entry of this.#entries) this.#stale.add(entry);
+		this.#render();
+	}
+
+	/** The page is looked at twice a second while marks are drawn. */
+	#watchPage(): void {
+		clearInterval(this.#timer);
+		// Layout changes (lazy content, accordions) move elements without a scroll.
+		this.#timer = setInterval(() => {
+			this.#checkPage();
+			// One search a tick: a new route replaces every element at once.
+			const replaced = this.#entries.find((e) => this.#replaced(e));
+			if (replaced !== undefined) this.#findAgain(replaced);
+			// The marks the last route did not have, a few a tick.
+			else this.#lookAgain(STALE_BUDGET_MS);
+			this.#schedule();
+		}, this.#tickMs);
 	}
 
 	/** The case a load is finding marks for now, if one is under way. */
@@ -309,18 +385,11 @@ export class Reviewer {
 		this.#stale.clear();
 		this.#late = { looks: 0, ticks: 0 };
 		this.#focused = undefined;
+		// Loaded (again): shown, whatever was hidden before.
+		this.#hidden = false;
+		this.overlay.setMarksHidden(false);
 		this.overlay.setReviewing(true);
-		clearInterval(this.#timer);
-		// Layout changes (lazy content, accordions) move elements without a scroll.
-		this.#timer = setInterval(() => {
-			this.#checkPage();
-			// One search a tick: a new route replaces every element at once.
-			const replaced = this.#entries.find((e) => this.#replaced(e));
-			if (replaced !== undefined) this.#findAgain(replaced);
-			// The marks the last route did not have, a few a tick.
-			else this.#lookAgain(STALE_BUDGET_MS);
-			this.#schedule();
-		}, this.#tickMs);
+		this.#watchPage();
 		this.#renderBar();
 		this.#render();
 		clearTextCache();
@@ -591,6 +660,8 @@ export class Reviewer {
 	show(markId: string, candidate?: number): MarkMatch | undefined {
 		const entry = this.#entries.find((e) => e.mark.id === markId);
 		if (entry === undefined) return undefined;
+		// Shown on purpose: the hidden marks come back with it.
+		if (this.#hidden) this.reveal();
 		this.#fresh(entry);
 		const count = entry.candidates.length;
 		if (candidate !== undefined && count > 0)
@@ -747,7 +818,7 @@ export class Reviewer {
 			this.#fill(open);
 		};
 		let content: Node[];
-		let focus: HTMLElement;
+		let focus: { focus(): void };
 		if (open.mode === "resolve") {
 			label.append(pin, `Mark ${mark.number} is`);
 			const name = `sitegloss-resolution-${mark.id}`;
@@ -768,13 +839,17 @@ export class Reviewer {
 				choice.append(radio, CHOICE_LABEL[kind]);
 				choices.append(choice);
 			}
-			const note = doc.createElement("input");
-			note.type = "text";
-			note.className = "note";
-			note.placeholder = "Note (optional): what was done, or why";
-			note.maxLength = MAX_COMMENT;
-			note.setAttribute("aria-label", `Note for mark ${mark.number}`);
-			note.value = mark.resolution?.note ?? "";
+			// A label that shows, not a placeholder in its place (DEC-060).
+			const noteLabel = doc.createElement("p");
+			noteLabel.className = "note-label";
+			noteLabel.textContent = "Note (optional): what was done, or why";
+			// Typed in a frame of the extension's own (DEC-064); Enter saves.
+			const note = new PageField(doc, {
+				label: "Note (optional): what was done, or why",
+				value: mark.resolution?.note ?? "",
+				maxLength: MAX_COMMENT,
+				enterSubmits: true,
+			});
 			const save = () => {
 				const kind = (choices.querySelector<HTMLInputElement>("input:checked")
 					?.value ?? chosen) as ResolveChoice;
@@ -786,14 +861,14 @@ export class Reviewer {
 					note: note.value,
 				});
 			};
-			note.addEventListener("keydown", (e) => {
-				if (e.key === "Enter") save();
-				else if (e.key === "Escape") back();
-			});
+			note.onSubmit = save;
+			note.onEscape = back;
+			note.onPanel = () => this.#toPanel(now.c.id, mark.number, "resolve");
 			content = [
 				label,
 				choices,
-				note,
+				noteLabel,
+				note.element,
 				problem,
 				row(
 					"row",
@@ -804,13 +879,16 @@ export class Reviewer {
 			focus = note;
 		} else if (open.mode === "reopen") {
 			label.append(pin, "Reopen");
-			const note = doc.createElement("textarea");
-			note.maxLength = MAX_REOPEN_NOTE;
-			note.placeholder = "What is still wrong? The developer reads this first.";
-			note.setAttribute(
-				"aria-label",
-				`What is still wrong with mark ${mark.number}`,
-			);
+			// Help under the label, not a placeholder that looks like text (DEC-060).
+			const help = doc.createElement("p");
+			help.className = "help";
+			help.textContent = "What is still wrong? The developer reads this first.";
+			const note = new PageField(doc, {
+				label: `What is still wrong with mark ${mark.number}`,
+				description: help.textContent,
+				value: "",
+				maxLength: MAX_REOPEN_NOTE,
+			});
 			const reopen = () => {
 				// The developer reads it first: a reopen says why.
 				if (note.value.trim() === "") return;
@@ -825,16 +903,16 @@ export class Reviewer {
 				button("Reopen", "mark-reopen-done", reopen, true),
 			);
 			done.disabled = true;
-			note.addEventListener("input", () => {
-				if (!open.busy) done.disabled = note.value.trim() === "";
-			});
-			note.addEventListener("keydown", (e) => {
-				if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) reopen();
-				else if (e.key === "Escape") back();
-			});
+			note.onInput = (value) => {
+				if (!open.busy) done.disabled = value.trim() === "";
+			};
+			note.onSubmit = reopen;
+			note.onEscape = back;
+			note.onPanel = () => this.#toPanel(now.c.id, mark.number, "reopen");
 			content = [
 				label,
-				note,
+				help,
+				note.element,
 				problem,
 				row("row", button("Cancel", "mark-back", back), done),
 			];
@@ -847,16 +925,15 @@ export class Reviewer {
 				state.textContent = STATUS_LABEL[open.status];
 				label.append(state);
 			}
-			const field = doc.createElement("textarea");
-			field.setAttribute("aria-label", `Comment of mark ${mark.number}`);
-			field.placeholder = "What is wrong, or what should change?";
-			field.maxLength = MAX_COMMENT;
-			field.value = open.draft;
-			field.addEventListener("keydown", (e) => {
-				if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void this.#done();
-				// What was typed is dropped, as the panel's Cancel does.
-				else if (e.key === "Escape") this.#closeMark();
+			const field = new PageField(doc, {
+				label: `Comment of mark ${mark.number}`,
+				value: open.draft,
+				maxLength: MAX_COMMENT,
 			});
+			field.onSubmit = () => void this.#done();
+			// What was typed is dropped, as the panel's Cancel does.
+			field.onEscape = () => this.#closeMark();
+			field.onPanel = () => this.#toPanel(now.c.id, mark.number, "comment");
 			open.field = field;
 			// The panel's commands for a mark of this status, in its order.
 			const commands: HTMLButtonElement[] = [];
@@ -914,7 +991,7 @@ export class Reviewer {
 			open.remove = remove;
 			content = [
 				label,
-				field,
+				field.element,
 				problem,
 				row("commands", ...commands),
 				...(addImage === undefined ? [] : [row("row", addImage)]),
@@ -1011,6 +1088,16 @@ export class Reviewer {
 	 * "Add another image…": a comment typed is stored first, then the panel
 	 * is asked to open its dialog for the mark, and the popover goes.
 	 */
+	/** The side panel takes the mark's form; the popover goes (DEC-064). */
+	#toPanel(
+		caseId: string,
+		number: number,
+		what: "comment" | "resolve" | "reopen",
+	): void {
+		this.onPanel?.(caseId, number, what);
+		this.#closeMark();
+	}
+
 	async #addImage(open: OpenMark): Promise<void> {
 		const now = this.#openMark();
 		if (now === undefined || now.open !== open || open.busy) return;
@@ -1136,7 +1223,9 @@ export class Reviewer {
 		this.#stale.clear();
 		this.#late = { looks: 0, ticks: 0 };
 		this.#focused = undefined;
+		this.#hidden = false;
 		this.overlay.renderReview([]);
+		this.overlay.setMarksHidden(false);
 		this.overlay.setReviewing(false);
 	}
 
@@ -1267,18 +1356,69 @@ export class Reviewer {
 		text.dataset["role"] = "review-status";
 		text.append(title, sep, count);
 		const bar = this.overlay.reviewBar;
-		// Hide stays the same element: a click pressed on it while the case
-		// is drawn again (a mark added, a search again) still lands.
+		const c = this.#case;
+		// Hidden: the logo alone, which brings the marks back (DEC-061).
+		if (this.#hidden) {
+			const name = `Show the marks of “${c?.title ?? ""}”`;
+			// The same pill while nothing changed: its focus and a press stay.
+			const was = bar.querySelector('[data-action="review-show"]');
+			if (
+				bar.classList.contains("pill") &&
+				was?.getAttribute("aria-label") === name
+			)
+				return;
+			bar.classList.add("pill");
+			const show = doc.createElement("button");
+			show.type = "button";
+			show.className = "show-marks";
+			show.dataset["action"] = "review-show";
+			show.setAttribute("aria-label", name);
+			show.title = `${name}. Drag it to move it.`;
+			show.append(ring(doc));
+			show.addEventListener("click", () => {
+				this.reveal();
+				this.onHiddenChange?.(false);
+			});
+			bar.replaceChildren(show);
+			return;
+		}
+		bar.classList.remove("pill");
+		// The bar's buttons stay the same elements: a click pressed on one while
+		// the case is drawn again (a mark added, a search again) still lands.
 		let hide = bar.querySelector<HTMLButtonElement>(
 			'[data-action="review-hide"]',
 		);
 		if (hide === null) {
+			const grip = doc.createElement("button");
+			grip.type = "button";
+			grip.className = "grip";
+			grip.dataset["action"] = "review-move";
+			grip.setAttribute(
+				"aria-label",
+				"Move the Sitegloss bar: arrow keys move it, Home puts it back at the top right",
+			);
+			grip.title =
+				"Drag to move the bar; a double click puts it back at the top right";
+			grip.textContent = "⠿";
+			const add = doc.createElement("button");
+			add.type = "button";
+			add.dataset["action"] = "review-add";
+			add.textContent = "Add marks";
+			add.title = "Draw new marks on this page into the case";
+			add.addEventListener("click", () => {
+				if (this.#case) this.onAddMarks?.(this.#case);
+			});
 			hide = doc.createElement("button");
 			hide.type = "button";
 			hide.dataset["action"] = "review-hide";
-			hide.textContent = "Hide";
-			hide.addEventListener("click", () => this.clear());
-			bar.replaceChildren(ring(doc), text, hide);
+			hide.textContent = "Hide marks";
+			hide.title =
+				"Take the marks off this page; the Sitegloss logo stays here and brings them back";
+			hide.addEventListener("click", () => {
+				this.hide();
+				this.onHiddenChange?.(true);
+			});
+			bar.replaceChildren(grip, ring(doc), text, add, hide);
 			return;
 		}
 		bar.querySelector('[data-role="review-status"]')?.replaceWith(text);

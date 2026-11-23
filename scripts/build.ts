@@ -117,11 +117,15 @@ export function createManifest(
 		version,
 		description:
 			"Mark what is wrong on a web page, open the marks in another environment to fix it, and talk them through with your AI app.",
-		minimum_chrome_version: "116",
+		// 130: the first that keeps the comment field's page at the session's
+		// address (`use_dynamic_url`, DEC-064); before it, any site could
+		// learn by that page that Sitegloss is installed.
+		minimum_chrome_version: "130",
 		icons,
 		action: { default_title: "Sitegloss", default_icon: icons },
 		background: { service_worker: "background.js", type: "module" },
 		side_panel: { default_path: "sidepanel/index.html" },
+		web_accessible_resources: FRAMES_ON_PAGES_CHROME,
 		permissions: [
 			"activeTab",
 			"alarms",
@@ -150,6 +154,27 @@ export function createManifest(
 		...(options.key ? { key: options.key } : {}),
 	};
 }
+
+/**
+ * The extension's own page that a content script puts in a frame on a web
+ * page (DEC-064): the comment field of the page's dialogs. A frame of the
+ * extension's origin, so the page reads nothing typed in it. Any page may
+ * load it; it does nothing without the port the content script hands it.
+ */
+export const FRAMES_ON_PAGES = [
+	{ resources: ["field/*"], matches: ["<all_urls>"] },
+];
+
+/**
+ * Chrome's: the same, reachable only at the address of this browser
+ * session (`use_dynamic_url`), so a page cannot try the fixed address of
+ * Sitegloss's store id to learn that it is installed. Firefox gives every
+ * install an address of its own anyway (and has no such key).
+ */
+export const FRAMES_ON_PAGES_CHROME = FRAMES_ON_PAGES.map((r) => ({
+	...r,
+	use_dynamic_url: true,
+}));
 
 /** The Firefox build's add-on id (`browser_specific_settings.gecko.id`). */
 export const FIREFOX_ID = "sitegloss@ractive.ch";
@@ -194,6 +219,7 @@ export function createFirefoxManifest(
 		icons,
 		action: { default_title: "Sitegloss", default_icon: icons },
 		background: { scripts: ["background.js"], type: "module" },
+		web_accessible_resources: FRAMES_ON_PAGES,
 		sidebar_action: {
 			default_title: "Sitegloss",
 			default_panel: "sidepanel/index.html",
@@ -344,6 +370,21 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 		...(await bundle(
 			"src/sidepanel/index.html",
 			join(outdir, "sidepanel"),
+			"esm",
+			how,
+		)),
+		// A mark's pictures at their size, in a window of their own (DEC-060,
+		// DEC-064).
+		...(await bundle(
+			"src/viewer/index.html",
+			join(outdir, "viewer"),
+			"esm",
+			how,
+		)),
+		// The comment field of the page's dialogs, in a frame (DEC-064).
+		...(await bundle(
+			"src/field/index.html",
+			join(outdir, "field"),
 			"esm",
 			how,
 		)),

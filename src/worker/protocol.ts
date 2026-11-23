@@ -136,6 +136,8 @@ export interface AiState {
 	/** Another tab or program took Sitegloss's connection over (it connects with Sitegloss's secret). */
 	replaced?: { sibling: boolean };
 	lastCall?: CallView;
+	/** How many AI apps' tool calls are running now (DEC-063): the panel's chip shows it. */
+	running?: number;
 	questions: QuestionView[];
 	/** "Fill in the code for me": on (DEC-044); off by default. */
 	fillCode: boolean;

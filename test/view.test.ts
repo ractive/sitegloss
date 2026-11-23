@@ -19,9 +19,16 @@ const window = new Window({ url: "chrome-extension://x/sidepanel/index.html" });
 const globals = globalThis as unknown as Record<string, unknown>;
 const before = { document: globals["document"] };
 let render: (state: PanelState, actions: Actions) => void;
+let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
 let ago: (iso: string, now?: number) => string;
 let webAppNote: (state: PanelState) => string | undefined;
-let noneFoundText: (c: Case, url: string | undefined) => string;
+let TALKING_AFTER_MS: number;
+let pagePath: (url: string) => string;
+let noneFoundText: (
+	c: Case,
+	url: string | undefined,
+	allLost: boolean,
+) => string | undefined;
 let ASKING_DOWNLOADS: string;
 let IMPORT_BUSY: string;
 let EXPORT_ALL_BUSY: string;
@@ -45,11 +52,14 @@ beforeAll(async () => {
 	globals["document"] = window.document;
 	({
 		render,
+		afterVerify,
 		ASKING_DOWNLOADS,
 		IMPORT_BUSY,
 		EXPORT_ALL_BUSY,
 		webAppNote,
 		noneFoundText,
+		TALKING_AFTER_MS,
+		pagePath,
 	} = await import("../src/sidepanel/view.ts"));
 	({ ago } = await import("../src/sidepanel/cloud-view.ts"));
 });
@@ -527,15 +537,12 @@ describe("a mark's status and actions", () => {
 			["m1", 0],
 			["m2", 0],
 		]);
-		// A crop is small; a click shows it large, another small again.
+		// A picture's tile opens it larger in a tab of its own (DEC-061).
 		const crop = row("m1").querySelector(
 			"button.tile",
 		) as unknown as HTMLButtonElement;
-		expect(crop.getAttribute("aria-pressed")).toBe("false");
-		crop.click();
-		expect(crop.getAttribute("aria-pressed")).toBe("true");
-		crop.click();
-		expect(crop.getAttribute("aria-pressed")).toBe("false");
+		expect(crop.getAttribute("data-action")).toBe("open-larger");
+		expect(crop.getAttribute("aria-label")).toContain("shows it large");
 	});
 
 	test("a mark opens and closes at its head; Expand all opens every one", () => {
@@ -680,34 +687,47 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			actionsWith({
 				addImages: () => asked.push("add"),
 				deleteImage: (_c, _a, id) => asked.push(`remove ${id}`),
+				openPicture: (_c, _a, id) => asked.push(`open ${id}`),
 			}),
 		);
 		const row = window.document.querySelector(
 			`[data-mark="${a.id}"] .pictures`,
 		);
 		const names = [
-			...(row?.querySelectorAll("button.tile[data-action=zoom]") ?? []),
+			...(row?.querySelectorAll("button.tile[data-action=open-larger]") ?? []),
 		].map((b) => b.getAttribute("aria-label"));
+		const larger = ": shows it large";
 		expect(names).toEqual([
-			`Screenshot of mark ${a.number}, taken by Sitegloss`,
-			`Image 1 of 3 on mark ${a.number}, added by Dana`,
-			`Image 2 of 3 on mark ${a.number}`,
-			`Image 3 of 3 on mark ${a.number}, from an imported file`,
+			`Screenshot of mark ${a.number}, taken by Sitegloss${larger}`,
+			`Image 1 of 3 on mark ${a.number}, added by Dana${larger}`,
+			`Image 2 of 3 on mark ${a.number}${larger}`,
+			`Image 3 of 3 on mark ${a.number}, from an imported file${larger}`,
 		]);
 		const captions = [...(row?.querySelectorAll("figcaption") ?? [])].map(
 			(f) => f.firstChild?.textContent,
 		);
 		expect(captions).toEqual(["Screenshot", "Image 1", "Image 2", "Image 3"]);
 		// The screenshot's place has nothing to remove it with, not even a
-		// disabled control: its one control (and focus stop) shows it large.
+		// disabled control: its one control opens it larger, in one step (DEC-061).
 		const shot = row?.querySelector('[data-picture="screenshot"]');
 		expect(
 			[...(shot?.querySelectorAll("button, a, input, [tabindex]") ?? [])].map(
 				(e) => e.getAttribute("data-action"),
 			),
-		).toEqual(["zoom"]);
+		).toEqual(["open-larger"]);
+		(
+			shot?.querySelector("button.tile") as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		(
+			row?.querySelector('[data-picture="i_b"] button.tile') as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		expect(asked.splice(0)).toEqual(["open screenshot", "open i_b"]);
 		expect(shot?.querySelector("button")?.getAttribute("title")).toBe(
-			"Taken by Sitegloss when the mark was made. It stays with the mark.",
+			"Taken by Sitegloss when the mark was made. It stays with the mark. Click to see it large; Escape closes it.",
 		);
 		(
 			row?.querySelector(
@@ -994,6 +1014,102 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 	});
 });
 
+describe("Verify closes its mark (DEC-061)", () => {
+	test("Verify closes the row; the focus goes to the next mark to verify, else the row's head", async () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const c: Case = {
+			...sampleCase("c_verify_close"),
+			marks: [m(1, fixed), m(2), m(3, fixed)],
+		};
+		const verified: string[] = [];
+		const actions = actionsWith({
+			verifyMark: (_c, a) => void verified.push(a.id),
+		});
+		render(caseState(c), actions);
+		const row = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"]`,
+			) as unknown as HTMLElement;
+		(
+			row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+		).click();
+		expect(row("m1").hasAttribute("data-open")).toBe(true);
+		(
+			row("m1").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		expect(verified).toEqual(["m1"]);
+		// Stored as verified: drawn closed, the focus on mark 3, the next to verify.
+		const done: Case = {
+			...c,
+			updatedAt: "2026-11-15T09:00:00Z",
+			marks: [
+				m(1, { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } }),
+				m(2),
+				m(3, fixed),
+			],
+		};
+		render(caseState(done), actions);
+		expect(row("m1").hasAttribute("data-open")).toBe(false);
+		expect(
+			window.document.activeElement ===
+				(row("m3").querySelector(".mark-toggle") as unknown),
+		).toBe(true);
+	});
+
+	test("a Verify not saved takes no focus later from a field the person moved to (DEC-064's review)", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const base = withOneMark(sampleCase("c_verify_failed"));
+		const c: Case = {
+			...base,
+			marks: base.marks.map((a) => ({ ...a, resolution: fixed })),
+		};
+		render(caseState(c), noActions);
+		const row = window.document.querySelector(
+			'[data-mark="m1"]',
+		) as unknown as HTMLElement;
+		(row.querySelector(".head-verify") as unknown as HTMLButtonElement).click();
+		// Not saved: the person types the summary meanwhile.
+		el<HTMLTextAreaElement>("verdict").focus();
+		const later: Case = {
+			...c,
+			updatedAt: "2026-11-15T09:00:00Z",
+			marks: c.marks.map((a) => ({
+				...a,
+				resolution: { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } },
+			})),
+		};
+		render(caseState(later), noActions);
+		expect(window.document.activeElement?.id).toBe("verdict");
+	});
+
+	test("where the focus goes after a Verify", () => {
+		const order = [
+			{ id: "m1", status: "fixed" },
+			{ id: "m2", status: "open" },
+			{ id: "m3", status: "fixed" },
+		];
+		expect(afterVerify(order, "m1")).toEqual({ markId: "m3" });
+		expect(afterVerify(order, "m3")).toEqual({ markId: "m1" });
+		expect(afterVerify([{ id: "m1", status: "verified" }], "m1")).toEqual({
+			markId: "m1",
+		});
+		expect(afterVerify(order, "gone")).toBeUndefined();
+	});
+});
+
 describe("Verify (DEC-023)", () => {
 	const CLAUDE = {
 		id: "https://claude.ai/oauth",
@@ -1086,9 +1202,9 @@ describe("Verify (DEC-023)", () => {
 		expect(
 			window.document.querySelector(".case-header #case-status"),
 		).toBeNull();
-		// Show marks is what is done with the list: in its bar.
-		expect(bar?.contains(el("load-case") as never)).toBe(true);
-		expect(window.document.querySelector("#this-tab #load-case")).toBeNull();
+		// Show marks is in the case's tool bar at the panel's bottom (DEC-063).
+		expect(el("case-dock").contains(el("load-case") as never)).toBe(true);
+		expect(bar?.contains(el("load-case") as never)).toBe(false);
 		// A redraw of the list keeps both, and the focus on the button pressed.
 		el("load-case").focus();
 		render(
@@ -1097,11 +1213,7 @@ describe("Verify (DEC-023)", () => {
 		);
 		expect(window.document.querySelectorAll("#load-case").length).toBe(1);
 		expect(window.document.querySelectorAll("#case-status").length).toBe(1);
-		expect(
-			window.document
-				.querySelector("section.marks .marks-bar")
-				?.contains(el("load-case") as never),
-		).toBe(true);
+		expect(el("case-dock").contains(el("load-case") as never)).toBe(true);
 		expect(window.document.activeElement?.id).toBe("load-case");
 		// A chip drawn anew after its click has the focus still.
 		(
@@ -1298,25 +1410,28 @@ describe("Verify (DEC-023)", () => {
 			["Verify"],
 			[],
 		]);
-		// To verify: Verify and Reopen… in the collapsed head too.
+		// To verify: Verify alone, small, in the title line, so the closed row
+		// is two lines like the others (DEC-064); Reopen… when it is open.
 		expect(
-			[...row("m2").querySelectorAll(".mark-sub button")].map(
+			[...row("m2").querySelectorAll(".mark-head > button.head-verify")].map(
 				(b) => b.textContent,
 			),
-		).toEqual(["Verify", "Reopen…"]);
-		expect(row("m3").querySelector(".mark-sub button")).toBeNull();
+		).toEqual(["Verify"]);
+		expect(row("m2").querySelector(".mark-sub button")).toBeNull();
+		expect(row("m3").querySelector(".head-verify")).toBeNull();
+		expect(row("m2").querySelector(".head-verify")?.getAttribute("title")).toBe(
+			"The fix holds on the page you checked",
+		);
 		expect(
-			row("m2")
-				.querySelector('.mark-sub [data-mark-action="verify"]')
-				?.getAttribute("title"),
-		).toBe("The fix holds on the page you checked");
+			row("m2").querySelector(".head-verify")?.getAttribute("aria-label"),
+		).toBe("Verify mark 2");
 		// A mark to verify is drawn in full; verified and dismissed step back.
 		expect(row("m2").hasAttribute("data-resolved")).toBe(false);
 		expect(row("m2").dataset["status"]).toBe("fixed");
 		expect(row("m3").dataset["resolved"]).toBe("fixed");
 	});
 
-	test("Verified and Reopen… in the head call their actions", () => {
+	test("Verify in the head, and Verify and Reopen… in the body, call their actions", () => {
 		const c = fourMarks();
 		const calls: unknown[] = [];
 		render(
@@ -1326,13 +1441,15 @@ describe("Verify (DEC-023)", () => {
 				editMark: (_c, a, mode) => void calls.push(["edit", a.id, mode]),
 			}),
 		);
+		(row("m2").querySelector(".head-verify") as unknown as HTMLElement).click();
 		for (const name of ["verify", "reopen"])
 			(
 				row("m2").querySelector(
-					`.mark-sub [data-mark-action="${name}"]`,
+					`.body [data-mark-action="${name}"]`,
 				) as unknown as HTMLElement
 			).click();
 		expect(calls).toEqual([
+			["verify", "m2"],
 			["verify", "m2"],
 			["edit", "m2", "reopen"],
 		]);
@@ -1447,10 +1564,14 @@ describe("Verify (DEC-023)", () => {
 			"Won't fix",
 			"Can't reproduce",
 		]);
-		expect(
-			(form.querySelector("input.note") as unknown as HTMLInputElement)
-				.placeholder,
-		).toBe("Note (optional): what was done, or why");
+		// A label that shows, no placeholder in its place (DEC-060).
+		const note = form.querySelector(
+			"input.note",
+		) as unknown as HTMLInputElement;
+		expect(note.placeholder).toBe("");
+		expect(form.querySelector(`label[for="${note.id}"]`)?.textContent).toBe(
+			"Note (optional): what was done, or why",
+		);
 		(
 			form.querySelector(
 				'input[value="verified"]',
@@ -1489,9 +1610,12 @@ describe("Verify (DEC-023)", () => {
 		const field = form.querySelector(
 			"textarea",
 		) as unknown as HTMLTextAreaElement;
-		expect(field.placeholder).toBe(
-			"What is still wrong? The developer reads this first.",
-		);
+		expect(field.placeholder).toBe("");
+		expect(
+			window.document.getElementById(
+				field.getAttribute("aria-describedby") ?? "",
+			)?.textContent,
+		).toBe("What is still wrong? The developer reads this first.");
 		const done = form.querySelector(
 			'[data-mark-action="reopen-done"]',
 		) as unknown as HTMLButtonElement;
@@ -1517,11 +1641,17 @@ describe("Verify (DEC-023)", () => {
 		const item = window.document.querySelector(
 			`[data-case="${c.id}"]`,
 		) as unknown as HTMLElement;
-		expect(item.textContent).toContain(
-			"4 marks (1 open, 1 to verify, 1 verified, 1 dismissed)",
+		// One sentence for a screen reader; the bar and the words for the eye.
+		expect(item.getAttribute("aria-label")).toContain(
+			"4 marks, 1 open, 1 to verify, 1 verified, 1 dismissed",
 		);
 		expect(
-			[...item.querySelectorAll(".progress > span")].map((s) =>
+			[...item.querySelectorAll(".card-chips > span")].map(
+				(s) => s.textContent,
+			),
+		).toEqual(["● 1 open", "◐ 1 to verify", "✓ 1 verified", "– 1 dismissed"]);
+		expect(
+			[...item.querySelectorAll(".progress.band > span")].map((s) =>
 				s.getAttribute("data-kind"),
 			),
 		).toEqual(["open", "toVerify", "verified", "dismissed"]);
@@ -1781,43 +1911,29 @@ describe("none of the case's marks found (DEC-022)", () => {
 		});
 	};
 
-	test("on another page: says so, with the case's page and a way there", () => {
-		const opened: string[] = [];
+	test("on another page: one quiet line, no warning and no button (DEC-063)", () => {
 		render(
 			on("http://localhost:3000/other", [match(1, "lost"), match(2, "lost")]),
-			actionsWith({ openPage: (c) => void opened.push(c.id) }),
+			noActions,
 		);
-		const warning = el("none-found");
-		expect(warning.hidden).toBe(false);
-		expect(warning.querySelector("svg.notice-icon")).not.toBeNull();
-		// The case has no marks at all here: no page to name.
-		expect(warning.textContent).toContain(
-			"This case has no marks on this page.",
-		);
-		expect(warning.textContent).not.toContain("They are on");
-		const open = warning.querySelector(
-			'[data-action="open-case-page"]',
-		) as unknown as HTMLButtonElement;
-		expect(open.hidden).toBe(false);
-		open.click();
-		expect(opened).toEqual(["c_none"]);
+		const line = el("none-found");
+		expect(line.hidden).toBe(false);
+		expect(line.querySelector("svg") === null).toBe(true);
+		expect(line.querySelector("button") === null).toBe(true);
+		// The facts' address above opens the one page.
+		expect(line.textContent).toBe("This case's page is not in this tab.");
 	});
 
-	test("on the case's own path (another environment): says so, no claim of another page", () => {
+	test("on the case's own path (another environment), none found: says that, quietly", () => {
 		render(on("http://localhost:3000/kk", [match(1, "lost")]), noActions);
 		expect(el("none-found").hidden).toBe(false);
-		expect(el("none-found").textContent).not.toContain("another page");
-		expect(
-			(
-				el("none-found").querySelector(
-					'[data-action="open-case-page"]',
-				) as unknown as HTMLElement
-			).hidden,
-		).toBe(true);
+		expect(el("none-found").textContent).toBe(
+			"None of this page's marks were found here.",
+		);
 	});
 
-	test("some found, still being looked for, or nothing to tell by: no warning", () => {
-		const url = "http://localhost:3000/other";
+	test("on its page, some found, still being looked for, or nothing to tell by: no line", () => {
+		const url = "http://localhost:3000/kk";
 		render(on(url, [match(1, "lost"), match(2, "probable")]), noActions);
 		expect(el("none-found").hidden).toBe(true);
 		render(on(url, [match(1, "lost")], true), noActions);
@@ -1863,19 +1979,58 @@ describe("what the panel's draw found, under the case's buttons", () => {
 		});
 	};
 
-	test("a mark saved while adding is counted at once, as the next draw would count it", () => {
+	test("the same failure twice is said twice; a render for something else says nothing (DEC-064's second review)", async () => {
+		const c = sampleCase("c_hint_again");
+		const at = (seq: number) =>
+			caseState(c, (s) => {
+				s.caseHint = "Not saved: the store refused it";
+				s.caseHintSeq = seq;
+			});
+		render(at(1), noActions);
+		let writes = 0;
+		new window.MutationObserver(() => void writes++).observe(
+			el("case-hint") as unknown as Parameters<
+				MutationObserver["observe"]
+			>[0] as never,
+			{ childList: true, characterData: true, subtree: true },
+		);
+		render(at(1), noActions);
+		await Promise.resolve();
+		expect(writes).toBe(0);
+		render(at(2), noActions);
+		await Promise.resolve();
+		expect(writes).toBeGreaterThan(0);
+		expect(el("case-hint").textContent).toBe("Not saved: the store refused it");
+	});
+
+	test("what a draw found is said once it settled, not at each step of its count (DEC-064's review)", () => {
+		const state = drawnWith(2);
+		if (state.loaded) state.loaded.settling = true;
+		render(state, noActions);
+		expect(el("case-hint").textContent).not.toContain("marks found");
+		if (state.loaded) state.loaded.settling = false;
+		render(state, noActions);
+		expect(el("case-hint").textContent).toBe(
+			"2 of 2 marks found on www.example.com/kk.",
+		);
+	});
+
+	test("what a draw found is no sentence on screen, only for a screen reader; a mark saved while adding is counted at once (DEC-061)", () => {
 		const state = drawnWith(1);
 		render(state, noActions);
+		expect(el("case-hint").classList.contains("visually-hidden")).toBe(true);
 		expect(el("case-hint").textContent).toBe(
 			"1 of 1 marks found on www.example.com/kk.",
 		);
-		// Marks 2 to 4 saved: the page's answer to the case's update is in
-		// `loaded` (redrawLoaded), and no draw wrote under the buttons since.
 		for (const n of [2, 3, 4]) state.loaded?.matches.set(`m${n}`, found(n));
 		render(state, noActions);
 		expect(el("case-hint").textContent).toBe(
 			"4 of 4 marks found on www.example.com/kk.",
 		);
+		// An action's sentence is on screen.
+		state.caseHint = "Exported.";
+		render(state, noActions);
+		expect(el("case-hint").classList.contains("visually-hidden")).toBe(false);
 	});
 
 	test("an action's sentence stays; with the results gone, so is the line", () => {
@@ -1918,11 +2073,8 @@ describe("the case's page and size", () => {
 			const chips = [...(el("open-page").parentElement?.children ?? [])]
 				.filter((chip) => !(chip as unknown as HTMLElement).hidden)
 				.map((chip) => chip.textContent);
-			expect(chips).toEqual([
-				url,
-				expect.stringMatching(/^\d+×\d+$/),
-				expect.stringMatching(/\d{4}/),
-			]);
+			// The address alone in the Pages fact; size and date in Made at.
+			expect(chips).toEqual([url]);
 		}
 	});
 
@@ -2114,7 +2266,10 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		expect(row?.textContent).toContain("shop.example/cart and 1 more page");
+		expect(row?.textContent).toContain("shop.example/cart · 2 pages");
+		expect(row?.getAttribute("aria-label")).toContain(
+			"on shop.example/cart and 1 more page",
+		);
 		expect(
 			window.document.querySelector(
 				'ul.cases[data-group="other"] [data-case="c_other"]',
@@ -2159,15 +2314,21 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		// The one link of a case of one page gives way to the list.
 		expect(el("open-page").hidden).toBe(true);
-		expect(el("case-view").querySelector(".case-meta")?.textContent).toContain(
-			"2 pages",
-		);
+		// The list is under the Pages label: no "2 pages" above it (DEC-061).
+		// Two pages: no disclosure, the label alone (DEC-063).
+		expect(el("case-pages-toggle").hidden).toBe(true);
+		expect(
+			el("case-pages").closest(".fact")?.querySelector("dt > span")
+				?.textContent,
+		).toBe("Pages");
 		const links = el("case-pages").querySelectorAll(".page-name");
 		(links[1] as unknown as HTMLButtonElement).click();
 		(links[0] as unknown as HTMLButtonElement).click();
 		expect(opened).toEqual([PAY, CART]);
 
-		// Pages on two hosts are named with them; one without a title by its address.
+		// One row per page whatever the host (DEC-063): the payment page marked
+		// on shop.example and listed on staging is one row, its hosts under
+		// it, the last marked first; one without a title by its path.
 		const other = "https://staging.shop.example/checkout/pay";
 		render(
 			caseState({
@@ -2177,12 +2338,93 @@ describe("a case of several pages (DEC-038)", () => {
 			noActions,
 		);
 		expect(pages()).toEqual([
-			"Your cart2 marksshop.example/cart",
-			"staging.shop.example/checkout/pay1 mark",
+			"Your cart2 marks/cart",
+			"/checkout/pay1 markshop.example, staging.shop.example",
 		]);
+		// A click opens it where it was last marked: the tab shows another host.
 		expect(
 			el("case-pages").querySelectorAll<HTMLElement>(".page-name")[1]?.title,
-		).toBe(`${other}\nOpens in a new tab; the case's marks are drawn there`);
+		).toBe(`${PAY}\nOpens in a new tab; the case's marks are drawn there`);
+	});
+
+	test("more than three pages: one disclosure, closed but for the page in front, remembered; open where the tab shows none (DEC-063)", () => {
+		const base = flow("c_many");
+		const urls = ["a", "b", "c", "d", "e"].map(
+			(x) => `https://shop.example/${x}`,
+		);
+		const c: Case = {
+			...base,
+			pages: urls.map((url, i) => ({
+				url,
+				title: `Page ${i + 1}`,
+				lang: "en",
+			})),
+			shots: urls.map((url, i) => shot(`s${i + 1}`, url, 1280)),
+			marks: urls.map((_, i) => mark(i + 1, `s${i + 1}`)),
+		};
+		const at = (url: string) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		const shownRows = () =>
+			[...el("case-pages").querySelectorAll("li")]
+				.filter((li) => !(li as unknown as HTMLElement).hidden)
+				.map((li) => li.querySelector(".page-name")?.textContent);
+		const toggle = () => el<HTMLButtonElement>("case-pages-toggle");
+		render(at("http://localhost:3000/c"), noActions);
+		expect(toggle().hidden).toBe(false);
+		expect(toggle().textContent).toBe("Pages 5");
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		// Closed: the page in front only, whatever its host.
+		expect(shownRows()).toEqual(["Page 3"]);
+		toggle().click();
+		expect(toggle().getAttribute("aria-expanded")).toBe("true");
+		expect(shownRows().length).toBe(5);
+		// Remembered for the case, also when the tab moves on.
+		render(at("http://localhost:3000/d"), noActions);
+		expect(shownRows().length).toBe(5);
+		toggle().click();
+		expect(shownRows()).toEqual(["Page 4"]);
+		// Closed by the person: it stays closed, also where the tab shows
+		// none of the case's pages, render after render (DEC-064's review).
+		render(at("https://shop.example/elsewhere"), noActions);
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		render(at("https://shop.example/elsewhere"), noActions);
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		expect(el("none-found").textContent).toBe(
+			"None of this case's pages is in this tab.",
+		);
+	});
+
+	test("with no choice made, the pages list is open where the tab shows none of the case's pages (DEC-063)", () => {
+		const base = flow("c_many_none");
+		const urls = ["a", "b", "c", "d", "e"].map(
+			(x) => `https://shop.example/${x}`,
+		);
+		const c: Case = {
+			...base,
+			pages: urls.map((url, i) => ({
+				url,
+				title: `Page ${i + 1}`,
+				lang: "en",
+			})),
+			shots: urls.map((url, i) => shot(`s${i + 1}`, url, 1280)),
+			marks: urls.map((_, i) => mark(i + 1, `s${i + 1}`)),
+		};
+		render(
+			caseState(c, (s) => {
+				s.tab = {
+					id: 1,
+					url: "https://shop.example/elsewhere",
+					title: "",
+					size: undefined,
+				};
+			}),
+			noActions,
+		);
+		expect(
+			el<HTMLButtonElement>("case-pages-toggle").getAttribute("aria-expanded"),
+		).toBe("true");
 	});
 
 	test("the marks by page: this page follows the tab, any page from the list or the menu, combined with the status chips, which count what it leaves", () => {
@@ -2408,11 +2650,11 @@ describe("a case of several pages (DEC-038)", () => {
 			});
 		render(on("http://localhost:3000/cart"), noActions);
 		expect(el("case-size").textContent).toContain(
-			"This tab is 1000×800, the marks were made at 1280×800.",
+			"This tab is 1000×800; the marks were made at 1280×800.",
 		);
 		render(on("http://localhost:3000/checkout/pay"), noActions);
 		expect(el("case-size").textContent).toContain(
-			"This tab is 1000×800, the marks were made at 390×800.",
+			"This tab is 1000×800; the marks were made at 390×800.",
 		);
 	});
 
@@ -2441,9 +2683,8 @@ describe("a case of several pages (DEC-038)", () => {
 			}),
 		);
 		expect(el("none-found").hidden).toBe(true);
-		expect(el("case-hint").textContent).toBe(
-			"2 of 2 marks found on localhost:3000/cart. 1 more is on other pages of the case.",
-		);
+		// Not on screen: the page filter's counts say it (DEC-061).
+		expect(el("case-hint").classList.contains("visually-hidden")).toBe(true);
 		expect(word(1)).toContain("Found here");
 		// A link to the mark's page, named by its title: not the bare words.
 		expect(word(3)).toBe("On Payment");
@@ -2489,12 +2730,12 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		expect(el("none-found").hidden).toBe(false);
 		expect(el("none-found").textContent).toContain(
-			"None of this case's marks were found on this page.",
+			"None of this page's marks were found here.",
 		);
 		expect(el("none-found").textContent).not.toContain("other pages");
 
-		// A page that is none of the case's: no mark is its, and the case's
-		// pages are named; every mark is on another page.
+		// A page that is none of the case's: one quiet line; the pages list,
+		// open, says where the marks are (DEC-063); every mark is on another page.
 		render(
 			on("http://localhost:3000/account", [
 				match(1, "lost"),
@@ -2503,8 +2744,8 @@ describe("a case of several pages (DEC-038)", () => {
 			]),
 			noActions,
 		);
-		expect(el("none-found").textContent).toContain(
-			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
+		expect(el("none-found").textContent).toBe(
+			"None of this case's pages is in this tab.",
 		);
 		expect([word(1), word(2), word(3)]).toEqual([
 			"On Your cart",
@@ -2513,16 +2754,17 @@ describe("a case of several pages (DEC-038)", () => {
 		]);
 		expect(el("case-hint").hidden).toBe(true);
 		// Started on a page that has no marks (DEC-026), marked elsewhere: on
-		// that page, only the pages with marks are named, not the one in front.
+		// that page nothing is said; it is one of the case's, and normal.
 		const START = "https://shop.example/start";
 		const started: Case = {
 			...c,
 			page: { ...c.page, url: START },
 			pages: [{ url: START, title: "Start", lang: "en" }, ...(c.pages ?? [])],
 		};
-		expect(noneFoundText(started, "http://localhost:3000/start")).toBe(
-			"This case has no marks on this page. They are on shop.example/cart, shop.example/checkout/pay.",
-		);
+		expect(
+			noneFoundText(started, "http://localhost:3000/start", false) ===
+				undefined,
+		).toBe(true);
 
 		// The tab went on within the page (a single-page app): what the panel
 		// has is about the page before until it is read again, and then says
@@ -2534,9 +2776,7 @@ describe("a case of several pages (DEC-038)", () => {
 			match(3, "found"),
 		]);
 		render(moved, noActions);
-		expect(el("case-hint").textContent).toBe(
-			"1 of 1 marks found on localhost:3000/checkout/pay. 2 more are on other pages of the case.",
-		);
+		expect(el("case-hint").classList.contains("visually-hidden")).toBe(true);
 		expect(word(3)).toContain("Found here");
 		expect(word(1)).toBe("On Your cart");
 	});
@@ -2902,14 +3142,14 @@ describe("the account and the sync with a team (DEC-039)", () => {
 				account: account({ server: "https://app.dev.sitegloss.dev" }),
 			}).hidden,
 		).toBe(false);
-		// In an open case too, where the tab's marks are looked for.
+		// Not in an open case (DEC-061): Home says it; the case's head stays calm.
 		const c = sampleCase("c_1");
 		const state = caseState(c, (s) => {
 			s.cloud.account = account();
 			s.tab = tab("https://app.sitegloss.dev/t/pedal/cases/c_1");
 		});
 		render(state, noActions);
-		expect(el("case-web-app").hidden).toBe(false);
+		expect(el("case-view").textContent).not.toContain("your team's web app");
 		expect(webAppNote(state)).toContain("your team's web app");
 	});
 
@@ -3271,7 +3511,101 @@ describe("the thread and closing (DEC-046)", () => {
 		],
 	});
 
-	test("the case's thread: who wrote each comment, through which app, about which mark; one's own can be changed and deleted", () => {
+	const asTess = (s: PanelState) => {
+		s.cloud.account = {
+			name: "Tess Tester",
+			email: "tess@example.com",
+			userId: "u_tess",
+			server: "https://app.sitegloss.dev",
+			teams: [],
+			teamId: undefined,
+			expired: false,
+		};
+	};
+	const twoOfTess = (c: Case): Case => ({
+		...c,
+		comments: ["k_a", "k_b"].map((id, i) => ({
+			id,
+			mark: "m1",
+			text: `Comment ${i + 1}`,
+			at: `2026-11-20T1${i}:00:00.000Z`,
+			user: { id: "u_tess", name: "Tess Tester" },
+		})),
+	});
+
+	test("at a mark, the focus stays on the comment acted on after a redraw, not the first one (DEC-064's review)", () => {
+		const c = twoOfTess(withOneMark(sampleCase("c_two")));
+		render(caseState(c, asTess), noActions);
+		const del = (id: string) =>
+			window.document.querySelector(
+				`[data-mark-thread="m1"] [data-comment="${id}"] [data-action="comment-delete"]`,
+			) as unknown as HTMLButtonElement;
+		del("k_b").focus();
+		// Another change of the case redraws the list.
+		render(
+			caseState({ ...c, updatedAt: "2026-11-21T10:00:00.000Z" }, asTess),
+			noActions,
+		);
+		expect(window.document.activeElement === (del("k_b") as unknown)).toBe(
+			true,
+		);
+	});
+
+	test("a comment at a mark whose save fails keeps its box and its text (DEC-064's review)", async () => {
+		const c = withOneMark(sampleCase("c_fail"));
+		let answer = false;
+		const actions = actionsWith({ addComment: () => Promise.resolve(answer) });
+		render(caseState(c, asTess), actions);
+		const q = (sel: string) =>
+			window.document.querySelector(
+				`[data-mark-thread="m1"] ${sel}`,
+			) as unknown as HTMLElement | null;
+		(q('[data-action="mark-comment-open"]') as HTMLButtonElement).click();
+		await Promise.resolve();
+		const box = q("textarea") as unknown as HTMLTextAreaElement;
+		box.value = "Checked on staging";
+		box.dispatchEvent(new window.Event("input") as unknown as Event);
+		(q('[data-action="mark-comment-add"]') as HTMLButtonElement).click();
+		await new Promise((r) => setTimeout(r, 0));
+		render(
+			caseState({ ...c, updatedAt: "2026-11-21T10:00:00.000Z" }, asTess),
+			actions,
+		);
+		expect(
+			(q("textarea") as unknown as HTMLTextAreaElement | null)?.value,
+		).toBe("Checked on staging");
+		// Saved the next time: the box closes.
+		answer = true;
+		(q('[data-action="mark-comment-add"]') as HTMLButtonElement).click();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(q("textarea") === null).toBe(true);
+	});
+
+	test("typing at a mark survives a redraw of the list: the same box, the caret where it was (DEC-064's review)", async () => {
+		const c = withOneMark(sampleCase("c_typing"));
+		render(caseState(c, asTess), noActions);
+		(
+			window.document.querySelector(
+				'[data-mark-thread="m1"] [data-action="mark-comment-open"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		await Promise.resolve();
+		const box = () =>
+			window.document.querySelector(
+				'[data-mark-thread="m1"] textarea',
+			) as unknown as HTMLTextAreaElement;
+		box().value = "Half way";
+		box().dispatchEvent(new window.Event("input") as unknown as Event);
+		box().setSelectionRange(4, 4);
+		render(
+			caseState({ ...c, updatedAt: "2026-11-21T10:00:00.000Z" }, asTess),
+			noActions,
+		);
+		expect(window.document.activeElement === (box() as unknown)).toBe(true);
+		expect([box().value, box().selectionStart]).toEqual(["Half way", 4]);
+	});
+
+	test("the thread at the bottom is the case's; a comment about a mark shows at the mark, with Add comment there (DEC-061)", async () => {
 		const done: string[] = [];
 		const actions = actionsWith({
 			addComment: (_c, text, mark) => void done.push(`add ${text} ${mark}`),
@@ -3295,26 +3629,72 @@ describe("the thread and closing (DEC-046)", () => {
 		const items = [
 			...window.document.querySelectorAll("#case-thread li[data-comment]"),
 		];
+		// The case's own comment at the bottom, Tess's: Edit and Delete comment.
 		expect(
 			items.map((li) => li.querySelector(".comment-meta")?.textContent),
-		).toEqual([
-			expect.stringMatching(/^Tess Tester · /),
-			expect.stringMatching(/^Dana Developer via Claude · .* · on mark 1$/),
-		]);
-		// Tess's own has Edit and Delete comment; Dana's has none.
+		).toEqual([expect.stringMatching(/^Tess Tester · /)]);
 		expect(
 			items[0]?.querySelector('[data-action="comment-delete"]')?.textContent,
 		).toBe("Delete comment");
+		expect(el("thread-heading").textContent).toBe("Comments 1");
+		// A disclosure, open: the case has a comment (DEC-063); closed by a click.
+		const toggle = () =>
+			el("thread-heading").querySelector(
+				"button",
+			) as unknown as HTMLButtonElement;
+		expect(toggle().getAttribute("aria-expanded")).toBe("true");
+		expect(el("thread-body").hidden).toBe(false);
+		toggle().click();
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		expect(el("thread-body").hidden).toBe(true);
+		toggle().click();
+		expect(el("thread-body").hidden).toBe(false);
+		// The mark says it has a comment, and shows it, Dana's (none of Tess's tools).
 		expect(
-			items[1]?.querySelector('[data-action="comment-delete"]'),
-		).toBeNull();
-		expect(el("thread-heading").textContent).toBe("Comments 2");
-		// The mark says it has a comment.
-		expect(
-			window.document.querySelector(
-				"[data-mark] .comments-count, .comments-count",
-			)?.textContent,
+			window.document.querySelector("[data-mark] .comments-count")?.textContent,
 		).toBe("1 comment");
+		const atMark = window.document.querySelector('[data-mark-thread="m1"]');
+		const there = [...(atMark?.querySelectorAll("li[data-comment]") ?? [])];
+		expect(
+			there.map((li) => li.querySelector(".comment-meta")?.textContent),
+		).toEqual([expect.stringMatching(/^Dana Developer via Claude · /)]);
+		expect(there[0]?.textContent).not.toContain("on mark");
+		expect(
+			there[0]?.querySelector('[data-action="comment-delete"]'),
+		).toBeNull();
+		// Add comment at the mark: a button that opens the box (DEC-063).
+		expect(atMark?.querySelector("textarea") === null).toBe(true);
+		(
+			atMark?.querySelector('[data-action="mark-comment-open"]') as unknown as
+				| HTMLButtonElement
+				| undefined
+		)?.click();
+		const field = window.document.querySelector(
+			'[data-mark-thread="m1"] textarea',
+		) as unknown as HTMLTextAreaElement;
+		await Promise.resolve();
+		expect(window.document.activeElement === (field as unknown)).toBe(true);
+		field.value = "Checked on staging";
+		field.dispatchEvent(new window.Event("input") as unknown as Event);
+		(
+			window.document.querySelector(
+				'[data-mark-thread="m1"] [data-action="mark-comment-add"]',
+			) as unknown as HTMLButtonElement | undefined
+		)?.click();
+		expect(done).toEqual(["add Checked on staging m1"]);
+	});
+
+	test("a mark shows its last three comments, the earlier ones folded (as the web's markThread)", async () => {
+		const { markThreadShown } = await import("../src/sidepanel/thread-view.ts");
+		expect(markThreadShown([1, 2, 3, 4, 5], false)).toEqual({
+			shown: [3, 4, 5],
+			earlier: 2,
+		});
+		expect(markThreadShown([1, 2, 3, 4, 5], true)).toEqual({
+			shown: [1, 2, 3, 4, 5],
+			earlier: 0,
+		});
+		expect(markThreadShown([1], false)).toEqual({ shown: [1], earlier: 0 });
 	});
 
 	test("Close case and Reopen case; a closed case says who closed it, and is filed under Closed, folded", () => {
@@ -3438,22 +3818,59 @@ describe("what stays between renders", () => {
 describe("the summary for the developer", () => {
 	const value = () => el<HTMLTextAreaElement>("verdict").value;
 
-	test("is labelled so, says what it is for, and shows in the case list", () => {
+	test("is labelled so and says what it is for", () => {
 		const c = { ...sampleCase("c_s"), verdict: "Darker button" };
 		render(caseState(c), noActions);
 		expect(
 			window.document.querySelector('label[for="verdict"]')?.textContent,
 		).toBe("Summary for the developer");
-		expect(el<HTMLTextAreaElement>("verdict").placeholder).toContain(
+		// Help under the label, no placeholder (DEC-060).
+		expect(el<HTMLTextAreaElement>("verdict").placeholder).toBe("");
+		expect(el("verdict-help").textContent).toContain(
 			"Whoever loads this case sees it first.",
 		);
+		// A comment box gets no placeholder (the owner, DEC-060).
+		expect(el<HTMLTextAreaElement>("comment-new").placeholder).toBe("");
 		expect(el("save-verdict").textContent).toBe("Save summary");
+	});
+
+	test("a case's card shows its start on one line; its name only says there is one", () => {
+		const long = `Darker button\n\nand ${"more ".repeat(100)}`;
 		const home = initialState();
-		home.cases = [c];
+		home.cases = [
+			{ ...sampleCase("c_s"), verdict: long },
+			{ ...sampleCase("c_none"), verdict: null },
+		];
 		render(home, noActions);
+		const card = window.document.querySelector('[data-case="c_s"]');
+		const line = card?.querySelector(".card-summary")?.textContent ?? "";
+		expect(line.startsWith("Darker button and more")).toBe(true);
+		expect(line.length).toBe(200);
+		expect(card?.getAttribute("aria-label")).not.toContain("Darker");
+		expect(card?.getAttribute("aria-label")).toEndWith(
+			", with a summary for the developer",
+		);
+		const none = window.document.querySelector('[data-case="c_none"]');
+		expect(none?.querySelector(".card-summary")).toBeNull();
+		expect(none?.getAttribute("aria-label")).not.toContain("summary");
+		// The summary is the case's content: right under its title, before
+		// the facts (DEC-064).
 		expect(
-			window.document.querySelector('[data-case="c_s"]')?.textContent,
-		).toContain("Summary for the developer: Darker button");
+			card?.querySelector(".card-head")?.nextElementSibling?.className,
+		).toBe("card-summary");
+	});
+
+	test("a case without marks has no band on its card (DEC-064)", () => {
+		const home = initialState();
+		home.cases = [
+			{ ...sampleCase("c_empty"), marks: [] },
+			withOneMark(sampleCase("c_one")),
+		];
+		render(home, noActions);
+		const band = (id: string) =>
+			window.document.querySelector(`[data-case="${id}"] > .progress.band`);
+		expect(band("c_empty") === null).toBe(true);
+		expect(band("c_one") === null).toBe(false);
 	});
 
 	test("a draft stays while the case changes, and comes back after leaving", () => {
@@ -3596,7 +4013,46 @@ describe("the AI app", () => {
 		s.ai = { ...s.ai, ...change };
 	};
 
-	test("its connection shows in the case view too, and Stop while an app is connected", () => {
+	test("an app talking: the chip glows while its call runs and a moment after, its name unchanged (DEC-063)", async () => {
+		const c = sampleCase("c_talk");
+		const on = { active: true, connected: true, apps: 1 };
+		const talking = () => "talking" in el("ai-button").dataset;
+		render(caseState(c, ai({ ...on, status: "Connected: Claude" })), noActions);
+		expect(talking()).toBe(false);
+		const name = () => el("ai-button").textContent;
+		const before = name();
+		render(
+			caseState(c, ai({ ...on, status: "Connected: Claude", working: true })),
+			noActions,
+		);
+		expect(talking()).toBe(true);
+		expect(name()).toBe(before);
+		render(
+			caseState(c, ai({ ...on, status: "Connected: Claude", working: false })),
+			noActions,
+		);
+		// A moment after the call: still on, then off.
+		expect(talking()).toBe(true);
+		await Bun.sleep(TALKING_AFTER_MS + 50);
+		expect(talking()).toBe(false);
+		// A call said to run on a connection that is gone: no glow (DEC-064's review).
+		render(
+			caseState(
+				c,
+				ai({
+					active: false,
+					connected: false,
+					apps: 0,
+					status: "Not connected",
+					working: true,
+				}),
+			),
+			noActions,
+		);
+		expect(talking()).toBe(false);
+	});
+
+	test("its connection shows in the case view too; no Stop in the top bar, the pill leads to the switch (DEC-061)", () => {
 		const c = sampleCase("c_ai");
 		const on = { active: true, connected: true };
 		render(
@@ -3604,23 +4060,17 @@ describe("the AI app", () => {
 			noActions,
 		);
 		expect(el("home").hidden).toBe(true);
-		// What the user sees of it: the pill's label, beside Stop.
+		// What the user sees of it: the pill's label.
 		expect(el("ai-label").closest("[hidden], .visually-hidden")).toBeNull();
 		expect(el("ai-label").textContent).toBe("AI on · 1 app");
 		// The whole sentence is the pill's name, for a screen reader.
 		expect(el("ai-status").textContent).toBe("Connected: Claude");
-		expect(el("stop-ai").closest("[hidden]")).toBeNull();
-		// No app that could act: the pill leads to the switch, no Stop beside it.
-		const waiting = "Waiting for an AI app to pair";
-		render(caseState(c, ai({ ...on, status: waiting })), noActions);
-		expect(el("stop-ai").hidden).toBe(true);
-		render(
-			caseState(c, ai({ active: true, status: "Connecting…" })),
-			noActions,
+		// The owner: Stop goes; the switch in the AI view stops AI access.
+		expect(el("stop-ai")).toBeNull();
+		expect(el("bar").querySelectorAll("button").length).toBe(2);
+		expect(el("ai-switch").closest("label")?.title).toContain(
+			"stops that at once",
 		);
-		expect(el("stop-ai").hidden).toBe(true);
-		render(caseState(c, ai({ status: "Not connected" })), noActions);
-		expect(el("stop-ai").hidden).toBe(true);
 	});
 
 	test("a problem is said in words without hovering: a red dot, its name in the pill, its sentence under the bar on every view (DEC-024)", () => {
@@ -3823,9 +4273,6 @@ describe("the AI app", () => {
 		// Healthy in each of these: nothing is said under the bar.
 		expect(el("ai-problem").hidden).toBe(true);
 		expect(el("ai-problem-text").textContent).toBe("");
-		// Stop is short beside the pill; its name says what it stops.
-		expect(el("stop-ai").textContent).toBe("Stop");
-		expect(el("stop-ai").getAttribute("aria-label")).toBe("Stop AI access");
 	});
 });
 
@@ -4013,7 +4460,7 @@ describe("the title is renamed where it is shown (DEC-026)", () => {
 		});
 	const shown = (id: string) => !el(id).hidden;
 
-	test("the title with a quiet Rename beside it, which has a name", () => {
+	test("the title with a quiet … menu beside it: Rename… there (DEC-061)", () => {
 		const called: string[] = [];
 		render(
 			caseState(c),
@@ -4023,13 +4470,23 @@ describe("the title is renamed where it is shown (DEC-026)", () => {
 		expect(el("case-view").querySelector(".case-title")?.textContent).toBe(
 			"Button contrast",
 		);
+		const more = el<HTMLButtonElement>("case-more");
+		expect(more.getAttribute("aria-label")).toBe("More actions on this case");
+		expect(more.getAttribute("aria-expanded")).toBe("false");
+		expect(el("case-menu").hidden).toBe(true);
+		more.click();
+		expect(el("case-menu").hidden).toBe(false);
+		expect(more.getAttribute("aria-expanded")).toBe("true");
+		const items = [...el("case-menu").querySelectorAll("[role=menuitem]")].map(
+			(b) => b.textContent,
+		);
+		expect(items).toEqual(["Rename…", "Add a link…", "Export…", "Delete case"]);
 		const button = el<HTMLButtonElement>("rename-case");
-		expect(button.textContent).toBe("Rename");
-		expect(button.getAttribute("aria-label")).toBe("Rename this case");
-		expect(button.className).toContain("quiet");
 		expect(shown("rename")).toBe(false);
 		button.click();
 		expect(called).toEqual(["c_rename"]);
+		// An item closes the menu.
+		expect(el("case-menu").hidden).toBe(true);
 	});
 
 	test("renaming: a field with the title and its name, Save and Cancel; the title row goes", () => {
@@ -4065,7 +4522,7 @@ describe("the title is renamed where it is shown (DEC-026)", () => {
 		expect(el("rename-field").getAttribute("aria-invalid")).toBe("false");
 	});
 
-	test("done: the stored title shows, Rename has the focus again", async () => {
+	test("done: the stored title shows, the … menu's button has the focus again", async () => {
 		render(renaming("Login"), noActions);
 		await Promise.resolve();
 		expect(window.document.activeElement?.id).toBe("rename-field");
@@ -4075,7 +4532,7 @@ describe("the title is renamed where it is shown (DEC-026)", () => {
 		expect(el("case-view").querySelector(".case-title")?.textContent).toBe(
 			"Login",
 		);
-		expect(window.document.activeElement?.id).toBe("rename-case");
+		expect(window.document.activeElement?.id).toBe("case-more");
 	});
 });
 
@@ -4085,23 +4542,17 @@ describe("a case's link (DEC-028)", () => {
 	const open = () => el<HTMLAnchorElement>("case-link-open");
 	const edit = () => el<HTMLButtonElement>("case-link-edit");
 
-	test("no link: only a quiet Add a link, under the meta line", () => {
+	test("no link: only a quiet Add a link, in the facts' Link row", () => {
 		const c = sampleCase("c_link_none");
 		const called: string[] = [];
 		render(
 			caseState(c),
 			actionsWith({ startLink: (x) => void called.push(x.id) }),
 		);
-		// Between them, shown only when they have something to say: the list of
-		// pages (a case of several, DEC-038) and the team's line (DEC-039).
-		let above = el("case-link").previousElementSibling as HTMLElement;
-		const between: string[] = [];
-		while (above.hidden) {
-			between.push(above.id);
-			above = above.previousElementSibling as HTMLElement;
-		}
-		expect(between).toEqual(["case-team", "case-pages"]);
-		expect(above.className).toContain("case-meta");
+		// Its row in the facts, labelled (DEC-061).
+		expect(
+			el("case-link").closest(".fact")?.querySelector("dt")?.textContent,
+		).toBe("Link");
 		expect(shown("case-link-open")).toBe(false);
 		expect(edit().textContent).toBe("Add a link");
 		expect(edit().className).toContain("link");
@@ -4142,7 +4593,8 @@ describe("a case's link (DEC-028)", () => {
 		expect(field.value).toBe(TICKET);
 		expect(field.type).toBe("url");
 		expect(field.getAttribute("aria-label")).toBe("Link of this case");
-		expect(field.placeholder).toContain("a ticket");
+		// Only the address's form (DEC-060).
+		expect(field.placeholder).toBe("https://…");
 		expect(shown("case-link-hint")).toBe(false);
 	});
 
@@ -4399,42 +4851,40 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 	const line = () =>
 		el("tab-line").hidden ? undefined : el("tab-line").textContent;
 
-	test("Add marks is the primary, Export beside it, Delete alone at the bottom", () => {
+	test("Add marks and Show marks in the case's tool bar at the bottom; Export and Delete case in the … menu (DEC-061, DEC-063)", () => {
 		const c = sampleCase("c_row");
 		render(
 			caseState(c, (s) => (s.tab = tab)),
 			noActions,
 		);
-		const row = el("add-marks").parentElement as unknown as HTMLElement;
-		expect([...row.querySelectorAll("button")].map((b) => b.id)).toEqual([
+		const dock = el("case-dock");
+		// The last thing in the case's view: sticky, it rests after the content.
+		expect(dock.parentElement?.lastElementChild === dock).toBe(true);
+		expect(dock.getAttribute("role")).toBe("toolbar");
+		expect([...dock.querySelectorAll("button")].map((b) => b.id)).toEqual([
 			"add-marks",
-			"export-case",
+			"load-case",
 		]);
-		expect(el("add-marks").classList.contains("primary")).toBe(true);
+		expect(el("case-view").querySelectorAll("#add-marks").length).toBe(1);
+		// Calm at rest (DEC-064): the secondary look, amber only while adding.
+		expect(el("add-marks").classList.contains("primary")).toBe(false);
 		expect(el("add-marks").textContent).toBe("Add marks");
-		// The last thing in the case view.
-		expect(el("case-view").lastElementChild?.contains(el("delete-case"))).toBe(
-			true,
-		);
+		for (const id of ["export-case", "delete-case"])
+			expect(el(id).closest("[role=menu]")?.id).toBe("case-menu");
+		// No amber at rest: none of the case's view is loud (DEC-064).
 		expect(window.document.querySelectorAll("#case-view .primary").length).toBe(
-			1,
+			0,
 		);
-		// Under the last mark the same button again, where the list has marks.
+		// No second Add marks under the list: the bar is always in reach.
 		render(
 			caseState(withOneMark(sampleCase("c_row_end")), (s) => (s.tab = tab)),
 			noActions,
 		);
-		const end = el<HTMLButtonElement>("add-marks-end");
-		expect([
-			end.previousElementSibling === null &&
-				end.parentElement?.previousElementSibling?.matches("ol.marks"),
-			end.textContent,
-			end.title,
-			end.disabled,
-		]).toEqual([true, "Add marks", el("add-marks").title, false]);
+		expect(window.document.getElementById("add-marks-end") === null).toBe(true);
+		expect(window.document.querySelectorAll("#add-marks").length).toBe(1);
 	});
 
-	test("adding: Done adding, and the line says where the marks go", () => {
+	test("adding: Adding marks: Done, and the line says where the marks go", () => {
 		const c = sampleCase("c_adding");
 		const called: string[] = [];
 		const actions = actionsWith({
@@ -4454,8 +4904,10 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 			}),
 			actions,
 		);
-		expect(el("add-marks").textContent).toBe("Done adding");
-		expect(el("add-marks").classList.contains("primary")).toBe(false);
+		expect(el("add-marks").textContent).toBe("Adding marks: Done");
+		expect(el("add-marks").classList.contains("primary")).toBe(true);
+		// The words say it; no "pressed" beside "Done" (DEC-064's review).
+		expect(el("add-marks").hasAttribute("aria-pressed")).toBe(false);
 		expect(line()).toContain("Adding marks: draw on the page");
 		el("add-marks").click();
 		expect(called).toEqual(["add", "done"]);
@@ -4552,15 +5004,45 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		expect(el("load-case").textContent).toBe("Hide marks");
 	});
 
-	test("the meta line: address · size · date, no chips", () => {
-		const c = sampleCase("c_meta");
+	test("the facts: one quiet block of label and value, the counts under the title (DEC-061)", () => {
+		const c = withOneMark(sampleCase("c_meta"));
 		render(caseState(c), noActions);
-		const meta = el("open-page").parentElement as unknown as HTMLElement;
-		expect(meta.classList.contains("chips")).toBe(false);
-		expect(meta.classList.contains("case-meta")).toBe(true);
-		expect(meta.textContent).toContain(
-			`${c.page.viewport.width}×${c.page.viewport.height}`,
+		const facts = [...el("case-facts").querySelectorAll(".fact")]
+			.filter((f) => !(f as unknown as HTMLElement).hidden)
+			.map((f) => {
+				// The label as shown: "Pages" opens nothing for one page (DEC-063).
+				const dt = f.querySelector("dt");
+				const shown = [...(dt?.children ?? [])].filter(
+					(x) => !(x as unknown as HTMLElement).hidden,
+				);
+				return [
+					shown.length > 0
+						? shown.map((x) => x.textContent).join("")
+						: dt?.textContent,
+					f.querySelector("dd")?.textContent,
+				];
+			});
+		expect(facts.map(([label]) => label)).toEqual(["Pages", "Link", "Made at"]);
+		expect(facts[0]?.[1]).toContain("www.example.com/kk");
+		expect(facts[2]?.[1]).toContain(
+			`${c.page.viewport.width}×${c.page.viewport.height}, `,
 		);
+		expect(el("case-counts").textContent).toBe("1 mark: 1 open");
+		// A size that matters offers Match size; a few pixels do not.
+		const sized = (w: number, hgt: number) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: "", title: "", size: { width: w, height: hgt } };
+			});
+		render(
+			sized(c.page.viewport.width - 20, c.page.viewport.height),
+			noActions,
+		);
+		expect(el("case-size").hidden).toBe(true);
+		render(
+			sized(c.page.viewport.width - 30, c.page.viewport.height),
+			noActions,
+		);
+		expect(el("case-size").hidden).toBe(false);
 	});
 });
 
@@ -5317,4 +5799,12 @@ describe("the second link names the origin in front (DEC-050)", () => {
 			"Open http://localhost:3000/cart in this tab, and show the mark there",
 		);
 	});
+});
+
+test("two hosts' home pages are two pages, named with their hosts; other pages by their path (DEC-064's review)", () => {
+	expect(pagePath("https://staging.example/")).toBe("staging.example");
+	expect(pagePath("http://localhost:3000/")).toBe("localhost:3000");
+	expect(pagePath("https://staging.example/t/a/settings")).toBe(
+		"/t/a/settings",
+	);
 });

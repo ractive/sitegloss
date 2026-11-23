@@ -319,6 +319,8 @@ export class Connection {
 	/** Why the last command failed, until the next connection. */
 	#problem: string | undefined;
 	#lastCall: CallView | undefined;
+	/** The tool calls running now, by the library's id (DEC-063). */
+	#running = new Set<number>();
 	/** The pairing code the card shows: a used one waits for its app (`nextCodeShown`). */
 	readonly #code = new CodeWatch(
 		{
@@ -568,8 +570,18 @@ export class Connection {
 			{ signal },
 		);
 		mcp.addEventListener(
+			"toolcallend",
+			({ detail: { id } }) => {
+				if (this.#running.delete(id)) this.#changed();
+			},
+			{ signal },
+		);
+		// A connection that ends ends its calls with it.
+		signal.addEventListener("abort", () => this.#running.clear());
+		mcp.addEventListener(
 			"toolcall",
-			({ detail: { tool, title, client } }) => {
+			({ detail: { id, tool, title, client } }) => {
+				this.#running.add(id);
 				this.#lastCall = {
 					tool: title ?? tool,
 					// As the questions name it: the declared name escaped, the
@@ -1275,6 +1287,7 @@ export class Connection {
 				? { replaced: { sibling: replaced.sibling } }
 				: {}),
 			...(this.#lastCall !== undefined ? { lastCall: this.#lastCall } : {}),
+			...(this.#running.size > 0 ? { running: this.#running.size } : {}),
 			questions: this.#questions.list,
 			fillCode: this.#settings.fillCode,
 			fillHere: this.#fillOrigin() !== undefined,

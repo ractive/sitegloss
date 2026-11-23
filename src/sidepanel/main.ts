@@ -14,7 +14,6 @@ import {
 	addedImage,
 	type Case,
 	caseImages,
-	casePages,
 	cleanTitle,
 	heldImagesOf,
 	MARK_CHANGED,
@@ -58,6 +57,8 @@ import {
 import { toAddedImage } from "../lib/images.ts";
 import {
 	type Broadcast,
+	type ImagesFor,
+	type ImagesForAnswer,
 	isMarkRequest,
 	isOpenCaseRequest,
 	type LoadReplacedAnswer,
@@ -68,10 +69,12 @@ import {
 	type OpenCaseAnswer,
 	type OpenCaseRequest,
 	type OverlayState,
+	type WorkerRequest,
 } from "../lib/messages.ts";
 import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
+import { markPictures } from "../viewer/pictures.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
@@ -103,7 +106,9 @@ import {
 	tryShow,
 } from "./mark-link.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
+import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
+import { settledLoaded } from "./settle.ts";
 import { cssSize, onScreen, type Size, sameSize, windowFor } from "./size.ts";
 import {
 	type CaseHint,
@@ -117,6 +122,7 @@ import {
 } from "./state.ts";
 import { startSync, syncActions } from "./sync.ts";
 import { type Actions, lostMarksText, NO_ACCESS, render } from "./view.ts";
+import { viewerStays } from "./viewer-follow.ts";
 import { panelWindow } from "./window.ts";
 
 const store = new IdbStore();
@@ -169,7 +175,13 @@ function describeError(error: unknown): string {
 
 // --- the state and its work ------------------------------------------------------
 
-const panel = new Panel((state) => render(state, actions));
+const panel = new Panel((state) => {
+	render(state, actions);
+	viewerFollows(state);
+	// The tab in front is known (or another now): what was left for it.
+	if (state.tab?.id !== imagesAskedFor) takeImages(state.tab?.id);
+	askImages(state);
+});
 const update = (change: (s: PanelState) => void) => panel.update(change);
 const state = panel.state;
 
@@ -274,6 +286,14 @@ function takeOff(d: Drawn): void {
 	if (sameDrawn(drawn, d)) drawn = undefined;
 	void chrome.tabs
 		.sendMessage(d.tabId, { type: "case:clear", caseId: d.caseId })
+		.catch(() => undefined);
+}
+
+/** Hide the case's marks on a tab: its bar becomes the pill (DEC-061). */
+function hideOn(d: Drawn): void {
+	if (sameDrawn(drawn, d)) drawn = undefined;
+	void chrome.tabs
+		.sendMessage(d.tabId, { type: "case:hide", caseId: d.caseId })
 		.catch(() => undefined);
 }
 
@@ -475,6 +495,7 @@ async function readMatches(
 				state.current?.id === c.id
 			)
 				void readMatches(state.current, tabId, hint, false);
+			else settled(c.id, tabId);
 		},
 		testWait("routeSettleMs", ROUTE_SETTLE_MS),
 	);
@@ -568,7 +589,19 @@ async function loadOnLoaded(
 		}
 	} finally {
 		if (drawing === target) setDrawing(undefined);
+		// Stopped early (busy too long, the tab or the case changed): what
+		// it has is what it found; the status line may say it now
+		// (DEC-064's second review). Not a newer draw's: that one settles itself.
+		if (work.current()) settled(c.id, tabId);
 	}
+}
+
+/** The draw of that case on that tab is no longer settling. */
+function settled(caseId: string, tabId: number): void {
+	if (settledLoaded(state.loaded, caseId, tabId) === undefined) return;
+	update((s) => {
+		s.loaded = settledLoaded(s.loaded, caseId, tabId) ?? s.loaded;
+	});
 }
 
 /** The newest `follow`: one that started later knows the tab in front better. */
@@ -1129,7 +1162,11 @@ function closeCase(): void {
 function caseHintWriter(): (text: CaseHint | undefined) => void {
 	const may = caseHints.action();
 	return (text) => {
-		if (may()) update((s) => (s.caseHint = text));
+		if (may())
+			update((s) => {
+				s.caseHint = text;
+				s.caseHintSeq++;
+			});
 	};
 }
 
@@ -1367,7 +1404,7 @@ async function renameCase(caseId: string, text: string): Promise<void> {
 async function changeThread(
 	caseId: string,
 	change: (c: Case, now: string) => Case,
-): Promise<void> {
+): Promise<boolean> {
 	const hint = caseHintWriter();
 	try {
 		const saved = await store.updateCase(caseId, (current) => {
@@ -1381,8 +1418,10 @@ async function changeThread(
 		});
 		announce(caseId);
 		void refreshCases();
+		return true;
 	} catch (error) {
 		hint(`Not saved: ${message(error)}`);
+		return false;
 	}
 }
 
@@ -1710,7 +1749,10 @@ const actions: Actions = {
 				s.overlay = rest;
 			}
 		});
-		for (const tabId of tabs) takeOff({ tabId, caseId: c.id });
+		// Hidden, not taken off (DEC-061): the page keeps the case, its bar
+		// becomes the pill that shows the marks again, and a toolbar adding
+		// to the case ends (hidden marks and adding do not go together).
+		for (const tabId of tabs) hideOn({ tabId, caseId: c.id });
 	},
 
 	allowAllSites() {
@@ -1737,7 +1779,8 @@ const actions: Actions = {
 
 	openPage(c, url = c.page.url) {
 		// One of the case's own pages only (DEC-038).
-		if (!isWebPage(url) || !casePages(c).some((p) => p.url === url)) return;
+		// One of the case's own pages, on a host it was marked on (DEC-038, DEC-063).
+		if (!isWebPage(url) || !isCasePageAddress(c, url)) return;
 		const hint = caseHintWriter();
 		// Now, while the click allows Chrome's prompt. The tab opens meanwhile;
 		// once it has loaded, the case's marks follow it there (DEC-022), and
@@ -1748,6 +1791,12 @@ const actions: Actions = {
 			.catch((error: unknown) =>
 				hint(`Could not open the page: ${message(error)}`),
 			);
+	},
+
+	openPicture(c, a, pictureId) {
+		void showPicture(c.id, a.id, pictureId).catch((error: unknown) =>
+			caseHintWriter()(`Could not open the picture: ${message(error)}`),
+		);
 	},
 
 	openMarkPage(c, a, where) {
@@ -1935,7 +1984,7 @@ const actions: Actions = {
 
 	saveLink: (c, text) => void linkCase(c.id, text),
 	addComment: (caseId, text, markId) =>
-		void changeThread(caseId, (c, now) =>
+		changeThread(caseId, (c, now) =>
 			withCaseComment(
 				c,
 				{ id: newId("k"), text, ...(markId ? { mark: markId } : {}) },
@@ -2570,6 +2619,153 @@ let addingImages: AddImagesDialog | undefined;
  * Open the dialog that adds images to mark `a` (DEC-058); `files`: pictures
  * pasted into the open mark, offered at once. Nothing is added without Add.
  */
+/**
+ * "Add another image…" in the page's mark dialog (DEC-063): the worker left which
+ * mark of which case in session storage, and opened the panel. The panel's
+ * own dialog opens once the case is open here and the mark is in it (it
+ * is saved a moment after the page's dialog closed); a minute later the
+ * wish is forgotten.
+ */
+let imagesFor: ImagesFor | undefined;
+/** The tab the worker was last asked about. */
+let imagesAskedFor: number | undefined;
+const IMAGES_FOR_MS = 60_000;
+
+function takeImagesFor(value: unknown): void {
+	const v = value as Partial<ImagesFor> | undefined;
+	if (
+		typeof v?.caseId !== "string" ||
+		typeof v.number !== "number" ||
+		typeof v.at !== "number"
+	)
+		return;
+	imagesFor = v as ImagesFor;
+	askImages(state);
+}
+
+/** Take what the page's "Add another image…" left with the worker for the tab in front. */
+function takeImages(tabId: number | undefined): void {
+	imagesAskedFor = tabId;
+	if (tabId === undefined) return;
+	void chrome.runtime
+		.sendMessage({ type: "panel:images-take", tabId } satisfies WorkerRequest)
+		.then((answer: ImagesForAnswer | undefined) =>
+			takeImagesFor(answer?.images),
+		)
+		.catch(() => undefined);
+}
+
+function askImages(s: PanelState): void {
+	const want = imagesFor;
+	if (want === undefined) return;
+	if (Date.now() - want.at > IMAGES_FOR_MS) {
+		imagesFor = undefined;
+		return;
+	}
+	const c = s.current;
+	const a =
+		c?.id === want.caseId
+			? c.marks.find((m) => m.number === want.number)
+			: undefined;
+	if (c === undefined || a === undefined) return;
+	imagesFor = undefined;
+	// Images, or the form whose field the page refused (DEC-064).
+	if (want.what === undefined || want.what === "images")
+		void showAddImages(c, a);
+	else actions.editMark(c, a, want.what);
+}
+
+/**
+ * The picture shown large (DEC-064): in a small window of the extension's
+ * own over the browser window, never in the page in front (the owner: "if
+ * you wouldn't need to modify the page that is actually shown") and never
+ * in a tab. The worker owns the window: one at a time per browser window,
+ * reused for the next picture, closed with that browser window.
+ */
+let viewerOn: { windowId: number; caseId: string; tile: string } | undefined;
+
+async function showPicture(
+	caseId: string,
+	markId: string,
+	pictureId: string,
+): Promise<void> {
+	const browser = await chrome.windows.getCurrent();
+	if (browser.id === undefined) return;
+	// The picture's size is known before the window exists: the window
+	// opens at its size and place in one step (DEC-064).
+	const c = state.current?.id === caseId ? state.current : undefined;
+	const path = c
+		? markPictures(c, markId).find((p) => p.id === pictureId)?.path
+		: undefined;
+	const stored = path
+		? await store.getImage(caseId, path).catch(() => undefined)
+		: undefined;
+	const s = window.screen as Screen & { availLeft?: number; availTop?: number };
+	const layout = {
+		...(stored && stored.width > 1
+			? { picture: { width: stored.width, height: stored.height } }
+			: {}),
+		over: {
+			left: browser.left ?? 0,
+			top: browser.top ?? 0,
+			width: browser.width ?? s.availWidth,
+			height: browser.height ?? s.availHeight,
+		},
+		screen: {
+			left: s.availLeft ?? 0,
+			top: s.availTop ?? 0,
+			width: s.availWidth,
+			height: s.availHeight,
+		},
+	};
+	const answer = (await chrome.runtime.sendMessage({
+		type: "viewer:open",
+		caseId,
+		markId,
+		pictureId,
+		windowId: browser.id,
+		layout,
+	} satisfies WorkerRequest)) as {
+		ok?: boolean;
+		viewerWindowId?: number;
+		error?: string;
+	};
+	if (answer?.ok !== true || answer.viewerWindowId === undefined)
+		throw new Error(answer?.error ?? "no window");
+	viewerOn = {
+		windowId: answer.viewerWindowId,
+		caseId,
+		tile: `${markId}:${pictureId}`,
+	};
+	// The case left or closed while the window opened: it goes at once
+	// (DEC-064's review).
+	viewerFollows(state);
+}
+
+/** The viewer goes with the case: another case, the list, a closed case. */
+function viewerFollows(s: PanelState): void {
+	const on = viewerOn;
+	if (on === undefined) return;
+	if (viewerStays(on.caseId, s.current)) return;
+	viewerOn = undefined;
+	void chrome.windows.remove(on.windowId).catch(() => undefined);
+}
+
+// The viewer's window went: the focus is back on its tile, where the
+// browser gives the panel the keyboard again.
+chrome.windows.onRemoved.addListener((windowId) => {
+	const on = viewerOn;
+	if (on === undefined || on.windowId !== windowId) return;
+	viewerOn = undefined;
+	const [markId, pictureId] = on.tile.split(":");
+	const row = `li.mark[data-mark="${CSS.escape(markId ?? "")}"] [data-picture="${CSS.escape(pictureId ?? "")}"]`;
+	document
+		.querySelector<HTMLElement>(
+			`${row} [data-action="open-larger"], ${row}[data-action="open-larger"]`,
+		)
+		?.focus({ preventScroll: true });
+});
+
 async function showAddImages(
 	c: Case,
 	a: Mark,
@@ -2907,6 +3103,11 @@ async function drawnFor(
 
 /** News from the pages and the worker: nothing is answered. */
 function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
+	// Only the worker says so; the answer comes from it too.
+	if (news?.type === "panel:images") {
+		if (fromBackground(sender)) takeImages(state.tab?.id);
+		return false;
+	}
 	if (news?.type === "overlay:changed") {
 		const from = sender.tab?.id;
 		// Sitegloss runs on the tab the open case waits for: the icon was clicked.
@@ -2937,6 +3138,25 @@ function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
 			news.state.loadedCase !== state.loaded.caseId
 		)
 			void forgetLoaded();
+		// The page's pill showed the open case's marks again: shown, as the
+		// panel's Show marks would, and drawn by the panel from now on.
+		if (
+			from !== undefined &&
+			hiddenOn.has(from) &&
+			state.view.kind === "case" &&
+			news.state.loadedCase === state.view.id
+		) {
+			hiddenOn.delete(from);
+			void follow();
+		}
+		// The page's bar started adding to the open case: the panel's toolbar.
+		if (
+			from !== undefined &&
+			state.view.kind === "case" &&
+			news.state.visible &&
+			news.state.target?.caseId === state.view.id
+		)
+			toolbarOn.add(from);
 		// Only the tab the panel shows matters.
 		if (from !== undefined && from === state.tab?.id) {
 			update((s) => {

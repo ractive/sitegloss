@@ -462,15 +462,14 @@ inFullSet(
 			await pairApp();
 		}, 60_000);
 
-		test("Stop AI access in the dialog refuses what waits: the top bar's Stop is under it", async () => {
+		test("Stop AI access in the dialog refuses what waits: the top bar is under it", async () => {
 			const result = call("set_summary", { caseId: "c_3", summary: "Eleven" });
 			await panel.waitFor(QUESTION, 10_000);
-			// Shown, as an app is connected; and inert, like the rest of the
-			// panel, while a question waits.
-			expect(await panel.eval(`${byId("stop-ai")}.hidden`)).toBe(false);
+			// The rest of the panel is inert while a question waits, the top
+			// bar's AI pill too.
 			expect(
 				await panel.eval(
-					`(() => { const b = ${byId("stop-ai")}; b.focus(); return document.activeElement === b; })()`,
+					`(() => { const b = ${byId("ai-button")}; b.focus(); return document.activeElement === b; })()`,
 				),
 			).toBe(false);
 			await panel.eval(

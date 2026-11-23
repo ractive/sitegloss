@@ -23,6 +23,7 @@
  */
 
 import { PAIRING_PORT, pagePort } from "@ractive-ch/tab-mcp-client/extension";
+import { BAR_PLACE_KEY, storedBarPlace } from "./lib/bar-place.ts";
 import {
 	BROWSER,
 	FIREFOX,
@@ -41,12 +42,17 @@ import {
 } from "./lib/images.ts";
 import { kvWhenOpen, openKv } from "./lib/kv.ts";
 import {
+	type BarPlaceAnswer,
 	type Broadcast,
 	type CaptureResult,
 	type ContentRequest,
+	IMAGES_FOR_KEY,
+	type ImagesFor,
+	type ImagesForAnswer,
 	isCloudRequest,
 	isWorkerRequest,
 	type NumberCheck,
+	PANEL_MARK_WHAT,
 	type SaveResult,
 	type UndoResult,
 	type WorkerRequest,
@@ -77,6 +83,13 @@ import {
 	PANEL_PORT,
 	type WorkerMessage,
 } from "./worker/protocol.ts";
+import {
+	boundsFor,
+	openViewer,
+	rememberFrame,
+	viewerLayoutOk,
+	windowClosed,
+} from "./worker/viewer-window.ts";
 
 declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 declare const SITEGLOSS_FIREFOX: boolean | undefined;
@@ -229,6 +242,13 @@ chrome.permissions.onAdded.addListener(() => {
 void store
 	.sweepPending(Date.now() - PENDING_MAX_AGE_MS)
 	.catch((error: unknown) => console.warn("Sitegloss: sweep", error));
+
+// A browser window that closes takes its picture viewer with it (DEC-064).
+chrome.windows.onRemoved.addListener((windowId) => {
+	void windowClosed(windowId).catch((error: unknown) =>
+		console.warn("Sitegloss: viewer window", error),
+	);
+});
 
 chrome.action.onClicked.addListener((tab) => {
 	if (tab.id === undefined) return;
@@ -400,6 +420,87 @@ async function handle(
 				request.shotIds.filter(isSafeId).map(pendingImage),
 			);
 			return {};
+		case "panel:images": {
+			const tab = sender.tab;
+			if (
+				tab?.id === undefined ||
+				!isSafeId(request.caseId) ||
+				!Number.isInteger(request.number) ||
+				request.number < 1 ||
+				(request.what !== undefined && !PANEL_MARK_WHAT.includes(request.what))
+			)
+				throw new Error("invalid request");
+			// Before any await: the click's gesture opens the panel.
+			const opened = openPanel({ tabId: tab.id, windowId: tab.windowId });
+			await chrome.storage.session.set({
+				[IMAGES_FOR_KEY]: {
+					caseId: request.caseId,
+					number: request.number,
+					what: request.what ?? "images",
+					tabId: tab.id,
+					at: Date.now(),
+				} satisfies ImagesFor,
+			});
+			// A panel already open takes it now; one that opens takes it as
+			// it starts.
+			chrome.runtime
+				.sendMessage({ type: "panel:images" } satisfies Broadcast)
+				.catch(() => undefined);
+			// Not opened (no gesture left, or another browser's rule): the
+			// panel opened later still asks for the images.
+			await opened.catch((error: unknown) =>
+				console.warn("Sitegloss: side panel", error),
+			);
+			return {};
+		}
+		case "viewer:open": {
+			// The panel's own: a page does not open windows.
+			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			if (
+				!isSafeId(request.caseId) ||
+				!isSafeId(request.markId) ||
+				!isSafeId(request.pictureId) ||
+				!Number.isInteger(request.windowId) ||
+				(request.layout !== undefined && !viewerLayoutOk(request.layout))
+			)
+				throw new Error("invalid request");
+			const viewerWindowId = await openViewer(
+				request.caseId,
+				request.markId,
+				request.pictureId,
+				request.windowId,
+				request.layout && (await boundsFor(request.layout)),
+			);
+			return { viewerWindowId };
+		}
+		case "viewer:frame": {
+			if (!fromExtensionPage(sender)) throw new Error("not from the viewer");
+			await rememberFrame(request.height);
+			return {};
+		}
+		case "panel:images-take": {
+			// The panel's own: a page may not take what another left.
+			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			// The panel beside that tab: another window's panel leaves it.
+			const kept = await chrome.storage.session.get(IMAGES_FOR_KEY);
+			const images = kept[IMAGES_FOR_KEY] as ImagesFor | undefined;
+			if (images === undefined || images.tabId !== request.tabId)
+				return {} satisfies ImagesForAnswer;
+			await chrome.storage.session.remove(IMAGES_FOR_KEY);
+			return { images } satisfies ImagesForAnswer;
+		}
+		case "bar:place": {
+			// Two numbers, or nothing: a page cannot put anything else here.
+			if (request.place !== undefined) {
+				const place = storedBarPlace(request.place);
+				if (place !== undefined)
+					await chrome.storage.local.set({ [BAR_PLACE_KEY]: place });
+				return {};
+			}
+			const kept = await chrome.storage.local.get(BAR_PLACE_KEY);
+			const place = storedBarPlace(kept[BAR_PLACE_KEY]);
+			return (place === undefined ? {} : { place }) satisfies BarPlaceAnswer;
+		}
 	}
 }
 

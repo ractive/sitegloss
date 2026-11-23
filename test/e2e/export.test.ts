@@ -28,6 +28,7 @@ import {
 	importFile,
 	markElement,
 	openCase,
+	openMenuOf,
 	panelHome,
 	READ_DB,
 	resetPanel,
@@ -190,6 +191,7 @@ inBothSets("a case's way out and back", () => {
 
 		// Delete: its screenshots go with it, and the copy's stay.
 		await panel.waitFor(`document.getElementById("delete-case")`);
+		await openMenuOf(panel, `document.getElementById("delete-case")`);
 		await panel.click(`document.getElementById("delete-case")`);
 		await panel.waitFor(
 			`document.getElementById("delete-case")?.textContent === "Really delete?"`,
@@ -260,14 +262,14 @@ inBothSets("a case's way out and back", () => {
 			const panel = await panelHome(h);
 			expect(
 				await panel.eval<string[]>(
-					`["import", "export-all", "stop-ai", "pair-new-address", "pair-replaced-new-address", "pair-take-back", "add-app"].filter((id) => !document.getElementById(id).title)`,
+					`["import", "export-all", "pair-new-address", "pair-replaced-new-address", "pair-take-back", "add-app"].filter((id) => !document.getElementById(id).title)`,
 				),
 			).toEqual([]);
 			expect(
 				await panel.eval<string>(
 					`document.getElementById("keep-on").closest("label").title`,
 				),
-			).toContain("Stop AI access");
+			).toContain("AI access switch");
 			const file = await downloadShown(
 				h,
 				panel,

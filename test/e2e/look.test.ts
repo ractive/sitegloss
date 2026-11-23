@@ -22,7 +22,7 @@ import {
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
-import { markElement, parkControl, saveAs, shadow } from "./steps.ts";
+import { FIELD, markElement, parkControl, saveAs, shadow } from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
 
@@ -108,13 +108,13 @@ inFullSet("the look", () => {
 		// A case with a long title and three marks, drawn on the page.
 		await panel.eval(`${id("new-case")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
-		// The case is made and open, the toolbar adding to it (DEC-026): Done
-		// adding is no amber button.
+		// The case is made and open, the toolbar adding to it (DEC-026): the
+		// tool bar's "Adding marks: Done" is the one amber button (DEC-064).
 		await panel.waitFor(
-			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Done adding"`,
+			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
 		);
-		await holds([]);
+		await holds(["add-marks"]);
 		await markElement(
 			page,
 			"[data-truth=submit]",
@@ -129,15 +129,16 @@ inFullSet("the look", () => {
 		);
 		// Still the case, renamed, the toolbar adding to it.
 		await panel.waitFor(
-			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Done adding"`,
+			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
 		);
-		await holds([]);
+		await holds(["add-marks"]);
 		await panel.eval(`${id("add-marks")}.click()`);
 		await panel.waitFor(
 			`${id("add-marks")}.textContent === "Add marks"`,
 			20_000,
 		);
+		// At rest the tool bar is calm: no amber in the case (DEC-064).
 
 		// Home, with the page's case under This page: opening it is the one
 		// amber button, a new case a plain one.
@@ -162,7 +163,7 @@ inFullSet("the look", () => {
 		await panel.waitFor(
 			`document.querySelectorAll(".mark[data-open]").length === 3`,
 		);
-		// One mark fixed: its second row has the pill, Verify and Reopen….
+		// One mark fixed: open, its body has Verify and Reopen… (DEC-064).
 		const first = `document.querySelector(".mark")`;
 		await panel.eval(
 			`${first}.querySelector('[data-mark-action="resolve"]').click()`,
@@ -174,10 +175,10 @@ inFullSet("the look", () => {
 			`document.querySelector('[data-mark-action="resolve-done"]').click()`,
 		);
 		await panel.waitFor(
-			`${first}.dataset.status === "fixed" && ${first}.querySelector('.mark-sub [data-mark-action="verify"]') !== null`,
+			`${first}.dataset.status === "fixed" && ${first}.querySelector('.body [data-mark-action="verify"]') !== null`,
 			20_000,
 		);
-		await holds(["add-marks"]);
+		await holds([]);
 		// The status block: a chip per status with marks, tinted in its colour.
 		expect(
 			await panel.eval<string[][]>(
@@ -204,13 +205,13 @@ inFullSet("the look", () => {
 			f.value = ${JSON.stringify(link)};
 			f.dispatchEvent(new Event("input"));
 		})()`);
-		await holds(["add-marks"]);
+		await holds([]);
 		await panel.eval(`${id("case-link-save")}.click()`);
 		await panel.waitFor(
 			`${id("case-link-form")}.hidden && ${id("case-link-open")}.getAttribute("href") === ${JSON.stringify(link)}`,
 			10_000,
 		);
-		await holds(["add-marks"]);
+		await holds([]);
 
 		// Settings, over the case: the pill turns AI access on, and the card
 		// shows the address and the code, its widest content.
@@ -228,7 +229,7 @@ inFullSet("the look", () => {
 			await holds([]);
 			await panel.eval(`${id("setup")}.open = true`);
 			await holds([]);
-			await panel.eval(`${id("stop-ai")}.click()`);
+			await panel.eval(`${id("ai-switch")}.click()`);
 			await panel.waitFor(`${id("ai-label")}.textContent === "AI off"`, 20_000);
 		} finally {
 			await relay.stop();
@@ -323,7 +324,7 @@ inFullSet("the look", () => {
 			`${shadow("svg.marks")}.querySelectorAll(".drafts rect.hover").length === 2`,
 		);
 		await page.clickAt(at.x, at.y);
-		await page.waitFor(shadow(".popover textarea"));
+		await page.waitFor(FIELD);
 		const drafts = await page.eval<[boolean, string | null, number][]>(
 			`[...${shadow("svg.marks")}.querySelectorAll(".drafts > rect:not(.hover)")].map((e) => [e.hasAttribute("data-casing"), e.getAttribute("stroke"), Number(e.getAttribute("stroke-width"))])`,
 		);
@@ -419,18 +420,14 @@ inFullSet("the look", () => {
 		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: 7 });
 		expect(plain.at(-1)).toMatchObject({ status: 2, words: 0 });
 
-		// Moved to the top, the toolbar has the loaded case's bar under it,
-		// also under its second row.
-		const two = await at(800);
-		expect(two.status).toBe(2);
+		// Moved to the top, the toolbar has no review bar beside it: the bar
+		// steps aside while marks are added (DEC-061).
 		await page.click(shadow('[data-action="move-toolbar"]'));
-		const gap = () =>
-			page.eval<{ shown: boolean; gap: number }>(
-				`(() => { const t = ${shadow(".toolbar")}.getBoundingClientRect(); const r = ${shadow(".reviewbar")}; return { shown: !r.hidden && ${shadow(".toolbar")}.classList.contains("top"), gap: Math.round(r.getBoundingClientRect().top - t.bottom) }; })()`,
-			);
-		expect(await gap()).toEqual({ shown: true, gap: 8 });
-		expect((await at(1600)).status).toBe(1);
-		expect(await gap()).toEqual({ shown: true, gap: 8 });
+		expect(
+			await page.eval<boolean>(
+				`${shadow(".toolbar")}.classList.contains("top") && ${shadow(".reviewbar")}.hidden`,
+			),
+		).toBe(true);
 		await page.click(shadow('[data-action="move-toolbar"]'));
 
 		// A system font a third wider, and a classic scrollbar on the page: the

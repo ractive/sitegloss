@@ -13,6 +13,8 @@
 	/* Text; meta and placeholders */
 	--ink: #1b2130;
 	--ink-2: #535c6e;
+	/* A placeholder: clearly lighter than typed text, still 4.5:1 on a field (DEC-060) */
+	--placeholder: #6e7583;
 	/* Lines: separators (decoration only); boundaries of buttons, fields, chips */
 	--rule: #dedad0;
 	--edge: #7b8291;
@@ -57,7 +59,8 @@
 	--s5: 24px;
 	--s6: 32px;
 	--r-control: 6px;
-	--r-card: 10px;
+	/* One step less round (DEC-064): controls 6 px, cards 8 px; chips and pins round. */
+	--r-card: 8px;
 	--r-pill: 999px;
 	/* The top bar's height: what sticks under it starts there. */
 	--bar: 44px;
@@ -72,6 +75,7 @@
 		--wash: #242a37;
 		--ink: #eceef3;
 		--ink-2: #a6aebd;
+		--placeholder: #7f8797;
 		--rule: #2b313d;
 		--edge: #737c8e;
 		--accent-hover: #ffc233;
@@ -326,8 +330,20 @@ textarea {
 }
 
 ::placeholder {
-	color: var(--ink-2);
+	color: var(--placeholder);
 	opacity: 1;
+}
+
+/* Help under a field's label: what a placeholder must not carry (DEC-060). */
+.field-help {
+	margin: 0 0 var(--s1);
+}
+
+.mark-form .note-label {
+	display: block;
+	margin: var(--s2) 0 var(--s1);
+	color: var(--ink-2);
+	font-size: 12px;
 }
 
 textarea + .row {
@@ -629,7 +645,7 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	flex: none;
 	display: inline-flex;
 	align-items: center;
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 }
 
 /* "All cases" / "Back": large enough to be seen, and hit. */
@@ -704,11 +720,32 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	background: var(--danger);
 }
 
-#stop-ai {
-	min-height: 28px;
-	padding: 0 10px;
-	font-size: 12px;
-	line-height: 16px;
+/*
+ * An AI app is talking (DEC-063): while its call runs and a moment after,
+ * the dot pulses a soft ring in its own green. A shadow, so nothing moves.
+ */
+.ai-pill[data-talking] .dot {
+	animation: talking 1.2s ease-in-out infinite;
+}
+
+@keyframes talking {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-verified) 55%, transparent);
+	}
+	50% {
+		box-shadow: 0 0 0 4px
+			color-mix(in srgb, var(--st-verified) 25%, transparent);
+	}
+}
+
+/* Without motion: a steady ring for the same time. */
+@media (prefers-reduced-motion: reduce) {
+	.ai-pill[data-talking] .dot {
+		animation: none;
+		box-shadow: 0 0 0 3px
+			color-mix(in srgb, var(--st-verified) 35%, transparent);
+	}
 }
 
 /* "Fill in the code for <app>?", under the top bar on every view (DEC-044). */
@@ -1091,62 +1128,182 @@ main {
 	font-weight: 600;
 }
 
-/* Rows from edge to edge of the panel, a rule between them. */
+/*
+ * A case, wherever the panel lists it: one card, its own surface and edge,
+ * the whole of it the control; a band in the status colours along its top
+ * edge, the counts as chips.
+ */
 ul.cases {
+	display: grid;
+	gap: var(--s2);
 	list-style: none;
-	margin: 0 calc(-1 * var(--s4));
+	margin: 0;
 	padding: 0;
-	border-top: 1px solid var(--rule);
-}
-
-.cases > li {
-	border-bottom: 1px solid var(--rule);
 }
 
 ul.cases [data-case] {
 	position: relative;
 	display: grid;
-	gap: 1px;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: start;
 	width: 100%;
 	min-width: 0;
-	padding: 10px 40px 12px var(--s4);
-	border: 0;
-	border-radius: 0;
-	background: none;
+	padding: calc(var(--s3) + 5px) var(--s3) var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
 	font-weight: 400;
 	text-align: left;
-}
-
-/* It opens: a chevron at its end. */
-ul.cases [data-case]::after {
-	content: "";
-	position: absolute;
-	top: 50%;
-	right: 20px;
-	width: 7px;
-	height: 7px;
-	border-top: 1.75px solid var(--ink-2);
-	border-right: 1.75px solid var(--ink-2);
-	transform: translateY(-50%) rotate(45deg);
+	overflow: hidden;
 }
 
 ul.cases [data-case]:hover:not(:disabled) {
 	background: var(--wash);
 }
 
-ul.cases [data-case]:hover::after {
-	border-color: var(--ink);
+.case-card .card-head {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+	min-width: 0;
 }
 
-ul.cases [data-case]:focus-visible {
-	outline-offset: -2px;
+/* One line each: what does not fit is cut. */
+.case-card .title,
+.case-card .where-url,
+.case-card .card-summary {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
-ul.cases .title {
+.case-card .title {
+	flex: 1 1 auto;
 	font-size: 14px;
 	line-height: 20px;
 	font-weight: 600;
-	overflow-wrap: anywhere;
+}
+
+.case-card .card-where,
+.case-card .card-date,
+.case-card .card-chips {
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 17px;
+}
+
+.case-card .card-where {
+	display: flex;
+	min-width: 0;
+	white-space: pre;
+}
+
+.case-card .where-more {
+	flex: none;
+}
+
+/*
+ * The summary for the developer's start: the case's content, not a fact, so
+ * in the text's colour under the title, a gap before the facts; one line,
+ * cut, read whole in the case (DEC-064).
+ */
+.case-card .card-summary {
+	display: block;
+	margin: 2px 0 var(--s1);
+	color: var(--ink);
+	font-size: 13px;
+	line-height: 18px;
+}
+
+/* No band without marks: the card starts at its own padding. */
+ul.cases [data-case]:not(:has(> .progress.band)) {
+	padding-top: var(--s3);
+}
+
+.case-card .progress.band {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 5px;
+	border-radius: 0;
+}
+
+.case-card .progress.empty {
+	background: var(--rule);
+}
+
+/* The chips wrap to a further line rather than being cut. */
+.case-card .card-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--s1);
+	min-width: 0;
+	margin-top: var(--s2);
+}
+
+.case-card .card-chips > span {
+	flex: none;
+	padding: 0 6px;
+	border-radius: var(--r-pill);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.case-card .card-chips [data-kind="open"] {
+	background: var(--st-open-bg);
+	color: var(--st-open);
+}
+
+.case-card .card-chips [data-kind="toVerify"] {
+	background: var(--st-verify-bg);
+	color: var(--st-verify);
+}
+
+.case-card .card-chips [data-kind="verified"] {
+	background: var(--st-verified-bg);
+	color: var(--st-verified);
+}
+
+.case-card .card-chips [data-kind="dismissed"] {
+	background: var(--st-dismissed-bg);
+	color: var(--st-dismissed);
+}
+
+.case-card .card-chips .none {
+	padding: 0;
+	font-weight: 400;
+}
+
+/* The page's one case and its Open button: one unit; a new case is outside it. */
+.here li.with-action {
+	display: grid;
+	gap: var(--s3);
+	padding-bottom: var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
+	overflow: hidden;
+}
+
+.here li.with-action > [data-case] {
+	border: 0;
+	border-radius: var(--r-card) var(--r-card) 0 0;
+	background: none;
+}
+
+.here li.with-action > [data-case]:hover:not(:disabled) {
+	background: var(--wash);
+}
+
+.here li.with-action > [data-case]:focus-visible {
+	outline-offset: -2px;
+}
+
+.here li.with-action > #open-here {
+	margin: 0 var(--s3);
+	width: auto;
 }
 
 /* --- home: files and the sync -------------------------------------------------- */
@@ -1244,9 +1401,111 @@ ul.cases .title {
 	margin: 0;
 }
 
-.case-title-row > #rename-case {
+/* "…": the case's rare actions (DEC-061), a menu under it. */
+.case-more {
+	position: relative;
 	flex: none;
+}
+
+.case-more > .more {
+	min-height: 28px;
+	padding: 0 var(--s2);
+	font-size: 18px;
+	line-height: 1;
+	letter-spacing: 0.05em;
+}
+
+.case-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	z-index: 4;
+	display: grid;
+	min-width: 180px;
+	padding: var(--s1);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-control);
+	background: var(--sheet);
+	box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+
+.case-menu > button {
+	justify-content: flex-start;
+	min-height: 32px;
+	border: 0;
+	background: none;
+	font-weight: 400;
+	text-align: left;
+}
+
+.case-menu > button:hover:not(:disabled),
+.case-menu > button:focus-visible {
+	background: var(--wash);
+}
+
+.case-menu > button.danger {
+	margin: 0;
+	color: var(--danger);
+}
+
+/* The status counts under the title. */
+.case-counts {
+	margin-top: -6px;
+}
+
+/*
+ * The case's facts (DEC-061): one quiet block, a label and its value per
+ * row, as the web's case page has them.
+ */
+.case-facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: var(--s2) var(--s3);
+	margin: 0;
+	padding: var(--s3) 0 0;
+	border-top: 1px solid var(--rule);
 	font-size: 12px;
+	line-height: 17px;
+}
+
+.case-facts > .fact {
+	display: contents;
+}
+
+.case-facts > .fact[hidden] {
+	display: none;
+}
+
+.case-facts dt {
+	color: var(--ink-2);
+}
+
+.case-facts dd {
+	display: grid;
+	gap: var(--s1);
+	margin: 0;
+	min-width: 0;
+}
+
+.case-facts dd > * {
+	min-width: 0;
+}
+
+/* "Pages 12": the label is the disclosure of the list (DEC-063). */
+.case-facts .pages-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 0;
+	padding: 0;
+	font: inherit;
+	color: var(--ink-2);
+	white-space: nowrap;
+}
+
+.case-facts .pages-toggle .count {
+	font-weight: 600;
+	color: var(--ink);
 }
 
 /* The title as a field while it is renamed. */
@@ -1264,13 +1523,9 @@ ul.cases .title {
 	margin: 0;
 }
 
-/* Where and when the marks were made, in one line: a · b · c. */
+/* The case's page (or how many), first in the Pages fact. */
 .case-meta {
-	margin-top: -8px;
-}
-
-.case-meta > :not([hidden]) ~ :not([hidden])::before {
-	content: " · ";
+	margin: 0;
 }
 
 /* The address is a link in the line, not a button beside it. */
@@ -1288,7 +1543,7 @@ ul.cases .title {
 .case-pages {
 	display: grid;
 	grid-template-columns: 3px minmax(0, 1fr) auto auto;
-	margin: -4px 0 0;
+	margin: 0;
 	padding: 0;
 	list-style: none;
 }
@@ -1299,6 +1554,7 @@ ul.cases .title {
 	/* Chrome 116, without subgrid: the same columns, lined up per row only. */
 	grid-template-columns: 3px minmax(0, 1fr) auto auto;
 	grid-template-rows: 19px 16px;
+	grid-auto-rows: 15px;
 	padding: 2px 0;
 }
 
@@ -1347,6 +1603,19 @@ ul.cases .title {
 	font-weight: 600;
 }
 
+/* A case marked on several hosts: each page's hosts, the last first, small under it. */
+.case-pages .page-hosts {
+	grid-area: 3 / 2 / 4 / -1;
+	min-width: 0;
+	margin-left: var(--s2);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 11px;
+	line-height: 15px;
+	color: var(--ink-2);
+}
+
 .case-pages .page-address {
 	grid-area: 2 / 2 / 3 / -1;
 	font: 12px / 16px var(--font-mono);
@@ -1381,7 +1650,7 @@ ul.cases .title {
 	min-height: 0;
 	padding: 0;
 	border: 0;
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 	background: none;
 	color: var(--link);
 	font: inherit;
@@ -1420,13 +1689,7 @@ ul.cases .title {
 
 /* Whether the case is the team's, and "Share with team" (DEC-039). */
 .case-team {
-	margin-top: -4px;
-}
-
-/* A case the team does not have, in the list; a closed one under This page (DEC-050). */
-.cases .device-only,
-.cases .closed-tag {
-	align-self: start;
+	margin: 0;
 }
 
 /* Where a mark was made: its address is a link in the line (DEC-050). */
@@ -1474,7 +1737,6 @@ ul.cases .title {
 	display: flex;
 	align-items: baseline;
 	gap: var(--s2);
-	margin-top: -4px;
 }
 
 .case-link > #case-link-open {
@@ -1526,6 +1788,8 @@ ul.cases .title {
  */
 .page-filter {
 	align-items: center;
+	/* A grid item: never wider than the panel for a long option (DEC-063). */
+	min-width: 0;
 }
 
 .page-filter select {
@@ -1535,7 +1799,7 @@ ul.cases .title {
 	min-height: 24px;
 	padding: 0 var(--s2);
 	border: 1.5px solid transparent;
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 	background: var(--wash);
 	color: var(--ink-2);
 	font: 600 12px / 16px var(--font);
@@ -1578,24 +1842,52 @@ ul.cases .title {
 	font-weight: 700;
 }
 
-/* Add marks (or Done adding), as wide as there is room, and Export. */
-.case-actions {
-	flex-wrap: nowrap;
+/*
+ * The open case's tool bar (DEC-063): Add marks as wide as there is room, and
+ * the marks shown or not. Sticky at the panel's bottom and resting after the
+ * content, so the last row is never under it. One step quieter (DEC-064):
+ * lower, secondary buttons at rest, amber only while adding is on.
+ */
+.case-dock {
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
+	display: flex;
+	gap: var(--s2);
+	padding: 6px var(--s4);
+	border-top: 1px solid var(--rule);
+	background: var(--paper);
 }
 
-.case-actions > button {
-	min-height: 36px;
+.case-dock > button {
+	min-height: 30px;
+	padding-block: 2px;
 }
 
-.case-actions > #add-marks {
+/* What is scrolled into view (a focus, a found row) stops above the tool bar. */
+:root:has(#case-view:not([hidden]) .case-dock) {
+	scroll-padding-bottom: 52px;
+}
+
+.case-dock > #add-marks {
 	flex: 1;
+	min-width: 0;
 }
 
-/* What the tab in front shows of the case, in words. */
+.case-dock > #load-case {
+	flex: none;
+}
+
+/*
+ * What the tab in front shows of the case, in words: under the head, where
+ * the marks start, so the head does not move when the tab does (DEC-061).
+ */
 .this-tab {
 	display: grid;
 	justify-items: start;
 	gap: 6px;
+	padding: var(--s3) var(--s4);
+	border-bottom: 1px solid var(--rule);
 }
 
 .this-tab > * {
@@ -1667,9 +1959,14 @@ ul.cases .title {
 	padding: var(--s4) var(--s4) var(--s5);
 }
 
-/* Close case / Reopen case (DEC-046): on the right, Delete keeps its place. */
+/* Close case / Reopen case (DEC-046): on the right. */
 #close-case {
 	margin-left: auto;
+}
+
+/* Match size: a quiet action with its one line (DEC-061). */
+.this-tab > .size {
+	color: var(--ink-2);
 }
 
 /* Its word on the gutter while it is quiet; a button once it is armed. */
@@ -1752,13 +2049,6 @@ ul.cases .title {
 .progress > span {
 	min-width: 4px;
 	background: var(--st-dismissed);
-}
-
-/* In a case's row: the same picture, quieter. */
-ul.cases .progress {
-	height: 4px;
-	margin-top: 6px;
-	max-width: 160px;
 }
 
 .progress [data-kind="open"] {
@@ -2009,8 +2299,7 @@ ol.marks {
 
 /*
  * A mark's second row (DEC-023), under its comment: the status pill, why a
- * reopened mark came back, where it is on the tab in front, its findings;
- * for a mark to verify, Verified and Reopen… without opening it.
+ * reopened mark came back, where it is on the tab in front, its findings.
  */
 .mark-sub {
 	display: flex;
@@ -2085,17 +2374,34 @@ ol.marks {
 	margin-left: auto;
 }
 
+/*
+ * A closed mark to verify: Verify, small, in its title line, so the row is as
+ * high as the others (DEC-064); open, the body has Verify and Reopen….
+ */
+.mark-head > .head-verify {
+	flex: none;
+	margin-top: 9px;
+}
+
+.mark[data-open] .mark-head > .head-verify {
+	display: none;
+}
+
 /* Focus moving up the list stops below the bars, not under them. */
 .mark :is(button, input, textarea) {
 	scroll-margin-top: calc(var(--bar) + 48px);
 }
 
-/* Open: the rest of the mark on a sheet, right of the margin. */
+/*
+ * Open: the rest of the mark on a sheet across the panel's width, from its
+ * gutter under the pin (the owner, DEC-063); it covers the rail there.
+ */
 .mark .body {
+	position: relative;
 	display: grid;
 	gap: var(--s2);
 	min-width: 0;
-	margin: 0 var(--s4) var(--s3) var(--margin);
+	margin: 0 var(--s4) var(--s3);
 	padding: var(--s3);
 	border: 1px solid var(--rule);
 	border-radius: var(--r-card);
@@ -2158,16 +2464,17 @@ button.crop:hover img {
  * picture is contained in its tile, never cropped; one shown large takes the
  * grid's whole width at its own shape, its caption under it.
  */
+/* Four in a row with the panel's width back (DEC-063): three pictures and the way to add one. */
 .pictures {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: var(--s3) var(--s2);
 	align-items: start;
 }
 
-@media (max-width: 320px) {
+@media (max-width: 360px) {
 	.pictures {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 }
 
@@ -2177,10 +2484,6 @@ button.crop:hover img {
 	gap: 4px;
 	min-width: 0;
 	margin: 0;
-}
-
-.picture:has(> .tile[aria-pressed="true"]) {
-	grid-column: 1 / -1;
 }
 
 .picture figcaption {
@@ -2223,18 +2526,6 @@ button.tile:hover:not(:disabled) {
 	border-radius: 0;
 }
 
-/* Shown large: the picture at its own shape, as wide as the grid. */
-button.tile[aria-pressed="true"] {
-	aspect-ratio: auto;
-	cursor: zoom-out;
-}
-
-.mark button.tile[aria-pressed="true"] img {
-	width: auto;
-	height: auto;
-	max-width: 100%;
-}
-
 /* A picture whose file is not here: said, in the place it would take. */
 .tile-missing {
 	padding: var(--s1);
@@ -2252,7 +2543,7 @@ button.tile[aria-pressed="true"] {
 	min-height: 0;
 	padding: 0 6px;
 	border-color: var(--edge);
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 	background: var(--sheet);
 	font-size: 14px;
 	line-height: 20px;
@@ -2892,6 +3183,79 @@ ol.comments {
 	background: var(--sheet);
 	color: var(--ink);
 	font: inherit;
+}
+
+/* "Comments 4" opens and closes the case's thread (DEC-063): the whole heading is the control. */
+.thread > h2 {
+	margin: 0;
+}
+
+.thread-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s2);
+	min-height: 32px;
+	margin-left: calc(-1 * var(--s1));
+	padding: 0 var(--s1);
+	border: 0;
+	background: none;
+	font: inherit;
+	color: var(--ink);
+}
+
+.thread-toggle:hover:not(:disabled) {
+	background: var(--wash);
+}
+
+.thread-body {
+	margin-top: var(--s3);
+}
+
+/* A disclosure's arrow: right when closed, down when open. */
+:is(.thread-toggle, .pages-toggle) > .chevron {
+	margin-top: 0;
+}
+
+:is(.thread-toggle, .pages-toggle)[aria-expanded="true"] > .chevron {
+	transform: rotate(45deg);
+}
+
+.pages-toggle > .chevron {
+	width: 6px;
+	height: 6px;
+}
+
+.mark-thread > button[data-action="mark-comment-open"] {
+	justify-self: start;
+}
+
+/* A mark's comments, at the mark (DEC-061): after its actions, quietly ruled off. */
+.mark-thread {
+	display: grid;
+	gap: var(--s1);
+	padding-top: var(--s2);
+	border-top: 1px solid var(--rule);
+}
+
+.mark-thread h3 {
+	margin: 0;
+}
+
+.mark-thread ol.comments {
+	margin: 0;
+}
+
+.mark-thread .comment-item:last-child {
+	border-bottom: 0;
+}
+
+.mark-thread > button.link {
+	justify-self: start;
+	min-height: 0;
+}
+
+.mark-thread .comment-form .row {
+	margin-top: var(--s1);
 }
 
 /* Closed cases, filed away under the list, folded (DEC-046). */

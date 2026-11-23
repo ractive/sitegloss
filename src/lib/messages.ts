@@ -89,6 +89,9 @@ export type ContentRequest =
 	| { type: "case:matches"; caseId: string }
 	/** Remove the marks (`OverlayState`): only that case's, where it is named. */
 	| { type: "case:clear"; caseId?: string }
+	/** Hide the case's marks and keep it: the page's bar becomes the pill that shows them again (DEC-061). */
+	| { type: "case:hide"; caseId: string }
+
 	/**
 	 * Scroll to the element `selector` and mark it with `number` for a
 	 * screenshot (`DescribedElement`); the overlay's own bars and the user's
@@ -243,6 +246,8 @@ export interface OverlayState {
 	target?: MarkTarget;
 	/** The case whose marks are drawn. */
 	loadedCase?: string;
+	/** The case whose marks are hidden on the page, its pill showing (DEC-061). */
+	hiddenCase?: string;
 }
 
 /** What the content script asks the service worker. */
@@ -255,7 +260,82 @@ export type WorkerRequest =
 	/** The toolbar's Undo: take out the mark it just added (`UndoResult`, save.ts `undoAdd`). */
 	| { type: "case:undo-add"; caseId: string; markId: string }
 	/** Remove the pending screenshots of a save that was given up. */
-	| { type: "images:discard"; caseId: string; shotIds: string[] };
+	| { type: "images:discard"; caseId: string; shotIds: string[] }
+	/**
+	 * The page's bar's place (DEC-061), kept by the worker in this profile's
+	 * storage (a content script may not reach it): with `place` it is kept,
+	 * without it the kept one is answered (`BarPlaceAnswer`).
+	 */
+	| { type: "bar:place"; place?: { right: number; top: number } }
+	/**
+	 * "Add another image…" in the page's mark dialog (DEC-063): the side panel opens
+	 * (the click's gesture) and its own dialog adds images to mark `number`
+	 * of the case once the mark is in it. A page can read an image pasted or
+	 * dropped in the page, so the panel takes them.
+	 */
+	| {
+			type: "panel:images";
+			caseId: string;
+			number: number;
+			/**
+			 * What the panel opens for the mark: its image dialog (the
+			 * default), or its comment, resolve or reopen form, where the
+			 * page's own field could not load (DEC-064).
+			 */
+			what?: PanelMarkWhat;
+	  }
+	/**
+	 * From the side panel: the mark the page's "Add another image…" left, taken
+	 * (answered as `ImagesForAnswer`, then forgotten). The panel touches no
+	 * storage itself; the worker keeps it in session storage, which
+	 * outlives the worker's restarts.
+	 */
+	| { type: "panel:images-take"; tabId: number }
+	/**
+	 * From the side panel: a mark's picture large, in the viewer's window
+	 * over the browser window `windowId` (DEC-064). One per browser window:
+	 * open, it shows this picture. Answered with `viewerWindowId`.
+	 */
+	| {
+			type: "viewer:open";
+			caseId: string;
+			markId: string;
+			pictureId: string;
+			windowId: number;
+			/** The picture's size, the browser window's bounds and the screen's free area (`viewerBounds`). */
+			layout?: {
+				picture?: { width: number; height: number };
+				over: { left: number; top: number; width: number; height: number };
+				screen: { left: number; top: number; width: number; height: number };
+			};
+	  }
+	/** From the viewer in its window: the frame above its page, for the next window's size. */
+	| { type: "viewer:frame"; height: number };
+
+export interface ImagesForAnswer {
+	images?: ImagesFor;
+}
+
+/** Where the worker leaves the panel's next "Add images" (DEC-063), in session storage. */
+export const IMAGES_FOR_KEY = "sitegloss.imagesFor";
+
+/** What the side panel is asked to open for a mark of the page. */
+export type PanelMarkWhat = "images" | "comment" | "resolve" | "reopen";
+export const PANEL_MARK_WHAT: readonly PanelMarkWhat[] = [
+	"images",
+	"comment",
+	"resolve",
+	"reopen",
+];
+
+/** What `IMAGES_FOR_KEY` holds: the mark of which case, from which tab, when. */
+export interface ImagesFor {
+	what?: PanelMarkWhat;
+	caseId: string;
+	number: number;
+	tabId: number;
+	at: number;
+}
 
 /**
  * The one-off messages the service worker answers. Nothing about the AI
@@ -263,7 +343,22 @@ export type WorkerRequest =
  */
 export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	WorkerRequest["type"]
->(["capture", "case:save", "case:number", "case:undo-add", "images:discard"]);
+>([
+	"capture",
+	"case:save",
+	"case:number",
+	"case:undo-add",
+	"images:discard",
+	"bar:place",
+	"panel:images",
+	"panel:images-take",
+	"viewer:open",
+	"viewer:frame",
+]);
+
+export interface BarPlaceAnswer {
+	place?: { right: number; top: number };
+}
 
 export function isWorkerRequest(message: unknown): message is WorkerRequest {
 	return (
@@ -347,7 +442,9 @@ export type Broadcast =
 	 */
 	| { type: "sync:run"; force?: boolean }
 	/** The worker's account or team sync changed (DEC-039): read it again. */
-	| { type: "cloud:changed" };
+	| { type: "cloud:changed" }
+	/** The page's "Add image…" left a mark for the panel (DEC-063): take it. */
+	| { type: "panel:images" };
 
 /**
  * What the side panel asks of the worker about the account and the sync

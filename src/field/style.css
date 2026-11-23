@@ -1,0 +1,58 @@
+/* The page's dialog's field (DEC-064): the popover's look, white whatever the page. */
+:root {
+	color-scheme: light;
+	font:
+		13px / 1.4 system-ui,
+		-apple-system,
+		"Segoe UI",
+		sans-serif;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	overflow: hidden;
+}
+
+/* Room for the focus ring inside the frame. */
+body {
+	padding: 3px;
+}
+
+textarea {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	min-height: calc(4lh + 14px);
+	max-height: calc(10lh + 14px);
+	field-sizing: content;
+	resize: none;
+	margin: 0;
+	padding: 6px 8px;
+	border: 1px solid var(--edge);
+	border-radius: 6px;
+	font: inherit;
+	color: var(--text);
+	background: var(--paper);
+}
+
+[data-line] textarea {
+	min-height: calc(1lh + 14px);
+	max-height: calc(3lh + 14px);
+}
+
+textarea:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}

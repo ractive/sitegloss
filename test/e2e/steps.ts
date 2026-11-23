@@ -308,10 +308,82 @@ export const overlayOf = (h: Harness, tabId: number) =>
 		`chrome.tabs.sendMessage(${tabId}, { type: "overlay:state" }).catch(() => null)`,
 	);
 
+/** The comment field of the page's dialog that is open: a frame of the extension's own (DEC-064). */
+export const FIELD = shadow(".popover iframe.field");
+
+const fieldFrames = new Map<string, Page>();
+
+/**
+ * The open dialog's comment field, as a page of its own: the frame is the
+ * extension's, out of the page's reach and of a test's `page.eval`. Ready
+ * once the content script handed it its port.
+ */
+export async function dialogField(page: Page): Promise<Page> {
+	const owner = opened.get(page);
+	if (owner === undefined)
+		throw new Error("dialogField: a page the harness did not open");
+	await page.waitFor(FIELD);
+	// The frame is out of the page's process: a target of its own. One
+	// dialog is open at a time; its field is the newest such frame.
+	const id = await until(
+		async () =>
+			(await owner.h.browser.targets())
+				.filter(
+					(t) => t.type === "iframe" && t.url.includes("/field/index.html"),
+				)
+				.map((t) => t.targetId)
+				.at(-1),
+		(found) => found !== undefined,
+		5000,
+	);
+	if (id === undefined) throw new Error("no comment field frame");
+	let frame = fieldFrames.get(id);
+	if (frame === undefined) {
+		frame = await owner.h.browser.attach(id);
+		fieldFrames.set(id, frame);
+	}
+	await frame.waitFor(`!document.getElementById("field").disabled`);
+	return frame;
+}
+
+/** Type `text` into the open dialog's comment field, where a person types. */
+export async function typeInField(page: Page, text: string): Promise<void> {
+	const frame = await dialogField(page);
+	await frame.eval(`document.getElementById("field").focus()`);
+	await frame.send("Input.insertText", { text });
+}
+
+/** What the open dialog's comment field holds. */
+export async function fieldValue(page: Page): Promise<string> {
+	const frame = await dialogField(page);
+	return frame.eval<string>(`document.getElementById("field").value`);
+}
+
+/** Replace what the open dialog's comment field holds, as a person would: all of it selected. */
+export async function retypeField(page: Page, text: string): Promise<void> {
+	const frame = await dialogField(page);
+	await frame.eval(`document.getElementById("field").select()`);
+	await frame.send("Input.insertText", { text });
+}
+
+/**
+ * Where a person's keys go in the open dialog: its field frame, which the
+ * browser sends the keys of a focused frame to (DEC-064); in a build before
+ * that, the textarea in the page.
+ */
+export async function keyboardTarget(page: Page): Promise<Page> {
+	if (await page.eval<boolean>(`!!${FIELD}`)) {
+		const frame = await dialogField(page);
+		await frame.eval(`document.getElementById("field").focus()`);
+		return frame;
+	}
+	await page.eval(`${shadow(".popover textarea")}.focus()`);
+	return page;
+}
+
 /** Finish the open comment field with `text`. */
 export async function comment(page: Page, text: string): Promise<void> {
-	await page.waitFor(shadow(".popover textarea"));
-	await page.type(text);
+	await typeInField(page, text);
 	await page.click(shadow('[data-action="comment-done"]'));
 }
 
@@ -685,6 +757,16 @@ export function exportOpenCase(h: Harness, panel: Page): Promise<string> {
 }
 
 /**
+ * The open case's rare actions are in its "…" menu (DEC-061): open it when
+ * the control `button` (an expression) is in it and it is closed.
+ */
+export async function openMenuOf(panel: Page, button: string): Promise<void> {
+	await panel.eval(
+		`(() => { const m = (${button})?.closest("[role=menu]"); if (m && m.hidden) document.getElementById("case-more").click(); })()`,
+	);
+}
+
+/**
  * Click the button `button` (an expression) that saves through the
  * `downloads` API (DEC-020), into Chrome's own downloads folder; answers the
  * path the panel shows in `saved` (an element's id) once the file is there.
@@ -697,6 +779,7 @@ export async function downloadShown(
 ): Promise<string> {
 	// Chrome's own way, by its settings: CDP's "allow" names a file by a GUID.
 	await h.browser.send("Browser.setDownloadBehavior", { behavior: "default" });
+	await openMenuOf(panel, button);
 	await panel.click(button);
 	const code = `document.querySelector("#${saved} code")?.textContent`;
 	await panel.waitFor(code, 15_000);
@@ -721,6 +804,7 @@ export async function download(
 		eventsEnabled: true,
 	});
 	const begun = h.browser.event("Browser.downloadWillBegin");
+	await openMenuOf(panel, button);
 	await panel.click(button);
 	const { suggestedFilename } = (await begun) as { suggestedFilename: string };
 	const path = join(folder, suggestedFilename);

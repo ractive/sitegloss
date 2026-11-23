@@ -16,7 +16,6 @@
 			<!-- The pill says the state in two or three words; the whole of it and what a
 			     click does are in its name and tooltip (view.ts). -->
 			<button id="ai-button" type="button" class="ai-pill"><span class="dot" aria-hidden="true"></span><span id="ai-label">AI off</span><span id="ai-status" class="visually-hidden">Not connected</span><span id="ai-action" class="visually-hidden">Turn on</span></button>
-			<button id="stop-ai" type="button" hidden aria-label="Stop AI access" title="Pause AI access now, from any view: AI apps can no longer reach Sitegloss, and they stay paired. The same as turning off the AI access switch in the AI app card; both also turn off Keep AI access on.">Stop</button>
 		</header>
 		<!-- What is wrong with the AI connection, in words, on every view (DEC-024). -->
 		<div id="ai-problem" class="ai-problem" role="status" hidden><p id="ai-problem-text"></p></div>
@@ -90,7 +89,7 @@
 			<section id="ai-card" class="ai-card" aria-labelledby="ai-heading">
 				<div class="card-head">
 					<h2 id="ai-heading">AI app</h2>
-					<label class="switch" title="On: paired AI apps can reach Sitegloss. Off pauses that, like Stop AI access; the apps stay paired.">
+					<label class="switch" title="On: paired AI apps can reach Sitegloss. Off stops that at once; the apps stay paired, and Keep AI access on goes off too.">
 						<input id="ai-switch" type="checkbox" role="switch" aria-checked="false" />
 						<span>AI access</span>
 					</label>
@@ -100,7 +99,7 @@
 				</p>
 				<!-- Right under the switch it belongs to (owner, 22 November 2026): it decides
 				     whether that switch comes back on by itself. -->
-				<label class="check" title="Connect again by itself after an idle or expired session, after an update of Sitegloss, and when the browser starts. Stop AI access and the AI access switch turn it off.">
+				<label class="check" title="Connect again by itself after an idle or expired session, after an update of Sitegloss, and when the browser starts. Turning the AI access switch off turns it off.">
 					<input id="keep-on" type="checkbox" />
 					Keep AI access on
 				</label>

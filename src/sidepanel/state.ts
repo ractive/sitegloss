@@ -133,6 +133,12 @@ export interface PanelState {
 	images: CaseImages | undefined;
 	/** Under the open case's buttons. */
 	caseHint: CaseHint | undefined;
+	/**
+	 * One more for every hint an action writes, the same words again too:
+	 * the line is written anew, so a second failure is said again
+	 * (DEC-064's second review).
+	 */
+	caseHintSeq: number;
 	loaded: Loaded | undefined;
 	/**
 	 * An import that would replace a case that is here already; in a file of
@@ -290,6 +296,8 @@ export interface PanelState {
 		/** "Keep AI access on". */
 		keepOn: boolean;
 		lastCall: AiCall | undefined;
+		/** An AI app's tool call is running (DEC-063). */
+		working: boolean;
 		/**
 		 * The AI app that was just paired in the open card, while it stays
 		 * connected and the card stays open: what to do next is said there
@@ -312,6 +320,7 @@ export const initialState = (): PanelState => ({
 	current: undefined,
 	images: undefined,
 	caseHint: undefined,
+	caseHintSeq: 0,
 	loaded: undefined,
 	importing: undefined,
 	importError: undefined,
@@ -363,6 +372,7 @@ export const initialState = (): PanelState => ({
 		problem: undefined,
 		keepOn: false,
 		lastCall: undefined,
+		working: false,
 	},
 });
 

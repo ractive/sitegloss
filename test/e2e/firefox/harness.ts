@@ -282,9 +282,66 @@ export type DrawJob =
 /**
  * Draw `job` on the page as a user would, with pointer events on the
  * overlay (the test build's shadow root is open), and finish its comment.
+ * The comment is typed in the dialog's field, a frame of the extension's
+ * own (DEC-064), reached by ff-rdp's `--frame`.
  * Firefox logs a setPointerCapture error for the events' made-up pointer.
  */
-export function draw(h: FirefoxHarness, job: DrawJob): Promise<string> {
+export async function draw(h: FirefoxHarness, job: DrawJob): Promise<string> {
+	const drawn = await drawOnly(h, job);
+	await typeInField(h, job.comment);
+	await h.rdp.eval(
+		h.page,
+		`document.getElementById("sitegloss-root").shadowRoot.querySelector('[data-action="comment-done"]').click()`,
+	);
+	return drawn;
+}
+
+/** The open dialog's comment field frame, as ff-rdp finds it. */
+export const FIELD_FRAME = "/field/index.html";
+
+/**
+ * Type `text` into the open dialog's field, in its frame, as an input
+ * method inserts it (\`insertText\`: beforeinput and input, like a key).
+ * Answers whether the field had the focus when the dialog opened.
+ */
+export async function typeInField(
+	h: FirefoxHarness,
+	text: string,
+): Promise<boolean> {
+	await h.rdp.waitFor(
+		h.page,
+		`!!document.getElementById("sitegloss-root")?.shadowRoot?.querySelector(".popover iframe.field")`,
+		"the comment field's frame",
+	);
+	const end = Date.now() + 15_000;
+	for (;;) {
+		const ready = await h.rdp
+			.evalInFrame<boolean>(
+				h.page,
+				FIELD_FRAME,
+				`!document.getElementById("field").disabled`,
+			)
+			.catch(() => false);
+		if (ready) break;
+		if (Date.now() > end)
+			throw new Error("the comment field did not get ready");
+		await Bun.sleep(200);
+	}
+	return h.rdp.evalInFrame<boolean>(
+		h.page,
+		FIELD_FRAME,
+		`(() => {
+			const field = document.getElementById("field");
+			const focused = document.activeElement === field;
+			field.focus();
+			document.execCommand("insertText", false, ${JSON.stringify(text)});
+			return focused;
+		})()`,
+	);
+}
+
+/** Draw `job` and leave its dialog open. */
+export function drawOnly(h: FirefoxHarness, job: DrawJob): Promise<string> {
 	return h.rdp.eval<string>(
 		h.page,
 		`(async () => {
@@ -326,10 +383,7 @@ export function draw(h: FirefoxHarness, job: DrawJob): Promise<string> {
 			for (let i = 1; i <= 5; i++)
 				fire("pointermove", [from[0] + ((to[0] - from[0]) * i) / 5, from[1] + ((to[1] - from[1]) * i) / 5]);
 			fire("pointerup", to);
-			const field = await until(() => root.querySelector(".popover textarea"), "comment field");
-			field.value = job.comment;
-			field.dispatchEvent(new Event("input", { bubbles: true }));
-			root.querySelector('[data-action="comment-done"]').click();
+			await until(() => root.querySelector(".popover iframe.field"), "comment field");
 			return job.tool + " " + from.map(Math.round) + " " + to.map(Math.round);
 		})()`,
 	);

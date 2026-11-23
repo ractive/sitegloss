@@ -121,6 +121,25 @@ export class FfRdp {
 	}
 
 	/**
+	 * The value of `expression` inside the first frame of tab `tab` whose
+	 * address contains `frame` (cross-origin too: the extension's own frame
+	 * on a page, DEC-064).
+	 */
+	async evalInFrame<T>(
+		tab: string,
+		frame: string,
+		expression: string,
+	): Promise<T> {
+		const text = await this.run(
+			["--tab", tab, "eval", "--frame", frame, "--stdin"],
+			{
+				input: `JSON.stringify((await (async () => (${expression}))()) ?? null)`,
+			},
+		);
+		return JSON.parse(String(text)) as T;
+	}
+
+	/**
 	 * Until `expression` in `tab` is truthy (and not an error): its value.
 	 * `what` names it in the timeout's message.
 	 */
