@@ -474,6 +474,65 @@ describe("tools", () => {
 			expect(changed).toEqual(["c_1", "c_1", "c_1"]);
 		});
 
+		test("the question for assign_case names who gets the case, or says it will be refused", async () => {
+			await seed();
+			const cloud = { handOver: async () => team() };
+			expect(
+				await ask(
+					"assign_case",
+					{ caseId: "c_1", assignee: "u_dana" },
+					CLAUDE,
+					cloud,
+				),
+			).toContain("Assign to: Dana.");
+			expect(
+				await ask(
+					"assign_case",
+					{ caseId: "c_1", assignee: "me" },
+					CLAUDE,
+					cloud,
+				),
+			).toContain("Assign to: you (Tess).");
+			expect(
+				await ask(
+					"assign_case",
+					{ caseId: "c_1", assignee: null },
+					CLAUDE,
+					cloud,
+				),
+			).toContain("Assign to: nobody.");
+			const refused = await ask(
+				"assign_case",
+				{ caseId: "c_1", assignee: "Pat" },
+				CLAUDE,
+				cloud,
+			);
+			expect(
+				refused.some((l) =>
+					l.startsWith(
+						"Sitegloss will refuse this whatever you answer: No member of the team is Pat.",
+					),
+				),
+			).toBe(true);
+		});
+
+		test("against a server that assigns no cases: the state only, and mine lists what is kept here", async () => {
+			await seed();
+			await putCase(store, { ...sampleCase("c_here") });
+			build({ handOver: async () => team({ members: undefined }) });
+			const one = json(await call("list_cases")).find(
+				(c: { caseId: string }) => c.caseId === "c_1",
+			);
+			expect(one.state).toBe("new");
+			expect(one.turn).toBeUndefined();
+			expect(one.assignee).toBeUndefined();
+			const mine = await call("list_cases", { mine: true });
+			expect(json(mine).map((c: { caseId: string }) => c.caseId)).toEqual([
+				"c_here",
+			]);
+			expect(mine.content[1]?.text).toContain("does not assign cases");
+		});
+
 		test("assign_case refuses a name that is no member, a case only here, and a role that may not", async () => {
 			await seed();
 			await putCase(store, { ...sampleCase("c_here") });

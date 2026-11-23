@@ -13,7 +13,6 @@ import type {
 import { blobToBase64 } from "../lib/base64.ts";
 import {
 	appLabel,
-	assigneeOf,
 	byline,
 	type Case,
 	type CaseComment,
@@ -73,7 +72,13 @@ import {
 	withResolution,
 	withVerified,
 } from "../lib/case.ts";
-import { assignedTo, mineFor, stateOf, turnOf } from "../lib/case-state.ts";
+import {
+	assignedTo,
+	handOverKnown,
+	mineFor,
+	stateOf,
+	turnOf,
+} from "../lib/case-state.ts";
 
 import {
 	backdropLine,
@@ -183,20 +188,20 @@ export interface HandOver {
  */
 function handOverView(c: Case, hand: HandOver | undefined, full: boolean) {
 	const state = stateOf(c);
-	if (hand === undefined || !hand.synced(c.id)) return { state };
-	const told = assigneeOf(c) !== undefined;
+	// A server that assigns no cases (it lists no members), a case kept here,
+	// or one whose hand-over is not read yet: nothing about turns.
+	if (
+		hand === undefined ||
+		hand.members === undefined ||
+		!hand.synced(c.id) ||
+		!handOverKnown(c)
+	)
+		return { state };
 	const assignee = assignedTo(c);
 	return {
 		state,
-		turn: turnOf(
-			c,
-			c.createdBy === undefined ||
-				hand.members === undefined ||
-				hand.members.some((m) => m.id === c.createdBy?.id),
-		),
-		...(told
-			? { assignee: assignee && { id: assignee.id, name: assignee.name } }
-			: {}),
+		turn: turnOf(c, hand.members),
+		assignee: assignee && { id: assignee.id, name: assignee.name },
 		...(full && c.assign !== undefined ? { assignmentNotSentYet: true } : {}),
 		...(full && c.assign === undefined && c.assignee && c.assignedBy
 			? {
@@ -1006,11 +1011,13 @@ export function createTools(deps: ToolDeps): Tool[] {
 		execute: async ({ mine = false }) => {
 			const hand = await deps.handOver?.();
 			const all = await store.listCases();
+			// The team's cases count only where its server assigns them.
+			const assigns = hand !== undefined && hand.members !== undefined;
 			const listed = mine
 				? all.filter((c) =>
-						hand === undefined
+						hand === undefined || !hand.synced(c.id)
 							? c.closed === undefined
-							: mineFor(c, hand.me, hand.synced(c.id)),
+							: assigns && mineFor(c, hand.me, true),
 					)
 				: all;
 			const cases = listed.map((c) => ({
@@ -1036,6 +1043,13 @@ export function createTools(deps: ToolDeps): Tool[] {
 						? [
 								text(
 									`${left} cases are left out to stay under the size limit: the oldest, and any whose entry alone is too large; get_case reads a case by its id.`,
+								),
+							]
+						: []),
+					...(mine && hand !== undefined && hand.members === undefined
+						? [
+								text(
+									`The server of “${hand.team}” does not assign cases (or was not reached since the sign-in): mine lists only the open cases kept in this browser.`,
 								),
 							]
 						: []),
@@ -2403,6 +2417,7 @@ export async function confirmLines(
 	cloud: {
 		me?: () => Promise<string | undefined>;
 		team?: (caseId: string) => Promise<string | undefined>;
+		handOver?: () => Promise<HandOver | undefined>;
 	} = {},
 ): Promise<string[]> {
 	const lines: string[] = [];
@@ -2415,6 +2430,27 @@ export async function confirmLines(
 				? `Case: none has the id ${caseId}.`
 				: `Case: “${c.title}” (${pagesText(c)}, ${count} mark${count === 1 ? "" : "s"}${c.verdict ? ", with a summary for the developer" : ""}).`,
 		);
+	}
+	// Who gets the case (DEC-071): by name, whatever the app sent (an id).
+	if (request.tool.name === "assign_case") {
+		const wanted = request.arguments["assignee"];
+		const hand = await cloud.handOver?.().catch(() => undefined);
+		if (wanted === null) lines.push("Assign to: nobody.");
+		else if (typeof wanted === "string")
+			try {
+				if (hand?.members === undefined)
+					throw new CaseError(
+						"the team's members are not known here, so the case cannot be assigned.",
+					);
+				const to = memberNamed(hand.members, wanted, hand.me);
+				lines.push(
+					`Assign to: ${to.id === hand.me ? `you (${to.name})` : to.name}.`,
+				);
+			} catch (error) {
+				lines.push(
+					`Sitegloss will refuse this whatever you answer: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
 	}
 	const mark = request.arguments["mark"];
 	if (MARK_TOOLS.has(request.tool.name) && typeof caseId === "string") {

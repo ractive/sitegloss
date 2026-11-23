@@ -567,6 +567,7 @@ export class Connection {
 					const lines = await confirmLines(this.#deps.store, this.#tab, r, {
 						...(this.#deps.me ? { me: this.#deps.me } : {}),
 						...(this.#deps.team ? { team: this.#deps.team } : {}),
+						...(this.#deps.handOver ? { handOver: this.#deps.handOver } : {}),
 					});
 					const front = await tabInFront().catch(() => undefined);
 					// No answer in time is "timeout": `decide` tells the library
