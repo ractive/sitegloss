@@ -7,7 +7,7 @@ import {
 	test,
 } from "bun:test";
 import { Window } from "happy-dom";
-import type { Case, Mark } from "../src/lib/case.ts";
+import { type Case, type Mark, markUrl } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
 import { serverChooser } from "../src/sidepanel/cloud-view.ts";
@@ -509,7 +509,7 @@ describe("a mark's status and actions", () => {
 						matches,
 					};
 			});
-		// Not loaded on a tab: nothing to show.
+		// Not loaded, and no tab in front to draw them on: nothing to show.
 		render(withImages(false), actions);
 		expect(row("m1").querySelector("[data-action=show]")).toBeNull();
 		render(withImages(true), actions);
@@ -546,6 +546,43 @@ describe("a mark's status and actions", () => {
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("data-action")).toBe("open-larger");
 		expect(crop.getAttribute("aria-label")).toContain("shows it large");
+	});
+
+	test("Show is there while the marks are not drawn: it draws them, then shows the mark", () => {
+		const c = twoMarks();
+		const called: string[] = [];
+		const actions = actionsWith({
+			loadOntoTab: () => called.push("load"),
+			loadAndShow: (_c, a) => called.push(`load+show ${a.id}`),
+			showMatch: () => called.push("show"),
+		});
+		const at = (url: string | undefined) =>
+			caseState(c, (s) => {
+				if (url !== undefined)
+					s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		const show = (id: string) =>
+			row(id).querySelector(
+				".mark-head [data-action=show]",
+			) as unknown as HTMLButtonElement | null;
+		// The page the marks were made on, not drawn: Show draws, then shows.
+		const page = c.marks[0] ? markUrl(c, c.marks[0]) : "";
+		render(at(page), actions);
+		expect(el("load-case").textContent).toBe("Show marks");
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
+		show("m1")?.click();
+		expect(called).toEqual(["load+show m1"]);
+		// A tab Sitegloss cannot work on, none, or another page: no button.
+		for (const url of [
+			"chrome://extensions",
+			undefined,
+			"https://other.example.org/elsewhere",
+		]) {
+			render(at(url), actions);
+			expect(show("m1")).toBeNull();
+		}
 	});
 
 	test("a mark opens and closes at its head; Expand all opens every one", () => {

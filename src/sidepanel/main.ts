@@ -313,6 +313,9 @@ let pendingLoad: { tabId: number; caseId: string } | undefined;
  */
 let pendingShow: PendingShow | undefined;
 
+/** A mark's Show is drawing the case's marks first: no second press meanwhile. */
+let showLoading = false;
+
 /** How long a mark's link waits for its page and the marks on it. */
 const SHOW_WAIT_MS = 120_000;
 
@@ -1764,6 +1767,35 @@ const actions: Actions = {
 			// This load replaces one the icon's click would start.
 			if (pendingLoad?.tabId === tab.id) pendingLoad = undefined;
 			await loadInto(c, tab.id, hint, work);
+		})();
+	},
+
+	loadAndShow(c, a) {
+		// A second press while the first is drawing does nothing more.
+		if (showLoading) return;
+		showLoading = true;
+		const hint = caseHintWriter();
+		void (async () => {
+			try {
+				const tab = await activeTab();
+				if (tab?.id === undefined || tab.url === undefined) return;
+				const work = startLoad({ tabId: tab.id, caseId: c.id });
+				hiddenOn.delete(tab.id);
+				if (pendingLoad?.tabId === tab.id) pendingLoad = undefined;
+				// What "Show marks" does; `showPending` brings this mark into
+				// view once the draw is in (as for a mark's link).
+				pendingShow = {
+					tabId: tab.id,
+					caseId: c.id,
+					markId: a.id,
+					mark: markKey(c, a),
+					url: tab.url,
+					until: Date.now() + SHOW_WAIT_MS,
+				};
+				await loadInto(c, tab.id, hint, work);
+			} finally {
+				showLoading = false;
+			}
 		})();
 	},
 
