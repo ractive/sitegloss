@@ -2593,31 +2593,202 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		true,
 	);
 
-/** The motion of a Verify: its row closes in this long. */
-const VERIFY_CLOSE_MS = 160;
+/** The motion of a Verify, in order: the row collapses, then the next opens (expands), its highlight holds, then fades. */
+export const COLLAPSE_MS = 300;
+const EXPAND_MS = 300;
+const RESTORE_MS = 200;
+const HOLD_MS = 700;
+const FADE_MS = 1200;
 /** How long the cue on the row a Verify opened stays on it. */
-const ARRIVED_MS = 1100;
-/** The row the last Verify opened, while its cue runs. */
-let arrived: { caseId: string; markId: string; at: number } | undefined;
+export const ARRIVED_MS = HOLD_MS + FADE_MS + 50;
 
+/** The row a Verify closes, while it collapses; carried across a redraw. */
+let closing:
+	| { caseId: string; markId: string; at: number; h: number }
+	| undefined;
+let closingTimer: ReturnType<typeof setTimeout> | undefined;
+/** What the answer decided, held until the collapse is done: the next row to open, or the line for "none". */
+let pending:
+	| {
+			caseId: string;
+			verified: string;
+			to: string | undefined;
+			number: number | undefined;
+			say: boolean;
+			opensAt: number;
+	  }
+	| undefined;
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+/** The row the last Verify opened, while its cue runs. */
+let arrived:
+	| { caseId: string; markId: string; at: number; h: number }
+	| undefined;
 let arrivedTimer: ReturnType<typeof setTimeout> | undefined;
+/** The scroll after the expansion, and the end of the expansion's clipping. */
+let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+let expandTimer: ReturnType<typeof setTimeout> | undefined;
+
+const stillMotion = () =>
+	globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 /** The cue and the line after a Verify end with the case view (no replay on coming back). */
 function clearCue(): void {
+	if (closing) openMarks.delete(`${closing.caseId}:${closing.markId}`);
 	arrived = undefined;
+	clearTimeout(scrollTimer);
+	clearTimeout(expandTimer);
 	verifyLine = undefined;
+	pending = undefined;
+	closing = undefined;
 	clearTimeout(arrivedTimer);
+	clearTimeout(pendingTimer);
+	clearTimeout(closingTimer);
+}
+
+/** The cue's end: the marker off the row that has it. */
+function endCue(): void {
+	clearTimeout(arrivedTimer);
+	clearTimeout(scrollTimer);
+	clearTimeout(expandTimer);
+	const k = arrived;
+	arrived = undefined;
+	const row = k && parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
+	row?.removeAttribute("data-arrived");
+	row?.removeAttribute("data-expanding");
+	row?.style.removeProperty("--cue-elapsed");
 }
 
 /** The cue on a row: `data-arrived` for what is left of `ARRIVED_MS`; the style sheet starts its animations `elapsed` in. */
-function cueRow(row: HTMLElement, elapsed: number): void {
+function cueRow(row: HTMLElement, elapsed: number, h: number): void {
 	row.setAttribute("data-arrived", "");
 	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
+	row.style.setProperty("--open-h", `${h}px`);
+	// Clipped only while the body grows: focus rings must show after.
+	clearTimeout(expandTimer);
+	if (!stillMotion() && elapsed < EXPAND_MS) {
+		row.setAttribute("data-expanding", "");
+		expandTimer = setTimeout(
+			() => row.removeAttribute("data-expanding"),
+			EXPAND_MS - elapsed,
+		);
+	}
 	clearTimeout(arrivedTimer);
 	arrivedTimer = setTimeout(() => {
 		row.removeAttribute("data-arrived");
 		row.style.removeProperty("--cue-elapsed");
 	}, ARRIVED_MS - elapsed);
+}
+
+/** A row's collapse, `elapsed` ms in (a row drawn anew continues from there). */
+function collapseRow(
+	caseId: string,
+	row: HTMLElement,
+	h: number,
+	elapsed: number,
+): void {
+	if (row.dataset["mark"] === undefined) return;
+	showOpen(row);
+	// A row drawn anew is measured again: its body may differ from the press.
+	if (elapsed > 0) {
+		const now = row.querySelector<HTMLElement>(".body")?.offsetHeight;
+		if (now) {
+			h = now;
+			if (closing?.caseId === caseId && closing.markId === row.dataset["mark"])
+				closing.h = now;
+		}
+	}
+	row.setAttribute("data-collapsing", "");
+	row.style.setProperty("--collapse-h", `${h}px`);
+	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
+}
+
+/** The collapse is done: the row closes for good. */
+function finishClosing(): void {
+	clearTimeout(closingTimer);
+	const k = closing;
+	closing = undefined;
+	if (!k) return;
+	// Closed for good, whether or not its row is on screen (a filter, another case).
+	openMarks.delete(`${k.caseId}:${k.markId}`);
+	const row = parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
+	if (!row) return;
+	row.removeAttribute("data-collapsing");
+	row.style.removeProperty("--collapse-h");
+	row.style.removeProperty("--cue-elapsed");
+	setOpen(k.caseId, row, false);
+}
+
+/**
+ * The answer's decision, once the collapse is done (at once when it is):
+ * open the next row, with its cue, scroll and focus; or, with none left, the
+ * focus and the line. Rows are found as the list is drawn now.
+ */
+function runPending(): void {
+	const k = pending;
+	if (!k) return;
+	clearTimeout(pendingTimer);
+	const wait = k.opensAt - Date.now();
+	if (wait > 0) {
+		pendingTimer = setTimeout(runPending, wait);
+		return;
+	}
+	pending = undefined;
+	const p = parts;
+	if (!p || p.current.id !== k.caseId) return;
+	const marks = p.marks;
+	// Only a focus the Verify left behind is moved: nowhere or in its row.
+	const at = document.activeElement;
+	const mine =
+		at === null ||
+		at === document.body ||
+		at.closest<HTMLElement>("li.mark")?.dataset["mark"] === k.verified;
+	if (!mine) return;
+	const head = (id: string) =>
+		marks.querySelector<HTMLElement>(
+			`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
+		);
+	const found = k.to === undefined ? undefined : rowOf(k.to);
+	// Not a row that is gone, or was verified meanwhile: then nothing opens.
+	const row =
+		found?.dataset["status"] === "fixed" &&
+		!found.hasAttribute("data-verifying")
+			? found
+			: undefined;
+	if (row && k.to !== undefined) {
+		setOpen(k.caseId, row, true);
+		// "This one", as for a pin clicked on the page.
+		row.setAttribute("data-picked", "");
+		releaseHeld();
+		const h = row.querySelector<HTMLElement>(".body")?.offsetHeight ?? 0;
+		arrived = { caseId: k.caseId, markId: k.to, at: Date.now(), h };
+		cueRow(row, 0, h);
+		scrollToOpened(row);
+		// The row has grown by then: the scroll follows.
+		if (!stillMotion()) {
+			const to = k.to;
+			clearTimeout(scrollTimer);
+			scrollTimer = setTimeout(() => {
+				const r = parts?.current.id === k.caseId ? rowOf(to) : undefined;
+				if (r?.hasAttribute("data-arrived")) scrollToOpened(r);
+			}, EXPAND_MS + 20);
+		}
+		// Its head, not its Verify: a second Enter must not verify it unseen.
+		head(k.to)?.focus({ preventScroll: true });
+		sayAfterVerify(
+			p.hint,
+			k.caseId,
+			`Mark ${k.number ?? ""} opened, to verify.`,
+		);
+	} else {
+		// Nothing waits: the verified row's head; where a filter has taken that
+		// row away, the list's first control, not nowhere.
+		(
+			head(k.verified) ??
+			marks.querySelector<HTMLElement>("button:not([disabled])")
+		)?.focus({ preventScroll: true });
+		if (k.say)
+			sayAfterVerify(p.hint, k.caseId, "That was the last mark to verify.");
+	}
 }
 
 /** A line for the status region after a Verify, said once (see the render of the hint). */
@@ -2652,22 +2823,34 @@ function verifying(
 	/** The row, only while the case on screen is the one pressed in (mark ids are per case). */
 	const rowHere = () =>
 		parts?.current.id === caseId ? rowOf(markId) : undefined;
+	// One thing moves at a time: what the last Verify was doing is finished.
+	finishClosing();
+	endCue();
 	const li = rowHere();
 	// `data-status` stays the stored truth; the row says "verified" by its own marker.
 	const pill = li?.querySelector<HTMLElement>(".pill");
 	const pillText = pill?.textContent ?? "";
 	li?.setAttribute("data-verifying", "");
 	if (pill) pill.textContent = PILL.verified ?? "";
+	const h = li?.querySelector<HTMLElement>(".body")?.offsetHeight ?? 0;
+	if (li && wasOpen) {
+		if (stillMotion()) setOpen(caseId, li, false);
+		else {
+			closing = { caseId, markId, at: Date.now(), h };
+			collapseRow(caseId, li, h, 0);
+			closingTimer = setTimeout(finishClosing, COLLAPSE_MS);
+		}
+	}
 	let settled = false;
-	const close = setTimeout(() => {
-		if (li?.hasAttribute("data-verifying")) setOpen(caseId, li, false);
-	}, VERIFY_CLOSE_MS);
 	let giveUp: ReturnType<typeof setTimeout> | undefined;
 	const undo = (said?: string) => {
 		if (settled) return;
 		settled = true;
-		clearTimeout(close);
 		clearTimeout(giveUp);
+		if (closing?.markId === markId && closing.caseId === caseId) {
+			clearTimeout(closingTimer);
+			closing = undefined;
+		}
 		if (verifiedNow?.markId === markId && verifiedNow.caseId === caseId)
 			verifiedNow = undefined;
 		const now = rowHere();
@@ -2678,11 +2861,20 @@ function verifying(
 			(now.hasAttribute("data-verifying") || now.dataset["status"] === "fixed")
 		) {
 			now.removeAttribute("data-verifying");
+			now.removeAttribute("data-collapsing");
+			now.style.removeProperty("--collapse-h");
 			const pillNow = now.querySelector<HTMLElement>(".pill");
 			if (pillNow) pillNow.textContent = pillText;
 			if (wasOpen) {
 				openMarks.add(key);
 				setOpen(caseId, now, true);
+				// Its own short expand, back to where it was.
+				if (!stillMotion()) {
+					now.setAttribute("data-restoring", "");
+					now.style.setProperty("--open-h", `${h}px`);
+					now.style.removeProperty("--cue-elapsed");
+					setTimeout(() => now.removeAttribute("data-restoring"), RESTORE_MS);
+				}
 			}
 			if (said !== undefined && parts) sayAfterVerify(parts.hint, caseId, said);
 		}
@@ -3871,53 +4063,38 @@ function renderCase(state: PanelState, actions: Actions): void {
 						status: li.dataset["status"] ?? "",
 					}),
 				);
-				const head = (id: string) =>
-					marks.querySelector<HTMLElement>(
-						`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
-					);
 				// The next mark to verify opens by itself, in view, so that
 				// verifying a row of them is one press each (the owner). The
 				// one known at the click, which a filtered list still has
 				// when the verified mark has left it; else the list as it is.
+				// Held until the verified row has collapsed (runPending).
 				const to = opensAfterVerify(order, v.markId, v.next);
-				const row =
-					to !== undefined
-						? marks.querySelector<HTMLElement>(
-								`li.mark[data-mark="${quoted(to)}"]`,
-							)
-						: null;
-				if (row) {
-					setOpen(c.id, row, true);
-					// "This one", as for a pin clicked on the page.
-					row.setAttribute("data-picked", "");
-					releaseHeld();
-					// The cue that it was opened for you: begun here, carried by
-					// the common path below (a redraw right after must not lose it).
-					arrived = { caseId: c.id, markId: to as string, at: Date.now() };
-					scrollToOpened(row);
-					// Its head, not its Verify: a second Enter must not verify it unseen.
-					head(to as string)?.focus({ preventScroll: true });
-					const number = c.marks.find((m) => m.id === to)?.number;
-					sayAfterVerify(
-						p.hint,
-						c.id,
-						`Mark ${number ?? ""} opened, to verify.`,
-					);
-				}
-				// Nothing waits: the verified row's head; where a filter has
-				// taken that row away, the list's first control, not nowhere.
-				else {
-					(
-						head(v.markId) ??
-						marks.querySelector<HTMLElement>("button:not([disabled])")
-					)?.focus({ preventScroll: true });
+				pending = {
+					caseId: c.id,
+					verified: v.markId,
+					to,
+					number: c.marks.find((m) => m.id === to)?.number,
 					// The next step already says it when nothing is open either.
-					if (c.marks.some((m) => markStatus(m) === "open")) {
-						sayAfterVerify(p.hint, c.id, "That was the last mark to verify.");
-					}
-				}
+					say: c.marks.some((m) => markStatus(m) === "open"),
+					opensAt:
+						closing?.caseId === c.id && closing.markId === v.markId
+							? closing.at + COLLAPSE_MS
+							: 0,
+				};
 			}
 		}
+		// The row a Verify is closing, on whichever node draws it now: a
+		// redraw continues the collapse from where it is, not snapping it shut.
+		if (closing?.caseId === c.id) {
+			const elapsed = Date.now() - closing.at;
+			const row = marks.querySelector<HTMLElement>(
+				`li.mark[data-mark="${quoted(closing.markId)}"]`,
+			);
+			if (row && elapsed < COLLAPSE_MS && !row.hasAttribute("data-collapsing"))
+				collapseRow(c.id, row, closing.h, elapsed);
+		}
+		// What the answer decided runs once that collapse is done.
+		runPending();
 		// The cue of the row a Verify opened, on whichever node draws it now,
 		// for its second only: a redraw within it carries the cue on from
 		// where it is (not from the start); later ones, and other cases, not.
@@ -3926,8 +4103,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const row = marks.querySelector<HTMLElement>(
 				`li.mark[data-mark="${quoted(arrived.markId)}"]`,
 			);
-			if (row && elapsed < ARRIVED_MS) cueRow(row, elapsed);
-			else if (elapsed >= ARRIVED_MS) arrived = undefined;
+			if (row && elapsed < ARRIVED_MS) {
+				// Measured again on the node that carries it on.
+				const now = row.querySelector<HTMLElement>(".body")?.offsetHeight;
+				if (now) arrived.h = now;
+				cueRow(row, elapsed, arrived.h);
+			} else if (elapsed >= ARRIVED_MS) arrived = undefined;
 		}
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
@@ -3981,6 +4162,14 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	li.querySelector(".mark-toggle")?.setAttribute("aria-expanded", String(open));
 	const body = li.querySelector<HTMLElement>(".body");
 	if (body) body.hidden = !open;
+}
+
+/** A row drawn open, without the open set's say: a collapse in progress is only how it looks. */
+function showOpen(li: HTMLElement): void {
+	li.toggleAttribute("data-open", true);
+	li.querySelector(".mark-toggle")?.setAttribute("aria-expanded", "true");
+	const body = li.querySelector<HTMLElement>(".body");
+	if (body) body.hidden = false;
 }
 
 /** A value inside a quoted attribute selector. */
