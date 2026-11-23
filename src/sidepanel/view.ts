@@ -736,15 +736,21 @@ function renderCases(state: PanelState, actions: Actions): void {
 	casesKey = key;
 	// What has the focus in the lists, by what it is: the same control after
 	// they are drawn again (a press of My cases, a teammate's change).
+	// A card (or the Closed group's heading) that leaves the list hands it to
+	// My cases, else to the list's heading: never to the page's body.
 	const active = document.activeElement as HTMLElement | null;
-	const focused =
-		active === null ||
-		!(casesList.contains(active) || hereCases.contains(active))
-			? undefined
-			: active.id === "my-cases"
-				? "#my-cases"
-				: active.dataset["case"] !== undefined
-					? `[data-case="${CSS.escape(active.dataset["case"])}"]`
+	const inLists =
+		active !== null &&
+		(casesList.contains(active) || hereCases.contains(active));
+	const focused: string[] | undefined = !inLists
+		? undefined
+		: active.id === "my-cases"
+			? ["#my-cases"]
+			: active.dataset["case"] !== undefined
+				? // A case's id is a safe id (letters, digits, _ and -): no quoting.
+					[`[data-case="${active.dataset["case"]}"]`, "#my-cases"]
+				: active.closest("#closed-cases > summary") !== null
+					? ["#closed-cases > summary", "#my-cases"]
 					: undefined;
 	// The page's own cases stand under "This page" (the owner): going on with
 	// the case a page has is what is done most, a second case for it rarely.
@@ -826,11 +832,20 @@ function renderCases(state: PanelState, actions: Actions): void {
 		// Closed cases are nobody's turn: not under My cases.
 		...(closed.length === 0 || mineOnly ? [] : [closedGroup(closed, card)]),
 	);
-	if (focused !== undefined)
-		(
-			casesList.querySelector<HTMLElement>(focused) ??
-			hereCases.querySelector<HTMLElement>(focused)
-		)?.focus();
+	if (focused !== undefined) {
+		const next = focused
+			.map(
+				(selector) =>
+					casesList.querySelector<HTMLElement>(selector) ??
+					hereCases.querySelector<HTMLElement>(selector),
+			)
+			.find((el) => el !== null);
+		if (next) next.focus();
+		else {
+			casesHeading.tabIndex = -1;
+			casesHeading.focus();
+		}
+	}
 }
 
 /**

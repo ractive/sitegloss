@@ -6271,6 +6271,19 @@ describe("the hand-over in the panel (DEC-071)", () => {
 		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
 			true,
 		);
+		// A focused card that leaves the list hands the focus to My cases.
+		(
+			window.document.querySelector(
+				'[data-case="c_given"]',
+			) as unknown as HTMLElement
+		).focus();
+		state.cases = [theirs, { ...given, assignee: DANA }];
+		render(state, actions);
+		expect(listed()).toEqual([]);
+		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
+			true,
+		);
+		state.cases = [theirs, given];
 		// The person's case under "This page" counts, and the list says so.
 		const onPage = initialState();
 		signedIn(onPage);
