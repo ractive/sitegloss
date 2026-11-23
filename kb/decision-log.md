@@ -3866,3 +3866,81 @@ latest. (DEC-067 is taken by the panel's pages grouped by site, which is on a br
   changes for a user: the mirror was off before, by the old default (DEC-062).
 - **Not reached:** several `TabMcp` of one app in a page now tell the tab-mcp browser
   extension one list of AI apps. Sitegloss has one, and not in a page.
+
+## DEC-067: A case's sites: on its card, and its pages grouped by site in its head (owner, a try)
+
+2026-11-23. The owner: "To make word 'site' of the name 'sitegloss' appear somewhere, let's
+gather the 'sites' of a case [...] What about 'domain' == 'site', incl. all subdomains? Maybe
+exclude 'localhost' or 127.0.0. and ::1 etc. [...] We just discussed the '> Pages' collapsible
+section. Maybe this could be a main heading 'Sites' and then per site a collapsible section." On
+grouping only cases of two or more sites: "Maybe it's ok if the only site is by default
+expanded? I'd give it a try to see how it feels." A try, built properly; sitegloss.dev has the
+same on its case card (its DEC-041).
+
+**The rule is the server's** (`packages/api/src/v1/site.ts`); `siteOf` and `sitesOf` in
+`src/lib/site.ts` are this repository's own, and `test/site.json` is a byte copy of the server's
+`packages/api/vectors/site.json` that they pass, held as `page-key.json` is. A site is the
+registrable domain of an address's host by the public suffix list with its private section
+(`app.dev.sitegloss.dev` is `sitegloss.dev`, `foo.vercel.app` its own, `shop.example.co.uk` is
+`example.co.uk`). No site: a host whose ending is on neither section of the list (`.lan`,
+`.home`, `.corp`, `.localdomain`, `.intranet`, `.local`, `.test`, `.internal`, `.invalid`),
+except `.example`, the one named exception, which tests and demos use; `localhost` and names
+under it; `home.arpa` and names under it (on the list, but the home network's); IP addresses; a
+host without a dot; a host with an empty label (`.com`, `a..com`); anything but http and https.
+Every trailing dot is dropped first. (The lead decided the ending rule after the review, in place
+of a growing list of local endings, for both repositories.) Lower case; an international name in its ASCII form
+(`xn--bcher-kva.de`), as `new URL` gives the host. A case's sites come from its pages and its
+screenshots, most pages first, then by name. Never stored: no change to the case format, the
+sync or the manifest.
+
+- **`tldts` 7.5.5 holds the list** (MIT, with `tldts-core`; both in `LICENSES.txt`, the build's
+  `mitText` taking an MIT text without its title). The second runtime dependency after the
+  tab-mcp client: the public suffix list changes every week and is not a few lines of own code.
+  Only the side panel and the worker load it: the panel's chunk grew from 231,500 to 365,163
+  bytes and `background.js` from 353,660 to 485,676; `content.js`, which runs in every web page,
+  is 125,709 bytes before and after, and a build test checks that it holds none of it.
+- **The card**: "sitegloss.dev · 8 pages", two or three sites named, more counted ("a.ch, b.ch
+  and 2 more sites · 30 pages"); a case only on local addresses says its first page's host; a case
+  of one page on one site keeps its address, which names the site. Its name for a screen reader:
+  "on sitegloss.dev, 8 pages".
+- **The case's head** (DEC-065's section): "Current page" stays above, as it was. Under it the
+  heading "Site" (one group) or "Sites" (several), not a control. Each site is a heading of its own
+  that opens and closes its list, "› sitegloss.dev 12", the same disclosure as "Comments"
+  (`aria-expanded`, `aria-controls`, the whole heading the hit area). The rows are the rows of
+  before: one per page whatever the host, its hosts under it where they differ.
+  - One site: its list is open at first, however many pages it has (the owner's wish; DEC-065's
+    "closed above three pages" goes). Several: the sites of the page in front are open, the others
+    closed; where the tab shows none of the case's pages, all are open. A choice holds per case
+    and site for the session. A list that closes by itself with the focus in it hands the focus
+    to its heading.
+  - A page marked only on local addresses is under the case's site when it has one; with no site
+    at all, the one group is named by the first page's host ("localhost:3000"); with several sites
+    such pages are in a group of their own at the end, **"Local addresses"** (decided here: right
+    for the usual case, a development server; a public IP lands there too).
+  - A page marked on two sites is in both lists; the page in front gets `aria-current` once.
+  - A case of one page keeps its "Page" fact and gets "Site" (or "Sites") beside it.
+- **AI tools**: `list_cases` and `get_case` give `sites`, a list of strings; nothing else changes.
+
+**What remains**: two sites' pages with the same path are still one page (DEC-038), listed under
+both sites. Making the site part of a page's identity would take a new `pageKey` on both sides
+(site and path, with local addresses taking the case's site, which is ambiguous once a case has
+two), new vectors, the server recomputing every case's list of pages, and every installed
+version agreeing on it, since each computes `pageKey` itself: a change of the contract, not of
+the display. The page filter's menu does not group by site (the web's does).
+
+**After the review** (the same day):
+
+- **A row under a site's heading names only what the heading does not**: another host of that
+  site, or a local host; never the site's own name, nor another site (the row is under that
+  site's heading too). The row above the heading ("Current page") keeps all its hosts.
+- **A site none of the listed pages is on gets no heading**: a case keeps 200 pages, but its
+  screenshots of later pages still count for its sites (the card, `sites`).
+- **The rule runs once per address and per case**: `siteOf` keeps the last 5,000 answers, and a
+  case's sites and groups are kept per case object while its change time and its counts of pages
+  and screenshots stay the same.
+- **When the sites change, their headings are kept by name and only moved**, and the focus goes
+  back to the heading or the row it was on; a row whose site left goes to the same page in the
+  first list that has it.
+- **The build test checks the list's data** (`xn--p1ai`), not an option's name: in the worker and
+  the panel, never in `content.js`.
+- `CLAUDE.md` names `tldts` beside the tab-mcp client, and where it may be loaded.

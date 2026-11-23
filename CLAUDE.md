@@ -173,8 +173,10 @@ with `kb/design/overview.md` and `kb/iterations/`.
   through the `ff-rdp` CLI (`FF_RDP_PATH`) and Firefox (`FIREFOX_PATH`), headless on a
   free port; full set only (`bun run test:firefox`), skipped without them locally,
   required in `e2e.yml`, which pins both; a lock lets one run at a time.
-- Only runtime dependency: `@ractive-ch/tab-mcp-client`. Prefer a few lines of own code
-  over a package. No JavaScript from an AI app or server ever runs (fixed tools only).
+- Runtime dependencies: `@ractive-ch/tab-mcp-client`, and `tldts` (the public suffix list for
+  a case's sites, DEC-067), which only the side panel and the worker may load, never
+  `content.js` (`test/build.test.ts` checks it). Prefer a few lines of own code over a package.
+  No JavaScript from an AI app or server ever runs (fixed tools only).
 - Tests against a real sitegloss.dev server run only with `SITEGLOSS_SERVER` set (and
   its demo users' password in `SITEGLOSS_PASSWORD`): `bun run test:server`
   (`test/cloud-server.test.ts`, `test/e2e/cloud.test.ts`, `test/e2e/firefox/cloud.test.ts`),

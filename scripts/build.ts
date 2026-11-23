@@ -76,17 +76,30 @@ const CLIENT = "node_modules/@ractive-ch/tab-mcp-client";
 /**
  * Where each bundled package's licence is, from the repository's root.
  * `@cfworker/json-schema` publishes none; tab-mcp-client passes on its notice.
+ * `tldts` and `tldts-core` (the public suffix list, in the side panel and the
+ * worker only, DEC-067) publish the MIT text without its title.
  */
 const LICENCES: Readonly<Record<string, string>> = {
 	"@cfworker/json-schema": `${CLIENT}/THIRD-PARTY-NOTICES.txt`,
 	"@ractive-ch/tab-mcp-client": `${CLIENT}/LICENSE`,
+	tldts: "node_modules/tldts/LICENSE",
+	"tldts-core": "node_modules/tldts-core/LICENSE",
 };
 
-/** The licence in a package's notice file; one without an MIT text stops the build. */
+/**
+ * The licence in a package's notice file: from its title "MIT License", or,
+ * for the MIT text without one, the whole file with its copyright. One
+ * without an MIT text stops the build.
+ */
 export function mitText(name: string, file: string): string {
 	const start = file.indexOf("MIT License");
-	if (start < 0) throw new Error(`no MIT licence text for ${name}`);
-	return file.slice(start);
+	if (start >= 0) return file.slice(start);
+	if (
+		file.includes("Permission is hereby granted, free of charge") &&
+		file.includes('THE SOFTWARE IS PROVIDED "AS IS"')
+	)
+		return file;
+	throw new Error(`no MIT licence text for ${name}`);
 }
 
 /** Sitegloss's licence and those of `packages`; a package without one stops the build. */

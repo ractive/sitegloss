@@ -1548,8 +1548,9 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 }
 
 /*
- * "Pages 12" (DEC-065): a heading that opens and closes its list, as
- * "Comments" is, and the list under it at the panel's full width.
+ * "Site" or "Sites" (DEC-067), then each site a heading that opens and closes
+ * its list, as "Comments" is (DEC-065), the list under it at the panel's full
+ * width.
  */
 .pages-section {
 	display: grid;
@@ -1565,6 +1566,27 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 .pages-section .case-pages {
 	font-size: 12px;
 	line-height: 17px;
+}
+
+.site-groups {
+	display: grid;
+	gap: var(--s1);
+}
+
+/* A site's heading: the disclosure "› sitegloss.dev 12", its list under it. */
+.site-head {
+	margin: 0;
+}
+
+.site-head .site-name {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.site-head .pages-toggle {
+	max-width: 100%;
 }
 
 /* The page in front, above the heading: there while the list is closed. */
