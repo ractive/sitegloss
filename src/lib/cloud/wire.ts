@@ -18,6 +18,8 @@ import {
 	type ElementDetails,
 	type Finding,
 	type FindingApp,
+	type Highlight,
+	highlightWithin,
 	type ImageAdded,
 	isSafeId,
 	LANGUAGE,
@@ -53,6 +55,7 @@ import {
 	type Stamp,
 	samePage,
 	shapeBounds,
+	shapeOut,
 	shotImage,
 	shotUrl,
 	type UserRef,
@@ -252,7 +255,8 @@ export function fixedOf(a: Pick<Mark, "shape" | "element">): string {
 	const element = elementIn(elementOut(a.element));
 	return hashText(
 		canonical([
-			shapeIn(a.shape),
+			// As the server has it: an unknown kind as it came (DEC-066).
+			shapeOut(shapeIn(shapeOut(a.shape) as WireMark["shape"])),
 			element === null ? null : withoutLook(element),
 		]),
 	);
@@ -349,7 +353,8 @@ export function newMarkOf(
 		shotId,
 		comment: content.comment,
 		author: content.author,
-		shape: a.shape,
+		// A kind this version does not know, as it came (DEC-066).
+		shape: shapeOut(a.shape) as WireMark["shape"],
 		crop,
 		element: elementOut(a.element),
 		resolution: content.resolution,
@@ -367,6 +372,9 @@ export function newMarkOf(
 						end: elementOut(a.ends.end),
 					},
 				}),
+		// The text it marks (DEC-066; the server's DEC-040): with the new
+		// mark only, as `ends`; the server keeps it or drops it whole.
+		...(a.highlight === undefined ? {} : { highlight: a.highlight }),
 	};
 }
 
@@ -1147,11 +1155,32 @@ function elementIn(e: WireElement | null | undefined): ElementDetails | null {
 	} as ElementDetails;
 }
 
+/**
+ * A mark's shape from the server: one of a kind this version does not know
+ * is kept as it came (DEC-066), and the case still syncs.
+ */
 function shapeIn(shape: WireMark["shape"]): Shape {
-	return shape.kind === "pen"
-		? { kind: "pen", points: shape.points.slice(0, MAX_PEN_POINTS) }
-		: (shape as Shape);
+	const kind = (shape as { kind: unknown }).kind;
+	if (kind === "pen" && "points" in shape)
+		return { kind: "pen", points: shape.points.slice(0, MAX_PEN_POINTS) };
+	if (
+		kind === "element" ||
+		kind === "box" ||
+		kind === "arrow" ||
+		kind === "note"
+	)
+		return shape as Shape;
+	return {
+		kind: "unknown",
+		given: { ...(shape as Record<string, unknown>), kind: String(kind) },
+	};
 }
+
+/** A highlight from the server, within the limits, on a box; else none (DEC-066). */
+const highlightIn = (w: WireMark, shape: Shape): { highlight?: Highlight } => {
+	const highlight = highlightWithin(w.highlight, shape);
+	return highlight === undefined ? {} : { highlight };
+};
 
 const pagesIn = (pages: readonly WirePage[]): CasePage[] =>
 	pages.slice(0, MAX_PAGES).map((p) => ({
@@ -1753,11 +1782,15 @@ export function mergeCase(
 				mergeContent(markContent(a), before?.content, content),
 			);
 			// Its ends are set once: what this device drew stays; one drawn
-			// elsewhere comes from the server.
-			const merged =
+			// elsewhere comes from the server. Its highlight too (DEC-066).
+			const ended =
 				kept.ends === undefined && w.ends !== undefined
 					? { ...kept, ends: endsIn(w.ends) }
 					: kept;
+			const merged =
+				ended.highlight === undefined
+					? { ...ended, ...highlightIn(w, ended.shape) }
+					: ended;
 			const next: Mark = records(
 				creator === undefined ? merged : { ...merged, createdBy: creator },
 			);
@@ -1792,6 +1825,7 @@ export function mergeCase(
 					element: drawn.element,
 					...(creator === undefined ? {} : { createdBy: creator }),
 					...(w.ends === undefined ? {} : { ends: endsIn(w.ends) }),
+					...highlightIn(w, drawn.shape),
 				},
 				content,
 			),
@@ -2184,7 +2218,10 @@ export function wholeShotCrops(
 			incoming.shots.find((s) => s.id === m.shotId)?.viewport ??
 			current?.shots.find((s) => s.id === shotHere.get(m.shotId))?.viewport;
 		if (viewport === undefined || viewport.width <= 0) continue;
-		const bounds = shapeBounds(shapeIn(m.shape));
+		const shape = shapeIn(m.shape);
+		// Where an unknown kind is, this version cannot say (DEC-066).
+		if (shape.kind === "unknown") continue;
+		const bounds = shapeBounds(shape);
 		const on =
 			bounds.x <= viewport.width &&
 			bounds.y <= viewport.height &&
