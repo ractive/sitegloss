@@ -256,14 +256,20 @@ inBothSets("marking and saving", () => {
 
 	fullTest("the toolbar stays on one line in a normal window", async () => {
 		const { page, tabId } = await h.open("v1");
-		// 985 px: a 1000 px window with a classic scrollbar (15 px, Windows and
-		// Linux), the same in every engine.
-		await page.send("Emulation.setDeviceMetricsOverride", {
-			width: 985,
-			height: 700,
-			deviceScaleFactor: 1,
-			mobile: false,
-		});
+		// A 1000 px window with a classic scrollbar (15 px, Windows and Linux):
+		// the page is 985 px wide, whatever scrollbar the machine has.
+		const metrics = (width: number) =>
+			page.send("Emulation.setDeviceMetricsOverride", {
+				width,
+				height: 700,
+				deviceScaleFactor: 1,
+				mobile: false,
+			});
+		await metrics(1000);
+		const scrollbar = await page.eval<number>(
+			"innerWidth - document.documentElement.clientWidth",
+		);
+		await metrics(985 + scrollbar);
 		// A page's own styles do not reach it, not even on the host element.
 		await page.eval(`(() => {
 			document.documentElement.dir = "rtl";
