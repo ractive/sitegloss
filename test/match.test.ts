@@ -217,3 +217,51 @@ describe("a fragment on one side only (DEC-047)", () => {
 		expect(score(link("/demo/#book"), link("/faq/"))).toBeLessThan(full);
 	});
 });
+
+describe("two buttons named Edit in one card (mark 47, DEC-063)", () => {
+	// The web app's case page: the mark's text with its Edit, and under it a
+	// comment with its own Edit. Both read "Edit"; only the accessible
+	// names differ.
+	const card = (comment: boolean) => {
+		const window = new Window({ url: "https://www.example.com/case" });
+		const doc = window.document as unknown as Document;
+		doc.write(`<main><h2>Mark 47</h2><article class="card">
+			<div class="row"><p>The button is too small</p>
+			<button class="Button_ghost Button_sm" aria-label="Edit the text of mark 47">Edit</button></div>
+			${
+				comment
+					? `<ol><li><p>Done in the fix</p><div class="row">
+			<button class="Button_ghost Button_sm" aria-label="Edit the comment by Dana Developer via Claude Code">Edit</button>
+			<button class="Button_ghost Button_sm" aria-label="Delete the comment by Dana Developer via Claude Code">Delete</button>
+			</div></li></ol>`
+					: ""
+			}
+		</article></main>`);
+		return doc;
+	};
+	const stored = describeElement(
+		card(true).querySelector('[aria-label^="Edit the comment"]') as Element,
+	);
+
+	test("both on the page: the comment's Edit, found", () => {
+		const { elements, all } = details(card(true));
+		const ranked = rank(stored, all);
+		expect(
+			elements[ranked[0]?.index ?? -1]?.getAttribute("aria-label") ===
+				"Edit the comment by Dana Developer via Claude Code",
+		).toBe(true);
+		expect(classify(ranked)).toBe("found");
+	});
+
+	test("the comment not (yet) there: the other Edit is not said found", () => {
+		const { all } = details(card(false));
+		expect(classify(rank(stored, all))).not.toBe("found");
+	});
+
+	test("its Edit gone, the comment's Delete beside it is not said found", () => {
+		const doc = card(true);
+		doc.querySelector('[aria-label^="Edit the comment"]')?.remove();
+		const { all } = details(doc);
+		expect(classify(rank(stored, all))).not.toBe("found");
+	});
+});

@@ -177,6 +177,22 @@ export function identity(
 		!!naming(stored, key) && naming(candidate, key) === naming(stored, key);
 	const names = (key: Naming) => same(key) && !repeated.has(key);
 	if (names("testId") || names("id")) return 1;
+	// A name that says more than the visible text (an `aria-label` beyond
+	// "Edit") is what tells such elements apart, and the text must still be
+	// the text: in one card of the web app, "Edit" for the mark's text, and
+	// "Edit" and "Delete" for a comment, named "Edit the comment by …" and
+	// "Delete the comment by …" (mark 47, DEC-063). Neither the same text
+	// with another name nor the same name's words with another text is the
+	// element.
+	if (
+		stored.name &&
+		stored.text &&
+		grams(stored.name).text !== grams(stored.text).text
+	)
+		return Math.min(
+			textSimilarity(stored.name, candidate.name ?? ""),
+			textSimilarity(stored.text, candidate.text ?? ""),
+		);
 	const texts: number[] = [];
 	if (stored.name)
 		texts.push(textSimilarity(stored.name, candidate.name ?? ""));
