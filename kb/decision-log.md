@@ -690,7 +690,7 @@ access again" with a button, never failing silently. The rest was worked out her
   export, an AI app's `set_summary` writes it again (the worker), a case deleted in the
   panel keeps its file, and after Stop syncing nothing more is written.
 
-## DEC-022: Opening a case shows its marks on the tab in front, and they follow it (owner)
+## DEC-022: Opening a case shows its marks on the tab in front, and they follow it (owner; the notice and the options amended by DEC-076)
 
 The owner, 2026-11-12: "you never want to load a case without showing the marks … When a
 tab becomes active and the case is loaded, just try to show the marks. If none of them
@@ -4301,3 +4301,103 @@ stays `@ractive-ch/tab-mcp` 0.13.3.
   tests fail the same way on main). On 0.24.0: the published package equals the candidate except
   for the version strings and the bundler's own chunk and debug ids; then type check, Biome,
   both builds and `bun run verify` again.
+
+## DEC-076: Access to all sites, offered first and said where something is missing (owner)
+
+2026-11-23. The owner, dogfooding in Firefox: "The extension does not request 'Allowed on all
+sites' or so? In firefox I need to click on the icon for each page I open from the extension."
+Told where the setting was: "I don't find it in the Firefox sitegloss ext." Then: "yes, move the
+options to the main view. And really make it clear to the user that this exists and in this case
+I really would add a '(highly recommended)' or so. If it's not turned on it's completely
+intransparent, why suddenly no marks are there and why you can't show/hide marks anymore."
+
+- **What the panel showed before**, the same in both browsers (DEC-022): on a tab without access,
+  Home had a notice above a disabled "New case for this page": "Sitegloss may not run on this
+  tab yet. Click the Sitegloss icon in the toolbar (or press Alt+Shift+O) while this tab is in
+  front." with "Allow on all sites". An open case had that notice at the top of the case, under
+  its head, where it scrolls away; the tool bar at the bottom, where the eye goes, lost "Show
+  marks"/"Hide marks" without a word and kept a disabled "Add marks"; a mark's Show was disabled.
+  The setting itself was a checkbox under Options at the very end of Settings, which only the AI
+  pill opens, and that pill also turns AI access on (in Firefox it asks for the data collection
+  consent first). In Firefox 160, measured with real clicks through Marionette in the sidebar:
+  Sitegloss's button sits in the Extensions menu (the puzzle piece), not in the toolbar, so
+  "the Sitegloss icon in the toolbar" is not there to click; and Firefox drops `activeTab` when
+  the tab goes to the next page, even of the same site. So a case open while browsing a site
+  loses its marks at every link, and the tool bar's Show/Hide goes with them: the owner's
+  "suddenly no marks". Chrome keeps the grant while the tab stays on its site.
+- **What happened in Firefox when the box was ticked** (a build without the host permission,
+  `bun scripts/build.ts --firefox`, installed as a temporary add-on through Marionette, the
+  sidebar opened by `SidebarController`, the click a real one): Firefox's own prompt came ("…
+  Access your data for all websites"), Allow granted `<all_urls>`, the box showed it, and a
+  removal or grant made outside the panel (what about:addons' toggle calls) moved the box. It
+  worked; it was not found. Two things did not work: (1) opening a case's page (its address,
+  a mark's link) asks for that site in the click and opens or navigates the tab at once;
+  Firefox's prompt belongs to the tab in front and is taken away by that before anyone sees it,
+  answering no, so every page opened from the panel needed the icon's click: the owner's first
+  sentence. (2) Taking any permission back with AI access off set the AI problem "Firefox has not
+  been allowed to let Sitegloss send the pages' content…" (`consentChanged` ran on every
+  removal).
+- **Rule now, per state.** The panel knows three things: the tab in front (`yes`, `ask`: no
+  access yet, `never`: no extension may run there), all sites allowed or not, and whether the
+  person said "Not now" (or took all sites back) in this browser (`localStorage`, as Keep AI
+  access on's question, DEC-059). `src/sidepanel/access.ts` decides; `view.ts` draws it.
+
+  | All sites | Said no | Tab | Home, top of "This page" | Open case, tool bar |
+  |---|---|---|---|---|
+  | allowed | either | yes | nothing; Options' box ticked | Add marks, Show/Hide marks |
+  | allowed | either | never | "cannot run on this tab" (unchanged) | the same text, in the tool bar |
+  | not | no | yes | the offer: "Let Sitegloss work on every tab (recommended)", Allow on all sites, Not now | Add marks, Show/Hide marks |
+  | not | no | ask | the offer, headed "Sitegloss has no access to this tab yet" with the warning sign, and the one-tab way | the notice |
+  | not | yes | yes | nothing; Options' box unticked, its note says what that means | Add marks, Show/Hide marks |
+  | not | yes | ask | the notice | the notice |
+
+  Before the browser has answered whether all sites is allowed, no offer (it would flash for
+  someone who has it). The notice: the warning sign, the sentence ("Sitegloss has no access to
+  this tab yet, so it cannot start a case or show marks here." on Home; "…, so this case's marks
+  are not drawn here and cannot be shown or added." in a case), "Allow on all sites
+  (recommended)", and the one-tab way under it.
+- **Rule now, per control** (one rule, all of them): what needs the page is absent on a tab
+  without access, and the sentence stands where it was; never a disabled control, never one that
+  goes without a word. "New case for this page": absent, the notice in its place. Add marks and
+  Show/Hide marks: absent, the notice fills the tool bar (which stays sticky at the bottom, so
+  the reason is in view however far the case is scrolled; it is no toolbar for assistive
+  technology then). A mark's Show: absent, the tool bar says why. The next step's Add marks
+  (DEC-069): absent as the tool bar's is. A request for all sites from "Show marks" was not
+  chosen: a broad prompt from a button that says something else is a surprise.
+- **Options** leave Settings and are Home's last section, after Files: they are set once and
+  are not what Home is for; what makes access findable is the offer at the top and the notice
+  where something is missing, so Options only has to be where a setting is looked for. Access
+  first, "Allow on all sites (highly recommended)" (the owner's words), then "Blur form fields
+  in screenshots", unchanged. Under the access box, always: "Without it, Sitegloss works on a
+  tab only after you click its icon there[, until the tab goes to another page]; on other tabs
+  your marks are not drawn and cannot be shown. Chrome asks first (“Read and change all your
+  data on all websites”). Sitegloss uses it on the tab in front only and sends nothing anywhere
+  by itself." (Firefox: its prompt's “Access your data for all websites”.) True to PRIVACY.md: no
+  script goes into a page by itself; the panel draws the open case on the tab in front, marking
+  and an AI app's tools act there. Settings keeps only the AI connection.
+- **Wording.** The one-tab way says where the icon really is: Chrome "For this tab only: click
+  the Sitegloss icon in the toolbar (under the puzzle piece until you pin it) or press
+  Alt+Shift+O."; Firefox "For this tab only: click Sitegloss under the puzzle piece in the
+  toolbar (or its icon, if pinned) or press Alt+Shift+O. Firefox lets it in until the tab goes
+  to another page." "Allow on all sites" stays the button's name everywhere (the worker's
+  refusal text for an AI app names it); "(recommended)" goes with it where something is
+  missing, "(highly recommended)" on the option.
+- **Firefox.** The checkbox and the offer's button ask in the click, as before; both tested
+  in the real sidebar. Opening a case's page or a mark's link does not ask for the site in
+  Firefox any more (it could not be answered); the tab's notice offers all sites and the click.
+  `consentChanged` ends AI access only when it is on or retrying. Unchanged: `permissions.onAdded`
+  and `onRemoved` already moved the box, the notice and the drawing in both browsers; now a
+  removal also counts as "said no", so the offer does not come back after it.
+- **Unchanged.** The manifest: `<all_urls>` optional, nothing new at install, no new warning.
+  "Blur form fields in screenshots" apart from its place. Every other rule of the panel.
+- **What remains.** Firefox's sidebar strip shows a Sitegloss icon too; whether its click gives
+  access was not tested (Firefox's code grants `activeTab` for the action and commands, not for
+  sidebar switches), so the texts name the puzzle piece and the shortcut. A person who says
+  "Not now" in one browser profile is offered it again in another. Edge was not run.
+- Tests: `test/access.test.ts` (each state, both browsers' words, Not now kept, a take-back
+  counts as no), `test/view.test.ts` (the offer, Not now, the notice on Home and in the tool bar,
+  no Show, no next-step Add marks, all gone once allowed, Options on Home), `test/e2e/shipped.test.ts`
+  (the store package in Chromium: the offer on a tab without access asks for `<all_urls>` in
+  the click, Not now puts the notice in its place and holds over a reopening),
+  `test/e2e/firefox/firefox.test.ts` (the Firefox store package: no host access, the offer
+  first, the option on Home in Firefox's words).

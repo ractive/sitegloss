@@ -105,41 +105,56 @@ describe("the tab", () => {
 		expect(text("page")).toBe("Kasse");
 	});
 
-	test("without an address: a notice with a warning sign, the icon's click and Allow on all sites", () => {
+	test("without an address: why, Allow on all sites (recommended) and the icon's click, in place of New case (DEC-076)", () => {
 		const asked: string[] = [];
-		home({ id: 1, url: "", title: "", size: undefined }, undefined, {
-			...noActions,
-			allowAllSites: () => asked.push("all"),
-		} as Actions);
+		home(
+			{ id: 1, url: "", title: "", size: undefined },
+			(s) => {
+				s.allSitesKnown = true;
+				s.allSitesDeclined = true;
+			},
+			{
+				...noActions,
+				allowAllSites: () => asked.push("all"),
+			} as Actions,
+		);
 		const notice = el("access-notice");
 		expect(notice.hidden).toBe(false);
 		expect(notice.querySelector("svg.notice-icon")).not.toBeNull();
-		expect(notice.textContent).toContain("Click the Sitegloss icon");
-		// It stands above New case for this page, and the hint below says nothing.
-		expect(notice.nextElementSibling).toBe(el("new-case"));
+		expect(notice.textContent).toContain(
+			"Sitegloss has no access to this tab yet",
+		);
+		expect(notice.textContent).toContain("For this tab only: click");
+		expect(notice.textContent).toContain("Alt+Shift+O");
+		// Under the heading and the address, first thing on Home.
+		expect(notice.previousElementSibling?.id).toBe("all-sites-offer");
+		expect(el("all-sites-offer").hidden).toBe(true);
 		expect(el("hint").hidden).toBe(true);
 		expect(allow().hidden).toBe(false);
+		expect(allow().textContent).toBe("Allow on all sites (recommended)");
 		allow().click();
 		expect(asked).toEqual(["all"]);
-		// Marking needs the page: off, and its title points at the notice.
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(true);
-		expect(el("new-case").title).toContain("see the notice");
+		// Marking needs the page: not there, the notice is in its place.
+		expect(el("new-case").hidden).toBe(true);
 	});
 
 	test("without an address although Sitegloss may run on all sites: Chrome's own pages, no button", () => {
 		home({ id: 1, url: "", title: "", size: undefined }, (s) => {
 			s.allSites = true;
+			s.allSitesKnown = true;
 		});
 		expect(el("access-notice").hidden).toBe(false);
 		expect(text("access-notice")).toContain("cannot run on this tab");
+		expect(text("access-notice")).not.toContain("For this tab only");
 		expect(allow().hidden).toBe(true);
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(true);
+		expect(el("all-sites-offer").hidden).toBe(true);
+		expect(el("new-case").hidden).toBe(true);
 	});
 
 	test("a tab still loading has no address yet: no notice", () => {
 		home({ id: 1, url: "", title: "", size: undefined, loading: true });
 		expect(el("access-notice").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(false);
+		expect(el("new-case").hidden).toBe(false);
 	});
 
 	test("with an address: no notice, New case for this page on", () => {
@@ -152,7 +167,7 @@ describe("the tab", () => {
 		expect(text("page")).toBe("www.example.com/kk");
 		expect(el("hint").hidden).toBe(true);
 		expect(el("access-notice").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(false);
+		expect(el("new-case").hidden).toBe(false);
 	});
 
 	test("a hint of its own goes first", () => {
@@ -161,6 +176,80 @@ describe("the tab", () => {
 		state.hint = "Saving";
 		render(state, noActions);
 		expect(text("hint")).toBe("Saving");
+	});
+});
+
+describe("the offer of all sites (DEC-076)", () => {
+	const tab = (url: string) => ({ id: 1, url, title: "", size: undefined });
+	const home = (
+		url: string,
+		change: (s: PanelState) => void,
+		actions: Actions = noActions,
+	) => {
+		const state = initialState();
+		state.tab = tab(url);
+		state.allSitesKnown = true;
+		change(state);
+		render(state, actions);
+	};
+	const offer = () => el("all-sites-offer");
+	const button = (action: string) =>
+		offer().querySelector(
+			`[data-action="${action}"]`,
+		) as unknown as HTMLButtonElement;
+
+	test("first thing on Home until it is answered: what it is for, Allow on all sites, Not now", () => {
+		const called: string[] = [];
+		home("https://www.example.com/kk", () => undefined, {
+			...noActions,
+			allowAllSites: () => called.push("allow"),
+			declineAllSites: () => called.push("not now"),
+		} as Actions);
+		expect(offer().hidden).toBe(false);
+		expect(offer().previousElementSibling?.id).toBe("page");
+		expect(offer().textContent).toContain("(recommended)");
+		expect(offer().textContent).toContain("without a click on its icon");
+		// A tab with access: the offer says nothing about this tab.
+		expect(offer().textContent).not.toContain("no access to this tab");
+		expect(el("access-notice").hidden).toBe(true);
+		expect(el("new-case").hidden).toBe(false);
+		// Neither of its buttons is the amber one.
+		expect(offer().querySelector(".primary")).toBeNull();
+		button("allow-all-sites").click();
+		button("not-now").click();
+		expect(called).toEqual(["allow", "not now"]);
+	});
+
+	test("on a tab without access it says so too, with the icon's click; one block, not two", () => {
+		home("", () => undefined);
+		expect(offer().hidden).toBe(false);
+		expect(offer().textContent).toContain(
+			"Sitegloss has no access to this tab yet",
+		);
+		expect(offer().textContent).toContain("For this tab only: click");
+		expect(el("access-notice").hidden).toBe(true);
+		expect(el("new-case").hidden).toBe(true);
+	});
+
+	test("not before the browser has said whether all sites is allowed: it does not flash", () => {
+		home("https://www.example.com/kk", (s) => (s.allSitesKnown = false));
+		expect(offer().hidden).toBe(true);
+	});
+
+	test("after Not now it does not come again: a tab with access shows nothing, one without the notice", () => {
+		home("https://www.example.com/kk", (s) => (s.allSitesDeclined = true));
+		expect(offer().hidden).toBe(true);
+		expect(el("access-notice").hidden).toBe(true);
+		home("", (s) => (s.allSitesDeclined = true));
+		expect(offer().hidden).toBe(true);
+		expect(el("access-notice").hidden).toBe(false);
+	});
+
+	test("once allowed, all of it is gone and the option shows on", () => {
+		home("https://www.example.com/kk", (s) => (s.allSites = true));
+		expect(offer().hidden).toBe(true);
+		expect(el("access-notice").hidden).toBe(true);
+		expect(el<HTMLInputElement>("all-sites").checked).toBe(true);
 	});
 });
 
@@ -1868,7 +1957,7 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		],
 	});
 
-	test("the notice with Allow on all sites; only what needs the page is off", () => {
+	test("why, in the tool bar in place of Add marks and Show marks; no Show on a mark; the rest works (DEC-076)", () => {
 		const c = withMark();
 		const asked: string[] = [];
 		const state = noAccess(c);
@@ -1893,26 +1982,25 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		render(state, actionsWith({ allowAllSites: () => void asked.push("all") }));
 		const notice = el("case-access");
 		expect(notice.hidden).toBe(false);
-		expect(notice.textContent).toContain("Click the Sitegloss icon");
+		expect(notice.textContent).toContain(
+			"Sitegloss has no access to this tab yet, so this case's marks are not drawn here",
+		);
+		expect(notice.textContent).toContain("For this tab only: click");
 		expect(notice.querySelector("svg.notice-icon")).not.toBeNull();
-		// In the This tab block, which says nothing else.
-		expect(notice.parentElement).toBe(el("this-tab"));
+		// In the tool bar at the bottom, always in view, where the buttons were.
+		expect(notice.parentElement?.id).toBe("case-dock");
+		expect(el("case-dock").getAttribute("role")).toBeNull();
 		expect(el("tab-line").hidden).toBe(true);
-		(
-			notice.querySelector(
-				'[data-action="allow-all-sites"]',
-			) as unknown as HTMLButtonElement
-		).click();
-		expect(asked).toEqual(["all"]);
-		// Show marks goes; Add marks is off and says why.
-		expect(el("load-case").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(true);
-		expect(el("add-marks").title).toContain("see the notice");
-		const show = window.document.querySelector(
-			'[data-action="show"]',
+		const allow = notice.querySelector(
+			'[data-action="allow-all-sites"]',
 		) as unknown as HTMLButtonElement;
-		expect(show.disabled).toBe(true);
-		expect(show.title).toContain("see the notice");
+		expect(allow.textContent).toBe("Allow on all sites (recommended)");
+		allow.click();
+		expect(asked).toEqual(["all"]);
+		// Show marks, Add marks and a mark's Show are not there: none that does nothing.
+		expect(el("load-case").hidden).toBe(true);
+		expect(el("add-marks").hidden).toBe(true);
+		expect(window.document.querySelector('[data-action="show"]')).toBeNull();
 		// The rest works without the tab.
 		for (const id of ["export-case", "delete-case", "save-verdict"])
 			expect(el<HTMLButtonElement>(id).disabled).toBe(false);
@@ -1973,7 +2061,9 @@ describe("a case on a tab Sitegloss may not run on", () => {
 			noActions,
 		);
 		expect(el("case-access").hidden).toBe(true);
+		expect(el("case-dock").getAttribute("role")).toBe("toolbar");
 		expect(el<HTMLButtonElement>("load-case").disabled).toBe(false);
+		expect(el("add-marks").hidden).toBe(false);
 		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(false);
 	});
 });
@@ -3022,15 +3112,16 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		expect(el("cloud-heading").textContent).toBe("Team");
 		// Home in the order a newcomer reads it, one level each (DEC-045).
 		expect(
-			[...document.querySelectorAll("#home h2, #home h3")].map(
-				(h) => `${h.tagName} ${h.textContent}`,
-			),
+			[...document.querySelectorAll("#home h2, #home h3")]
+				.filter((h) => !h.closest("[hidden]"))
+				.map((h) => `${h.tagName} ${h.textContent}`),
 		).toEqual([
 			"H2 This page",
 			"H2 Cases",
 			"H2 Team",
 			"H2 Files",
 			"H3 Copy to a folder",
+			"H2 Options",
 		]);
 		expect(el("cloud").dataset["cloud"]).toBe("off");
 		expect(el("cloud").textContent).toContain(
@@ -5051,15 +5142,30 @@ describe("the top bar and Settings (DEC-023)", () => {
 		expect(el("leave-hint").hidden).toBe(true);
 	});
 
-	test("Settings holds the AI app card and the options, over Home or a case", () => {
+	test("Settings holds the AI app card only, over Home or a case; the options are on Home, last (DEC-076)", () => {
 		const called: string[] = [];
 		const actions = actionsWith({
 			closeSettings: () => void called.push("back"),
 			closeCase: () => void called.push("close"),
 		});
 		expect(el("ai-card").closest("main")).toBe(el("settings"));
-		expect(el("all-sites").closest("main")).toBe(el("settings"));
-		expect(el("blur-forms").closest("main")).toBe(el("settings"));
+		expect(el("all-sites").closest("main")?.id).toBe("home");
+		expect(el("blur-forms").closest("main")?.id).toBe("home");
+		expect(el("home").lastElementChild?.id).toBe("options");
+		// Access first, "highly recommended", with what it means under it.
+		const options = [...el("options").querySelectorAll("input")].map(
+			(i) => i.id,
+		);
+		expect(options).toEqual(["all-sites", "blur-forms"]);
+		expect(el("all-sites").closest("label")?.textContent?.trim()).toBe(
+			"Allow on all sites (highly recommended)",
+		);
+		expect(el("all-sites").getAttribute("aria-describedby")).toBe(
+			"all-sites-note",
+		);
+		expect(el("all-sites-note").textContent).toContain(
+			"Without it, Sitegloss works on a tab only after you click its icon there",
+		);
 		const c = sampleCase("c_set");
 		render(
 			caseState(c, (s) => (s.settings = true)),
@@ -5118,10 +5224,11 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		// The last thing in the case's view: sticky, it rests after the content.
 		expect(dock.parentElement?.lastElementChild === dock).toBe(true);
 		expect(dock.getAttribute("role")).toBe("toolbar");
-		expect([...dock.querySelectorAll("button")].map((b) => b.id)).toEqual([
-			"add-marks",
-			"load-case",
-		]);
+		expect(
+			[...dock.querySelectorAll("button")]
+				.filter((b) => !b.closest(".notice"))
+				.map((b) => b.id),
+		).toEqual(["add-marks", "load-case"]);
 		expect(el("case-view").querySelectorAll("#add-marks").length).toBe(1);
 		// Calm at rest (DEC-064): the secondary look, amber only while adding.
 		expect(el("add-marks").classList.contains("primary")).toBe(false);
@@ -6156,12 +6263,27 @@ describe("what comes next on the open case (DEC-069)", () => {
 
 	test("Add marks is off where the tool bar's is, and says why", () => {
 		const state = caseState(sampleCase(), (s) => {
-			s.tab = { id: 1, url: "", loading: false } as PanelState["tab"];
+			s.tab = {
+				id: 1,
+				url: "https://www.example.com/kk",
+				title: "",
+			} as PanelState["tab"];
+			s.leaving = { phase: "finishing" };
 		});
 		render(state, noActions);
 		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(true);
 		expect(step("add-marks")?.disabled).toBe(true);
 		expect(step("add-marks")?.title).toBe(el("add-marks").title);
+	});
+
+	test("on a tab without access Add marks is not there either: the tool bar says why (DEC-076)", () => {
+		const state = caseState(sampleCase(), (s) => {
+			s.tab = { id: 1, url: "", loading: false } as PanelState["tab"];
+		});
+		render(state, noActions);
+		expect(el("add-marks").hidden).toBe(true);
+		expect(step("add-marks")).toBeNull();
+		expect(el("case-access").hidden).toBe(false);
 	});
 
 	test("the copies, once the team has the case; what a copy did is said under it", () => {

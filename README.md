@@ -88,7 +88,16 @@ user agent. What differs from Chrome and Edge:
 
 ## Use
 
-1. Click the Sitegloss icon on a tab. The side panel opens there.
+1. Click the Sitegloss icon on a tab (in the toolbar's Extensions menu, the puzzle piece,
+   until you pin it). The side panel opens there. Sitegloss installs without access to
+   any site: until you allow it on all sites, it may run only on a tab where you clicked
+   its icon (Chrome keeps that while the tab stays on the site; Firefox only until the tab
+   goes to another page). So the side panel's main view first offers "Allow on all sites",
+   with "Not now"; the same setting is under Options, last on the main view, as "Allow on
+   all sites (highly recommended)", with what it means under it: the browser asks first,
+   and Sitegloss uses it on the tab in front only and sends nothing anywhere by itself.
+   After "Not now" the offer does not come again (nor after you take all sites back,
+   here or in the browser's settings, which the panel follows).
 2. "New case for this page" creates a case at once, named after the page's title, opens it
    in the side panel and shows the toolbar on the page: Element (click one), Box, Arrow,
    Pen, Note and Highlight (select text on the page, or choose it with text selected; it
@@ -147,12 +156,18 @@ user agent. What differs from Chrome and Edge:
    until "Show marks" or the case is opened again. When the case has no mark of the page
    in front, the case says where its marks are and offers to open the case's page; when
    none of the page's own marks is found, it says so. Home lists a case of several
-   pages under "This page" on each of its pages on the site they were marked on. On a tab Sitegloss may not run on yet (after reloading the extension, say),
-   Chrome hides the address, and the side panel says so with a warning: click the
-   Sitegloss icon there (or press Alt+Shift+O) and the marks are drawn, or press "Allow
-   on all sites" in that notice; until then what needs the page is off. The case's
+   pages under "This page" on each of its pages on the site they were marked on. On a
+   tab Sitegloss may not run on yet (another tab, the site's next page in Firefox, after
+   reloading the extension), the browser hides the address, and the side panel says so
+   with a warning where something is missing: "Sitegloss has no access to this tab yet",
+   with "Allow on all sites (recommended)" and the way for this tab only (click the
+   Sitegloss icon there, or press Alt+Shift+O). On Home it stands in place of "New case
+   for this page"; in an open case it is in the tool bar at the bottom, in place of Add
+   marks and Show/Hide marks, and no mark has Show. With a click or all sites allowed,
+   the marks are drawn and the buttons are back. The case's
    address opens its page in a new tab (Chrome asks whether Sitegloss may run on that
-   site from then on) and draws the marks there (marks a script draws late are looked
+   site from then on; Firefox would take that prompt away as the tab opens, so it is not
+   asked there) and draws the marks there (marks a script draws late are looked
    for again for a few seconds), and when the
    tab's size is not the one the marks were made at, Match size resizes the window to it
    (as far as the screen allows; page zoom is counted). Sitegloss looks for each mark's element and draws the mark on it again,

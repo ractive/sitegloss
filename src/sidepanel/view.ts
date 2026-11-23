@@ -54,6 +54,19 @@ import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
 import { caseSites, siteOf } from "../lib/site.ts";
 import {
+	ALLOW_ALL_SITES,
+	ALLOW_ALL_SITES_RECOMMENDED,
+	accessPlan,
+	NO_ACCESS_CASE,
+	NO_ACCESS_HOME,
+	noAccessHint,
+	offerText,
+	oneTabWay,
+	optionNote,
+	type TabAccess,
+	tabAccess,
+} from "./access.ts";
+import {
 	type CloudActions,
 	caseSync,
 	HAND_OVER_NOTE,
@@ -161,6 +174,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	openMarkPage(c: Case, a: Mark, where: "made" | "here"): void;
 	/** Chrome's prompt for "Allow on all sites"; call it in the click. */
 	allowAllSites(): void;
+	/** "Not now" on the offer of all sites: it does not come again (DEC-076). */
+	declineAllSites(): void;
 	/** Sitegloss's page in chrome://extensions ("Allow access to file URLs"). */
 	openDetails(): void;
 	matchSize(c: Case): void;
@@ -308,9 +323,8 @@ export const IMPORT_BUSY =
 export const EXPORT_ALL_BUSY =
 	"An import is at work: wait for it, or answer its question below, before exporting all cases.";
 
-/** Why Sitegloss does not work on a tab yet, and what to do about it. */
-export const NO_ACCESS =
-	"Sitegloss may not run on this tab yet. Click the Sitegloss icon in the toolbar (or press Alt+Shift+O) while this tab is in front.";
+/** Why an action that needed the page did nothing, and the ways on (DEC-076). */
+export const NO_ACCESS = noAccessHint(FIREFOX);
 
 /** A tab Sitegloss is not let onto even with "Allow on all sites". */
 export const CANNOT_RUN = CANNOT_RUN_TEXT;
@@ -318,20 +332,19 @@ export const CANNOT_RUN = CANNOT_RUN_TEXT;
 /** The same, where Sitegloss may not read files either: that is the toggle for them. */
 export const CANNOT_RUN_FILES = CANNOT_RUN_FILES_TEXT;
 
-/** The title of a button that needs the page, while Sitegloss may not run there. */
-export const NEEDS_ACCESS =
-	"Sitegloss may not run on this tab yet: see the notice.";
-
-/**
- * Whether Sitegloss may run on the tab in front, as far as the panel knows:
- * Chrome tells the address only of a tab it may run on (a tab still loading
- * has none yet). `never`: not even with "Allow on all sites".
- */
-export function access(state: PanelState): "yes" | "ask" | "never" {
-	const tab = state.tab;
-	if (tab === undefined || tab.url !== "" || tab.loading) return "yes";
-	return state.allSites ? "never" : "ask";
+/** Whether Sitegloss may run on the tab in front (`access.ts`). */
+export function access(state: PanelState): TabAccess {
+	return tabAccess(state.tab, state.allSites);
 }
+
+/** What the panel shows about access now (DEC-076). */
+const planOf = (state: PanelState) =>
+	accessPlan({
+		tab: access(state),
+		allSites: state.allSites,
+		declined: state.allSitesDeclined,
+		known: state.allSitesKnown,
+	});
 
 /**
  * The one quiet line where the marks start (DEC-063), or nothing. A case of
@@ -417,25 +430,34 @@ function warningIcon(): SVGSVGElement {
 	return svg;
 }
 
-/** A notice with the warning sign: its text, and a button where there is one. */
+/**
+ * A notice with the warning sign: its text, a button where there is one, and
+ * a line under the button (the one-tab way) where there is one.
+ */
 interface Notice {
 	el: HTMLElement;
 	text: HTMLParagraphElement;
 	button: HTMLButtonElement;
+	way: HTMLParagraphElement;
 }
 
 function notice(id: string, button: HTMLButtonElement): Notice {
 	const text = h("p", {});
+	const way = h("p", { class: "meta notice-way", hidden: true });
 	const el = h(
 		"div",
 		{ class: "notice", id, role: "status", hidden: true },
 		warningIcon(),
-		h("div", { class: "notice-body" }, text, button),
+		h("div", { class: "notice-body" }, text, button, way),
 	);
-	return { el, text, button };
+	return { el, text, button, way };
 }
 
-/** The notice when Sitegloss may not run on the tab in front, with "Allow on all sites". */
+/**
+ * The notice where the tab in front has no access (DEC-076): why, "Allow on
+ * all sites (recommended)", and the one-tab way; or that no extension may run
+ * there.
+ */
 function accessNotice(id: string, actions: () => Actions): Notice {
 	return notice(
 		id,
@@ -450,37 +472,93 @@ function accessNotice(id: string, actions: () => Actions): Notice {
 	);
 }
 
-const ALLOW_ALL_SITES_TITLE = `Let Sitegloss run on every site, without a click on its icon on each tab. ${BROWSER} asks first; you can take it back in the options, in Settings (the AI pill at the top).`;
+const ALLOW_ALL_SITES_TITLE = `Let Sitegloss run on every site, without a click on its icon on each tab. ${BROWSER} asks first; Options on the panel's main view takes it back.`;
 const DETAILS_TITLE =
 	"Open Sitegloss's page in chrome://extensions, where “Allow access to file URLs” is";
 
 /**
- * Sitegloss may not run on the tab: "Allow on all sites" helps, or, where it
- * may run on all sites already, Chrome keeps the tab off limits; for a file
- * that is the "Allow access to file URLs" toggle, which the panel cannot
- * tell apart (Chrome hides the address), so it says both.
+ * The tab in front has no access (`no-access`): why, in `sentence`, with
+ * both ways on. Or no extension may run there (`cannot`): where Sitegloss may
+ * run on all sites already, the browser keeps the tab off limits; for a file
+ * that is the "Allow access to file URLs" toggle, which the panel cannot tell
+ * apart (Chrome hides the address), so it says both.
  */
-function renderAccess(n: Notice, state: PanelState): void {
-	const now = access(state);
-	n.el.hidden = now === "yes";
+function renderAccess(
+	n: Notice,
+	state: PanelState,
+	kind: "no-access" | "cannot" | undefined,
+	sentence: string,
+): void {
+	n.el.hidden = kind === undefined;
 	// Which tab it is about: the address and title are hidden too.
 	n.el.dataset["tab"] = state.tab === undefined ? "" : String(state.tab.id);
-	const files = now === "never" && state.fileAccess === false;
+	const files = kind === "cannot" && state.fileAccess === false;
 	n.text.textContent =
-		now !== "never" ? NO_ACCESS : files ? CANNOT_RUN_FILES : CANNOT_RUN;
+		kind !== "cannot" ? sentence : files ? CANNOT_RUN_FILES : CANNOT_RUN;
 	// Firefox lets no extension open its add-ons page: the text says the way.
-	n.button.hidden = now === "never" && (!files || FIREFOX);
+	n.button.hidden = kind === "cannot" && (!files || FIREFOX);
 	n.button.dataset["action"] = files ? "file-access" : "allow-all-sites";
 	n.button.textContent = files
 		? "Open Sitegloss's details"
-		: "Allow on all sites";
+		: ALLOW_ALL_SITES_RECOMMENDED;
 	n.button.title = files ? DETAILS_TITLE : ALLOW_ALL_SITES_TITLE;
+	setHint(n.way, kind === "no-access" ? oneTabWay(FIREFOX) : undefined);
 }
 
-/** The actions of the last render, for the home view's notice made once. */
+/** The actions of the last render, for the home view's parts made once. */
 let lastActions: Actions | undefined;
 const homeAccess = accessNotice("access-notice", () => lastActions as Actions);
-newCaseButton.before(homeAccess.el);
+
+/**
+ * The first-use offer (DEC-076): at the top of Home while Sitegloss may not
+ * run on all sites and the person has not said "Not now". A note, not a
+ * dialog; neither button is the amber one.
+ */
+const offerHead = h("h3", { class: "group-title", id: "all-sites-offer-head" });
+const offerLine = h("p", { id: "all-sites-offer-text" });
+const offerWay = h("p", { class: "meta", hidden: true });
+const homeOffer = h(
+	"section",
+	{
+		class: "all-sites-offer",
+		id: "all-sites-offer",
+		"aria-labelledby": "all-sites-offer-head",
+		hidden: true,
+	},
+	offerHead,
+	offerLine,
+	h(
+		"div",
+		{ class: "row" },
+		h(
+			"button",
+			{
+				type: "button",
+				class: "strong",
+				"data-action": "allow-all-sites",
+				title: ALLOW_ALL_SITES_TITLE,
+				onclick: () => lastActions?.allowAllSites(),
+			},
+			ALLOW_ALL_SITES,
+		),
+		h(
+			"button",
+			{
+				type: "button",
+				"data-action": "not-now",
+				title:
+					"Keep clicking the Sitegloss icon on each tab. This offer does not come again; Options below has the setting.",
+				onclick: () => lastActions?.declineAllSites(),
+			},
+			"Not now",
+		),
+	),
+	offerWay,
+);
+pageText.after(homeOffer, homeAccess.el);
+
+/** Under the option: the same words in every state, the browser's own (DEC-076). */
+byId<HTMLParagraphElement>("all-sites-note").textContent = optionNote(FIREFOX);
 
 const sizeOf = (s: Size) => `${s.width}×${s.height}`;
 
@@ -1018,12 +1096,26 @@ function renderHome(state: PanelState, actions: Actions): void {
 	// address only of a tab Sitegloss may run on).
 	pageText.textContent = tab?.url ? shortUrl(tab.url) : (tab?.title ?? "");
 	pageText.hidden = pageText.textContent === "";
-	renderAccess(homeAccess, state);
+	// Access (DEC-076): the offer of all sites until it is taken or declined;
+	// on a tab without access, why, with both ways on, in place of New case.
+	const plan = planOf(state);
+	homeOffer.hidden = plan.home !== "offer";
+	homeOffer.toggleAttribute("data-no-access", plan.offerForTab);
+	const offer = offerText(plan.offerForTab, FIREFOX);
+	setHint(offerHead, offer.head);
+	setHint(offerLine, offer.text);
+	setHint(offerWay, plan.offerForTab ? oneTabWay(FIREFOX) : undefined);
+	renderAccess(
+		homeAccess,
+		state,
+		plan.home === "offer" ? undefined : plan.home,
+		NO_ACCESS_HOME,
+	);
 	setHint(hint, state.hint);
-	const ok = access(state) === "yes";
-	// Always a new case, stored and opened at once (DEC-023, DEC-026).
-	newCaseButton.disabled = !ok;
-	newCaseButton.title = ok ? newCaseTitle : NEEDS_ACCESS;
+	// Always a new case, stored and opened at once (DEC-023, DEC-026); not
+	// there where it could not work.
+	newCaseButton.hidden = !plan.pageControls;
+	newCaseButton.title = newCaseTitle;
 	importError.hidden = state.importError === undefined;
 	importErrorText.textContent = state.importError ?? "";
 	// One import at a time, and no export of all cases while it stores them.
@@ -1417,8 +1509,10 @@ interface CaseParts {
 	size: HTMLElement;
 	sizeText: HTMLSpanElement;
 	origin: HTMLElement;
-	/** Sitegloss may not run on the tab in front. */
+	/** Sitegloss may not run on the tab in front: in the tool bar (DEC-076). */
 	access: Notice;
+	/** The tool bar at the bottom: Add marks, Show/Hide marks, or `access`. */
+	dock: HTMLElement;
 	/** None of the case's marks were found on the tab in front (DEC-022). */
 	/** The quiet line where the marks start (DEC-063). */
 	noneFound: HTMLElement;
@@ -2031,7 +2125,16 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		pickedAt: undefined,
 		shots: h("section"),
 		shotsKey: "",
+		dock: h("div", {
+			class: "case-dock",
+			id: "case-dock",
+			// The scroll hold lends its room above the bar (DEC-063).
+			"data-room-before": "",
+			role: "toolbar",
+			"aria-label": "Marks on this tab",
+		}),
 	};
+	created.dock.append(created.addMarks, created.loadButton, created.access.el);
 	// The menu holds Rename, the link, Export and Delete case (DEC-061).
 	menu.append(renameButton, linkMenu, exportItem, created.deleteButton);
 	created.deleteButton.setAttribute("role", "menuitem");
@@ -2101,7 +2204,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const thisTab = h(
 		"section",
 		{ class: "this-tab", id: "this-tab" },
-		created.access.el,
 		created.noneFound,
 		created.tabLine,
 		created.hint,
@@ -2117,20 +2219,9 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		h("section", { class: "case-footer" }, created.closeButton),
 		// Always in reach while a case is open (DEC-063): adding marks, and
 		// the marks shown or not on the tab. Sticky at the panel's bottom, it
-		// rests after the content, so it never covers the last row.
-		h(
-			"div",
-			{
-				class: "case-dock",
-				id: "case-dock",
-				// The scroll hold lends its room above the bar (DEC-063).
-				"data-room-before": "",
-				role: "toolbar",
-				"aria-label": "Marks on this tab",
-			},
-			created.addMarks,
-			created.loadButton,
-		),
+		// rests after the content, so it never covers the last row. On a tab
+		// without access, why, in their place (DEC-076).
+		created.dock,
 	);
 	return created;
 }
@@ -2154,7 +2245,7 @@ function renderStep(
 		members !== undefined &&
 		members.length > 0 &&
 		(teamOf(state.cloud)?.permissions.includes("case:update") ?? false);
-	const step = nextStep(c, whereIs(state.cloud, c), {
+	const next = nextStep(c, whereIs(state.cloud, c), {
 		adding: p.adding,
 		mayClose,
 		...(me === undefined ? {} : { me }),
@@ -2162,6 +2253,11 @@ function renderStep(
 		mayVerify: teamOf(state.cloud)?.permissions.includes("mark:update") ?? true,
 		reporterHere: reporterHere(c, members),
 	});
+	// Not there where the tool bar's is not: a tab without access (DEC-076).
+	const step =
+		next && p.addMarks.hidden
+			? { ...next, actions: next.actions.filter((a) => a !== "add-marks") }
+			: next;
 	const off: Partial<Record<StepAction, string>> = {};
 	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;
 	// What a copy did, while the step still offers that copy.
@@ -3326,22 +3422,27 @@ function renderCase(state: PanelState, actions: Actions): void {
 			? state.loaded
 			: undefined;
 	p.loadedHere = here !== undefined || state.overlay?.loadedCase === c.id;
-	renderAccess(p.access, state);
-	const ok = access(state) === "yes";
+	// On a tab without access, the tool bar says why in place of its
+	// buttons, which could not work there (DEC-076).
+	const plan = planOf(state);
+	renderAccess(p.access, state, plan.inCase, NO_ACCESS_CASE);
+	const ok = plan.pageControls;
+	if (ok) p.dock.setAttribute("role", "toolbar");
+	else p.dock.removeAttribute("role");
+	p.dock.toggleAttribute("data-notice", !ok);
 	// The toolbar on the tab in front adds to this case (DEC-023).
 	p.adding =
 		state.overlay?.visible === true && state.overlay.target?.caseId === c.id;
-	p.addMarks.disabled = !ok || state.leaving?.phase === "finishing";
+	p.addMarks.hidden = !ok;
+	p.addMarks.disabled = state.leaving?.phase === "finishing";
 	// Calm at rest, always in reach; amber only while adding is on, and it
 	// says so (DEC-064).
 	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
 	p.addMarks.classList.toggle("primary", p.adding);
 	// Its words say what it does; no pressed state beside them (DEC-064's review).
-	p.addMarks.title = !ok
-		? NEEDS_ACCESS
-		: p.adding
-			? "Stop adding marks: the toolbar goes once each mark is in the case"
-			: "Each mark you draw on the page goes into this case when its comment is done";
+	p.addMarks.title = p.adding
+		? "Stop adding marks: the toolbar goes once each mark is in the case"
+		: "Each mark you draw on the page goes into this case when its comment is done";
 	// The same button at the end of a long list of marks; not amber, which
 	// is the view's one button that starts drawing (DEC-024).
 	setHint(p.leaving, leavingText(state.leaving));
@@ -3977,7 +4078,7 @@ interface MarkContext {
 	/** The case's added images the team does not have, and why. */
 	notSent: Readonly<Record<string, string>> | undefined;
 	actions: Actions;
-	/** Sitegloss may run on the tab in front: Show can scroll it. */
+	/** Sitegloss may run on the tab in front: Show can scroll it; else no Show. */
 	canReach: boolean;
 	/** A mark opened or closed by its own head. */
 	changed: () => void;
@@ -4026,9 +4127,12 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 		a.author === "ai" ? h("span", { class: "tag" }, "AI") : null,
 	);
 	// A mark of an unknown kind with no element is nowhere this version can
-	// show (DEC-066).
+	// show (DEC-066). On a tab without access none: the tool bar says why
+	// (DEC-076).
 	const show =
-		canShow(m) && !(a.shape.kind === "unknown" && m.status === "no-element")
+		canShow(m) &&
+		x.canReach &&
+		!(a.shape.kind === "unknown" && m.status === "no-element")
 			? h(
 					"button",
 					{
@@ -4036,10 +4140,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 						class: "small show",
 						"data-action": "show",
 						"aria-label": `Show mark ${a.number} on the page`,
-						title: x.canReach
-							? "Scroll the page to this mark and outline it"
-							: NEEDS_ACCESS,
-						disabled: !x.canReach,
+						title: "Scroll the page to this mark and outline it",
 						onclick: () => actions.showMatch(c.id, a, m.current),
 					},
 					"Show",
@@ -4226,7 +4327,7 @@ function otherPage(
  * it): it opens the mark's page in this tab and shows the mark there, as the
  * page's link in the second row does. "Every mark" holds while the case is
  * drawn on the tab: with its marks hidden no mark has Show, here or there.
- * Never disabled, unlike the page's own Show (`canReach`): opening a page
+ * There without access too, unlike the page's own Show (`canReach`): opening a page
  * needs no access to the page in front, and `openMarkPage` asks for the
  * site's access itself where it needs it.
  */

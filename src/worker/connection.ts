@@ -701,10 +701,14 @@ export class Connection {
 	/**
 	 * The consent taken back (Firefox, in its add-on's permissions): AI
 	 * access ends now, as the user's Stop would, but nothing is saved: once
-	 * allowed again, the settings hold as they were.
+	 * allowed again, the settings hold as they were. Called on the removal of
+	 * any permission: with AI access off nothing ends, and nothing is said
+	 * (taking all sites back said "AI problem" before, DEC-076).
 	 */
 	async consentChanged(): Promise<void> {
-		if (!FIREFOX || (await dataConsent().catch(() => false))) return;
+		if (!FIREFOX) return;
+		if (this.#mcp.state === "disconnected" && !this.#keep.retrying) return;
+		if (await dataConsent().catch(() => false)) return;
 		this.#keep.stop();
 		this.#mcp.disconnect();
 		this.#problem = NO_CONSENT;

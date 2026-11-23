@@ -86,9 +86,25 @@
 					<div id="sync" aria-live="polite"></div>
 				</section>
 			</section>
+			<!-- How Sitegloss works on pages (DEC-076): on Home, last, as it is set once.
+			     Access to all sites first: without it, each tab needs the icon's click. The
+			     note under it names the browser's prompt (view.ts). -->
+			<section id="options" class="options" aria-labelledby="options-heading">
+				<h2 id="options-heading">Options</h2>
+				<label class="check">
+					<input id="all-sites" type="checkbox" aria-describedby="all-sites-note" />
+					Allow on all sites (highly recommended)
+				</label>
+				<p id="all-sites-note" class="meta check-note"></p>
+				<label class="check" title="Blur every form field and text editor in the screenshots Sitegloss takes. Password fields are always blurred.">
+					<input id="blur-forms" type="checkbox" />
+					Blur form fields in screenshots
+				</label>
+			</section>
 		</main>
 		<main id="case-view" hidden></main>
-		<!-- Settings (DEC-023): opened by the AI pill, over Home or an open case. -->
+		<!-- Settings (DEC-023): opened by the AI pill, over Home or an open case; only the
+		     AI connection (the options are on Home, DEC-076). -->
 		<main id="settings" hidden>
 			<section id="ai-card" class="ai-card" aria-labelledby="ai-heading">
 				<div class="card-head">
@@ -165,17 +181,6 @@
 				<label class="field">
 					Relay
 					<input id="relay" type="url" spellcheck="false" autocomplete="off" />
-				</label>
-			</section>
-			<section aria-labelledby="options-heading">
-				<h2 id="options-heading">Options</h2>
-				<label class="check" title="Blur every form field and text editor in the screenshots Sitegloss takes. Password fields are always blurred.">
-					<input id="blur-forms" type="checkbox" />
-					Blur form fields in screenshots
-				</label>
-				<label class="check">
-					<input id="all-sites" type="checkbox" />
-					Allow on all sites, without clicking the icon on each tab
 				</label>
 			</section>
 		</main>

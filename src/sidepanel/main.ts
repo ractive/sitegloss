@@ -76,6 +76,7 @@ import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { markPictures } from "../viewer/pictures.ts";
+import { declinedBefore, rememberDeclined, tookBack } from "./access.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
@@ -150,6 +151,11 @@ function askForSite(url: string): Promise<boolean> {
 	const pattern = sitePattern(url);
 	if (pattern === undefined || declinedSites.has(pattern))
 		return Promise.resolve(false);
+	// Firefox's prompt belongs to the tab in front, and the click that asks
+	// also opens a tab or navigates this one: Firefox takes the prompt away
+	// before anyone sees it and answers no (tested, DEC-076). So nothing is
+	// asked there; the tab's notice offers all sites and the icon's click.
+	if (FIREFOX) return Promise.resolve(false);
 	return requestPermissions({ origins: [pattern] }).then(
 		(granted) => {
 			if (!granted) declinedSites.add(pattern);
@@ -1794,6 +1800,11 @@ const actions: Actions = {
 		for (const tabId of tabs) hideOn({ tabId, caseId: c.id });
 	},
 
+	declineAllSites() {
+		rememberDeclined(localStorage);
+		update((s) => (s.allSitesDeclined = true));
+	},
+
 	allowAllSites() {
 		// Chrome asks only during a click: nothing may be awaited before this.
 		void requestPermissions(ALL_SITES).then(
@@ -2502,8 +2513,20 @@ document.addEventListener("visibilitychange", () => {
 async function refreshAllSites(): Promise<void> {
 	const work = sitesWork.start();
 	const granted = await chrome.permissions.contains(ALL_SITES);
-	if (work.current()) update((s) => (s.allSites = granted));
+	if (!work.current()) return;
+	// Taken back, here or in the browser's settings: the offer does not come
+	// again (DEC-076).
+	if (tookBack(state.allSitesKnown ? state.allSites : undefined, granted))
+		rememberDeclined(localStorage);
+	update((s) => {
+		if (tookBack(s.allSitesKnown ? s.allSites : undefined, granted))
+			s.allSitesDeclined = true;
+		s.allSites = granted;
+		s.allSitesKnown = true;
+	});
 }
+
+update((s) => (s.allSitesDeclined = declinedBefore(localStorage)));
 
 allSites.addEventListener("change", () => {
 	// Chrome asks only during a click: nothing may be awaited before this.
