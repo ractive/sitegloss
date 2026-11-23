@@ -91,7 +91,7 @@ export function clippingAncestors(
 
 /**
  * Where the page is asked what lies over an element: inside what shows of
- * it, at its corners (2 px in), and just past the top and the bottom of
+ * it, at its corners (2 px in) and its middle, and just past the top and the bottom of
  * what its mark reaches (`reach`: the drawing, its pin, the element), where
  * a fixed head that does not overlap the element would have the pin's half
  * or a padded box over it. A point past the view is not asked: the view
@@ -102,6 +102,7 @@ export type Probe =
 	| "tr"
 	| "bl"
 	| "br"
+	| "mid"
 	| "aboveL"
 	| "aboveR"
 	| "belowL"
@@ -124,6 +125,7 @@ export function probePoints(
 		tr: { x: r, y: t },
 		bl: { x: l, y: b },
 		br: { x: r, y: b },
+		mid: { x: seen.x + seen.width / 2, y: seen.y + seen.height / 2 },
 	};
 	const wide = intersect(
 		{ x: reach.x, y: view.y, width: reach.width, height: view.height },
@@ -145,70 +147,42 @@ export function probePoints(
 	return out;
 }
 
+/** Something fixed or sticky found at a probe: which one (`id`), and its box now. */
+export interface CoverAt {
+	id: unknown;
+	box: Rect;
+}
+
 /**
- * The view less the covers found at the probes (`probePoints`; a cover's
- * box, or nothing). An end of the view is cut only where both of its points
- * are covered: the top at the nearer of the two covers' bottoms (one cover
- * across, or the cells of a sticky table head: covers in one row), the
- * bottom likewise, a side where one cover holds both its inside corners. One point covered (a button at a corner, a
- * badge in the middle) changes nothing: the mark is drawn. `null` when
- * nothing of the element is left in the view.
+ * The view less the covers found at the probes (`probePoints`). Narrow on
+ * purpose: a cover cuts only the top or the bottom end, and only where one
+ * and the same element covers both points of that end (a head or a foot
+ * bar), at that element's edge; the reach probes past the ends likewise.
+ * One element over all five points inside hides the mark (`null`). Two
+ * different elements at the two points of an end, any cover at a side, a
+ * cut that would leave nothing short of the five: nothing is cut, the mark
+ * is drawn.
  */
 export function cutByCovers(
 	view: Rect,
 	element: Rect,
-	covers: Partial<Record<Probe, Rect | null>>,
+	covers: Partial<Record<Probe, CoverAt | null>>,
 ): Rect | null {
-	/**
-	 * Both points of an end covered, by covers in one row (an end) or by one
-	 * cover (a side): the edge picked of the two.
-	 */
-	const pair = (
-		a: Probe,
-		b: Probe,
-		edge: (r: Rect) => number,
-		pick: (p: number, q: number) => number,
-		together: (p: Rect, q: Rect) => boolean,
-	): number | undefined => {
-		const p = covers[a];
-		const q = covers[b];
-		return p == null || q == null || !together(p, q)
-			? undefined
-			: pick(edge(p), edge(q));
+	const one = (...names: Probe[]): CoverAt | undefined => {
+		const first = covers[names[0] as Probe];
+		if (first == null) return undefined;
+		return names.every((n) => covers[n]?.id === first.id) ? first : undefined;
 	};
-	const row = (p: Rect, q: Rect) => p.y < bottom(q) && q.y < bottom(p);
-	const same = (p: Rect, q: Rect) =>
-		p.x === q.x && p.y === q.y && p.width === q.width && p.height === q.height;
-	const most = (
-		vs: (number | undefined)[],
-		pick: (...n: number[]) => number,
-	) => {
-		const known = vs.filter((v): v is number => v !== undefined);
-		return known.length === 0 ? undefined : pick(...known);
-	};
-	const top = most(
-		[
-			pair("tl", "tr", bottom, Math.min, row),
-			pair("aboveL", "aboveR", bottom, Math.min, row),
-		],
-		Math.max,
-	);
-	const end = most(
-		[
-			pair("bl", "br", (r) => r.y, Math.max, row),
-			pair("belowL", "belowR", (r) => r.y, Math.max, row),
-		],
-		Math.min,
-	);
-	const left = pair("tl", "bl", right, Math.min, same);
-	const rightCut = pair("tr", "br", (r) => r.x, Math.max, same);
-	const x = Math.max(view.x, left ?? view.x);
-	const y = Math.max(view.y, top ?? view.y);
-	const r = Math.min(right(view), rightCut ?? right(view));
-	const b = Math.min(bottom(view), end ?? bottom(view));
-	if (r <= x || b <= y) return null;
-	const out = { x, y, width: r - x, height: b - y };
-	return intersect(element, out) === null ? null : out;
+	if (one("tl", "tr", "bl", "br", "mid") !== undefined) return null;
+	let y = view.y;
+	let b = bottom(view);
+	for (const c of [one("tl", "tr"), one("aboveL", "aboveR")])
+		if (c !== undefined) y = Math.max(y, bottom(c.box));
+	for (const c of [one("bl", "br"), one("belowL", "belowR")])
+		if (c !== undefined) b = Math.min(b, c.box.y);
+	if (b <= y) return view;
+	const out = { x: view.x, y, width: view.width, height: b - y };
+	return intersect(element, out) === null ? view : out;
 }
 
 /** A loaded mark, drawn where its element shows. */

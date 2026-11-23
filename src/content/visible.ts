@@ -16,6 +16,7 @@
 
 import type { Point, Rect } from "../lib/case.ts";
 import {
+	type CoverAt,
 	clippingAncestors,
 	cutByCovers,
 	type Holder,
@@ -24,7 +25,9 @@ import {
 	type Probe,
 	probePoints,
 } from "../lib/clip.ts";
-import { parentOf } from "../lib/shadow.ts";
+import { parseColor } from "../lib/colour.ts";
+import { parentOf, shadowOf } from "../lib/shadow.ts";
+import { pageElementsAt } from "./anchor.ts";
 
 /** Far enough to be no edge on an axis that is not cut. */
 const FAR = 1e7;
@@ -73,10 +76,11 @@ function within(inner: Element, outer: Element): boolean {
 }
 
 /**
- * Something fixed or sticky over an element: the fixed or sticky box
- * (`root`), and the outermost part of it the hit test saw (`part`: a
- * `pointer-events: none` layer is not seen, its button is). Its box is the
- * two's common part.
+ * Something fixed or sticky over an element, that paints: the fixed or
+ * sticky box (`root`), and the outermost part of it the hit test saw
+ * (`part`: a `pointer-events: none` layer is not seen, its button is). The
+ * part is which element covers (one bar at both points of an end, or two
+ * things); its box is the two's common part.
  */
 interface Cover {
 	root: Element;
@@ -91,6 +95,8 @@ interface Tested {
 	tested: number;
 	/** When its place last changed. */
 	moved: number;
+	/** It was due for a hit test that no pass had time for yet. */
+	owed: boolean;
 	/** The covers found at its probes then. */
 	covers: Partial<Record<Probe, Cover | null>>;
 	view: Rect | null;
@@ -107,7 +113,7 @@ export class Visibility {
 		{ changes: number; at: number; clippers: Clipper[] }
 	>();
 	#tested = new WeakMap<Element, Tested>();
-	/** The covers found lately on the page, by their root: assumed during a scroll. */
+	/** The covers found lately on the page, by their part: assumed during a scroll. */
 	#known = new Map<Element, { cover: Cover; at: number }>();
 	/** Read once a pass. */
 	#holders = new Map<Element, Holder>();
@@ -116,20 +122,21 @@ export class Visibility {
 	#coverBoxes = new Map<Cover, Rect | null>();
 	/** The open modal dialogs, or the fullscreen element, this pass. */
 	#tops: Element[] = [];
-	/** Until when this pass may hit-test; whether it tested a mark yet. */
-	#until = 0;
-	#testedAny = false;
+	/** Until when this pass may hit-test, from its first hit test on. */
+	#until: number | undefined;
+	readonly #testMs: number;
 	/** Marks were due for a hit test that this pass had no time for. */
 	pending = false;
 
 	constructor(
 		doc: Document,
 		host: Element,
-		options: { now?: () => number } = {},
+		options: { now?: () => number; testMs?: number } = {},
 	) {
 		this.#doc = doc;
 		this.#host = host;
 		this.#now = options.now ?? (() => performance.now());
+		this.#testMs = options.testMs ?? TEST_MS;
 		this.#dialogs = doc.getElementsByTagName("dialog");
 	}
 
@@ -139,14 +146,35 @@ export class Visibility {
 		this.#positions.clear();
 		this.#boxes.clear();
 		this.#coverBoxes.clear();
-		this.#until = performance.now() + TEST_MS;
-		this.#testedAny = false;
+		this.#until = undefined;
 		this.pending = false;
 		const full = this.#doc.fullscreenElement;
 		this.#tops = full ? [full] : this.#modals();
 		const now = this.#now();
-		for (const [root, k] of this.#known)
-			if (now - k.at > KNOWN_MS || !root.isConnected) this.#known.delete(root);
+		for (const [part, k] of this.#known)
+			if (now - k.at > KNOWN_MS || !part.isConnected) this.#known.delete(part);
+	}
+
+	/**
+	 * The marks' elements in the order a pass should take them: those owed a
+	 * hit test first, then the longest untested, so the time of a pass goes
+	 * round and no mark waits for ever.
+	 */
+	byTurn<T extends { el: Element }>(marks: readonly T[]): T[] {
+		const rank = (m: T) => {
+			const t = this.#tested.get(m.el);
+			return t === undefined
+				? [0, Number.NEGATIVE_INFINITY]
+				: [t.owed ? 0 : 1, t.tested];
+		};
+		return marks
+			.map((m) => ({ m, r: rank(m) }))
+			.sort(
+				(a, b) =>
+					(a.r[0] as number) - (b.r[0] as number) ||
+					(a.r[1] as number) - (b.r[1] as number),
+			)
+			.map((x) => x.m);
 	}
 
 	/**
@@ -325,41 +353,62 @@ export class Visibility {
 		const last = this.#tested.get(el);
 		const still = last !== undefined && last.key === key;
 		const moved = still ? last.moved : now;
+		// A page that cannot be hit-tested has no covers.
 		const due =
-			last === undefined ||
-			last.changes !== changes ||
-			// Only a mark something covers is asked again by age: a cover gone
-			// would leave it wrongly hidden; one come without a move or a DOM
-			// change leaves a mark drawn over it, the lesser wrong.
-			(now - last.tested >= COVER_MS &&
-				Object.values(last.covers).some((c) => c != null)) ||
-			(still && last.tested < last.moved && now - last.moved >= SETTLE_MS);
+			typeof this.#doc.elementsFromPoint === "function" &&
+			(last === undefined ||
+				last.owed ||
+				last.changes !== changes ||
+				// Only a mark something covers is asked again by age: a cover gone
+				// would leave it wrongly hidden; one come without a move or a DOM
+				// change leaves a mark drawn over it, the lesser wrong.
+				(now - last.tested >= COVER_MS &&
+					Object.values(last.covers).some((c) => c != null)) ||
+				(still && last.tested < last.moved && now - last.moved >= SETTLE_MS));
 		if (!due && still) return last.view;
 		const probes = probePoints(rect, view, reach);
+		// The clock of a pass starts at its first hit test (a layout the page
+		// forced before is not its time).
+		const time = this.#until === undefined || performance.now() < this.#until;
 		let covers: Partial<Record<Probe, Cover | null>>;
-		let tested = last?.tested ?? Number.NEGATIVE_INFINITY;
-		const time = !this.#testedAny || performance.now() < this.#until;
-		if (due && !time) this.pending = true;
-		if (due && time && typeof this.#doc.elementsFromPoint === "function") {
-			this.#testedAny = true;
+		let record: Pick<Tested, "changes" | "tested" | "owed">;
+		if (due && time) {
+			this.#until ??= performance.now() + this.#testMs;
 			covers = {};
 			for (const [name, p] of Object.entries(probes) as [Probe, Point][]) {
 				const cover = this.#coverAt(el, p);
 				covers[name] = cover;
-				if (cover !== null) this.#known.set(cover.root, { cover, at: now });
+				if (cover !== null) this.#known.set(cover.part, { cover, at: now });
 			}
-			tested = now;
-		} else covers = this.#assumed(el, probes, last?.covers ?? {});
-		const boxes: Partial<Record<Probe, Rect | null>> = {};
+			record = { changes, tested: now, owed: false };
+		} else {
+			covers = this.#assumed(el, probes, last?.covers ?? {});
+			// Due and no time: it stays owed, nothing it was due for is forgotten.
+			if (due) this.pending = true;
+			record = due
+				? {
+						changes: last?.changes ?? -1,
+						tested: last?.tested ?? Number.NEGATIVE_INFINITY,
+						owed: true,
+					}
+				: {
+						changes,
+						tested: last?.tested ?? Number.NEGATIVE_INFINITY,
+						owed: false,
+					};
+		}
+		const at: Partial<Record<Probe, CoverAt | null>> = {};
 		for (const [name, c] of Object.entries(covers) as [Probe, Cover | null][]) {
 			const box = c === null ? null : this.#coverBox(c);
 			// A cover's box must still hold its point.
 			const p = probes[name];
-			boxes[name] =
-				box !== null && p !== undefined && holds(box, p) ? box : null;
+			at[name] =
+				c !== null && box !== null && p !== undefined && holds(box, p)
+					? { id: c.part, box }
+					: null;
 		}
-		const out = cutByCovers(view, rect, boxes);
-		this.#tested.set(el, { key, changes, tested, moved, covers, view: out });
+		const out = cutByCovers(view, rect, at);
+		this.#tested.set(el, { key, moved, covers, view: out, ...record });
 		return out;
 	}
 
@@ -406,15 +455,17 @@ export class Visibility {
 
 	/**
 	 * The fixed or sticky thing topmost at a point, if it is over `el`: the
-	 * page's topmost element there is neither `el`, nor inside it, nor around
-	 * it, and it is or sits in something fixed or sticky outside `el`'s
-	 * ancestors. An element the hit test does not see (`pointer-events:
-	 * none`) counts as showing: the mark stays rather than going wrongly.
+	 * page's topmost element there (inside shadow roots too) is neither `el`,
+	 * nor inside it, nor around it; it is or sits in something fixed or
+	 * sticky outside `el`'s ancestors; and it paints (`paints`): a layer that
+	 * paints nothing (the click-catcher behind an open menu) covers nothing.
+	 * An element the hit test does not see (`pointer-events: none`) counts as
+	 * showing: the mark stays rather than going wrongly.
 	 */
 	#coverAt(el: Element, p: Point): Cover | null {
 		const doc = this.#doc;
 		// The topmost alone first: mostly it is the element, and the list of
-		// all costs more.
+		// all costs more. A shadow host may hold a bar over it: then the list.
 		const top =
 			typeof doc.elementFromPoint === "function"
 				? doc.elementFromPoint(p.x, p.y)
@@ -422,12 +473,11 @@ export class Visibility {
 		if (
 			top !== null &&
 			top !== this.#host &&
+			shadowOf(top) === null &&
 			(within(top, el) || within(el, top))
 		)
 			return null;
-		const hits = doc
-			.elementsFromPoint(p.x, p.y)
-			.filter((h) => h !== this.#host);
+		const hits = pageElementsAt(p.x, p.y, this.#host, doc);
 		const hit = hits[0];
 		if (hit === undefined) return null;
 		if (within(hit, el) || within(el, hit)) return null;
@@ -444,8 +494,46 @@ export class Visibility {
 		// The outermost part of it that was hit: what takes the pointer there.
 		let part = hit;
 		for (const h of hits) if (within(part, h) && within(h, root)) part = h;
-		return { root, part };
+		// Something of it on the way from the hit up to that part paints.
+		for (let at: Element | null = hit; at !== null; at = parentOf(at)) {
+			if (this.#paints(at)) return { root, part };
+			if (at === part) break;
+		}
+		return null;
 	}
+
+	/**
+	 * Whether an element paints a ground: a background colour that is not
+	 * transparent, a background image, a backdrop filter, or a dialog or
+	 * popover in the top layer.
+	 */
+	#paints(el: Element): boolean {
+		const s = this.#style(el);
+		if (s === undefined) return false;
+		if (el.localName === "dialog") return true;
+		try {
+			if (el.matches(":popover-open")) return true;
+		} catch {
+			// The selector is not known here.
+		}
+		const set = (v: string | undefined) =>
+			v !== undefined && v !== "" && v !== "none";
+		return (
+			opaque(s.backgroundColor) ||
+			set(s.backgroundImage) ||
+			set((s as { backdropFilter?: string }).backdropFilter)
+		);
+	}
+}
+
+/** A computed colour with some alpha; a form this cannot read counts as painting. */
+function opaque(colour: string | undefined): boolean {
+	if (colour === undefined || colour === "") return false;
+	const c = parseColor(colour);
+	if (c !== undefined) return c.a > 0;
+	if (colour.trim().toLowerCase() === "transparent") return false;
+	const alpha = /\/\s*([\d.]+)(%?)\s*\)\s*$/.exec(colour);
+	return alpha === null || Number(alpha[1]) > 0;
 }
 
 /** An ancestor that cuts an element, and on which axes. */

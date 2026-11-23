@@ -117,22 +117,18 @@ describe("where the page is asked what covers an element", () => {
 
 describe("the view less the covers", () => {
 	const element = box(40, 80, 600, 300);
-	const head = box(0, 60, 1000, 50);
+	/** A cover: one element (`id`) with its box. */
+	const cover = (id: string, r: ReturnType<typeof box>) => ({ id, box: r });
+	const head = cover("head", box(0, 60, 1000, 50));
 
-	test("a head across the element's top takes the top off", () => {
+	test("one head bar at both top corners takes the top off, at its bottom", () => {
 		expect(cutByCovers(PANE, element, { tl: head, tr: head })).toEqual(
 			box(0, 110, 1000, 690),
 		);
 	});
 
-	test("the cells of a sticky table head: cut at the nearer bottom", () => {
-		const a = box(40, 60, 300, 40);
-		const b = box(340, 60, 300, 44);
-		expect(cutByCovers(PANE, element, { tl: a, tr: b })?.y).toBe(100);
-	});
-
-	test("a head just above the element, reached by its pin: the view stops at its bottom", () => {
-		const fixedHead = box(0, 0, 1000, 75);
+	test("a head just above the element, at both reach points: the view stops at its bottom", () => {
+		const fixedHead = cover("head", box(0, 0, 1000, 75));
 		const view = cutByCovers(WINDOW, element, {
 			aboveL: fixedHead,
 			aboveR: fixedHead,
@@ -141,32 +137,49 @@ describe("the view less the covers", () => {
 		expect(intersect(element, view ?? WINDOW)).toEqual(element);
 	});
 
-	test("covers at the top and the bottom both cut", () => {
-		const banner = box(0, 300, 1000, 500);
+	test("a head bar at the top and a foot bar at the bottom both cut", () => {
+		const foot = cover("foot", box(0, 300, 1000, 500));
 		expect(
-			cutByCovers(PANE, element, {
-				tl: head,
-				tr: head,
-				bl: banner,
-				br: banner,
-			}),
+			cutByCovers(PANE, element, { tl: head, tr: head, bl: foot, br: foot }),
 		).toEqual(box(0, 110, 1000, 190));
 	});
 
-	test("a cover down one side cuts that side", () => {
-		const side = box(0, 0, 200, 800);
-		expect(cutByCovers(PANE, element, { tl: side, bl: side })?.x).toBe(200);
+	test("two different things at the two corners of an end cut nothing: the mark stays whole", () => {
+		// A chat launcher and a consent button, or the two halves of a head.
+		const launcher = cover("launcher", box(600, 330, 60, 60));
+		const consent = cover("consent", box(20, 330, 60, 60));
+		expect(cutByCovers(PANE, element, { bl: consent, br: launcher })).toEqual(
+			PANE,
+		);
+		const left = cover("left half", box(0, 60, 500, 50));
+		const right = cover("right half", box(500, 60, 500, 50));
+		expect(cutByCovers(PANE, element, { tl: left, tr: right })).toEqual(PANE);
 	});
 
-	test("a cover over all of it leaves nothing", () => {
-		const all = box(0, 0, 1000, 800);
+	test("two full-height rails at the sides, at every corner and past the ends: nothing is cut", () => {
+		const nav = cover("nav", box(0, 0, 60, 800));
+		const rail = cover("rail", box(620, 0, 60, 800));
 		expect(
-			cutByCovers(PANE, element, { tl: all, tr: all, bl: all, br: all }),
-		).toBeNull();
+			cutByCovers(PANE, element, {
+				tl: nav,
+				bl: nav,
+				tr: rail,
+				br: rail,
+				aboveL: nav,
+				aboveR: rail,
+			}),
+		).toEqual(PANE);
 	});
 
-	test("one corner covered (a button, a badge) changes nothing: the mark is drawn", () => {
-		const button = box(20, 60, 56, 56);
+	test("one thing over all five points hides the mark; over the four corners only, it is drawn", () => {
+		const overlay = cover("overlay", box(0, 0, 1000, 800));
+		const all = { tl: overlay, tr: overlay, bl: overlay, br: overlay };
+		expect(cutByCovers(PANE, element, { ...all, mid: overlay })).toBeNull();
+		expect(cutByCovers(PANE, element, all)).toEqual(PANE);
+	});
+
+	test("one corner covered (a button, a badge) changes nothing", () => {
+		const button = cover("button", box(20, 60, 56, 56));
 		expect(cutByCovers(PANE, element, { tl: button, tr: null })).toEqual(PANE);
 		expect(cutByCovers(PANE, element, {})).toEqual(PANE);
 	});

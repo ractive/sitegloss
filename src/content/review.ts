@@ -1487,28 +1487,34 @@ export class Reviewer {
 		const items: ReviewItem[] = [];
 		/** The mark the popover is open for, where it is drawn now. */
 		let open: ReviewItem | undefined;
-		const add = (entry: Entry, item: ReviewItem) => {
-			items.push(item);
-			if (entry.mark.id === this.#open?.markId) open = item;
-		};
+		/** Each mark drawn, at its place in the case: the later on top. */
+		const drawn: (ReviewItem | undefined)[] = [];
+		const onElement: {
+			at: number;
+			el: Element;
+			rect: Rect;
+			item: ReviewItem;
+		}[] = [];
 		this.#visibility.begin();
-		for (const entry of this.#entries) {
+		this.#entries.forEach((entry, at) => {
 			if (entry.match.status === "no-element") {
-				const item = this.#whereItWas(entry.mark);
-				if (item !== undefined) add(entry, item);
-				continue;
+				drawn[at] = this.#whereItWas(entry.mark);
+				return;
 			}
 			const el = this.#element(entry);
-			if (el === undefined || !el.isConnected) continue;
+			if (el === undefined || !el.isConnected) return;
 			const r = el.getBoundingClientRect();
-			if (r.width === 0 && r.height === 0) continue;
+			if (r.width === 0 && r.height === 0) return;
 			const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
-			const item = this.#onElement(entry, rect);
+			onElement.push({ at, el, rect, item: this.#onElement(entry, rect) });
+		});
+		// Only where its element shows: not over a head its pane scrolled it
+		// under, nor anywhere while nothing of it shows (DEC-075). In the
+		// order whose turn it is to be hit-tested.
+		for (const { at, el, rect, item } of this.#visibility.byTurn(onElement)) {
 			const bounds = shapeBounds(item.shape);
 			const pin = pinPosition(item);
 			const radius = badgeRadius(item.shape);
-			// Only where its element shows: not over a head its pane scrolled
-			// it under, nor anywhere while nothing of it shows (DEC-075).
 			const reach = union(union(rect, bounds), {
 				x: pin.x - radius,
 				y: pin.y - radius,
@@ -1517,8 +1523,14 @@ export class Reviewer {
 			});
 			const view = this.#visibility.viewOf(el, rect, reach, this.#changes);
 			const clipped = clipMark({ element: rect, bounds, pin, radius, view });
-			if (clipped !== null) add(entry, { ...item, ...clipped });
+			if (clipped !== null) drawn[at] = { ...item, ...clipped };
 		}
+		this.#entries.forEach((entry, at) => {
+			const item = drawn[at];
+			if (item === undefined) return;
+			items.push(item);
+			if (entry.mark.id === this.#open?.markId) open = item;
+		});
 		this.overlay.renderReview(items);
 		// Hit tests this pass had no time for: in the next frames (DEC-075).
 		if (this.#visibility.pending) this.#schedule();

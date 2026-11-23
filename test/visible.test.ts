@@ -120,31 +120,91 @@ describe("the ancestors that clip an element", () => {
 
 describe("what covers an element", () => {
 	const element = box(100, 200, 400, 100);
+	const WHOLE = box(0, 0, 1024, 768);
+	const PAINTED = "background-color: rgb(30, 30, 30)";
 
 	beforeEach(() => {
 		doc.body.innerHTML = `
-			<header id="head" style="position: sticky"><span id="logo">S</span></header>
-			<div id="layer" style="position: fixed"><button id="fab">+</button></div>
+			<header id="head" style="position: sticky; ${PAINTED}"><span id="logo">S</span></header>
+			<div id="layer" style="position: fixed"><button id="fab" style="${PAINTED}">+</button></div>
 			<div id="el">marked</div>`;
-		place($("layer"), box(0, 0, 1024, 768));
+		place($("layer"), WHOLE);
 		place($("fab"), box(80, 180, 56, 56));
 	});
 
 	test("a small button in a fixed layer the pointer passes through covers only its corner: the mark stays", () => {
 		// The layer itself takes no pointer: the hit test sees its button only.
 		hitsAt = (x, y) =>
-			within({ x, y }, box(80, 180, 56, 56))
-				? [$("fab"), $("el"), doc.body]
-				: [$("el"), doc.body];
-		expect(viewOf($("el"), element)).toEqual(box(0, 0, 1024, 768));
+			within({ x, y }, box(80, 180, 56, 56)) ? [$("fab"), $("el")] : [$("el")];
+		expect(viewOf($("el"), element)).toEqual(WHOLE);
 	});
 
-	test("a sticky head across the element's top takes the top off, by the head's box", () => {
+	test("a head bar across the element's top takes the top off, at the bar's bottom", () => {
 		place($("head"), box(0, 180, 1024, 50));
 		place($("logo"), box(10, 190, 20, 20));
-		hitsAt = (_x, y) =>
-			y <= 230 ? [$("logo"), $("head"), doc.body] : [$("el"), doc.body];
+		hitsAt = (_x, y) => (y <= 230 ? [$("logo"), $("head")] : [$("el")]);
 		expect(viewOf($("el"), element)?.y).toBe(230);
+	});
+
+	test("a head of two halves, two elements, cuts nothing (accepted)", () => {
+		doc.body.innerHTML = `
+			<header id="head" style="position: fixed; pointer-events: none">
+				<div id="left" style="${PAINTED}">a</div><div id="right" style="${PAINTED}">b</div>
+			</header>
+			<div id="el">marked</div>`;
+		place($("head"), box(0, 180, 1024, 50));
+		// Split inside the element's width: each corner under another half.
+		place($("left"), box(0, 180, 300, 50));
+		place($("right"), box(300, 180, 724, 50));
+		hitsAt = (x, y) =>
+			y > 230 ? [$("el")] : x < 300 ? [$("left")] : [$("right")];
+		expect(viewOf($("el"), element)).toEqual(WHOLE);
+	});
+
+	test("two widgets at the element's two bottom corners: the mark stays whole", () => {
+		doc.body.innerHTML = `
+			<div id="consent" style="position: fixed; ${PAINTED}">ok</div>
+			<div id="chat" style="position: fixed; ${PAINTED}">?</div>
+			<div id="el">marked</div>`;
+		place($("consent"), box(80, 270, 60, 60));
+		place($("chat"), box(460, 270, 60, 60));
+		hitsAt = (x, y) =>
+			y >= 270 && x < 140
+				? [$("consent")]
+				: y >= 270 && x > 460
+					? [$("chat")]
+					: [$("el")];
+		expect(viewOf($("el"), element)).toEqual(WHOLE);
+	});
+
+	test("a full-window layer that paints nothing (the click-catcher behind a menu) covers nothing", () => {
+		doc.body.innerHTML = `<div id="catcher" style="position: fixed; background-color: rgba(0, 0, 0, 0)"></div><div id="el">marked</div>`;
+		place($("catcher"), WHOLE);
+		hitsAt = () => [$("catcher")];
+		for (const r of [element, box(10, 10, 100, 30), box(600, 500, 300, 200)])
+			expect(viewOf($("el"), r)).toEqual(WHOLE);
+	});
+
+	test("a full-window overlay that paints hides the mark", () => {
+		doc.body.innerHTML = `<div id="dim" style="position: fixed; background-color: rgba(0, 0, 0, 0.4)"></div><div id="el">marked</div>`;
+		place($("dim"), WHOLE);
+		hitsAt = () => [$("dim")];
+		expect(viewOf($("el"), element)).toBeNull();
+	});
+
+	test("a sticky bar in the app's shadow root is found", () => {
+		doc.body.innerHTML = `<my-app id="app"></my-app>`;
+		const root = $("app").attachShadow({ mode: "open" });
+		root.innerHTML = `<header id="bar" style="position: sticky; ${PAINTED}">Bar</header><div id="el">marked</div>`;
+		const bar = root.getElementById("bar") as Element;
+		const el = root.getElementById("el") as Element;
+		place(bar, box(0, 180, 1024, 50));
+		// The document sees the host only; its shadow root says what is in it.
+		hitsAt = () => [$("app")];
+		Object.defineProperty(root, "elementsFromPoint", {
+			value: (_x: number, y: number) => (y <= 230 ? [bar] : [el]),
+		});
+		expect(viewOf(el, element)?.y).toBe(230);
 	});
 
 	test("found covers are kept a while, and asked again once old", () => {
@@ -197,5 +257,45 @@ describe("what covers an element", () => {
 		hitsAt = (_x, y) => (y <= 80 ? [$("head")] : [$("el")]);
 		clock += SETTLE_MS;
 		expect(viewOf($("el"), at(30))?.y).toBe(80);
+	});
+});
+
+describe("the time a pass has for hit tests", () => {
+	test("held to one mark a pass, every mark is tested in turn, and a DOM change is not forgotten", () => {
+		visibility = new Visibility(doc, doc.createElement("div"), {
+			now: () => clock,
+			testMs: 0,
+		});
+		doc.body.innerHTML = `<div id="a">a</div><div id="b">b</div><div id="c">c</div>`;
+		const marks = ["a", "b", "c"].map((id, i) => ({
+			el: $(id),
+			rect: box(100, 100 + i * 100, 300, 50),
+		}));
+		const asked = new Map<Element, number>();
+		hitsAt = (_x, y) => {
+			const m = marks.find((k) => y >= k.rect.y && y <= k.rect.y + 50);
+			if (m !== undefined) asked.set(m.el, (asked.get(m.el) ?? 0) + 1);
+			return m === undefined ? [] : [m.el];
+		};
+		const pass = (changes: number) => {
+			visibility.begin();
+			for (const m of visibility.byTurn(marks))
+				visibility.viewOf(m.el, m.rect, m.rect, changes);
+			return visibility.pending;
+		};
+		const testedOnce = () => marks.filter((m) => (asked.get(m.el) ?? 0) > 0);
+		expect(pass(0)).toBe(true);
+		expect(testedOnce()).toHaveLength(1);
+		pass(0);
+		expect(pass(0)).toBe(false);
+		expect(testedOnce()).toHaveLength(3);
+		// A DOM change: all three owe a test, served over the next passes.
+		const before = new Map(asked);
+		expect(pass(1)).toBe(true);
+		pass(1);
+		pass(1);
+		expect(pass(1)).toBe(false);
+		for (const m of marks)
+			expect((asked.get(m.el) ?? 0) > (before.get(m.el) ?? 0)).toBe(true);
 	});
 });
