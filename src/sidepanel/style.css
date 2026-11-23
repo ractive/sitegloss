@@ -691,8 +691,9 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	color: var(--st-verified);
 }
 
-#copy-case-id[data-failed] {
-	color: var(--danger);
+/* The id to copy by hand, where the browser refused: one press selects it all. */
+#copy-case-shown {
+	user-select: all;
 }
 
 #back .icon {

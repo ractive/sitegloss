@@ -4842,6 +4842,15 @@ describe("the top bar and Settings (DEC-023)", () => {
 		expect(el("copy-case-id").getAttribute("aria-label")).toBe(
 			"Copy this case's id",
 		);
+		// A refusal shows the id to copy by hand; another case forgets it.
+		el("copy-case-id").click();
+		expect(el("copy-case-failed").hidden).toBe(false);
+		expect(el("copy-case-shown").textContent).toBe("c_top");
+		render(caseState(sampleCase("c_other")), noActions);
+		expect(el("copy-case-failed").hidden).toBe(true);
+		render(initialState(), noActions);
+		expect(el("copy-case-id").hidden).toBe(true);
+		render(caseState(sampleCase("c_top")), actions);
 		el("back").click();
 		expect(called).toEqual(["close"]);
 	});
