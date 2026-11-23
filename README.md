@@ -412,8 +412,9 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
   "My cases" above the list shows only the cases where it is your turn, with their
   number, and each card says where its case stands and who has its open marks. An
   assignment made offline waits and is sent, as every change. The website mails the
-  assignee, and the reporter when the case is ready to check. Sitegloss 0.4.0 and older
-  show no assignee and leave it as it is.
+  assignee, and the reporter when the case is ready to check. All of this shows only
+  where the team's server assigns cases. Sitegloss 0.4.0 and older show no assignee and
+  leave it as it is.
 - Deleting a case the team has deletes it for the team; the button says so. A case
   deleted for the team goes here too. What you delete while signed out is not deleted
   for the team: at the next sign-in the team's marks are back, and Sitegloss says so.
