@@ -3570,6 +3570,22 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   handed to it once; nothing is posted to the page's window and no address carries data.
   End-to-end test (`adding.test.ts`): keys and a paste of text in the dialog; on round 4
   the page heard every key and the pasted text, now nothing, and the comment is saved.
+- **What the field's frame needs in the manifest, for the stores.** A page of the
+  extension in a frame on a web page has to be listed in `web_accessible_resources`:
+  `field/*` (its HTML, script, style sheet and source map), for `<all_urls>`, since a
+  person may mark any page Sitegloss is allowed on. Nothing else is listed (the viewer
+  opens in a window of the extension's own and needs no entry). What a page could learn
+  that it could not before: in Chrome, any page could load
+  `chrome-extension://<the store id>/field/index.html` and so learn that Sitegloss is
+  installed, on every site, also where Sitegloss was never used; before, a page could
+  only see Sitegloss's host element, on a tab where the person had opened Sitegloss.
+  So Chrome's entry has `use_dynamic_url: true`: only this browser session's address
+  works (Chrome 130 and later; older versions ignore the key). Measured in Chrome 156: a
+  page's fetch of the fixed address is refused (it was answered 200 without the key), and
+  the field still loads from `chrome.runtime.getURL`. Firefox has no such key and needs
+  none: each install has an address of its own (`moz-extension://<a random id>`), so a
+  page cannot try one. The field page shows nothing and reads nothing until the content
+  script hands it its port; loaded by a page itself, it is an empty, disabled field.
 - **The picture in a window of its own (the owner's choice).** The owner, between the
   two candidates: "That would be great if you wouldn't need to modify the page that is
   actually shown." So a tile's click asks the worker for the viewer in a small window
@@ -3588,10 +3604,13 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   macOS full-screen space; a popup of a full-screen window may open in a space of its
   own there. Nothing is done differently for it yet; on a small screen the window is
   the screen less 16 px on each side.
-- **Firefox: not checked.** The same code runs there: the field's frame of
-  `moz-extension://` with a MessageChannel, and `browser.windows.create` with
-  `type: "popup"`, which Firefox opens as a window with a reduced, read-only address bar
-  (its documented popup type); no Firefox run was made.
+- **Firefox (160, headless, the Firefox end-to-end set):** the field's frame works:
+  the focus is in it when the dialog opens, text typed goes in (inserted as an input
+  method does), Ctrl with Enter and Escape close the dialog with the comment kept, and
+  the page's listeners heard nothing. A real paste could not be driven there (no
+  trusted clipboard in that harness). A picture opens in a window of type "popup" with
+  one tab, and Close closes it; how Firefox draws the popup's reduced address bar was
+  not seen (headless).
 - **Corners:** controls 6 px (the top bar's buttons, the page filter's menu, the page
   counts, a tile's remove), cards and the mark's body 8 px, the page's bar and dialog
   10 px with 6 px buttons; status chips and pins stay round.
@@ -3612,5 +3631,13 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   of its 3980 lines to read, 250 to 400 to change), makes most of
   `src/sidepanel/scroll-anchor.ts` (203 lines) unneeded, and changes about ten tests in
   `test/view.test.ts` that hold rows found before a render.
+- **The `extension` test that failed now and then ("v1 on v2", mark 4 probable at 98%):**
+  its mark 4 was the filler above the footer, not the footer. The screenshot of mark 3
+  scrolled the page while the test aimed at the footer, and the click landed one element
+  higher; v2 has the filler. The test now waits for that screenshot (5 of 5 passed after,
+  3 of 5 failed before).
 - Tests: `test/view.test.ts`, `test/review.test.ts` (the frame field driven by its
-  messages), end-to-end `adding`, `images`, `look`, `panel`, `extension`.
+  messages), end-to-end `adding` (keys and paste never reach the page), `images` (Add
+  another image… from the page's dialog), `look`, `panel`, `extension`, `verify`, and in
+  Firefox the field (focus on open, typing, Ctrl+Enter, Escape, nothing heard by the page)
+  and the viewer's popup window.
