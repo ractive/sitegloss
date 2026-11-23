@@ -3725,3 +3725,96 @@ list of a case's pages sat in the second column of the facts block, beside the l
 - A list that closes by itself (the tab moved to a page of the case) while the keyboard's
   focus is in it hands the focus to the heading.
 - A case with one page keeps its address among the facts, under the label "Page".
+
+## DEC-066: The Highlight tool, and marks of a kind made with a newer Sitegloss
+
+2026-11-23. On `highlight`. The owner, with the logo's swipe behind "gloss": "I'd like to
+be able to highlight a text and then add a note to this highlighted text and this could
+then be marked like in the sitegloss logo." On the lead's proposal of a Highlight tool:
+"I like The 'highlighted' tool. Do it." On compatibility: "For now it's ok. But for the
+future, make it backwards compatible and load the mark somehow as 'Unknown' or however."
+The service's side is its DEC-040; the format both build to is one contract.
+
+- **The format.** A highlight is no new kind of shape: a mark with shape `box` (the box
+  round the text's lines) and an optional `highlight`: `text` (whitespace collapsed, 1 to
+  500 characters), `before` and `after` (at most 32 each, the text right around it in its
+  element), `rects` (1 to 40 line boxes, in the shape's coordinates). Its element is the
+  nearest element that holds all of the selection. Outside the limits the highlight is
+  dropped and the mark kept, here as at the server. A version that does not know the
+  field sees a box with the same comment.
+- **Selecting through the layer that takes the pointer.** The tools' layer covers the page
+  and stops every press there, so a page's link or button is never activated. For the
+  Highlight tool it stays: on the press and each move the place in the page's text under
+  the pointer is read with `caretPositionFromPoint` (`caretRangeFromPoint` where that is
+  missing) while the layer is let through for that synchronous call alone, and the page's
+  own selection is set to it (`setBaseAndExtent`); a double click takes a word, a triple
+  click a paragraph. A selection made before the tool is chosen counts too, taken at the
+  press of the button (the press would clear it). Probed in Chrome, listeners of the page
+  in the capture phase on `window`: during a drag the page hears `pointerdown`,
+  `pointermove`, `pointerup` and `click` retargeted to Sitegloss's host (as with every
+  tool), no `mousedown`, and `selectionchange`; it can read which of its own text is
+  selected, as with any selection. Typing the comment it hears no key (the field's frame,
+  DEC-064). The selection is cleared when the dialog opens. Nothing typed into fields and
+  editors is read: such text cannot be highlighted, and their text is left out of
+  `before` and `after`.
+- **Limits, said in the toolbar.** Text in a form field, an editor, an image, a canvas,
+  an SVG or a frame: the dialog does not open, the hint names the Box tool. A selection
+  longer than 500 characters or 40 lines is cut to that and the toolbar says so. Frames
+  as for the other tools: the page's top document only.
+- **The stroke (decided here).** The logo's swipe (`swipe` in `logo.ts`: its uneven
+  corners and its lean) round each line box, a little wider than the text, in the logo's
+  amber. It turns as the swipe does only as far as its ends move no more than the logo's,
+  or a long line would climb onto the next. The pin sits just left of the first line,
+  centred on it: above it, it covered the line before; on it, the first letters. On a
+  light ground the stroke is multiplied with the page, in a layer of its own outside the
+  overlay's stacking context (inside it, there is nothing to multiply with); on a dark
+  ground (the element's backdrop below the luminance where black and white text are equal)
+  it is laid over the page at 30 % opacity. Text under it, measured (a unit test holds
+  it): ink #1b2130 on white 16.1:1 becomes 9.8:1, grey #535c6e 6.7:1 becomes 5.5:1, #767676
+  4.5:1 becomes 3.9:1 (as under a real marker); #eceef3 on #121212 16.1:1 becomes 7.1:1,
+  on #1b2130 13.8:1 becomes 6.1:1. 40 % was the first choice; it took light text on the
+  ink colour down to 4.5:1. The same stroke is painted into the screenshot and the crop.
+- **States (decided here).** The stroke stays amber in every state: it is the highlight.
+  The pin takes the status colour, as every mark's; verified and dismissed fade the
+  stroke as they fade every mark; an unsure match (probable, a tie, the text changed) adds
+  a dashed edge in the status colour round each line, as the other marks are dashed;
+  the mark looked for adds a solid one. Not found: not drawn, as before.
+- **Finding it again.** The element as for every mark, then the text in it (`quoteIn`:
+  of several places, the one whose text around it is most like `before` and `after`),
+  drawn on the lines that text has now, from a live range. Where the text is not in the
+  element any more, often the fix itself, the element is drawn as a box, a found match is
+  only probable (`textChanged` in the match), and the panel says "Text changed" and why.
+  A text replaced while the case is drawn (a fix with hot reload) is looked for again.
+- **Where it shows.** The panel's row quotes the text on one line, cut, beside the status;
+  the toolbar names the tool with a tooltip; get_case carries the highlight (its text and
+  the number of lines in a large case); add_mark takes an optional `text` to highlight
+  inside the selector's element; the match views say `textChanged`; case.md has
+  "Highlighted text:" as the server's does; files and the team carry it as is.
+- **Marks of a kind this version does not know.** Until now a file or a team's case with
+  one was refused ("unknown shape") and that case stopped syncing. Now such a shape is
+  kept as `{ kind: "unknown", given }`, `given` exactly as it came; a file and the server
+  get `given` back (`shapeOut`), and a read looks at it anew, so a version that knows the
+  kind draws it. The mark is listed with its number, comment, status and thread, named
+  "Newer kind" with a hint to update, and can be commented, settled and reopened; it is
+  not drawn and has no pin on the page (its element is outlined while it is looked for);
+  Show is not offered when it has no element. A shape without a kind's name is still
+  refused: that is a broken file, not a newer one.
+- **Unknown fields, where they survive.** `validateCase` keeps every field it does not
+  know on a case, a screenshot and a mark (it ran on every change, so they were lost on
+  the first comment). So they survive an import, a change in the panel, the store and an
+  export. Not on an element's details, whose allow-list is a privacy rule (DEC-009), nor
+  inside a resolution, a finding, a comment or an image. They are never sent: the sync
+  builds what it sends from known fields, and a teammate's mark comes in from the
+  server's known fields only. An AI app's views name their fields, so it sees none of
+  them.
+- **What the released version (0.3.1) does with a highlight.** Its case format is the old
+  one; a file of this version is refused by it, and the other way round. Through the
+  team: it drops `highlight` when it takes in a teammate's mark, but what it sends of a
+  change to that mark (comment, status, findings) is a `mark.patch` that does not carry
+  it, and the server keeps it. Only a `mark.create` built by 0.3.1 (a mark the server
+  does not have) comes without it, which a teammate's existing highlight never needs. A
+  highlight made now is therefore not lost by a teammate on 0.3.1; they see a box.
+- **What remains.** Auto-scrolling while dragging near the window's edge, as a native
+  selection does, is not built. Text in the page's own shadow roots and in frames cannot
+  be selected with the tool. Firefox runs the same code (it has `caretPositionFromPoint`)
+  and was not driven through a highlight by hand.

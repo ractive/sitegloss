@@ -29,6 +29,10 @@ Sitegloss stores in your browser, on your computer:
   of computed CSS properties (colours, font, size, spacing, border, alignment, overflow;
   none that can hold an address, no custom properties), the colour behind it, and the
   position and size of up to six neighbouring elements (their tag only);
+- for a mark made with the Highlight tool: the text you selected (at most 500
+  characters), up to 32 characters of the page's text right before and after it, and
+  the boxes of its lines. Text typed into form fields and editors is never taken; such
+  text cannot be highlighted;
 - screenshots of the visible part of the tab, with the marks on them;
 - images you add to a mark yourself (pasted, chosen or dropped). Each is re-encoded
   before it is kept, which removes its metadata (camera, place, time) and its file name.
@@ -150,6 +154,9 @@ creditworthiness.
 - Sitegloss does not record what is typed into form fields and editable regions. An
   editor that draws its text as ordinary page content counts as page text, unless
   Sitegloss recognises it.
+- While you select text with the Highlight tool, the page's own scripts can see the
+  selection change and read which of its text is selected, as with any selection you
+  make; the selection is cleared when the mark's dialog opens.
 - The page's own scripts can see what Sitegloss shows in the page and the keys you
   press there, such as a comment while you type it.
 
