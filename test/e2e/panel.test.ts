@@ -486,7 +486,7 @@ inBothSets("the side panel's page", () => {
 				`history.pushState({}, "", location.pathname.replace("v1", "v2"))`,
 			);
 			await h.control.waitFor(
-				`${id("none-found")}.textContent.includes("This case has no marks on this page.")`,
+				`${id("none-found")}.textContent === "This case's page is not in this tab."`,
 			);
 			expect(await h.control.eval<number>(`globalThis.loads`)).toBe(before);
 			expect(await pageCase(a.tabId)).toBe(a.caseId);
@@ -638,7 +638,7 @@ inBothSets("the side panel's page", () => {
 	);
 
 	slowTest(
-		"a page with none of the case's marks: the panel says where they are",
+		"a page that is none of the case's: one quiet line, and the facts' address opens the page (DEC-063)",
 		async () => {
 			await fresh();
 			const { page, tabId } = await h.open("v1");
@@ -660,14 +660,10 @@ inBothSets("the side panel's page", () => {
 			await h.control.waitFor(`!${id("none-found")}.hidden`, 10_000);
 			expect(
 				await h.control.eval<string>(`${id("none-found")}.textContent`),
-			).toContain(
-				`This case has no marks on this page. They are on ${new URL(h.base).host}/v1.`,
-			);
+			).toBe("This case's page is not in this tab.");
 			expect(await h.control.eval(`${id("case-hint")}.hidden`)).toBe(true);
-			// Its button opens the case's page, where the mark is found.
-			await h.control.eval(
-				`${id("none-found")}.querySelector('[data-action="open-case-page"]').click()`,
-			);
+			// The page's address in the facts opens it, where the mark is found.
+			await h.control.eval(`${id("open-page")}.click()`);
 			await h.control.waitFor(
 				`document.querySelector(".match")?.dataset.status === "found"`,
 				15_000,

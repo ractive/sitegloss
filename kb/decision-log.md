@@ -3459,3 +3459,86 @@ taken by the panel's rounds 2 and 3, which are on branches.)
   code (`./extension`, DEC-049) writes into one input, which the page still is.
 - Tests: none added. `bun run verify`, and the connection and always-allowed end-to-end
   files against the new relay, were run once with the new versions.
+
+## DEC-063: Panel round 4, a draft for the owner to judge: full width, a tool bar, folding lists, the matcher's names, images from the page's dialog
+
+2026-11-23. On `panel-round-4`, after round 3's pictures. The owner: "Make it left
+aligned. It's a pity to spoil this space on the left." and "The rest is fine", plus what he
+asked in chat that night (the findings page's D10, D12, D13).
+
+- **An opened mark uses the panel's width.** Its body starts at the panel's gutter, under
+  the pin; it covers the rail there. The pictures are four a row (three below 360 px), so
+  three pictures and "Add another image…" fit one row at 400 px. Verify and Reopen… show
+  once: in the row's head while it is closed, in the body while it is open.
+- **"Add marks" always in reach (D10).** The open case ends in a tool bar, sticky at the
+  panel's bottom: "Add marks" (or "Done adding", dark while adding is on) and "Show marks" /
+  "Hide marks". Being last in the flow, it rests after the content at the end, so it never
+  covers the last row. The head's Add marks, the one under the list and Hide marks in the
+  list's bar are gone. The scroll hold (DEC-060) lends its room above the bar, so the bar
+  stays at the window's bottom while a row is held. On the page's bar, "Add marks" is amber.
+- **The pages list (D13).** More than three pages: the label is a disclosure "Pages n",
+  closed at first, showing only the page in front when the tab shows one; its state is kept
+  per case for the session. Where the tab shows none of the case's pages it is open. One row
+  per page across hosts: a page is its `pageKey` (path and hash route, DEC-038, DEC-057), as
+  the list already was; a row now names its hosts under it, the last marked first, where the
+  page was marked on more than one or not on the host most pages were marked on, and a click
+  opens it on the tab's host when it was marked there, else on the host it was marked on
+  last. Titles that differ between hosts: the row keeps the title the case's list of pages
+  has (the first one recorded); the others show in no place. The owner's "Settings ·
+  Sitegloss" twice is most likely two paths, not two hosts: the team's slug differs between
+  app.sitegloss.dev and the local demo data (`/t/e2e-test-88406e/…` against the demo team's),
+  and those stay two pages; the case itself could not be read to confirm it.
+- **Comments.** The case's "Comments n" is a disclosure: open when the case has comments,
+  closed when it has none, as the person leaves it per case for the session. "Seen" is not
+  tracked; this is the brief's simplest rule. At a mark, "Add comment" is a button that
+  opens the box with the focus in it; Cancel closes it.
+- **The warning "no marks on this page" goes.** In a case of many pages a page without
+  marks is normal. One quiet line where the marks start, only: "None of this case's pages is
+  in this tab." (with the pages list open), "This case's page is not in this tab." for a case
+  of one page, without a button, since the page's address in the facts two lines above
+  opens it, or "None of this page's marks were found here." when the page's own marks were
+  all looked for and none was found.
+- **The page filter's menu** stood past the panel's edge: the filter is a grid item, whose
+  minimum was the menu's longest option (503 px in a 340 px panel, measured). It now has no
+  minimum, and the menu shrinks with an ellipsis (324 px of 340).
+- **The matcher (mark 47).** In the web app's case page the mark's text and a comment each
+  have a button reading "Edit", named "Edit the text of mark 47" and "Edit the comment by
+  Dana Developer via Claude Code". `identity` took the better of name and text, so the text
+  alone made the other Edit identified (score 0.85, "found") when the comment's was not on
+  the page, during a load or while it was edited. A name that says more than the text now
+  decides together with the text: the lower of the two similarities. The other Edit scores
+  0.43 (lost), the comment's Delete, which shares the name's words, 0.40. With both on the
+  page the right one is found (1.0). The own-page rule is unchanged.
+- **Mark 48's offset box: not reproduced.** Ruled out: a box drawn before the page settles
+  and never redrawn; the reviewer redraws every mark on each scroll, on resize and twice a
+  second from the element's box at that moment. Left: a box is placed in proportion to the
+  element it was recorded on; recorded on a container whose width changed between then and
+  now (another window width, another environment), a box around a button inside it
+  shrinks; and a page that zooms or transforms the root moves fixed boxes. Neither can be
+  told without the mark's recorded details.
+- **The AI chip shows that an app is talking.** The worker counts the tool calls running
+  (`toolcall`, `toolcallend`); while one runs and 1.5 s after the last, the chip's dot
+  pulses a ring in its green; with reduced motion a steady ring. A box shadow only: nothing
+  moves. The chip's name does not change and no live region speaks: calls come in bursts,
+  and the AI card already says the last call in words.
+- **Images from the page's mark dialog (D12): tested first.** In Chrome, with trusted input
+  from CDP, into a textarea in a closed shadow root and into Sitegloss's own dialog, a
+  listener of the page on `window` or `document` in the capture phase:
+
+  | What the person does | The page sees | The page can read the file |
+  | --- | --- | --- |
+  | Pastes an image | `paste`, its target the shadow host | Yes: `clipboardData.files`, bytes read |
+  | Drops a file | `dragenter`, `dragover` with the type "Files", then `drop` | Yes: `dataTransfer.files`, bytes read |
+  | Picks a file with a file input | `input`, its target the host; no `change` | No: the input is out of reach |
+
+  So the dialog takes no pasted or dropped image. It has "Add another image…" (the words of
+  a loaded mark's popover): the mark is done, the worker opens the side panel with the
+  click's gesture (it opened a closed panel in the test) and the panel's own dialog opens
+  for the mark once it is in the case. A file picker in the page's dialog would be safe, but
+  is not built: the panel's dialog picks, pastes and drops with the same limits (six per
+  mark, PNG, JPEG or WebP, re-encoded), and a second way of adding images would diverge.
+  The wish passes through the worker (session storage), for the panel beside that tab only:
+  the panel itself touches no storage.
+- Tests: `test/match.test.ts` (two buttons named Edit in one card: failed before),
+  `test/page-hosts.test.ts`, `test/view.test.ts` (the tool bar, the disclosures, the quiet
+  line, the chip, Add comment at a mark), `test/e2e/panel.test.ts` (the quiet line).

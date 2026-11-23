@@ -1798,6 +1798,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 			{
 				class: "case-dock",
 				id: "case-dock",
+				// The scroll hold lends its room above the bar (DEC-063).
+				"data-room-before": "",
 				role: "toolbar",
 				"aria-label": "Marks on this tab",
 			},
@@ -2630,7 +2632,14 @@ function renderPages(
 	const marksOn = (url: string) => counts.get(pageKey(url)) ?? 0;
 	// One row per page whatever the host (DEC-063): its hosts under it.
 	const hostsOf = pageHosts(c);
-	const origins = new Set([...hostsOf.values()].flatMap((x) => x.origins));
+	// The host most pages were marked on: said only of a page marked on
+	// another, or on more than one (the list stays two lines a page).
+	const usual = (() => {
+		const count = new Map<string, number>();
+		for (const { origins } of hostsOf.values())
+			for (const o of origins) count.set(o, (count.get(o) ?? 0) + 1);
+		return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+	})();
 	const key = JSON.stringify([
 		pages.map((page) => [page.url, page.title, marksOn(page.url)]),
 		here?.url ?? null,
@@ -2698,8 +2707,8 @@ function renderPages(
 				title
 					? h("span", { class: "page-address cut-start" }, address())
 					: null,
-				// Marked on more than one host in this case: on which, the last first.
-				origins.size > 1 && hosts
+				// Marked on more than one host, or not on the usual one: on which, the last first.
+				hosts && (hosts.origins.length > 1 || hosts.origins[0] !== usual)
 					? h(
 							"span",
 							{ class: "page-hosts" },

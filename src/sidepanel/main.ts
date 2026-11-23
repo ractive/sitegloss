@@ -175,6 +175,8 @@ function describeError(error: unknown): string {
 
 const panel = new Panel((state) => {
 	render(state, actions);
+	// The tab in front is known (or another now): what was left for it.
+	if (state.tab?.id !== imagesAskedFor) takeImages(state.tab?.id);
 	askImages(state);
 });
 const update = (change: (s: PanelState) => void) => panel.update(change);
@@ -2598,13 +2600,15 @@ let addingImages: AddImagesDialog | undefined;
  * pasted into the open mark, offered at once. Nothing is added without Add.
  */
 /**
- * "Add image…" in the page's mark dialog (DEC-063): the worker left which
+ * "Add another image…" in the page's mark dialog (DEC-063): the worker left which
  * mark of which case in session storage, and opened the panel. The panel's
  * own dialog opens once the case is open here and the mark is in it (it
  * is saved a moment after the page's dialog closed); a minute later the
  * wish is forgotten.
  */
 let imagesFor: ImagesFor | undefined;
+/** The tab the worker was last asked about. */
+let imagesAskedFor: number | undefined;
 const IMAGES_FOR_MS = 60_000;
 
 function takeImagesFor(value: unknown): void {
@@ -2619,10 +2623,12 @@ function takeImagesFor(value: unknown): void {
 	askImages(state);
 }
 
-/** Take what the page's "Add image…" left with the worker, if anything. */
-function takeImages(): void {
+/** Take what the page's "Add another image…" left with the worker for the tab in front. */
+function takeImages(tabId: number | undefined): void {
+	imagesAskedFor = tabId;
+	if (tabId === undefined) return;
 	void chrome.runtime
-		.sendMessage({ type: "panel:images-take" } satisfies WorkerRequest)
+		.sendMessage({ type: "panel:images-take", tabId } satisfies WorkerRequest)
 		.then((answer: ImagesForAnswer | undefined) =>
 			takeImagesFor(answer?.images),
 		)
@@ -2645,8 +2651,6 @@ function askImages(s: PanelState): void {
 	imagesFor = undefined;
 	void showAddImages(c, a);
 }
-
-takeImages();
 
 async function showAddImages(
 	c: Case,
@@ -2987,7 +2991,7 @@ async function drawnFor(
 function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
 	// Only the worker says so; the answer comes from it too.
 	if (news?.type === "panel:images") {
-		if (fromBackground(sender)) takeImages();
+		if (fromBackground(sender)) takeImages(state.tab?.id);
 		return false;
 	}
 	if (news?.type === "overlay:changed") {

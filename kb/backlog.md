@@ -26,7 +26,9 @@ An entry here is not a decision to build it. When one is taken up, its design mo
 - **The floating bar and the modes.** Built as a draft for the owner to judge on the branch
   `panel-round-3` (DEC-061): the bar can be dragged and keeps its place, two states only
   (Hide marks leaves a pill that shows them again; adding shows them; hiding ends adding),
-  "Add marks" on the bar, the bar steps aside while marks are added. Waits for the owner.
+  "Add marks" on the bar, the bar steps aside while marks are added. Round 4 on
+  `panel-round-4` (DEC-063) makes "Add marks" the bar's main action and adds the panel's
+  sticky tool bar. Waits for the owner.
 - **The sync state on the case itself.** The sync knows its state (syncing with the number
   of cases left, offline, a problem per case, synced with a count still waiting), but shows
   it only as one line in the Team section. After "Sync it" nothing shows on the case. Wanted:
@@ -46,7 +48,16 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   link, Export, Delete case), the counts, one action (Add marks), one quiet facts block
   (Pages folded to three, Team, Link, Made at), no web-app line, the found sentence for a
   screen reader only, "Match size" only past 24 px of width or 100 px of height, and what
-  the tab shows under the head. Waits for the owner.
+  the tab shows under the head. Round 4 on `panel-round-4` (DEC-063): Add marks moves to
+  the sticky tool bar, the pages list is one disclosure, one row per page across hosts.
+  Waits for the owner.
+- **The page's mark dialog could take pasted and dropped images safely** only if the page
+  never saw the event: a content script registered at `document_start` with a window
+  capture listener that stops the event when it is aimed at Sitegloss's dialog would run
+  before any listener of the page. Sitegloss injects its script on demand today, so it
+  cannot be first. Until then the dialog sends images to the panel (DEC-063).
+- **Mark 48's box offset on "Delete finding"** (owner's case, 22 November 2026) was not
+  reproduced; see DEC-063 for what was ruled out. Needs the mark's recorded details.
 - **An AI app cannot tell that AI access is off.** When AI access is off (after a reload or
   update of Sitegloss without "Keep AI access on", an idle session, a browser start), an AI
   app that calls a tool gets the relay's "The page is not open, or not in front. Ask the

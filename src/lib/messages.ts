@@ -267,19 +267,19 @@ export type WorkerRequest =
 	 */
 	| { type: "bar:place"; place?: { right: number; top: number } }
 	/**
-	 * "Add image…" in the page's mark dialog (DEC-063): the side panel opens
+	 * "Add another image…" in the page's mark dialog (DEC-063): the side panel opens
 	 * (the click's gesture) and its own dialog adds images to mark `number`
 	 * of the case once the mark is in it. A page can read an image pasted or
 	 * dropped in the page, so the panel takes them.
 	 */
 	| { type: "panel:images"; caseId: string; number: number }
 	/**
-	 * From the side panel: the mark the page's "Add image…" left, taken
+	 * From the side panel: the mark the page's "Add another image…" left, taken
 	 * (answered as `ImagesForAnswer`, then forgotten). The panel touches no
 	 * storage itself; the worker keeps it in session storage, which
 	 * outlives the worker's restarts.
 	 */
-	| { type: "panel:images-take" };
+	| { type: "panel:images-take"; tabId: number };
 
 export interface ImagesForAnswer {
 	images?: ImagesFor;

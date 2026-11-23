@@ -2271,7 +2271,7 @@ describe("a case of several pages (DEC-038)", () => {
 			noActions,
 		);
 		expect(pages()).toEqual([
-			"Your cart2 marks/cartshop.example",
+			"Your cart2 marks/cart",
 			"/checkout/pay1 markshop.example, staging.shop.example",
 		]);
 		// A click opens it where it was last marked: the tab shows another host.

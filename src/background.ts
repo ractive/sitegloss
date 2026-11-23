@@ -439,10 +439,13 @@ async function handle(
 		case "panel:images-take": {
 			// The panel's own: a page may not take what another left.
 			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			// The panel beside that tab: another window's panel leaves it.
 			const kept = await chrome.storage.session.get(IMAGES_FOR_KEY);
-			await chrome.storage.session.remove(IMAGES_FOR_KEY);
 			const images = kept[IMAGES_FOR_KEY] as ImagesFor | undefined;
-			return (images === undefined ? {} : { images }) satisfies ImagesForAnswer;
+			if (images === undefined || images.tabId !== request.tabId)
+				return {} satisfies ImagesForAnswer;
+			await chrome.storage.session.remove(IMAGES_FOR_KEY);
+			return { images } satisfies ImagesForAnswer;
 		}
 		case "bar:place": {
 			// Two numbers, or nothing: a page cannot put anything else here.

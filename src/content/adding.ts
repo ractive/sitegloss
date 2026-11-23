@@ -192,7 +192,7 @@ function normalizeRect(a: Point, b: Point): Rect {
 export class MarkAdder {
 	readonly overlay: Overlay;
 	/**
-	 * "Add image…" in the mark's dialog (DEC-063): the side panel's dialog
+	 * "Add another image…" in the mark's dialog (DEC-063): the side panel's dialog
 	 * adds the images, never this page (a page reads what is pasted or
 	 * dropped in it). Called within the click, for its gesture.
 	 */
@@ -696,7 +696,8 @@ export class MarkAdder {
 		const image = doc.createElement("button");
 		image.type = "button";
 		image.dataset["action"] = "comment-image";
-		image.textContent = "Add image…";
+		// The words of a loaded mark's popover: its screenshot is its first picture.
+		image.textContent = "Add another image…";
 		image.title =
 			"Done with this mark, and add images to it in the side panel: pasted or dropped here, the page could read them";
 		image.hidden = caseId === undefined || this.onAddImages === undefined;

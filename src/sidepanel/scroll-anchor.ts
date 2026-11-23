@@ -80,10 +80,25 @@ export function holdClickedInPlace(root: HTMLElement): () => void {
 	 * or press, not when the hold ends: then it would move what it kept.
 	 */
 	let lent = false;
+	/**
+	 * Lent above a tool bar sticky at the bottom (`data-room-before`), so
+	 * the bar stays at the window's bottom with the room above it; below
+	 * the root where there is none.
+	 */
+	let lentTo: HTMLElement | undefined;
 	const lend = (on: boolean) => {
 		if (on === lent) return;
 		lent = on;
-		root.style.marginBottom = on ? `${html.clientHeight}px` : "";
+		if (on) {
+			const bar = root.querySelector<HTMLElement>("[data-room-before]");
+			lentTo = bar ?? root;
+			if (bar) bar.style.marginTop = `${html.clientHeight}px`;
+			else root.style.marginBottom = `${html.clientHeight}px`;
+		} else if (lentTo !== undefined) {
+			lentTo.style.marginTop = "";
+			lentTo.style.marginBottom = "";
+			lentTo = undefined;
+		}
 	};
 	const elementOf = (key: string) =>
 		key.startsWith("chip:")
