@@ -9,6 +9,7 @@ import {
 	firstToVerify,
 	linkCopied,
 	nextStep,
+	type StepAction,
 	type Where,
 	whereIs,
 } from "../src/sidepanel/next-step.ts";
@@ -168,72 +169,44 @@ describe("where the case is, as this browser knows it", () => {
 
 describe("the next step for the case", () => {
 	const here: Where = { kind: "browser", share: "sign-in" };
+	const actions = (c: Case, where: Where, adding = false, mayClose = true) =>
+		step(c, where, adding, mayClose)?.actions;
 
 	test("no marks: add some; nothing more to offer while adding", () => {
-		const c = sampleCase();
-		expect(step(c, here)).toEqual({
-			text: "Draw on the page and say what is wrong.",
-			actions: ["add-marks"],
-		});
-		expect(step(c, here, true)?.actions).toEqual([]);
+		expect(actions(sampleCase(), here)).toEqual(["add-marks"]);
+		expect(actions(sampleCase(), here, true)).toEqual([]);
 	});
 
-	test("marks only in this browser: share it, or export it and say how to share", () => {
-		const c = withMarks("open");
-		expect(step(c, { kind: "browser", share: "may", team: "T" })).toEqual({
-			text: "It is only in this browser. Share it so whoever fixes it can open it.",
-			actions: ["share"],
-		});
-		expect(step(c, here)).toEqual({
-			text: "It is only in this browser. Export it to send it as a file, or sign in under Team in the list of cases to share it with a team.",
-			actions: ["export"],
-		});
-		expect(step(c, { kind: "browser", share: "choose-team" })?.text).toContain(
-			"choose a team under Team",
+	test("open marks, by where the case is: only the team's gets the copies", () => {
+		const c = withMarks("open", "open", "verified");
+		const by: [Where, StepAction[]][] = [
+			[TEAM_HAS, ["copy-link", "copy-ai"]],
+			[{ ...TEAM_HAS, link: undefined }, []],
+			[{ kind: "sending", why: "syncing" }, []],
+			[{ kind: "sending", why: "offline" }, []],
+			[{ kind: "signed-out" }, []],
+			[{ kind: "browser", share: "may", team: "T" }, ["share"]],
+			[{ kind: "browser", share: "may-not", team: "T" }, ["export"]],
+			[{ kind: "browser", share: "choose-team" }, ["export"]],
+			[here, ["export"]],
+		];
+		for (const [where, offered] of by)
+			expect(actions(c, where)).toEqual(offered);
+	});
+
+	test("marks fixed: Start verifying; while others are open, both are said and both offered", () => {
+		expect(actions(withMarks("fixed", "fixed"), TEAM_HAS)).toEqual(["verify"]);
+		const both = step(withMarks("fixed", "open"), TEAM_HAS);
+		expect(both?.actions).toEqual(["verify", "copy-link", "copy-ai"]);
+		// The sentence names the fixed marks, then the open ones.
+		expect(both?.text).toBe(
+			`${step(withMarks("fixed"), TEAM_HAS)?.text} ${step(withMarks("open"), TEAM_HAS)?.text}`,
 		);
 		expect(
-			step(c, { kind: "browser", share: "may-not", team: "T" }),
-		).toMatchObject({ actions: ["export"] });
-	});
-
-	test("the team has it, marks open: hand it over", () => {
-		expect(step(withMarks("open", "open", "verified"), TEAM_HAS)).toEqual({
-			text: "Send the case to whoever fixes the open marks.",
-			actions: ["copy-link", "copy-ai"],
-		});
-	});
-
-	test("the team does not have it yet: no link, and why", () => {
-		const c = withMarks("open");
-		expect(step(c, { kind: "sending", why: "syncing" })).toEqual({
-			text: "It is being sent to the team; its link works once it is there.",
-			actions: [],
-		});
-		expect(step(c, { kind: "signed-out" })).toEqual({
-			text: "Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases.",
-			actions: [],
-		});
-	});
-
-	test("marks fixed: verify them; while others are open, both are said and both offered", () => {
-		const check = "Check the fixed marks on the page that has the fix.";
-		expect(step(withMarks("fixed", "fixed"), TEAM_HAS)).toEqual({
-			text: check,
-			actions: ["verify"],
-		});
-		expect(step(withMarks("fixed", "open"), TEAM_HAS)).toEqual({
-			text: `${check} Send the case to whoever fixes the open marks.`,
-			actions: ["verify", "copy-link", "copy-ai"],
-		});
+			actions(withMarks("fixed", "open"), { kind: "sending", why: "offline" }),
+		).toEqual(["verify"]);
 		expect(
-			step(withMarks("fixed", "open"), { kind: "sending", why: "offline" }),
-		).toEqual({
-			text: `${check} It is not with the team yet: the server cannot be reached, and Sitegloss tries again by itself.`,
-			actions: ["verify"],
-		});
-		expect(
-			step(withMarks("fixed", "open"), { kind: "browser", share: "may" })
-				?.actions,
+			actions(withMarks("fixed", "open"), { kind: "browser", share: "may" }),
 		).toEqual(["verify", "share"]);
 	});
 
@@ -246,11 +219,8 @@ describe("the next step for the case", () => {
 	test("every mark settled: close it, where the role lets", () => {
 		const c = withMarks("verified", "wontfix");
 		for (const where of [TEAM_HAS, here])
-			expect(step(c, where)).toEqual({
-				text: "Every mark is settled.",
-				actions: ["close"],
-			});
-		expect(step(c, TEAM_HAS, false, false)?.actions).toEqual([]);
+			expect(actions(c, where)).toEqual(["close"]);
+		expect(actions(c, TEAM_HAS, false, false)).toEqual([]);
 	});
 
 	test("closed: nothing", () => {

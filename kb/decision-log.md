@@ -3979,10 +3979,15 @@ pure function (`nextStep` in `src/sidepanel/next-step.ts`); the block is drawn b
 Decided, and why:
 
 - **The link only on the sync's own word.** A case's link and the AI app's instructions
-  are offered only where the sync's books hold the server's copy of the case (a synced
-  book with a `shadow`) in the team chosen now. The worker publishes that beside the
-  modes (`atTeam` in `book.ts`: case id to team id, written by `publishModes`, and once
-  after an update that had not written it yet). Nothing of the case itself is proof:
+  are offered only where the server confirmed the case, as its book is now, in the team
+  chosen now (`confirmedTeam` in `book.ts`): a synced book with the server's copy
+  (`shadow`) and no read of it pending that holds back what is sent. A book taken up
+  again after a sign-out or a switch of team (`resumed`), joined with the team's copy
+  (`join`) or missing here holds a copy of before until the server answers; a `failed`
+  read leaves the server's copy as it was. The worker publishes the result beside the
+  modes (`atTeam`: case id to team id) at the end of every run and wherever the modes
+  change, writing only when it differs from what is stored, so a run stopped before the
+  write is made good by the next. Nothing of the case itself is proof:
   an imported file's marks carry `createdBy` too, and a case the sync has not seen counts
   as the team's. The sync's overall status is no proof either: cases held back or waiting
   to be read again are not in its count of what waits. The team id in it keeps a case of
@@ -4018,7 +4023,9 @@ Decided, and why:
 - **Keyboard and screen reader.** The block is a `section` named "Next step"; its
   sentence is an `aria-live` paragraph written only when its words change; what a copy
   did is a `role="status"` line under the buttons. Both stay rendered while empty (out
-  of sight, not `hidden`), so a reader hears what is written into them. A click that
+  of sight, not `hidden`), so a reader hears what is written into them; the section has
+  its name only while it says something, so an empty one is no landmark. A copy clicked
+  after the case stopped being confirmed copies nothing and says so. A click that
   changes the buttons keeps the focus on the same action where it is still offered,
   else on the block's first button, else on the block.
 

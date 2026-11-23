@@ -6031,6 +6031,8 @@ describe("what comes next on the open case (DEC-069)", () => {
 		// Closed: no block at all.
 		render(caseState({ ...settled, closed: { at: AT } }), actions);
 		expect(el("next-step").classList.contains("visually-hidden")).toBe(true);
+		// Empty, it is no named region for a reader to land on.
+		expect(el("next-step").hasAttribute("aria-label")).toBe(false);
 	});
 
 	test("its sentence is written once, not again on a render that leaves it as it was", () => {

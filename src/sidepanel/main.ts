@@ -1190,10 +1190,17 @@ const COPIED_MS = 8000;
  * what it did is said in the block for `COPIED_MS`, while the step offers it.
  */
 async function copyFromStep(c: Case, what: Copied["what"]): Promise<void> {
+	const hint = caseHintWriter();
 	const done = await copyStep(c, whereIs(state.cloud, c), what, (text) =>
 		navigator.clipboard.writeText(text),
 	);
-	if (done === undefined) return;
+	if (done === undefined) {
+		// The case left the team between the draw and the click: say so.
+		hint(
+			"Nothing was copied: as far as this browser knows now, the team does not have this case.",
+		);
+		return;
+	}
 	const at = Date.now();
 	update((s) => (s.copied = { caseId: c.id, ...done, at }));
 	setTimeout(() => {

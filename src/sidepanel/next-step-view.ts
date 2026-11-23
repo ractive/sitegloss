@@ -76,8 +76,6 @@ export function nextStepParts(): StepParts {
 		{
 			class: "next-step",
 			id: "next-step",
-			"aria-label": "Next step",
-			tabindex: "-1",
 		},
 		text,
 		row,
@@ -104,6 +102,16 @@ export function renderNextStep(
 ): void {
 	p.act = act;
 	away(p.el, step === undefined);
+	// A region with a name only while it says something: an empty one is no
+	// landmark for a reader to land on.
+	if (step === undefined) {
+		p.el.removeAttribute("aria-label");
+		p.el.removeAttribute("tabindex");
+	} else {
+		p.el.setAttribute("aria-label", "Next step");
+		// Where the focus goes when a click leaves the block no button.
+		p.el.setAttribute("tabindex", "-1");
+	}
 	const text = step?.text ?? "";
 	// The same words are not written again: a live region would say them again.
 	if (p.text.textContent !== text) p.text.textContent = text;
