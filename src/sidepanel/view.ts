@@ -191,6 +191,46 @@ const allSites = byId<HTMLInputElement>("all-sites");
 const aiStatus = byId<HTMLSpanElement>("ai-status");
 const aiLabel = byId<HTMLSpanElement>("ai-label");
 const backLabel = byId<HTMLSpanElement>("back-label");
+const copyId = byId<HTMLButtonElement>("copy-case-id");
+const copyIdSaid = byId<HTMLElement>("copy-case-said");
+
+/** How long the copy button says that it copied. */
+const COPIED_ID_MS = 1600;
+let copiedIdUntil: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * The open case's id on the clipboard, from the bar (the owner: to tell an
+ * AI app "check Sitegloss case …"). Its id alone: a title can be anything.
+ */
+function renderCopyId(id: string | undefined): void {
+	copyId.hidden = id === undefined;
+	if (id === undefined || copyId.dataset["copies"] === id) return;
+	copyId.dataset["copies"] = id;
+	const name = "Copy this case's id";
+	copyId.setAttribute("aria-label", name);
+	copyId.title = `${name}, to name the case to your AI app: ${id}`;
+	copyId.onclick = () => {
+		const say = (ok: boolean) => {
+			copyId.toggleAttribute("data-copied", ok);
+			copyId.toggleAttribute("data-failed", !ok);
+			copyIdSaid.textContent = ok
+				? "Case id copied"
+				: `Copying did not work. The case's id is ${id}`;
+			clearTimeout(copiedIdUntil);
+			copiedIdUntil = setTimeout(() => {
+				copyId.removeAttribute("data-copied");
+				copyId.removeAttribute("data-failed");
+				copyIdSaid.textContent = "";
+			}, COPIED_ID_MS);
+		};
+		const clipboard = globalThis.navigator?.clipboard;
+		if (clipboard === undefined) return say(false);
+		clipboard.writeText(id).then(
+			() => say(true),
+			() => say(false),
+		);
+	};
+}
 const aiButton = byId<HTMLButtonElement>("ai-button");
 const aiAction = byId<HTMLSpanElement>("ai-action");
 const aiCall = byId<HTMLParagraphElement>("ai-call");
@@ -4233,6 +4273,7 @@ function renderBack(state: PanelState, actions: Actions): void {
 		act();
 	};
 	back.hidden = !state.settings && !onCase;
+	renderCopyId(onCase && !state.settings ? state.current?.id : undefined);
 	if (state.settings) {
 		backLabel.textContent = "Back";
 		back.setAttribute(

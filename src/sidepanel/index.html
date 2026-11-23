@@ -13,6 +13,9 @@
 			<h1 class="visually-hidden">Sitegloss</h1>
 			<!-- No space between the parts: the buttons' text is their words alone. -->
 			<button id="back" type="button" class="back" hidden><svg class="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg><span id="back-label">All cases</span></button>
+			<!-- The open case's id on the clipboard, to name the case to an AI app. -->
+			<button id="copy-case-id" type="button" class="bar-icon" hidden><svg class="icon copy" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3v5.5A1.5 1.5 0 0 0 3.5 10H4" /></svg><svg class="icon done" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m3 8.5 3.2 3.2L13 4.9" /></svg></button>
+			<span id="copy-case-said" class="visually-hidden" role="status"></span>
 			<!-- The pill says the state in two or three words; the whole of it and what a
 			     click does are in its name and tooltip (view.ts). -->
 			<button id="ai-button" type="button" class="ai-pill"><span class="dot" aria-hidden="true"></span><span id="ai-label">AI off</span><span id="ai-status" class="visually-hidden">Not connected</span><span id="ai-action" class="visually-hidden">Turn on</span></button>

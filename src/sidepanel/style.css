@@ -661,6 +661,40 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	padding: 0 14px 0 var(--s2);
 }
 
+/* A lone icon in the bar: the button's shape, as wide as it is high. */
+#copy-case-id {
+	justify-content: center;
+	width: 28px;
+	min-height: 28px;
+	padding: 0;
+}
+
+#copy-case-id .icon {
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+#copy-case-id .done {
+	display: none;
+}
+
+#copy-case-id[data-copied] .copy {
+	display: none;
+}
+
+#copy-case-id[data-copied] .done {
+	display: inline;
+	color: var(--st-verified);
+}
+
+#copy-case-id[data-failed] {
+	color: var(--danger);
+}
+
 #back .icon {
 	flex: none;
 	fill: none;
