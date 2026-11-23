@@ -62,6 +62,12 @@ import {
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
 import { markTargets, shortAddress } from "./mark-link.ts";
+import { nextStep, type StepAction, whereIs } from "./next-step.ts";
+import {
+	nextStepParts,
+	renderNextStep,
+	type StepParts,
+} from "./next-step-view.ts";
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
 import { openAt, pageHosts } from "./page-hosts.ts";
 import { holdClickedInPlace } from "./scroll-anchor.ts";
@@ -92,6 +98,12 @@ import {
 export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	/** Close the case (filed away, not frozen) or open it again (DEC-046). */
 	setCaseClosed(caseId: string, closed: boolean): void;
+	/** The next step's "Copy link": the case's address in the web app (DEC-069). */
+	copyCaseLink(c: Case): void;
+	/** The next step's "Copy for your AI app": the instructions for the case. */
+	copyForAiApp(c: Case): void;
+	/** The next step's "Start verifying": the marks to verify, the first one open. */
+	startVerifying(c: Case): void;
 	/** "New case for this page": a new case, stored at once and opened (DEC-026). */
 	startNewCase(): void;
 	openCase(id: string): void;
@@ -804,23 +816,6 @@ function renderImportPrompt(state: PanelState, actions: Actions): void {
 	importPrompt.hidden = false;
 }
 
-/**
- * The tab in front is the web app of the server the account is signed in
- * to (DEC-045): its case pages show the same team's cases, marks and all,
- * as this panel does. Said in one line, where the address is known.
- */
-export function webAppNote(state: PanelState): string | undefined {
-	const server = state.cloud.account?.server;
-	const url = state.tab?.url;
-	if (server === undefined || !url) return undefined;
-	try {
-		if (new URL(url).origin !== new URL(server).origin) return undefined;
-	} catch {
-		return undefined;
-	}
-	return `This tab is your team's web app at ${hostOf(server)}: it shows the same cases as this panel.`;
-}
-
 function renderHome(state: PanelState, actions: Actions): void {
 	const tab = state.tab;
 	// Under "This page": its address, else its title (Chrome tells the
@@ -829,7 +824,6 @@ function renderHome(state: PanelState, actions: Actions): void {
 	pageText.hidden = pageText.textContent === "";
 	renderAccess(homeAccess, state);
 	setHint(hint, state.hint);
-	setHint(byId<HTMLElement>("web-app-note"), webAppNote(state));
 	const ok = access(state) === "yes";
 	// Always a new case, stored and opened at once (DEC-023, DEC-026).
 	newCaseButton.disabled = !ok;
@@ -1248,6 +1242,8 @@ interface CaseParts {
 	closeButton: HTMLButtonElement;
 	/** Who closed it and when, while it is closed. */
 	closedLine: HTMLElement;
+	/** What comes next, under the counts (DEC-069). */
+	next: StepParts;
 	/** The case's thread (`thread-view.ts`). */
 	thread: HTMLElement;
 	/** Who last changed the summary, in a team (DEC-046). */
@@ -1811,6 +1807,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 			id: "case-closed",
 			hidden: true,
 		}),
+		next: nextStepParts(),
 		thread: h("section"),
 		summaryBy: h("p", { class: "meta", id: "summary-by", hidden: true }),
 		saved: h("div", { id: "export-saved", hidden: true }),
@@ -1864,6 +1861,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.rename,
 		created.closedLine,
 		created.counts,
+		created.next.el,
 		created.leaving,
 		created.saved,
 		// A case's several pages under "Site" or "Sites": each site a heading
@@ -1939,6 +1937,56 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		),
 	);
 	return created;
+}
+
+/**
+ * What comes next on the case (DEC-069). Its buttons are the actions of the
+ * tool bar's Add marks, the Team row's Share, the menu's Export and the
+ * footer's Close case, and are off when those are, for the same reason.
+ */
+function renderStep(
+	state: PanelState,
+	p: CaseParts,
+	c: Case,
+	mayClose: boolean,
+	actions: Actions,
+): void {
+	const step = nextStep(c, whereIs(state.cloud, c), {
+		adding: p.adding,
+		mayClose,
+	});
+	const off: Partial<Record<StepAction, string>> = {};
+	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;
+	// What a copy did, while the step still offers that copy.
+	const copied =
+		state.copied?.caseId === c.id && step?.actions.includes(state.copied.what)
+			? state.copied.text
+			: undefined;
+	renderNextStep(
+		p.next,
+		step,
+		copied,
+		(action) => {
+			const now = p.current;
+			switch (action) {
+				case "add-marks":
+					return actions.addMarks(now);
+				case "share":
+					return actions.cloudShare(now.id);
+				case "export":
+					return actions.exportCase(now);
+				case "copy-link":
+					return actions.copyCaseLink(now);
+				case "copy-ai":
+					return actions.copyForAiApp(now);
+				case "verify":
+					return actions.startVerifying(now);
+				case "close":
+					return actions.setCaseClosed(now.id, true);
+			}
+		},
+		off,
+	);
 }
 
 /** One line on what the tab in front shows of the case, where there is one. */
@@ -3134,6 +3182,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 			? `Closed ${formatDate(c.closed.at)}${byline(c.closed.user, c.closed.app) ? ` by ${byline(c.closed.user, c.closed.app)}` : ""}.`
 			: undefined,
 	);
+	renderStep(state, p, c, mayClose, actions);
 	const threadContext: ThreadContext = {
 		me: state.cloud.account?.userId,
 		mayComment:

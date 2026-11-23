@@ -3944,3 +3944,110 @@ the display. The page filter's menu does not group by site (the web's does).
 - **The build test checks the list's data** (`xn--p1ai`), not an option's name: in the worker and
   the panel, never in `content.js`.
 - `CLAUDE.md` names `tldts` beside the tab-mcp client, and where it may be loaded.
+
+## DEC-069: What comes next on the open case, and the hand-over's small part
+
+2026-11-23. The owner, on 22 November: the panel should tell the user the next step once
+marking is done, copy the share link from the extension, and copy the instructions for
+the AI agent there too. On 23 November: "Yesterday we also discussed the flow of a case
+and that we should help the user do the next step. So when the PO or the tester tested
+things, how will he proceed? How will he hand this over to a dev? Or when the dev or AI
+agent is done, how is it handed back to a PO? [...] I think this also never appeared,
+even if we discussed it multiple times."
+
+One block on the open case, directly under the counts: one sentence on where the case
+stands and the buttons that move it on. Quiet: a line of text and the panel's small
+buttons, no colour or banner of its own. The counts stand right above it, so the sentence
+does not repeat them. No change to the service's API or the case format. The rule is one
+pure function (`nextStep` in `src/sidepanel/next-step.ts`); the block is drawn by
+`next-step-view.ts`.
+
+| The case | It says | It offers |
+|---|---|---|
+| Closed | (no block) | |
+| No marks | Draw on the page and say what is wrong. | Add marks (not while adding: the tool bar's button is Done then) |
+| Every mark settled | Every mark is settled. | Close case, where the role lets |
+| Marks fixed, none open | Check the fixed marks on the page that has the fix. | Start verifying |
+| Marks fixed and open | That sentence, then the open marks' sentence below | Start verifying, then the open marks' buttons |
+| Open, the server has it in this team | Send the case to whoever fixes the open marks. | Copy link; Copy for your AI app |
+| Open, the team's, the server not known to have it | It is being sent to the team / It is not with the team yet: the server cannot be reached / The team does not have it yet: Team in the list of cases says why / It goes to the team with the next sync; its link works once it is there. | nothing |
+| Open, the sign-in ran out | Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases. | nothing |
+| Open, only in this browser, may be shared | It is only in this browser. Share it so whoever fixes it can open it. | Share with team |
+| ... the role may not share | It is only in this browser. Your role in "T" does not let you share it: export it to send it as a file. | Export… |
+| ... nobody signed in, or no team chosen | It is only in this browser. Export it to send it as a file, or sign in (choose a team) under Team in the list of cases to share it. | Export… |
+
+Decided, and why:
+
+- **The link only on the sync's own word.** A case's link and the AI app's instructions
+  are offered only where the server confirmed the case, as its book is now, in the team
+  chosen now (`confirmedTeam` in `book.ts`): a synced book with the server's copy
+  (`shadow`) and no read of it pending that holds back what is sent. A book taken up
+  again after a sign-out or a switch of team (`resumed`), joined with the team's copy
+  (`join`) or missing here holds a copy of before until the server answers; a `failed`
+  read leaves the server's copy as it was. The worker publishes the result beside the
+  modes (`atTeam`: case id to team id) at the end of every run and wherever the modes
+  change, writing only when it differs from what is stored, so a run stopped before the
+  write is made good by the next. Nothing of the case itself is proof:
+  an imported file's marks carry `createdBy` too, and a case the sync has not seen counts
+  as the team's. The sync's overall status is no proof either: cases held back or waiting
+  to be read again are not in its count of what waits. The team id in it keeps a case of
+  the team before a switch from getting the new team's address. Until then the block
+  says why there is no link yet.
+- **Settled and to verify come before sharing.** Closing a settled case and verifying a
+  fix are the same whether the case is the team's or this browser's. With fixed and open
+  marks both, both are said and both offered (Start verifying first): the open ones still
+  need handing over while a fix waits to be checked.
+- **Copy link** copies `<server>/t/<team slug>/cases/<case id>`, the address the web app
+  gives a member. The panel had no such address before: the slug, which the server always
+  sent with the teams, is now kept in the panel's account (`slug`). It says: "Link copied.
+  It opens the case for the members of "T"; for anyone else, use Share… in the web app."
+  A refused clipboard (mostly a panel without the focus) says "Copying did not work.
+  Click in the side panel and try again." Either is said for eight seconds, and only
+  while the step still offers that copy.
+- **Copy for your AI app** copies the web app's case template word for word
+  (`caseInstructions` in sitegloss.dev's `apps/app/src/lib/agent-instructions.ts`),
+  copied into `src/lib/agent-instructions.ts`, with one line of the extension's own: that
+  reading the live page is the extension's AI app connection and the MCP server has the
+  case as stored, as the web app's AI app page says it. The two files are kept in step by
+  hand (no test can read the other repository); the file's header lists where they
+  differ. The service's copy lacks the extension's line until it takes it.
+- **"Start verifying", not "Verify".** A mark's own Verify settles it; a second button of
+  the same name that only filters and scrolls would be taken for "verify all". It shows
+  the marks to verify on every page, opens the lowest-numbered and brings it into view,
+  as a pin clicked on the page does. If none is left by then (verified by the team
+  meanwhile), it says so and lets go of that filter.
+- **The same actions as their other places.** Add marks is the tool bar's `addMarks` and
+  is off (with its title) where that one is; Share with team is the Team row's
+  `cloudShare`; Export… is the menu's `exportCase`; Close case is the footer's
+  `setCaseClosed`. Those places stay as they were.
+- **Keyboard and screen reader.** The block is a `section` named "Next step"; its
+  sentence is an `aria-live` paragraph written only when its words change; what a copy
+  did is a `role="status"` line under the buttons. Both stay rendered while empty (out
+  of sight, not `hidden`), so a reader hears what is written into them; the section has
+  its name only while it says something, so an empty one is no landmark. A copy clicked
+  after the case stopped being confirmed copies nothing and says so. A click that
+  changes the buttons keeps the focus on the same action where it is still offered,
+  else on the block's first button, else on the block.
+
+What step 2 (an assignee, the case's states, "my cases", a mail on hand-over and
+hand-back) will need from this block: `Where`'s team branch gains the assignee, and
+`nextStep` a row per hand-over state (open and assigned to someone: say to whom, offer
+"Hand over…"; all fixed: "Hand back to" the reporter); "Copy link" stays as the way
+outside the mail. The API needs the assignee and the case's state first; the block needs
+no new place in the panel.
+
+## DEC-070: Escape takes a new mark back while its comment is empty (owner)
+
+2026-11-23. The dialog that opens as a mark is drawn got "Cancel" where it said "Delete
+mark" (pull request 57), and Escape still did the opposite: it kept the mark. The lead
+asked whether Escape should discard a new mark while its comment is empty; the owner:
+"Yes".
+
+- Escape with nothing written (blanks count as nothing) takes the mark back, exactly as
+  Cancel does, and the toolbar says "Mark N taken back". With something written, Escape
+  keeps the mark and the words, as before: Escape never throws words away.
+- A mark without a comment is still possible (an arrow or a stroke that says it all):
+  Done, the save key and a click beside the dialog keep it. Only Escape changed.
+- The window's Escape handler takes the person's own key only (`isTrusted`): before,
+  a page's script could close the dialog with a made-up key; now it could have taken a
+  mark back with one.

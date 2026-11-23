@@ -169,7 +169,7 @@ export function startCloud(
 			// (DEC-051): until then they may be a build before this one's.
 			const ours = await casesForgotten(kv);
 			for (const key of ours
-				? [KEYS.account, KEYS.status, KEYS.modes]
+				? [KEYS.account, KEYS.status, KEYS.modes, KEYS.atTeam]
 				: [KEYS.account])
 				all[key] = await mine.get(key);
 		} catch (error) {
@@ -192,6 +192,7 @@ export function startCloud(
 							teams: account.teams.map((t) => ({
 								id: t.id,
 								name: t.name,
+								...(t.slug ? { slug: t.slug } : {}),
 								permissions: [...(t.permissions ?? [])],
 							})),
 							teamId: account.teamId,
@@ -199,6 +200,7 @@ export function startCloud(
 						};
 			s.cloud.status = all[KEYS.status] as CloudStatus | undefined;
 			s.cloud.modes = (all[KEYS.modes] as Record<string, SyncMode>) ?? {};
+			s.cloud.atTeam = (all[KEYS.atTeam] as Record<string, string>) ?? {};
 		});
 		follow(account);
 	}

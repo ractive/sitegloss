@@ -106,7 +106,8 @@ user agent. What differs from Chrome and Edge:
    "New case for this page", and whenever the toolbar was started with "Add marks" in a
    case, the toolbar says "Adding to “<case>”" ("Done adding" in the side panel stops
    it), and each mark goes into that case as soon as its
-   comment is done (Done, or the comment closed with Escape or a click elsewhere); the
+   comment is done (Done, a click elsewhere, or Escape once something is written; Escape
+   with nothing written takes the mark back, as Cancel does); the
    case in the side panel shows it at once. Marks in the case stay on the page,
    fainter. Undo deletes the last
    mark added since the toolbar was shown from the case again, while nobody has

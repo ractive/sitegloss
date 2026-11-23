@@ -213,9 +213,18 @@ inBothSets("adding marks to a case", () => {
 		// The case view follows.
 		await panel.waitFor(`document.querySelectorAll(".mark").length === 2`);
 
-		// A comment closed with Escape keeps its mark: it goes in too. Nothing
-		// moved: it shares the screenshot of mark 2, and its shot shows both.
+		// Escape with nothing written takes the mark back, as Cancel does: the
+		// dialog goes, no mark is drawn, and the case keeps its two.
 		await page.click(shadow('[data-action="tool-note"]'));
+		await page.click(`document.querySelector("[data-truth=tip]")`);
+		await dialogField(page);
+		await escapeTheField(h, page);
+		await page.waitFor(`${shadow(".popover")}.hidden`);
+		await drawnAre(page, { drafts: [], saved: ["1", "2"] });
+
+		// A comment with words closed with Escape keeps its mark: it goes in
+		// too. Nothing moved: it shares the screenshot of mark 2, and its shot
+		// shows both.
 		await page.click(`document.querySelector("[data-truth=tip]")`);
 		await typeInField(page, "Say how much");
 		await escapeTheField(h, page);

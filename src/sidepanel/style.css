@@ -1510,6 +1510,23 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 }
 
 /*
+ * What comes next on the case (DEC-069): a line and the panel's own
+ * buttons, quiet, with no colour of its own; under the counts.
+ */
+.next-step {
+	display: grid;
+	gap: var(--s2);
+}
+
+.next-step > * {
+	margin: 0;
+}
+
+.next-step:focus {
+	outline: none;
+}
+
+/*
  * The case's facts (DEC-061): one quiet block, a label and its value per
  * row, as the web's case page has them.
  */
