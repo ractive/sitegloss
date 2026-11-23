@@ -1138,11 +1138,16 @@ interface CaseParts {
 	counts: HTMLElement;
 	/** The facts' rows that come and go with what they hold. */
 	teamRow: HTMLElement;
-	/** "Show all n" under the first three pages. */
-	/** "Pages 12": opens and closes the list of pages (DEC-063). */
+	/** The pages of a case that has several, under their own heading (DEC-065). */
+	pagesSection: HTMLElement;
+	/** "Pages 12": the heading, which opens and closes the list. */
 	pagesToggle: HTMLButtonElement;
-	pagesLabel: HTMLElement;
 	pagesCount: HTMLElement;
+	/** The one page of a case that has one, among the facts. */
+	pageRow: HTMLElement;
+	/** "Current page" and its row, above the heading: also there while the list is closed. */
+	currentPage: HTMLElement;
+	currentRow: HTMLUListElement;
 	rename: HTMLElement;
 	renameField: HTMLInputElement;
 	renameSave: HTMLButtonElement;
@@ -1257,29 +1262,32 @@ function holdDelete(button: HTMLElement | undefined): void {
 
 /**
  * The list of pages opened or closed by the person, per case, this session
- * (DEC-063). Not chosen: closed for more than `PAGES_SHOWN`, open where the
- * tab shows none of the case's pages. A choice wins over that, so the list
- * does not open again by itself at the next render (DEC-064's review).
- * Closed, it still shows the page in front.
+ * (DEC-063). Not chosen: open up to `PAGES_SHOWN` pages, closed for more, and
+ * open where the tab shows none of the case's pages. A choice wins over
+ * that, so the list does not open again by itself at the next render
+ * (DEC-064's review).
  */
 const openPages = new Map<string, boolean>();
 
-/** Up to this many pages, the list is just shown: nothing to open or close. */
+/** Up to this many pages, the list starts open. */
 const PAGES_SHOWN = 3;
 
 /**
- * The list of pages, open or closed (DEC-063); `noneHere`: the tab shows none
- * of the case's pages, and the list is open so the person sees where to go.
+ * The list of pages under its heading, open or closed as "Comments" and
+ * "Screenshots" are (DEC-065); `noneHere`: the tab shows none of the case's
+ * pages, and the list is open so the person sees where to go.
  */
 function foldPages(p: CaseParts, noneHere: boolean): void {
-	const rows = [...p.pages.children] as HTMLElement[];
-	const many = rows.length > PAGES_SHOWN;
-	const open = !many || (openPages.get(p.current.id) ?? noneHere);
-	for (const li of rows) li.hidden = !open && !li.hasAttribute("data-here");
-	p.pagesToggle.hidden = !many;
-	p.pagesLabel.hidden = many;
+	const count = p.pages.children.length;
+	const open =
+		openPages.get(p.current.id) ?? (count <= PAGES_SHOWN || noneHere);
+	p.pagesSection.hidden = count === 0;
+	p.pageRow.hidden = count > 0;
+	// Closed by itself with the focus in it: the focus goes to the heading.
+	if (!open && p.pages.contains(document.activeElement)) p.pagesToggle.focus();
+	p.pages.hidden = !open;
 	p.pagesToggle.setAttribute("aria-expanded", String(open));
-	p.pagesCount.textContent = String(rows.length);
+	p.pagesCount.textContent = String(count);
 }
 
 // The case's menu closes on a press outside it.
@@ -1549,16 +1557,13 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		"button",
 		{
 			type: "button",
-			class: "link pages-toggle",
+			class: "thread-toggle pages-toggle",
 			id: "case-pages-toggle",
 			"aria-controls": "case-pages",
 			"aria-expanded": "false",
-			hidden: true,
 			onclick: () => {
-				const key = created.current.id;
 				const open = pagesToggle.getAttribute("aria-expanded") === "true";
-				openPages.set(key, !open);
-				created.pagesKey = "";
+				openPages.set(created.current.id, !open);
 				foldPages(created, false);
 			},
 		},
@@ -1581,9 +1586,21 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		linkMenu,
 		counts: h("p", { class: "meta case-counts", id: "case-counts" }),
 		teamRow: h("div", { class: "fact", hidden: true }),
+		pagesSection: h("section", {
+			class: "pages-section",
+			id: "case-pages-section",
+			"aria-labelledby": "case-pages-toggle",
+			hidden: true,
+		}),
 		pagesToggle,
-		pagesLabel: h("span", {}, "Pages"),
 		pagesCount,
+		pageRow: h("div", { class: "fact" }),
+		currentPage: h("div", { class: "current-page", hidden: true }),
+		currentRow: h("ul", {
+			class: "case-pages",
+			id: "case-current-page",
+			"aria-labelledby": "case-current-label",
+		}),
 		rename: h(
 			"div",
 			{ class: "rename", id: "rename", hidden: true },
@@ -1752,6 +1769,16 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	menu.append(renameButton, linkMenu, exportItem, created.deleteButton);
 	created.deleteButton.setAttribute("role", "menuitem");
 	created.teamRow.append(h("dt", {}, "Team"), h("dd", {}, created.team));
+	created.pageRow.append(h("dt", {}, "Page"), h("dd", {}, created.meta));
+	created.currentPage.append(
+		h("p", { class: "label", id: "case-current-label" }, "Current page"),
+		created.currentRow,
+	);
+	created.pagesSection.append(
+		created.currentPage,
+		h("h2", {}, pagesToggle),
+		created.pages,
+	);
 	const fact = (label: string, ...value: (Node | string)[]) =>
 		h("div", { class: "fact" }, h("dt", {}, label), h("dd", {}, ...value));
 	const header = h(
@@ -1764,16 +1791,14 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.counts,
 		created.leaving,
 		created.saved,
+		// A case's several pages: a heading that opens and closes its list,
+		// the list at the panel's full width (DEC-065).
+		created.pagesSection,
 		// The case's facts, one quiet block of label and value.
 		h(
 			"dl",
 			{ class: "case-facts", id: "case-facts" },
-			h(
-				"div",
-				{ class: "fact" },
-				h("dt", {}, created.pagesLabel, pagesToggle),
-				h("dd", {}, created.meta, created.pages),
-			),
+			created.pageRow,
 			created.teamRow,
 			fact("Link", created.linkRow),
 			fact("Made at", h("span", {}, created.madeAt, ", ", created.madeOn)),
@@ -2682,77 +2707,82 @@ function renderPages(
 	]);
 	if (key === p.pagesKey) return;
 	p.pagesKey = key;
-	p.pages.hidden = pages.length === 0;
 	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
 	// the title it was on), in the same row.
 	const at = document.activeElement as HTMLElement | null;
+	const list = [p.pages, p.currentRow].find(
+		(ul) => at !== null && ul.contains(at),
+	);
 	const focused =
-		at !== null && p.pages.contains(at)
+		at !== null && list !== undefined
 			? {
+					list,
 					page: at.closest<HTMLElement>("li")?.dataset["page"],
 					control: at.classList.contains("page-count-button")
 						? ".page-count-button"
 						: ".page-name",
 				}
 			: undefined;
-	p.pages.replaceChildren(
-		...pages.map((page) => {
-			const marks = marksOn(page.url);
-			const front = here !== undefined && here.url === page.url;
-			const title = page.title.trim();
-			const web = isWebPage(page.url);
-			const path = web ? pagePath(page.url) : page.url;
-			const hosts = hostsOf.get(pageKey(page.url));
-			// On the tab's host when it was marked there, else on its last.
-			const target = openAt(page.url, hosts, tabUrl);
-			// An address is cut at its start: its end tells two pages apart.
-			const address = () => h("bdi", { dir: "ltr" }, path);
-			// The page in front is said by `aria-current` alone, once.
-			const name = title || address();
-			const whole = title ? `${title}\n${target}` : target;
-			const tooltip = web
-				? `${whole}\nOpens in a new tab; the case's marks are drawn there`
-				: whole;
-			const nameClass = `page-name${title ? "" : " cut-start"}`;
-			const filtered = byPage.page?.url === page.url;
-			return h(
-				"li",
-				{
-					"data-page": page.url,
-					...(front ? { "data-here": true } : {}),
-					...(filtered ? { "data-filter": true } : {}),
-				},
-				web
-					? h(
-							"button",
-							{
-								type: "button",
-								class: `link ${nameClass}`,
-								title: tooltip,
-								...(front ? { "aria-current": "page" } : {}),
-								onclick: () => actions.openPage(p.current, target),
-							},
-							name,
-						)
-					: h("span", { class: nameClass, title: tooltip }, name),
-				// The count sets the list's page filter; the title opens the page.
-				pageCount(p.current, page, marks, byPage, actions),
-				title
-					? h("span", { class: "page-address cut-start" }, address())
-					: null,
-				// Marked on more than one host, or not on the usual one: on which, the last first.
-				hosts && (hosts.origins.length > 1 || hosts.origins[0] !== usual)
-					? h(
-							"span",
-							{ class: "page-hosts" },
-							hosts.origins.map((o) => hostOf(o)).join(", "),
-						)
-					: null,
-			);
-		}),
-	);
+	// `current`: the row above the heading, which its label names.
+	const row = (page: (typeof pages)[number], current = false) => {
+		const marks = marksOn(page.url);
+		const front = here !== undefined && here.url === page.url;
+		const title = page.title.trim();
+		const web = isWebPage(page.url);
+		const path = web ? pagePath(page.url) : page.url;
+		const hosts = hostsOf.get(pageKey(page.url));
+		// On the tab's host when it was marked there, else on its last.
+		const target = openAt(page.url, hosts, tabUrl);
+		// An address is cut at its start: its end tells two pages apart.
+		const address = () => h("bdi", { dir: "ltr" }, path);
+		// The page in front is said by `aria-current` alone, once.
+		const name = title || address();
+		const whole = title ? `${title}\n${target}` : target;
+		const tooltip = web
+			? `${whole}\nOpens in a new tab; the case's marks are drawn there`
+			: whole;
+		const nameClass = `page-name${title ? "" : " cut-start"}`;
+		const filtered = byPage.page?.url === page.url;
+		return h(
+			"li",
+			{
+				"data-page": page.url,
+				...(front ? { "data-here": true } : {}),
+				...(filtered ? { "data-filter": true } : {}),
+			},
+			web
+				? h(
+						"button",
+						{
+							type: "button",
+							class: `link ${nameClass}`,
+							title: tooltip,
+							...(front && !current ? { "aria-current": "page" } : {}),
+							onclick: () => actions.openPage(p.current, target),
+						},
+						name,
+					)
+				: h("span", { class: nameClass, title: tooltip }, name),
+			// The count sets the list's page filter; the title opens the page.
+			pageCount(p.current, page, marks, byPage, actions),
+			title ? h("span", { class: "page-address cut-start" }, address()) : null,
+			// Marked on more than one host, or not on the usual one: on which, the last first.
+			hosts && (hosts.origins.length > 1 || hosts.origins[0] !== usual)
+				? h(
+						"span",
+						{ class: "page-hosts" },
+						hosts.origins.map((o) => hostOf(o)).join(", "),
+					)
+				: null,
+		);
+	};
+	p.pages.replaceChildren(...pages.map((page) => row(page)));
+	// The page in front, said above the heading: there while the list is closed.
+	const current = pages.find((page) => page.url === here?.url);
+	p.currentPage.hidden = current === undefined;
+	p.currentRow.replaceChildren(...(current ? [row(current, true)] : []));
 	if (focused?.page !== undefined)
-		[...p.pages.children]
+		[...focused.list.children]
 			.find((li) => (li as HTMLElement).dataset["page"] === focused.page)
 			?.querySelector<HTMLElement>(focused.control)
 			?.focus();
@@ -2794,7 +2824,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const web = !several && isWebPage(c.page.url);
 	p.page.hidden = !web;
 	p.page.textContent = web ? shortUrl(c.page.url) : "";
-	// Several: the list says it, under the Pages label (DEC-061).
+	// Several: the list says it, under its own heading (DEC-065).
 	p.about.hidden = web || several;
 	p.about.textContent = several ? "" : web ? "" : c.page.url;
 	renderPages(
