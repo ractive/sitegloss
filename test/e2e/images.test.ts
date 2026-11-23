@@ -16,11 +16,14 @@ import {
 } from "./harness.ts";
 import {
 	type Db,
+	FIELD,
 	markElement,
 	parkControl,
 	READ_DB,
 	saveAs,
 	shadow,
+	typeInField,
+	until,
 } from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
@@ -161,4 +164,40 @@ inFullSet("images added to a mark", () => {
 		const photo = after.cases[0]?.marks[0]?.images?.[1]?.image as string;
 		expect(await storedAt(`${c?.id}/${photo}`)).toEqual([100, 300, false]);
 	}, 120_000);
+
+	test("Add another image… in the page's dialog: the mark is done, and the panel's own dialog opens for it (DEC-063)", async () => {
+		// The case of the test before, adding to it again.
+		await panel.eval(`${id("add-marks")}.click()`);
+		await page.waitFor(shadow('[data-action="tool-element"]'));
+		await page.click(shadow('[data-action="tool-element"]'));
+		await page.waitFor(
+			`${shadow('[data-action="tool-element"]')}.getAttribute("aria-pressed") === "true"`,
+		);
+		const at = await page.eval<{ x: number; y: number }>(
+			`(() => { const r = document.querySelector("[data-truth=tip]").getBoundingClientRect(); return { x: r.x + Math.min(12, r.width / 2), y: r.y + r.height / 2 }; })()`,
+		);
+		await page.mouse("mouseMoved", at.x, at.y);
+		await page.clickAt(at.x, at.y);
+		await page.waitFor(FIELD);
+		await typeInField(page, "Needs a picture of the menu");
+		await page.click(shadow('[data-action="comment-image"]'));
+		// The page's dialog is gone; the panel's opens, for this mark.
+		await page.waitFor(`${shadow(".popover")}.hidden`);
+		await panel.waitFor(
+			`document.querySelector("dialog.add-images[open]")?.textContent.includes("mark 2")`,
+			20_000,
+		);
+		const comment = await until(
+			async () =>
+				(await panel.eval<Db>(READ_DB)).cases[0]?.marks.find(
+					(a) => a.number === 2,
+				)?.comment,
+			(text) => text !== undefined,
+			20_000,
+		);
+		expect(comment).toBe("Needs a picture of the menu");
+		await panel.eval(
+			`document.querySelector('.add-images [data-action="cancel"]')?.click()`,
+		);
+	}, 60_000);
 });
