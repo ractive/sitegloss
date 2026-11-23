@@ -572,8 +572,28 @@ describe("a mark's status and actions", () => {
 		expect(show("m1")?.getAttribute("aria-label")).toBe(
 			"Show the marks on this page and go to mark 1",
 		);
+		expect(show("m1")?.getAttribute("aria-busy")).toBe("false");
 		show("m1")?.click();
 		expect(called).toEqual(["load+show m1"]);
+		// While it draws, that button says so.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.showingMark = { caseId: c.id, markId: "m1" };
+			}),
+			actions,
+		);
+		expect(show("m1")?.getAttribute("aria-busy")).toBe("true");
+		expect(show("m2")?.getAttribute("aria-busy")).toBe("false");
+		// Drawn on this tab: the old Show, not this one.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.loaded = { caseId: c.id, tabId: 1, matches: new Map(), url: page };
+			}),
+			actions,
+		);
+		expect(show("m1")?.hasAttribute("data-loads")).not.toBe(true);
 		// A tab Sitegloss cannot work on, none, or another page: no button.
 		for (const url of [
 			"chrome://extensions",

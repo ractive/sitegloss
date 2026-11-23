@@ -64,7 +64,7 @@ import {
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
-import { markTargets, shortAddress } from "./mark-link.ts";
+import { markTargets, mayLoadAndShow, shortAddress } from "./mark-link.ts";
 import {
 	type CardHandOver,
 	cardHandOver,
@@ -3548,6 +3548,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		// Whether a mark's Show must draw the marks first.
 		p.loadedHere,
 		p.loadButton.hidden,
+		state.showingMark ?? null,
 		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
 		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
 		notSent ?? null,
@@ -3591,12 +3592,13 @@ function renderCase(state: PanelState, actions: Actions): void {
 				canReach: ok,
 				// What "Show marks" would do here; a mark of another page, or of
 				// a kind this version cannot show, has nothing to go to.
+				busy:
+					state.showingMark?.caseId === c.id &&
+					state.showingMark.markId === a.id,
 				loadFirst:
 					!p.loadedHere &&
 					!p.loadButton.hidden &&
-					state.tab?.url !== undefined &&
-					isWebPage(state.tab.url) &&
-					onPageInFront(c, a, state.tab.url) &&
+					mayLoadAndShow(c, a, state.tab?.url, true) &&
 					!(a.shape.kind === "unknown" && a.element === null),
 				changed: () => syncToggleAll(),
 			});
@@ -4001,6 +4003,8 @@ interface MarkContext {
 	 * them, and this mark is of its page: Show draws them, then shows it.
 	 */
 	loadFirst: boolean;
+	/** This mark's Show is drawing the marks now. */
+	busy: boolean;
 	/** A mark opened or closed by its own head. */
 	changed: () => void;
 	/** Who may write a mark's comments (DEC-061). */
@@ -4057,6 +4061,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					class: "small show",
 					"data-action": "show",
 					"data-loads": "",
+					"aria-busy": x.busy ? "true" : "false",
 					"aria-label": `Show the marks on this page and go to mark ${a.number}`,
 					title:
 						"Show this case's marks on this page, scroll to this one and outline it",

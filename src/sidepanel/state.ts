@@ -129,6 +129,8 @@ export interface PanelState {
 	hiddenOn: Set<number>;
 	/** The panel is drawing the open case's marks on this tab now. */
 	drawing: number | undefined;
+	/** A mark's Show is drawing the case's marks first: that mark's button is busy. */
+	showingMark: { caseId: string; markId: string } | undefined;
 	/** The open case, once read. */
 	current: Case | undefined;
 	images: CaseImages | undefined;
@@ -344,6 +346,7 @@ export const initialState = (): PanelState => ({
 	leaving: undefined,
 	hiddenOn: new Set(),
 	drawing: undefined,
+	showingMark: undefined,
 	current: undefined,
 	images: undefined,
 	caseHint: undefined,
