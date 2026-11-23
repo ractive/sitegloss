@@ -16,10 +16,12 @@ import {
 import { BAR_LOOP, pathData, strokeBounds } from "../lib/logo.ts";
 import {
 	arrowHead,
-	badgePosition,
 	badgeRadius,
+	HIGHLIGHT_LOOK,
 	MARK_COLOUR,
+	markerPath,
 	pinFontSize,
+	pinPosition,
 	type RenderedMark,
 } from "../lib/marks.ts";
 import { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
@@ -84,9 +86,19 @@ const STYLE = `
 	color: ${L.popoverText};
 }
 svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/*
+ * A highlight's marker strokes on a light ground (DEC-066): a layer of their
+ * own, multiplied with the page under it, so the text keeps its colour. Not
+ * inside .layer, whose stacking context would multiply them with nothing.
+ * Under .layer: the pins stay on top.
+ */
+.ink { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; mix-blend-mode: multiply; }
+.ink.marking .review, .ink.marking .drafts { display: none !important; }
 .capture { position: fixed; inset: 0; pointer-events: none; cursor: crosshair; }
 .capture.active { pointer-events: auto; }
 .capture.element { cursor: default; }
+/* The Highlight tool: the press selects the page's text (DEC-066). */
+.capture.text { cursor: text; }
 /* Over a loaded mark's pin: a click opens its comment (DEC-027). */
 .capture.pick { cursor: pointer; }
 .review [data-number] { pointer-events: auto; cursor: pointer; }
@@ -291,6 +303,8 @@ const ICONS = {
 	note: [
 		"M2.5 3.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7l-3 2.5V11h-.5a1 1 0 0 1-1-1z",
 	],
+	// A marker's tip over a line of text (DEC-066).
+	highlight: ["M9.5 2.5l3 3L7 11H4V8z", "M2.5 13.5h11"],
 	undo: ["M5.5 3l-3 3 3 3", "M2.5 6H9a4 4 0 0 1 0 8H6"],
 	close: ["M4 4l8 8", "M12 4l-8 8"],
 	up: ["M8 13V3", "M4 7l4-4 4 4"],
@@ -371,6 +385,10 @@ export interface ReviewItem {
 	focused: boolean;
 	/** Its status: a verified or dismissed mark is drawn faded, so the others stand out. */
 	status: MarkStatus;
+	/** A highlight's line boxes as found now, in window coordinates (DEC-066). */
+	lines?: Rect[];
+	/** Its text is on a dark ground (`HIGHLIGHT_LOOK`). */
+	dark?: boolean;
 }
 
 /** Drawn faded: nothing more to do about it. */
@@ -449,9 +467,14 @@ export class Overlay {
 	readonly toolbar: HTMLDivElement;
 	readonly popover: HTMLDivElement;
 	readonly reviewBar: HTMLDivElement;
+	/** The highlights' strokes on a light ground, multiplied with the page (DEC-066). */
+	readonly ink: HTMLDivElement;
 	readonly #drafts: SVGGElement;
 	readonly #review: SVGGElement;
 	readonly #temporary: SVGGElement;
+	readonly #inkDrafts: SVGGElement;
+	readonly #inkReview: SVGGElement;
+	readonly #inkTemporary: SVGGElement;
 	#addingMarks = false;
 	#reviewing = false;
 	/** The case's marks are hidden: the bar is the pill that brings them back (DEC-061). */
@@ -500,6 +523,15 @@ export class Overlay {
 		this.#drafts = svg(doc, "g", { class: "drafts" });
 		this.#temporary = svg(doc, "g", { class: "temporary" });
 		this.marks.append(this.#review, this.#drafts, this.#temporary);
+		this.ink = doc.createElement("div");
+		this.ink.className = "ink";
+		this.ink.hidden = true;
+		this.#inkReview = svg(doc, "g", { class: "review" });
+		this.#inkDrafts = svg(doc, "g", { class: "drafts" });
+		this.#inkTemporary = svg(doc, "g", { class: "temporary" });
+		const inkSvg = svg(doc, "svg", { class: "marks" });
+		inkSvg.append(this.#inkReview, this.#inkDrafts, this.#inkTemporary);
+		this.ink.append(inkSvg);
 		this.capture = doc.createElement("div");
 		this.capture.className = "capture";
 		this.popover = doc.createElement("div");
@@ -518,7 +550,7 @@ export class Overlay {
 			this.toolbar,
 			this.reviewBar,
 		);
-		this.root.append(this.layer);
+		this.root.append(this.ink, this.layer);
 		this.#movable();
 		for (const type of OWN_EVENTS)
 			this.layer.addEventListener(type, (e) => e.stopPropagation());
@@ -771,21 +803,40 @@ export class Overlay {
 	 * Mark one element for a screenshot an AI app takes, with everything else
 	 * of Sitegloss's hidden; `null` removes it.
 	 */
-	setTemporaryMark(mark: { number: number; rect: Rect } | null): void {
+	setTemporaryMark(
+		mark: {
+			number: number;
+			rect: Rect;
+			/** A highlight's line boxes (DEC-066), with the ground's darkness. */
+			lines?: Rect[];
+			dark?: boolean;
+		} | null,
+	): void {
 		this.#marking = mark !== null;
-		this.#temporary.replaceChildren(
-			...(mark === null
-				? []
-				: [
-						...this.#shape({ kind: "element", rect: mark.rect }),
-						this.#badge({
-							number: mark.number,
-							shape: { kind: "element", rect: mark.rect },
-						}),
-					]),
-		);
+		const drawn: RenderedMark | null =
+			mark === null
+				? null
+				: {
+						number: mark.number,
+						shape: {
+							kind: mark.lines === undefined ? "element" : "box",
+							rect: mark.rect,
+						},
+						...(mark.lines === undefined
+							? {}
+							: { lines: mark.lines, dark: mark.dark === true }),
+					};
+		const ink: SVGElement[] = [];
+		const plain: SVGElement[] = [];
+		if (drawn !== null) {
+			this.#drawn(drawn, MARK_COLOUR, {}, ink, plain);
+			plain.push(this.#badge(drawn));
+		}
+		this.#temporary.replaceChildren(...plain);
+		this.#inkTemporary.replaceChildren(...ink);
 		// Its own class: a save's capturing state must survive an unmark.
 		this.layer.classList.toggle("marking", this.#marking);
+		this.ink.classList.toggle("marking", this.#marking);
 		this.#update();
 	}
 
@@ -796,9 +847,11 @@ export class Overlay {
 			this.#marking ||
 			this.#marksHidden;
 		this.layer.hidden = !shown;
+		this.ink.hidden = !shown;
 		this.toolbar.hidden = !this.#addingMarks;
 		this.capture.hidden = !this.#addingMarks;
 		this.#drafts.style.display = this.#addingMarks ? "" : "none";
+		this.#inkDrafts.style.display = this.#addingMarks ? "" : "none";
 		// While marks are added the bar steps aside: the toolbar is up, with
 		// Done, and nothing of Sitegloss covers what is marked (DEC-061).
 		const barWas = this.reviewBar.hidden;
@@ -807,6 +860,7 @@ export class Overlay {
 		// Shown again, it is measured where it is kept: inside this window.
 		if (barWas && !this.reviewBar.hidden && !this.layer.hidden) this.#drawBar();
 		this.#review.style.display = this.#reviewing ? "" : "none";
+		this.#inkReview.style.display = this.#reviewing ? "" : "none";
 		// Stay on top of elements the page appended later.
 		if (shown && this.host.nextElementSibling !== null) this.#place(true);
 		if (shown && this.#timer === undefined) {
@@ -889,6 +943,7 @@ export class Overlay {
 	/** Hide all of Sitegloss while a screenshot is taken. */
 	setCapturing(on: boolean): void {
 		this.layer.classList.toggle("capturing", on);
+		this.ink.classList.toggle("capturing", on);
 	}
 
 	/** Draw the marks (saved ones fainter), the one being drawn and the hovered element's outline. */
@@ -925,16 +980,72 @@ export class Overlay {
 				}),
 			);
 		}
+		const ink: SVGElement[] = [];
 		if (saved.length > 0) {
 			const group = svg(doc, "g", { class: "saved", opacity: 0.5 });
-			for (const mark of saved)
-				group.append(...this.#shape(mark.shape), this.#badge(mark));
+			const inkGroup = svg(doc, "g", { class: "saved", opacity: 0.5 });
+			const strokes: SVGElement[] = [];
+			const parts: SVGElement[] = [];
+			for (const mark of saved) {
+				this.#drawn(mark, MARK_COLOUR, {}, strokes, parts);
+				parts.push(this.#badge(mark));
+			}
+			group.append(...parts);
+			inkGroup.append(...strokes);
 			children.push(group);
+			ink.push(inkGroup);
 		}
-		for (const mark of marks)
-			children.push(...this.#shape(mark.shape), this.#badge(mark));
+		for (const mark of marks) {
+			this.#drawn(mark, MARK_COLOUR, {}, ink, children);
+			children.push(this.#badge(mark));
+		}
 		if (preview !== null) children.push(...this.#shape(preview));
 		this.#drafts.replaceChildren(...children);
+		this.#inkDrafts.replaceChildren(...ink);
+	}
+
+	/**
+	 * A mark's drawing: a highlight's strokes (into `ink` on a light ground,
+	 * multiplied; into `plain` on a dark one), any other mark's shape into
+	 * `plain`. The pin is not part of it.
+	 */
+	#drawn(
+		mark: RenderedMark,
+		colour: string,
+		look: Record<string, string | number>,
+		ink: SVGElement[],
+		plain: SVGElement[],
+		focused = false,
+	): void {
+		if (mark.lines === undefined || mark.lines.length === 0) {
+			plain.push(...this.#shape(mark.shape, colour, look));
+			return;
+		}
+		const dark = mark.dark === true;
+		for (const line of mark.lines)
+			(dark ? plain : ink).push(
+				svg(this.doc, "path", {
+					"data-stroke": "",
+					d: markerPath(line),
+					fill: HIGHLIGHT_LOOK.colour,
+					...(dark ? { opacity: HIGHLIGHT_LOOK.darkOpacity } : {}),
+				}),
+			);
+		// Unsure where it is (dashed), or looked for (focused): an edge in the
+		// mark's colour round each line, as the other marks have one.
+		const unsure = look["stroke-dasharray"] !== undefined;
+		if (unsure || focused)
+			for (const line of mark.lines)
+				plain.push(
+					svg(this.doc, "path", {
+						"data-edge": "",
+						d: markerPath(line),
+						fill: "none",
+						stroke: colour,
+						"stroke-width": 1.5,
+						...(unsure ? { "stroke-dasharray": "6 4" } : {}),
+					}),
+				);
 	}
 
 	/**
@@ -944,11 +1055,16 @@ export class Overlay {
 	 */
 	renderReview(items: readonly ReviewItem[]): void {
 		const doc = this.doc;
-		this.#pins = items.map((item) => ({
-			number: item.number,
-			...badgePosition(item.shape),
-			r: badgeRadius(item.shape),
-		}));
+		// A mark of a kind this version does not know has no drawing and no
+		// pin: only its element's outline while it is looked for (DEC-066).
+		this.#pins = items
+			.filter((item) => item.shape.kind !== "unknown")
+			.map((item) => ({
+				number: item.number,
+				...pinPosition(item),
+				r: badgeRadius(item.shape),
+			}));
+		const inkGroups: SVGElement[] = [];
 		const groups = items.map((item) => {
 			const settled = isSettled(item.status);
 			const colour = reviewColour(item);
@@ -983,9 +1099,12 @@ export class Overlay {
 					}),
 				);
 			}
-			const shape = this.#shape(item.shape, colour, look);
+			const shape: SVGElement[] = [];
+			const strokes: SVGElement[] = [];
+			this.#drawn(item, colour, look, strokes, shape, item.focused);
 			// A focused one is looked for: it shows fully.
-			if (settled && !item.focused) {
+			const fade = settled && !item.focused;
+			if (fade) {
 				const faded = svg(doc, "g", {
 					"data-faded": "",
 					opacity: RESOLVED_OPACITY,
@@ -993,10 +1112,20 @@ export class Overlay {
 				faded.append(...shape);
 				group.append(faded);
 			} else group.append(...shape);
-			group.append(this.#badge(item, colour));
+			if (strokes.length > 0) {
+				const inkGroup = svg(doc, "g", {
+					"data-review": item.number,
+					...(fade ? { "data-faded": "", opacity: RESOLVED_OPACITY } : {}),
+				});
+				inkGroup.append(...strokes);
+				inkGroups.push(inkGroup);
+			}
+			if (item.shape.kind !== "unknown")
+				group.append(this.#badge(item, colour));
 			return group;
 		});
 		this.#review.replaceChildren(...groups);
+		this.#inkReview.replaceChildren(...inkGroups);
 	}
 
 	/**
@@ -1065,13 +1194,14 @@ export class Overlay {
 					points: shape.points.map((p) => `${p.x},${p.y}`).join(" "),
 				});
 			case "note":
+			case "unknown":
 				return [];
 		}
 	}
 
 	#badge(mark: RenderedMark, colour: string = MARK_COLOUR): SVGElement {
 		const doc = this.doc;
-		const at = badgePosition(mark.shape);
+		const at = pinPosition(mark);
 		const g = svg(doc, "g", { "data-number": mark.number });
 		g.append(
 			svg(doc, "circle", {

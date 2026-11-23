@@ -3,7 +3,9 @@
  * saving paints the same shapes onto the screenshot (images.ts).
  */
 
-import type { Point, Shape } from "./case.ts";
+import type { Point, Rect, Shape } from "./case.ts";
+import { luminance, parseColor } from "./colour.ts";
+import { LOGO_COLOURS, swipe, WORDMARK } from "./logo.ts";
 
 export const MARK_COLOUR = "#e0185c";
 
@@ -11,6 +13,58 @@ export interface RenderedMark {
 	number: number;
 	/** In window coordinates. */
 	shape: Shape;
+	/**
+	 * A highlight's line boxes (DEC-066), in the same coordinates: drawn as
+	 * marker strokes, and its pin at the start of the first.
+	 */
+	lines?: readonly Rect[];
+	/** The text is on a dark ground: the stroke is laid over it, not multiplied (`HIGHLIGHT_LOOK`). */
+	dark?: boolean;
+}
+
+/**
+ * The marker stroke over a highlighted line (DEC-066): the logo's amber, the
+ * yellow of the swipe behind "gloss". The page's text has to stay readable
+ * under it, and the overlay sits above the page: on a light ground it is
+ * multiplied with what is under it (the text keeps its colour, the ground
+ * turns amber); on a dark ground multiplying would leave nothing to see, so
+ * it is laid over it translucent. Which one is the colour behind the text
+ * (`isDarkGround`). The contrast of text under it is held by a unit test.
+ */
+export const HIGHLIGHT_LOOK = {
+	colour: LOGO_COLOURS.amber,
+	/** On a dark ground: how much of the amber covers it. */
+	darkOpacity: 0.3,
+} as const;
+
+/**
+ * Whether text on this ground colour (`rgb(…)` as computed) is on a dark
+ * one: below the luminance where black and white text have equal contrast.
+ * A colour this does not read counts as light.
+ */
+export function isDarkGround(colour: string | undefined): boolean {
+	const c = colour === undefined ? undefined : parseColor(colour);
+	return c !== undefined && c.a > 0 && luminance(c) < 0.179;
+}
+
+/**
+ * One line's marker stroke as an SVG path: the logo's swipe (its uneven
+ * round corners, its lean) round the line, a little wider than the text.
+ * It turns as the swipe does only as far as its ends move no more than the
+ * logo's do: a long line turned 1.6° would climb over the next one.
+ */
+export function markerPath(line: Rect): string {
+	const { width: w, height: h } = line;
+	// The corners are lengths in em: on a short word they must still fit.
+	const em = Math.max(1, Math.min(h / 1.15, (w + 0.2 * h) / 0.62));
+	const pad = 0.1 * em;
+	const box = [line.x - pad, line.y, w + 2 * pad, h] as const;
+	const climb = (0.08 * em) / Math.max(1, box[2]);
+	const rotate = -Math.min(
+		Math.abs(WORDMARK.swipe.rotate),
+		(Math.asin(Math.min(1, climb)) * 180) / Math.PI,
+	);
+	return swipe(box, em, rotate).d;
 }
 
 export function badgePosition(shape: Shape): Point {
@@ -24,7 +78,23 @@ export function badgePosition(shape: Shape): Point {
 			return shape.points[0] ?? { x: 0, y: 0 };
 		case "note":
 			return shape.at;
+		case "unknown":
+			return { x: 0, y: 0 };
 	}
+}
+
+/**
+ * Where a mark's pin is: a highlight's just left of its first line, centred
+ * on it, so it covers neither the highlighted text nor the line above;
+ * every other mark's where its shape starts (`badgePosition`).
+ */
+export function pinPosition(
+	mark: Pick<RenderedMark, "shape" | "lines">,
+): Point {
+	const first = mark.lines?.[0];
+	if (first !== undefined)
+		return { x: first.x - 11, y: first.y + first.height / 2 };
+	return badgePosition(mark.shape);
 }
 
 /** The two back corners of an arrow's head. */
@@ -84,9 +154,24 @@ function paintShape(
 			});
 			break;
 		case "note":
+		case "unknown":
 			return;
 	}
 	ctx.stroke();
+}
+
+/** A highlight's strokes, as the overlay draws them on the page. */
+function paintLines(
+	ctx: OffscreenCanvasRenderingContext2D,
+	lines: readonly Rect[],
+	dark: boolean,
+): void {
+	ctx.save();
+	ctx.fillStyle = HIGHLIGHT_LOOK.colour;
+	if (dark) ctx.globalAlpha = HIGHLIGHT_LOOK.darkOpacity;
+	else ctx.globalCompositeOperation = "multiply";
+	for (const line of lines) ctx.fill(new Path2D(markerPath(line)));
+	ctx.restore();
 }
 
 /** Paint a mark and its number; the context is scaled to CSS pixels. */
@@ -94,13 +179,17 @@ export function paintMark(
 	ctx: OffscreenCanvasRenderingContext2D,
 	mark: RenderedMark,
 ): void {
+	if (mark.shape.kind === "unknown") return;
 	ctx.strokeStyle = MARK_COLOUR;
 	ctx.fillStyle = MARK_COLOUR;
 	ctx.lineWidth = 3;
 	ctx.lineCap = "round";
 	ctx.lineJoin = "round";
-	paintShape(ctx, mark.shape);
-	const at = badgePosition(mark.shape);
+	if (mark.lines !== undefined && mark.lines.length > 0) {
+		paintLines(ctx, mark.lines, mark.dark === true);
+		ctx.fillStyle = MARK_COLOUR;
+	} else paintShape(ctx, mark.shape);
+	const at = pinPosition(mark);
 	ctx.beginPath();
 	ctx.arc(at.x, at.y, badgeRadius(mark.shape), 0, Math.PI * 2);
 	ctx.fill();
