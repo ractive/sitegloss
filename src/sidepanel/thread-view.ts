@@ -117,6 +117,60 @@ export function commentMeta(c: Case, k: CaseComment, withMark = true): string {
 	return `${who} · ${formatDate(k.at)}${about}${edited}${file}`;
 }
 
+/**
+ * The head of a comment: who wrote it, standing out, then the rest of
+ * `commentMeta`'s line. Its text is that line, unchanged.
+ */
+function commentHead(c: Case, k: CaseComment, withMark: boolean): HTMLElement {
+	const line = commentMeta(c, k, withMark);
+	const name = k.user?.name ?? (k.app ? undefined : "You");
+	const who =
+		name !== undefined && line.startsWith(name)
+			? name
+			: (line.split(" · ")[0] ?? "");
+	return h(
+		"p",
+		{ class: "meta comment-meta" },
+		h("strong", { class: "comment-who" }, who),
+		line.slice(who.length),
+	);
+}
+
+/** A line that starts a list item: "- ", "* ", "• " or "1. " / "1) ". */
+const LIST_LINE = /^\s*([-*•–]|\d{1,3}[.)])\s+(.*)$/;
+
+/**
+ * A comment's text laid out as it was written (an AI app's report above
+ * all): blank lines part paragraphs, and a line that starts a list item
+ * hangs under its marker. Text only, every character kept: nothing is read
+ * as markup, a link or an emphasis.
+ */
+export function commentBlocks(text: string): HTMLElement[] {
+	const blocks: HTMLElement[] = [];
+	let lines: string[] = [];
+	const flush = () => {
+		if (lines.length > 0) blocks.push(h("p", {}, lines.join("\n")));
+		lines = [];
+	};
+	for (const line of text.split("\n")) {
+		const item = LIST_LINE.exec(line);
+		if (item !== null) {
+			flush();
+			blocks.push(
+				h(
+					"p",
+					{ class: "comment-li" },
+					h("span", { class: "comment-marker" }, `${item[1]} `),
+					h("span", {}, item[2] ?? ""),
+				),
+			);
+		} else if (line.trim() === "") flush();
+		else lines.push(line);
+	}
+	flush();
+	return blocks;
+}
+
 /** What the section shows, as one text: it is drawn again only when this changes. */
 function keyOf(c: Case, context: ThreadContext): string {
 	return JSON.stringify([
@@ -252,7 +306,7 @@ function item(
 		});
 		field.value = editing.text;
 		li.append(
-			h("p", { class: "meta" }, commentMeta(c, k, !atMark)),
+			commentHead(c, k, !atMark),
 			field,
 			h(
 				"div",
@@ -298,7 +352,7 @@ function item(
 					"button",
 					{
 						type: "button",
-						class: "small link",
+						class: "small",
 						"data-action": "comment-edit",
 						onclick: () => {
 							editing = { caseId: c.id, id: k.id, text: k.text };
@@ -311,7 +365,7 @@ function item(
 					"button",
 					{
 						type: "button",
-						class: "small link danger",
+						class: "small danger",
 						"data-action": "comment-delete",
 						...(isArmed ? { "data-armed": true } : {}),
 						title: isArmed
@@ -345,8 +399,8 @@ function item(
 			)
 		: undefined;
 	li.append(
-		h("p", { class: "meta comment-meta" }, commentMeta(c, k, !atMark)),
-		h("p", { class: "comment-text" }, k.text),
+		commentHead(c, k, !atMark),
+		h("div", { class: "comment-text" }, ...commentBlocks(k.text)),
 		...(buttons === undefined ? [] : [buttons]),
 	);
 	return li;

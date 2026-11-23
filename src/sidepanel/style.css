@@ -270,10 +270,9 @@ button.page-link {
 }
 
 /* Quiet until it is armed: then the one filled, so the second click is meant. */
+/* A destructive action is a button like its neighbours, in red words: not a link (the web app's rule). */
 button.danger {
 	margin-left: auto;
-	border-color: transparent;
-	background: none;
 	color: var(--danger);
 }
 
@@ -297,7 +296,7 @@ button[aria-disabled="true"] {
 	cursor: default;
 }
 
-button:is(.quiet, .link, .danger):disabled {
+button:is(.quiet, .link):disabled {
 	border-color: transparent;
 	background: none;
 }
@@ -3164,21 +3163,56 @@ ol.comments {
 }
 
 .comment-item {
-	padding: var(--s2) 0;
+	display: grid;
+	gap: var(--s2);
+	padding: var(--s3) 0;
 	border-bottom: 1px solid var(--rule);
 }
 
+.comment-item > * {
+	margin: 0;
+	min-width: 0;
+}
+
+/* Who wrote it stands out; the rest of the line is quiet. */
+.comment-who {
+	color: var(--ink);
+	font-weight: 600;
+}
+
 .comment-actions {
-	gap: var(--s4);
+	gap: var(--s2);
 }
 
 .comment-actions button.danger {
 	margin-left: 0;
 }
 
+/* Paragraphs apart, a list item hanging under its marker; the text as written. */
 .comment-text {
+	display: grid;
+	gap: var(--s2);
+}
+
+.comment-text > p {
+	margin: 0;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+.comment-text > .comment-li {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	white-space: normal;
+}
+
+.comment-li + .comment-li {
+	margin-top: calc(-1 * var(--s1));
+}
+
+.comment-marker {
+	white-space: pre;
+	color: var(--ink-2);
 }
 
 .comment-form textarea,

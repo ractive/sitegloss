@@ -3706,6 +3706,27 @@ describe("the thread and closing (DEC-046)", () => {
 		expect(done).toEqual(["add Checked on staging m1"]);
 	});
 
+	test("a comment's text is laid out as written: paragraphs apart, list lines under their marker, every character kept and none read as markup", async () => {
+		const { commentBlocks } = await import("../src/sidepanel/thread-view.ts");
+		const text =
+			"Done: <b>24</b> of 25.\nSee https://shop.example/x\n\n- one\n- two, **not bold**\n\n1. first\n2) second\nlast line";
+		const blocks = commentBlocks(text);
+		expect(
+			blocks.map((b) => [b.className, b.children.length, b.textContent]),
+		).toEqual([
+			["", 0, "Done: <b>24</b> of 25.\nSee https://shop.example/x"],
+			["comment-li", 2, "- one"],
+			["comment-li", 2, "- two, **not bold**"],
+			["comment-li", 2, "1. first"],
+			["comment-li", 2, "2) second"],
+			["", 0, "last line"],
+		]);
+		// Text only: no element comes out of what was written.
+		expect(blocks.some((b) => b.querySelector("b, a, strong") !== null)).toBe(
+			false,
+		);
+	});
+
 	test("a mark shows its last three comments, the earlier ones folded (as the web's markThread)", async () => {
 		const { markThreadShown } = await import("../src/sidepanel/thread-view.ts");
 		expect(markThreadShown([1, 2, 3, 4, 5], false)).toEqual({
