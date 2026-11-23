@@ -85,6 +85,7 @@ import { type Capture, tabInFront, workerTab } from "./tab.ts";
 import {
 	confirmLines,
 	createTools,
+	type HandOver,
 	INSTRUCTIONS,
 	type TabBridge,
 } from "./tools.ts";
@@ -116,6 +117,8 @@ export interface ConnectionDeps {
 	me?: () => Promise<string | undefined>;
 	/** The team a case syncs with, by name; none: it is on this device only. */
 	team?: (caseId: string) => Promise<string | undefined>;
+	/** The hand-over in the team chosen (DEC-071), for list_cases, get_case and assign_case. */
+	handOver?: () => Promise<HandOver | undefined>;
 	/** The settings database: `openKv()` unless given (a memory one in tests). */
 	kv?: Kv;
 }
@@ -472,6 +475,7 @@ export class Connection {
 			blurForms: () => this.#settings.blurForms,
 			maxMessageBytes: () => mcp.session?.limits.maxMessageBytes,
 			...(this.#deps.me ? { me: this.#deps.me } : {}),
+			...(this.#deps.handOver ? { handOver: this.#deps.handOver } : {}),
 			// open_case (DEC-050): the panel of the tab's window answers; none
 			// open, nobody does.
 			openInPanel: (request) =>

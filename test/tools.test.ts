@@ -36,6 +36,7 @@ import {
 	createTools,
 	DEFAULT_MESSAGE_BYTES,
 	FINDING_PREVIEW,
+	type HandOver,
 	type ImageTools,
 	INSTRUCTIONS,
 	LIST_PAGES,
@@ -353,6 +354,7 @@ describe("tools", () => {
 				pageCount: 1,
 				sites: ["example.com"],
 				marks: { open: 2, toVerify: 0, verified: 0, dismissed: 0 },
+				state: "new",
 				summary: null,
 				updatedAt: "2026-11-04T10:00:00Z",
 			},
@@ -386,6 +388,7 @@ describe("tools", () => {
 				pageCount: 1,
 				sites: ["example.com"],
 				marks: { open: 0, toVerify: 0, verified: 0, dismissed: 0 },
+				state: "empty",
 				summary: null,
 				updatedAt: "2026-11-04T10:00:00Z",
 			},
@@ -393,6 +396,106 @@ describe("tools", () => {
 		const result = await call("get_case", { caseId: "c_new" });
 		expect(result.content.map((c) => c.type)).toEqual(["text"]);
 		expect(json(result).marks).toEqual([]);
+	});
+
+	describe("the hand-over (DEC-071)", () => {
+		const TESS = { id: "u_tess", name: "Tess" };
+		const DANA = { id: "u_dana", name: "Dana" };
+		const team = (more: Partial<HandOver> = {}): HandOver => ({
+			me: TESS.id,
+			team: "Web",
+			members: [TESS, DANA],
+			mayAssign: true,
+			synced: (id) => id !== "c_here",
+			...more,
+		});
+
+		test("list_cases and get_case say the state, the turn, who has it and who started it; mine lists the user's", async () => {
+			await seed();
+			await store.updateCase("c_1", (c) => ({
+				value: { ...(c as Case), createdBy: DANA, assignee: TESS },
+			}));
+			await putCase(store, {
+				...sampleCase("c_theirs"),
+				createdBy: TESS,
+				assignee: DANA,
+				marks: [],
+			});
+			await putCase(store, { ...sampleCase("c_here") });
+			build({ handOver: async () => team() });
+			const listed = json(await call("list_cases"));
+			const one = listed.find((c: { caseId: string }) => c.caseId === "c_1");
+			expect(one).toMatchObject({
+				state: "new",
+				turn: "assignee",
+				assignee: TESS,
+				startedBy: "Dana",
+			});
+			// Kept in this browser only: its state, nothing of a team.
+			const here = listed.find(
+				(c: { caseId: string }) => c.caseId === "c_here",
+			);
+			expect(here.turn).toBeUndefined();
+			// Mine: assigned to Tess; Tess's own empty one; the one only here.
+			const mine = json(await call("list_cases", { mine: true }));
+			expect(mine.map((c: { caseId: string }) => c.caseId).sort()).toEqual([
+				"c_1",
+				"c_here",
+				"c_theirs",
+			]);
+			const view = json(
+				await call("get_case", { caseId: "c_1", images: false }),
+			);
+			expect(view).toMatchObject({
+				state: "new",
+				turn: "assignee",
+				assignee: TESS,
+				startedBy: "Dana",
+			});
+		});
+
+		test("assign_case: a member by name, me or null; through the sync, said so", async () => {
+			await seed();
+			build({ handOver: async () => team() });
+			const said = (
+				await call("assign_case", { caseId: "c_1", assignee: "dana" })
+			).content[0]?.text;
+			expect(said).toBe(
+				"Assigned the case “Button contrast” to Dana. 2 of its marks are open. It goes to the team with the next sync.",
+			);
+			const c = (await store.getCase("c_1")) as Case;
+			expect(c.assign?.to).toEqual(DANA);
+			// The app is named on what is sent (DEC-046).
+			expect(c.via?.app.host).toBe("claude.ai");
+			await call("assign_case", { caseId: "c_1", assignee: "me" });
+			expect((await store.getCase("c_1"))?.assign?.to).toEqual(TESS);
+			await call("assign_case", { caseId: "c_1", assignee: null });
+			expect((await store.getCase("c_1"))?.assign?.to).toBeNull();
+			expect(changed).toEqual(["c_1", "c_1", "c_1"]);
+		});
+
+		test("assign_case refuses a name that is no member, a case only here, and a role that may not", async () => {
+			await seed();
+			await putCase(store, { ...sampleCase("c_here") });
+			build({ handOver: async () => team() });
+			await expect(
+				call("assign_case", { caseId: "c_1", assignee: "Pat" }),
+			).rejects.toThrow(
+				"No member of the team is Pat. The members: Tess (u_tess), Dana (u_dana).",
+			);
+			await expect(
+				call("assign_case", { caseId: "c_here", assignee: "me" }),
+			).rejects.toThrow("Only a case of the user's team can be assigned");
+			build({ handOver: async () => team({ mayAssign: false }) });
+			await expect(
+				call("assign_case", { caseId: "c_1", assignee: "me" }),
+			).rejects.toThrow("does not allow changing its cases");
+			build();
+			await expect(
+				call("assign_case", { caseId: "c_1", assignee: "me" }),
+			).rejects.toThrow("Only a case of the user's team");
+			expect((await store.getCase("c_1"))?.assign).toBeUndefined();
+		});
 	});
 
 	test("get_case leaves out crops beyond the size budget", async () => {
@@ -2113,6 +2216,7 @@ describe("through a relay", () => {
 				"add_comment",
 				"add_finding",
 				"add_mark",
+				"assign_case",
 				"capture",
 				"delete_case",
 				"delete_comment",
