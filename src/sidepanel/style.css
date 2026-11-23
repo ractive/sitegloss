@@ -2377,11 +2377,14 @@ ol.marks {
 }
 
 /*
- * A Verify (DEC-061): at the press the row says "verified" (its status colour
- * is set by the panel at once) and its body closes in a short fade; the next
- * mark to verify opens with the same ease and a highlight that fades in about
- * a second, drawn once on the node the Verify opened. Opacity and transform
- * only; the highlight has a border, so that forced colours show it too.
+ * A Verify (DEC-061), as a sequence the eye can follow. At the press the row
+ * takes its verified look and its body collapses in height (300 ms); then the
+ * next mark to verify opens: its body expands (300 ms) and a highlight on its
+ * head holds at full strength for 700 ms and fades over 1.2 s. The heights come
+ * from the panel (`--collapse-h`, `--open-h`, measured once at the press and
+ * at the opening) and `--cue-elapsed` lets a row drawn anew continue where
+ * the animation was. The highlight has a border, so forced colours show it.
+ * Nothing here blocks a press.
  */
 .mark[data-verifying],
 .mark[data-verifying] .pill {
@@ -2393,16 +2396,23 @@ ol.marks {
 	content: "✓" / "";
 }
 
-.mark[data-verifying] .body {
-	animation: verify-close 160ms ease-in forwards;
-}
-
 .mark[data-verifying] :is(.head-verify, [data-mark-action="verify"]) {
 	opacity: 0.6;
 }
 
-.mark[data-arrived] .body {
-	animation: verify-open 200ms ease-out var(--cue-elapsed, 0ms);
+.mark[data-collapsing] .body {
+	overflow: hidden;
+	animation: verify-collapse 300ms ease-out var(--cue-elapsed, 0ms) forwards;
+}
+
+.mark[data-arrived] .body,
+.mark[data-restoring] .body {
+	overflow: hidden;
+	animation: verify-expand 300ms ease-out var(--cue-elapsed, 0ms);
+}
+
+.mark[data-restoring] .body {
+	animation-duration: 200ms;
 }
 
 .mark[data-arrived] > .mark-head::after {
@@ -2411,54 +2421,55 @@ ol.marks {
 	inset: 0 var(--s2);
 	border: 2px solid var(--accent-edge);
 	border-radius: var(--r-card);
-	background: color-mix(in srgb, var(--accent) 20%, transparent);
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
 	pointer-events: none;
-	animation: verify-glow 1s ease-out var(--cue-elapsed, 0ms) forwards;
+	animation: verify-glow 1900ms linear var(--cue-elapsed, 0ms) forwards;
 }
 
-@keyframes verify-close {
-	to {
-		opacity: 0;
-		transform: translateY(-4px);
-	}
-}
-
-@keyframes verify-open {
+@keyframes verify-collapse {
 	from {
+		height: var(--collapse-h, auto);
+	}
+	to {
+		height: 0;
+		margin-bottom: 0;
+		padding-block: 0;
+		border-width: 0;
 		opacity: 0;
-		transform: translateY(-6px);
 	}
 }
 
+@keyframes verify-expand {
+	from {
+		height: 0;
+		margin-bottom: 0;
+		padding-block: 0;
+		border-width: 0;
+		opacity: 0;
+	}
+	to {
+		height: var(--open-h, auto);
+	}
+}
+
+/* Full for 700 ms of the 1900, then the fade over the rest. */
 @keyframes verify-glow {
-	from {
+	0%,
+	36.8% {
 		opacity: 1;
+		animation-timing-function: ease-out;
 	}
-	to {
+	100% {
 		opacity: 0;
 	}
 }
 
-/* Without movement: the body fades only; the highlight is the same fade. */
+/* Without movement: no height animation (the row closes and the next opens at once); the highlight still holds and fades. */
 @media (prefers-reduced-motion: reduce) {
-	.mark[data-verifying] .body {
-		animation-name: verify-close-still;
-	}
-
-	.mark[data-arrived] .body {
-		animation-name: verify-open-still;
-	}
-}
-
-@keyframes verify-close-still {
-	to {
-		opacity: 0;
-	}
-}
-
-@keyframes verify-open-still {
-	from {
-		opacity: 0;
+	.mark[data-collapsing] .body,
+	.mark[data-arrived] .body,
+	.mark[data-restoring] .body {
+		animation: none;
 	}
 }
 
