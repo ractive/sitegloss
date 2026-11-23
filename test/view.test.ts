@@ -1146,6 +1146,99 @@ describe("Verify closes its mark (DEC-061)", () => {
 		).toBe(true);
 	});
 
+	test("a Verify shows at the press, cues the row it opens once, says when nothing waits, and comes back when not saved", async () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const verified = (k: number, at: string) =>
+			m(k, { ...fixed, verified: { at } });
+		const c: Case = {
+			...sampleCase("c_verify_cue"),
+			marks: [m(1, fixed), m(2), m(3, fixed)],
+		};
+		let answer: Promise<string | undefined> | undefined;
+		const actions = actionsWith({ verifyMark: () => answer });
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const cued = () => doc.querySelectorAll("[data-arrived]").length;
+		const line = () => doc.getElementById("case-hint")?.textContent;
+		render(caseState(c), actions);
+		// Not saved: the row is as it was.
+		answer = Promise.resolve("Not saved: no.");
+		(
+			row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+		).click();
+		const verify = row("m1").querySelector(
+			'[data-mark-action="verify"]',
+		) as unknown as HTMLButtonElement;
+		verify.click();
+		expect(row("m1").hasAttribute("data-verifying")).toBe(true);
+		expect(row("m1").getAttribute("data-status")).toBe("verified");
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+		expect(row("m1").getAttribute("data-status")).toBe("fixed");
+		expect(row("m1").hasAttribute("data-open")).toBe(true);
+		expect(cued()).toBe(0);
+		// Saved: the next row to verify carries the cue, once.
+		answer = undefined;
+		verify.click();
+		const one: Case = {
+			...c,
+			updatedAt: "2026-11-15T09:00:00Z",
+			marks: [verified(1, "2026-11-15T09:00:00Z"), m(2), m(3, fixed)],
+		};
+		render(caseState(one), actions);
+		expect(cued()).toBe(1);
+		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
+		expect(line()).toBe("Mark 3 opened, to verify.");
+		// A redraw within the cue's second carries it on, on the same row only;
+		// once it has run out, an unrelated redraw (a changed comment) has none.
+		const redrawn = (at: string, comment: string): Case => ({
+			...one,
+			updatedAt: at,
+			marks: one.marks.map((a) => (a.id === "m2" ? { ...a, comment } : a)),
+		});
+		render(caseState(redrawn("2026-11-15T09:30:00Z", "Edited")), actions);
+		expect(cued()).toBe(1);
+		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
+		const real = Date.now;
+		Date.now = () => real() + 3000;
+		try {
+			render(
+				caseState(redrawn("2026-11-15T10:00:00Z", "Edited again")),
+				actions,
+			);
+			expect(cued()).toBe(0);
+		} finally {
+			Date.now = real;
+		}
+		// The last one to verify, with an open mark left: said once.
+		(
+			row("m3").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		const last: Case = {
+			...one,
+			updatedAt: "2026-11-16T09:00:00Z",
+			marks: [one.marks[0] as Mark, m(2), verified(3, "2026-11-16T09:00:00Z")],
+		};
+		render(caseState(last), actions);
+		expect(cued()).toBe(0);
+		expect(line()).toBe("That was the last mark to verify.");
+	});
+
 	test("a Verify not saved takes no focus later from a field the person moved to (DEC-064's review)", () => {
 		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
 		const base = withOneMark(sampleCase("c_verify_failed"));

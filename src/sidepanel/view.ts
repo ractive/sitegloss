@@ -133,8 +133,11 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	typeMark(change: { kind?: ResolveChoice; text?: string }): void;
 	cancelMarkEdit(): void;
 	resolveMark(c: Case, a: Mark, kind: ResolveChoice, note: string): void;
-	/** "Verify" on a fixed mark: the fix holds (DEC-023). */
-	verifyMark(c: Case, a: Mark): void;
+	/**
+	 * "Verify" on a fixed mark: the fix holds (DEC-023). May answer why it was
+	 * not saved, so that the row can come back as it was.
+	 */
+	verifyMark(c: Case, a: Mark): void | Promise<string | undefined>;
 	/** "Reopen" in its form: the note says what is still wrong. */
 	reopenMark(c: Case, a: Mark, note: string): void;
 	/** A status chip: show only those marks; `undefined`: all of them. */
@@ -2558,7 +2561,7 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		"verify",
 		VERIFIED_TITLE,
 		() => {
-			openMarks.delete(`${c.id}:${a.id}`);
+			const undo = verifying(c.id, a.id);
 			const order = [
 				...document.querySelectorAll<HTMLElement>("section.marks li.mark"),
 			].map((li) => ({
@@ -2572,10 +2575,108 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 				at: Date.now(),
 				next: next === a.id ? undefined : next,
 			};
-			actions.verifyMark(c, a);
+			// Not saved: the row comes back as it was; the hint says why (the
+			// store's own error path). No success is faked.
+			void Promise.resolve(actions.verifyMark(c, a)).then(
+				(why) => {
+					if (why !== undefined) undo();
+				},
+				() => undo(),
+			);
 		},
 		true,
 	);
+
+/** The motion of a Verify: its row closes in this long. */
+const VERIFY_CLOSE_MS = 160;
+/** How long the cue on the row a Verify opened stays on it. */
+const ARRIVED_MS = 1100;
+/** The row the last Verify opened, while its cue runs. */
+let arrived: { caseId: string; markId: string; at: number } | undefined;
+
+/** The cue on a row: `data-arrived` for what is left of `ARRIVED_MS`; the style sheet starts its animations `elapsed` in. */
+function cueRow(row: HTMLElement, elapsed: number): void {
+	row.setAttribute("data-arrived", "");
+	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
+	setTimeout(() => {
+		row.removeAttribute("data-arrived");
+		row.style.removeProperty("--cue-elapsed");
+	}, ARRIVED_MS - elapsed);
+}
+
+/** A line for the status region after a Verify, said once (see the render of the hint). */
+let verifyLine: { caseId: string; text: string; at: number } | undefined;
+/** How long that line stays when nothing else is said. */
+const VERIFY_LINE_MS = 8000;
+
+/** Said once, now, through the status line; later renders keep it while nothing else is said. */
+function sayAfterVerify(hint: HTMLElement, caseId: string, text: string): void {
+	verifyLine = { caseId, text, at: Date.now() };
+	setHint(hint, text, true);
+	hint.classList.remove("visually-hidden");
+}
+
+const rowOf = (markId: string) =>
+	document.querySelector<HTMLElement>(
+		`section.marks li.mark[data-mark="${quoted(markId)}"]`,
+	) ?? undefined;
+
+/**
+ * The press of a Verify, at once and before anything answers: the row shows
+ * the mark as verified and closes. The returned function
+ * puts the row back as it was (a Verify that was not saved).
+ */
+function verifying(caseId: string, markId: string): () => void {
+	const key = `${caseId}:${markId}`;
+	const wasOpen = openMarks.has(key);
+	openMarks.delete(key);
+	const li = rowOf(markId);
+	if (!li) return () => {};
+	const status = li.dataset["status"] ?? "";
+	const pill = li.querySelector<HTMLElement>(".pill");
+	const pillText = pill?.textContent ?? "";
+	li.setAttribute("data-verifying", "");
+	li.dataset["status"] = "verified";
+	if (pill) {
+		pill.setAttribute("data-status", "verified");
+		pill.textContent = PILL.verified ?? "";
+	}
+	const timer = setTimeout(() => {
+		if (li.hasAttribute("data-verifying")) setOpen(caseId, li, false);
+	}, VERIFY_CLOSE_MS);
+	return () => {
+		clearTimeout(timer);
+		if (verifiedNow?.markId === markId && verifiedNow.caseId === caseId)
+			verifiedNow = undefined;
+		if (wasOpen) openMarks.add(key);
+		// The row may have been drawn anew meanwhile: the one on screen now.
+		const now = rowOf(markId);
+		if (now?.hasAttribute("data-verifying")) {
+			now.removeAttribute("data-verifying");
+			now.dataset["status"] = status;
+			const pillNow = now.querySelector<HTMLElement>(".pill");
+			if (pillNow) {
+				pillNow.setAttribute("data-status", status);
+				pillNow.textContent = pillText;
+			}
+		}
+		if (now && wasOpen) setOpen(caseId, now, true);
+	};
+}
+
+/** A smooth scroll within about a panel's height, a jump beyond (sixty marks are not scrolled through). */
+function scrollToOpened(row: HTMLElement): void {
+	const r = row.getBoundingClientRect();
+	const h = globalThis.innerHeight || 0;
+	const away = r.top < 0 ? -r.top : r.bottom > h ? r.bottom - h : 0;
+	const still =
+		globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ===
+		true;
+	row.scrollIntoView?.({
+		block: "nearest",
+		behavior: !still && h > 0 && away <= h ? "smooth" : "instant",
+	});
+}
 
 /** Where the focus goes after a Verify: the next mark to verify, else the row's head. */
 export function afterVerify(
@@ -3449,7 +3550,15 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const again = typeof caseHint === "string" && state.caseHintSeq !== p.hintSeq;
 	p.hintSeq = state.caseHintSeq;
 	if (!settling) {
-		setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow, again);
+		const said =
+			verifyLine?.caseId === c.id && Date.now() - verifyLine.at < VERIFY_LINE_MS
+				? verifyLine.text
+				: undefined;
+		setHint(
+			p.hint,
+			typeof caseHint !== "object" ? (caseHint ?? said) : foundNow,
+			again,
+		);
 		p.hint.classList.toggle("visually-hidden", foundNow !== undefined);
 	}
 
@@ -3729,18 +3838,43 @@ function renderCase(state: PanelState, actions: Actions): void {
 					// "This one", as for a pin clicked on the page.
 					row.setAttribute("data-picked", "");
 					releaseHeld();
-					row.scrollIntoView?.({ block: "nearest" });
+					// The cue that it was opened for you: begun here, carried by
+					// the common path below (a redraw right after must not lose it).
+					arrived = { caseId: c.id, markId: to as string, at: Date.now() };
+					scrollToOpened(row);
 					// Its head, not its Verify: a second Enter must not verify it unseen.
 					head(to as string)?.focus({ preventScroll: true });
+					const number = c.marks.find((m) => m.id === to)?.number;
+					sayAfterVerify(
+						p.hint,
+						c.id,
+						`Mark ${number ?? ""} opened, to verify.`,
+					);
 				}
 				// Nothing waits: the verified row's head; where a filter has
 				// taken that row away, the list's first control, not nowhere.
-				else
+				else {
 					(
 						head(v.markId) ??
 						marks.querySelector<HTMLElement>("button:not([disabled])")
 					)?.focus({ preventScroll: true });
+					// The next step already says it when nothing is open either.
+					if (c.marks.some((m) => markStatus(m) === "open")) {
+						sayAfterVerify(p.hint, c.id, "That was the last mark to verify.");
+					}
+				}
 			}
+		}
+		// The cue of the row a Verify opened, on whichever node draws it now,
+		// for its second only: a redraw within it carries the cue on from
+		// where it is (not from the start); later ones, and other cases, not.
+		if (arrived?.caseId === c.id) {
+			const elapsed = Date.now() - arrived.at;
+			const row = marks.querySelector<HTMLElement>(
+				`li.mark[data-mark="${quoted(arrived.markId)}"]`,
+			);
+			if (row && elapsed < ARRIVED_MS) cueRow(row, elapsed);
+			else if (elapsed >= ARRIVED_MS) arrived = undefined;
 		}
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;

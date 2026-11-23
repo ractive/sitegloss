@@ -3438,6 +3438,23 @@ settled: what follows is what was built, and why, to be judged.
   in place, and now lends room below the list while it holds (taken back at the person's
   next own scroll or press): a row that closes near the list's end no longer lets the
   browser scroll the page back by itself.
+  - *A cue that the next mark opened (owner, 23 November):* "When you now click 'Verify' ...
+    the current one is closed and the next one opened. That is nice. Could you add some
+    animation or indicator that the new mark just got opened? Otherwise you don't realize
+    for a second or two if something even happened." Built so: **at the press** the row
+    shows the mark as verified (its status colour and pill, before the store answers) and
+    its body fades closed in 160 ms; a Verify that is not saved (`verifyMark` answers why)
+    puts the row back as it was, open if it was, and the existing "Not saved" hint says why.
+    **When the next row opens** it carries `data-arrived` for 1.1 s, once, set on the node
+    the Verify opened (the list is rebuilt on every change, so no later redraw has it):
+    its body eases open in 200 ms (opacity and a 6 px slide) and a highlight on its head
+    (the accent's tint with an accent border, so that forced colours still show it) fades
+    in 1 s. The scroll to it is smooth within about a panel's height and a jump beyond it,
+    and a jump with reduced motion. **For a screen reader and the eye:** the status line
+    says "Mark 7 opened, to verify." once; with nothing left to verify it says "That was
+    the last mark to verify.", unless no mark is open either, when the Next step block
+    already says that every mark is settled. **Reduced motion:** the same fades, no slide.
+    The cue is only for a Verify, not for a click or a pin on the page. Focus rules unchanged.
 - **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
   own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
   bottom keeps the comments about the case as a whole (and one about a deleted mark).
