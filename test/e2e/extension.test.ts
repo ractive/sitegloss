@@ -256,22 +256,39 @@ inBothSets("marking and saving", () => {
 
 	fullTest("the toolbar stays on one line in a normal window", async () => {
 		const { page, tabId } = await h.open("v1");
+		// 985 px: a 1000 px window with a classic scrollbar (15 px, Windows and
+		// Linux), the same in every engine.
 		await page.send("Emulation.setDeviceMetricsOverride", {
-			width: 1000,
+			width: 985,
 			height: 700,
 			deviceScaleFactor: 1,
 			mobile: false,
 		});
-		// A page's own styles do not reach it, not even on the host element. A classic scrollbar takes 15 px of the window (Windows, Linux).
+		// A page's own styles do not reach it, not even on the host element.
 		await page.eval(`(() => {
 			document.documentElement.dir = "rtl";
-			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; } html { overflow-y: scroll; } ::-webkit-scrollbar { width: 15px; } body { min-height: 200vh; }</style>");
+			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; }</style>");
 		})()`);
-		await showToolbar(h, page, tabId);
+		const caseId = await showToolbar(h, page, tabId);
+		// A long title, as the bug needed: about 40 characters.
+		await h.control.eval(
+			`chrome.tabs.sendMessage(${tabId}, ${JSON.stringify({
+				type: "overlay:title",
+				caseId,
+				title: "Krankenkasse vergleichen: Prämienrechner",
+			})})`,
+		);
+		await page.waitFor(
+			`${shadow(".status")}.textContent.includes("Prämienrechner")`,
+		);
 		const height = await page.eval<number>(
 			`${shadow(".toolbar")}.getBoundingClientRect().height`,
 		);
 		expect(height).toBeLessThan(60);
+		// Beside the tools: the buttons closer if need be, the status not under them.
+		expect(
+			await page.eval<string>(`${shadow(".toolbar")}.dataset.fit`),
+		).not.toContain("rows");
 		const style = await page.eval<string[]>(
 			`(() => { const s = getComputedStyle(${shadow('[data-action="tool-box"]')}); return [s.textTransform, s.letterSpacing, s.direction]; })()`,
 		);

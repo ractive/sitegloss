@@ -579,7 +579,16 @@ export class Overlay {
 			);
 		doc.addEventListener("fullscreenchange", () => this.#place());
 		// The page's width changed (a resize, the side panel, zoom).
-		doc.defaultView?.addEventListener("resize", () => this.fitToolbar());
+		// One fit per frame, however many resize events come.
+		let fitting = 0;
+		doc.defaultView?.addEventListener("resize", () => {
+			const win = doc.defaultView;
+			if (!win || fitting) return;
+			fitting = win.requestAnimationFrame(() => {
+				fitting = 0;
+				this.fitToolbar();
+			});
+		});
 		doc.documentElement.append(this.host);
 		this.#update();
 	}

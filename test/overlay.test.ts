@@ -494,7 +494,7 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		overlay.setReviewing(false);
 	});
 
-	test("a wider page lays it out again", () => {
+	test("a wider page lays it out again", async () => {
 		overlay.setAddingMarks(true);
 		withRoomFrom("rows icons");
 		overlay.fitToolbar();
@@ -503,6 +503,7 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		);
 		withRoomFrom("");
 		window.dispatchEvent(new window.Event("resize"));
+		await new Promise((done) => window.requestAnimationFrame(() => done(0)));
 		expect<string | undefined>(overlay.toolbar.dataset["fit"]).toBe("");
 		overlay.setAddingMarks(false);
 	});
