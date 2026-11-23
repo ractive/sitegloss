@@ -96,36 +96,41 @@ export function openAtFirst(
 	return groups.map((g) => groups.length === 1 || !any || has(g));
 }
 
-/** "sitegloss.dev", "comparis.ch, ractive.ch", "comparis.ch, ractive.ch and 2 more sites". */
+/** "sitegloss.dev", "comparis.ch · ractive.ch", "comparis.ch · ractive.ch and 2 more sites". */
 export function sitesText(sites: readonly string[]): string {
-	if (sites.length <= 3) return sites.join(", ");
-	return `${sites.slice(0, 2).join(", ")} and ${sites.length - 2} more sites`;
+	if (sites.length <= 3) return sites.join(" · ");
+	return `${sites.slice(0, 2).join(" · ")} and ${sites.length - 2} more sites`;
 }
 
 /**
  * Where a case is, for its card (DEC-067), as sitegloss.dev's case list says
- * it: its sites and its number of pages ("sitegloss.dev", "8 pages"). A case
- * of one page on one site says the page's address, which names the site and
- * says more than "1 page"; a case on local addresses only says its first
- * page's host in the site's place.
+ * it, in two lines. `sites`: the names alone, right under the title
+ * ("sitegloss.dev", "comparis.ch · ractive.ch"), with `label` for a screen
+ * reader to hear before them ("Site: ", "Sites: "); a case on local
+ * addresses only says its first page's host, labelled "On: "; none for a
+ * case without a page. `pages`, the card's last line: "15 pages", or the only
+ * page's address, which says more than "1 page".
  */
-export function whereText(c: Case): { where: string; pages?: string } {
+export function whereText(c: Case): {
+	sites?: string;
+	label?: string;
+	pages: string;
+} {
 	const pages = casePages(c);
 	const first = pages[0]?.url ?? c.page.url;
 	const sites = caseSites(c);
-	// A case on local addresses only has no site: its one page's address, or its host.
-	if (pages.length <= 1 && sites.length === 0)
-		return { where: shortUrl(first) };
-	// The site is named as one (the owner wanted the word on the card).
-	return {
-		where:
-			sites.length === 0
-				? hostOf(first) || first
-				: `${sites.length === 1 ? "Site" : "Sites"}: ${sitesText(sites)}`,
-		// One page: its address says more than "1 page".
-		pages:
-			pages.length <= 1 && sites.length > 0
-				? shortUrl(first)
-				: `${Math.max(1, pages.length)} page${pages.length > 1 ? "s" : ""}`,
-	};
+	const count =
+		pages.length <= 1
+			? shortUrl(first)
+			: `${pages.length} page${pages.length > 1 ? "s" : ""}`;
+	if (sites.length > 0)
+		return {
+			sites: sitesText(sites),
+			label: sites.length === 1 ? "Site: " : "Sites: ",
+			pages: count,
+		};
+	const host = hostOf(first);
+	return host === ""
+		? { pages: count }
+		: { sites: host, label: "On: ", pages: count };
 }

@@ -378,6 +378,7 @@ describe("the status line, from the engine's real states (DEC-045)", () => {
 			status: status(d),
 			modes: {},
 			atTeam: {},
+			members: undefined,
 			signingIn: false,
 			problem: undefined,
 			live,

@@ -7,6 +7,7 @@
  */
 
 import {
+	DEV_SERVER_OFFERED,
 	DEVELOPMENT_SERVER,
 	PRODUCTION_SERVER,
 	serverKind,
@@ -59,6 +60,14 @@ export function teamOf(cloud: Cloud) {
 /** What signing in sends where: said before the click, in one sentence. */
 export const SIGN_IN_NOTE = (server: string) =>
 	`Signed in, your cases go to ${hostOf(server)} and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (its query without what looks like a secret or an e-mail address). Without an account everything stays in this browser, as now.`;
+
+/**
+ * How a case goes from whoever finds what is wrong to whoever fixes it and
+ * back (DEC-071), where the panel explains itself: the empty list and the
+ * Team section before signing in.
+ */
+export const HAND_OVER_NOTE =
+	"With a team, a case is handed over. Assign it to whoever fixes its open marks: it is under My cases for them, and the case says what is theirs to do. When every open mark is fixed, it is back under My cases for whoever started it, to check the fixes, verify them and close the case.";
 
 export const SIGN_IN_TITLE =
 	"Sign in at the server in a window of the browser; Sitegloss then syncs your cases with your team, both ways";
@@ -200,7 +209,10 @@ function button(
  * field is left). Folded away: whoever never opens it signs in to the
  * service and is never asked. Only while nobody is signed in.
  */
-function serverChooser(cloud: Cloud): HTMLElement {
+export function serverChooser(
+	cloud: Cloud,
+	offerDevelopment: boolean = DEV_SERVER_OFFERED,
+): HTMLElement {
 	const kind = serverKind(cloud.server);
 	const input: HTMLInputElement = h("input", {
 		type: "url",
@@ -244,7 +256,11 @@ function serverChooser(cloud: Cloud): HTMLElement {
 			}),
 		},
 		option("production", serverLabel(PRODUCTION_SERVER)),
-		option("development", serverLabel(DEVELOPMENT_SERVER)),
+		// Not in a build that goes to people; whoever is set to it still sees
+		// it, so the choice shows what it is.
+		...(offerDevelopment || kind === "development"
+			? [option("development", serverLabel(DEVELOPMENT_SERVER))]
+			: []),
 		option("other", "Another address…"),
 	);
 	select.value = kind;
@@ -279,6 +295,7 @@ function signedOut(cloud: Cloud): HTMLElement[] {
 		h("p", { class: "sync-state" }, "Sign in to sync with your team."),
 		...serverLine(cloud.server),
 		h("p", { class: "meta" }, SIGN_IN_NOTE(cloud.server)),
+		h("p", { class: "meta", id: "cloud-hand-over" }, HAND_OVER_NOTE),
 		h(
 			"div",
 			{ class: "row" },

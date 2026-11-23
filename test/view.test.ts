@@ -10,6 +10,7 @@ import { Window } from "happy-dom";
 import type { Case, Mark } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
+import { serverChooser } from "../src/sidepanel/cloud-view.ts";
 import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
@@ -1728,7 +1729,7 @@ describe("Verify (DEC-023)", () => {
 		expect(row("m2").querySelector(".mark-sub button")).toBeNull();
 	});
 
-	test("the case list counts by status, with the bar", () => {
+	test("the case list counts by status, with the bar, after the case's state", () => {
 		const c = fourMarks();
 		const home = initialState();
 		home.cases = [c];
@@ -1744,7 +1745,16 @@ describe("Verify (DEC-023)", () => {
 			[...item.querySelectorAll(".card-chips > span")].map(
 				(s) => s.textContent,
 			),
-		).toEqual(["● 1 open", "◐ 1 to verify", "✓ 1 verified", "– 1 dismissed"]);
+		).toEqual([
+			"In progress",
+			"● 1 open",
+			"◐ 1 to verify",
+			"✓ 1 verified",
+			"– 1 dismissed",
+		]);
+		expect(item.getAttribute("aria-label")).toContain(
+			"Button contrast, in progress:",
+		);
 		expect(
 			[...item.querySelectorAll(".progress.band > span")].map((s) =>
 				s.getAttribute("data-kind"),
@@ -2361,8 +2371,19 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		// The site and the number of pages (DEC-067).
-		expect(row?.textContent).toContain("Site: shop.example · 2 pages");
+		// The site, a line right under the title, and the number of pages in
+		// the line where they were (DEC-067).
+		const sites = row?.querySelector(".card-sites");
+		expect(sites?.textContent).toBe("Site: shop.example");
+		expect(
+			(row?.querySelector(".card-head")?.nextElementSibling === sites) === true,
+		).toBe(true);
+		expect(
+			[...(sites?.childNodes ?? [])]
+				.filter((n) => n.nodeType === 3)
+				.map((n) => n.textContent),
+		).toEqual(["shop.example"]);
+		expect(row?.querySelector(".card-where")?.textContent).toBe("2 pages");
 		expect(row?.getAttribute("aria-label")).toContain(
 			"on the site shop.example, 2 pages",
 		);
@@ -3084,6 +3105,30 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		field.blur();
 		pick("production");
 		expect(set.at(-1)).toBe("");
+	});
+
+	test("a build that goes to people does not offer the development server; whoever is set to it still sees it", () => {
+		const names = (server: string, offer: boolean) =>
+			[
+				...serverChooser(
+					{ server, signingIn: false } as Parameters<typeof serverChooser>[0],
+					offer,
+				).querySelectorAll("option"),
+			].map((o) => o.textContent);
+		const all = [
+			"Sitegloss (app.sitegloss.dev)",
+			"Development server",
+			"Another address…",
+		];
+		expect(names("https://app.sitegloss.dev", true)).toEqual(all);
+		expect(names("https://app.sitegloss.dev", false)).toEqual([
+			"Sitegloss (app.sitegloss.dev)",
+			"Another address…",
+		]);
+		// Set to the development server: it stays named, in either build.
+		expect(names("https://app.dev.sitegloss.dev", false)).toEqual(all);
+		// Self-hosting stays.
+		expect(names("http://localhost:3200", false)).toContain("Another address…");
 	});
 
 	test("a server that is not the service is said in words, beside the account and before signing in", () => {
@@ -4026,10 +4071,10 @@ describe("the summary for the developer", () => {
 		const none = window.document.querySelector('[data-case="c_none"]');
 		expect(none?.querySelector(".card-summary")).toBeNull();
 		expect(none?.getAttribute("aria-label")).not.toContain("summary");
-		// The summary is the case's content: right under its title, before
-		// the facts (DEC-064).
+		// The summary is the case's content: under the title and its sites
+		// line, before the facts (DEC-064, DEC-067).
 		expect(
-			card?.querySelector(".card-head")?.nextElementSibling?.className,
+			card?.querySelector(".card-sites")?.nextElementSibling?.className,
 		).toBe("card-summary");
 	});
 
@@ -6148,5 +6193,175 @@ describe("what comes next on the open case (DEC-069)", () => {
 		state.cloud.atTeam = {};
 		render(state, noActions);
 		expect(el("next-step-note").textContent).toBe("");
+	});
+});
+
+describe("the hand-over in the panel (DEC-071)", () => {
+	const TESS = { id: "u_tess", name: "Tess" };
+	const DANA = { id: "u_dana", name: "Dana" };
+	const signedIn = (s: PanelState) => {
+		s.cloud.account = {
+			name: "Tess",
+			email: "tess@example.com",
+			userId: TESS.id,
+			server: "https://app.sitegloss.dev",
+			teams: [
+				{ id: "t_1", name: "Web", slug: "web", permissions: ["case:update"] },
+			],
+			teamId: "t_1",
+			expired: false,
+		};
+		s.cloud.atTeam = { c_1: "t_1" };
+		s.cloud.members = [DANA, TESS];
+	};
+
+	test("Assign is a menu: you first, the others, then Nobody; the one who has it is checked, and a pick assigns", () => {
+		const picked: (string | null)[] = [];
+		const c = { ...withOneMark(sampleCase()), createdBy: TESS, assignee: DANA };
+		render(
+			caseState(c, signedIn),
+			actionsWith({
+				assignCase: (id, to) => void picked.push(`${id} ${to?.id ?? null}`),
+			}),
+		);
+		const button = el("next-step").querySelector(
+			'[data-step="assign"]',
+		) as unknown as HTMLButtonElement;
+		expect(button.textContent).toBe("Reassign");
+		expect(button.getAttribute("aria-haspopup")).toBe("menu");
+		const menu = el("assign-menu");
+		expect(menu.hidden).toBe(true);
+		button.click();
+		expect(menu.hidden).toBe(false);
+		expect(button.getAttribute("aria-expanded")).toBe("true");
+		const items = [...menu.querySelectorAll('[role="menuitemradio"]')];
+		expect(items.map((x) => x.textContent?.replace("✓", ""))).toEqual([
+			"You",
+			"Dana",
+			"Nobody",
+		]);
+		expect(items.map((x) => x.getAttribute("aria-checked"))).toEqual([
+			"false",
+			"true",
+			"false",
+		]);
+		(items[2] as unknown as HTMLButtonElement).click();
+		expect(picked).toEqual(["c_1 null"]);
+		expect(menu.hidden).toBe(true);
+		// Escape closes it, the focus back on its button.
+		button.click();
+		menu.dispatchEvent(
+			new window.KeyboardEvent("keydown", {
+				key: "Escape",
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(menu.hidden).toBe(true);
+		expect(window.document.activeElement === (button as unknown)).toBe(true);
+		// A press anywhere outside it closes it too.
+		button.click();
+		el("case-facts").dispatchEvent(
+			new window.PointerEvent("pointerdown", {
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(menu.hidden).toBe(true);
+		expect(button.getAttribute("aria-expanded")).toBe("false");
+	});
+
+	test("My cases: a chip with its count; on, the list keeps the person's cases only", () => {
+		const shown: boolean[] = [];
+		const theirs = {
+			...withOneMark(sampleCase("c_theirs")),
+			title: "Theirs",
+			createdBy: TESS,
+			assignee: DANA,
+		};
+		const given = {
+			...withOneMark(sampleCase("c_given")),
+			title: "Given",
+			createdBy: DANA,
+			assignee: TESS,
+		};
+		const state = initialState();
+		signedIn(state);
+		state.cases = [theirs, given];
+		const actions = actionsWith({ showMine: (on) => void shown.push(on) });
+		render(state, actions);
+		const chip = el<HTMLButtonElement>("my-cases");
+		expect(chip.textContent).toBe("My cases1");
+		expect(chip.getAttribute("aria-pressed")).toBe("false");
+		chip.focus();
+		chip.click();
+		expect(shown).toEqual([true]);
+		const listed = () =>
+			[
+				...window.document.querySelectorAll('[data-group="other"] [data-case]'),
+			].map((x) => x.getAttribute("data-case"));
+		expect(listed()).toEqual(["c_theirs", "c_given"]);
+		state.mine = true;
+		render(state, actions);
+		expect(listed()).toEqual(["c_given"]);
+		// Pressed, it keeps the focus (drawn anew, focused anew).
+		expect(el("my-cases").getAttribute("aria-pressed")).toBe("true");
+		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
+			true,
+		);
+		// A focused card that leaves the list hands the focus to My cases.
+		(
+			window.document.querySelector(
+				'[data-case="c_given"]',
+			) as unknown as HTMLElement
+		).focus();
+		state.cases = [theirs, { ...given, assignee: DANA }];
+		render(state, actions);
+		expect(listed()).toEqual([]);
+		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
+			true,
+		);
+		state.cases = [theirs, given];
+		// The person's case under "This page" counts, and the list says so.
+		const onPage = initialState();
+		signedIn(onPage);
+		onPage.mine = true;
+		onPage.tab = {
+			id: 1,
+			url: given.page.url,
+			title: "KK",
+			size: undefined,
+		};
+		onPage.cases = [theirs, given].map((x) =>
+			x.id === "c_given"
+				? x
+				: {
+						...x,
+						page: { ...x.page, url: "https://other.example/" },
+						shots: [],
+					},
+		);
+		render(onPage, actions);
+		expect(el("my-cases").textContent).toBe("My cases1");
+		expect(el("cases").querySelector(".empty")?.textContent).toBe(
+			"No other case waits for you.",
+		);
+		// A card says who has the open marks.
+		expect(
+			window.document.querySelector('[data-case="c_given"] .card-assignee')
+				?.textContent,
+		).toBe(" · Assigned to you");
+		// Not signed in, or a server that assigns no cases: no filter,
+		// nothing about assignees.
+		const out = initialState();
+		out.cases = [theirs, given];
+		render(out, actions);
+		expect(el("my-cases")).toBeNull();
+		expect(window.document.querySelector(".card-assignee")).toBeNull();
+		const old = initialState();
+		signedIn(old);
+		old.cloud.members = undefined;
+		old.cases = [theirs, given];
+		render(old, actions);
+		expect(el("my-cases")).toBeNull();
+		expect(window.document.querySelector(".card-assignee")).toBeNull();
 	});
 });

@@ -173,6 +173,14 @@ p {
 	color: var(--ink-2);
 }
 
+.empty > p {
+	margin: 0;
+}
+
+.empty > p + p {
+	margin-top: var(--s2);
+}
+
 a {
 	color: var(--link);
 	text-underline-offset: 2px;
@@ -1262,6 +1270,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 /* One line each: what does not fit is cut. */
 .case-card .title,
 .case-card .where-url,
+.case-card .card-sites,
 .case-card .card-summary {
 	min-width: 0;
 	overflow: hidden;
@@ -1277,6 +1286,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 }
 
 .case-card .card-where,
+.case-card .card-sites,
 .case-card .card-date,
 .case-card .card-chips {
 	color: var(--ink-2);
@@ -1290,8 +1300,10 @@ ul.cases [data-case]:hover:not(:disabled) {
 	white-space: pre;
 }
 
-.case-card .where-more {
-	flex: none;
+/* The sites, a line under the title; a hidden word before them is for a screen reader. */
+.case-card .card-sites {
+	display: block;
+	position: relative;
 }
 
 /*
@@ -1360,6 +1372,37 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 .case-card .card-chips [data-kind="dismissed"] {
 	background: var(--st-dismissed-bg);
 	color: var(--st-dismissed);
+}
+
+/* The case's state (DEC-071): one quiet badge before the counts, no colour of its own. */
+.case-card .card-chips > .card-state {
+	background: var(--wash);
+	color: var(--ink);
+	font-weight: 600;
+}
+
+/* "My cases" (DEC-071): above the list, as the open case's status chips. */
+.cases-filter {
+	margin: 0 0 var(--s2);
+}
+
+/*
+ * Off, a quiet chip with an edge; on, filled in the text's colour with a
+ * tick, so the two never read alike.
+ */
+.cases-filter .chip {
+	border-color: var(--edge);
+}
+
+.cases-filter .chip[aria-pressed="true"],
+.cases-filter .chip[aria-pressed="true"]:hover:not(:disabled) {
+	border-color: var(--ink);
+	background: var(--ink);
+	color: var(--sheet);
+}
+
+.cases-filter .chip[aria-pressed="true"]::before {
+	content: "✓";
 }
 
 .case-card .card-chips .none {
@@ -1559,6 +1602,45 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 
 .next-step:focus {
 	outline: none;
+}
+
+/*
+ * Assign (DEC-071): a menu button, its chevron pointing down, and the
+ * team's members under it as the case's "…" menu has its actions.
+ */
+.next-step .assign {
+	position: relative;
+	display: inline-flex;
+}
+
+.next-step .menu-button {
+	gap: var(--s2);
+}
+
+.next-step .menu-button > .chevron {
+	display: inline-block;
+	flex: none;
+	margin: -4px 0 0 var(--s2);
+	transform: rotate(45deg);
+}
+
+.assign-menu {
+	left: 0;
+	right: auto;
+	max-height: 260px;
+	overflow-y: auto;
+}
+
+.assign-menu > button {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+}
+
+.assign-menu .check {
+	width: 1em;
+	flex: none;
+	text-align: center;
 }
 
 /*

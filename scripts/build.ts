@@ -4,7 +4,9 @@
  *   bun scripts/build.ts            development build with the fixed key (DEC-006)
  *   bun scripts/build.ts --store    no `key`, for the Chrome Web Store
  *   bun scripts/build.ts --test     grants `<all_urls>` and `downloads` at install, for the end-to-end tests
- *   bun scripts/build.ts --zip      also packs sitegloss-<version>.zip
+ *   bun scripts/build.ts --zip      also packs sitegloss-<version>.zip; a zip goes to
+ *                                   people, so (as with --store) the panel's
+ *                                   server chooser has no "Development server"
  *   bun scripts/build.ts --firefox  the Firefox build into `dist-firefox/`
  *   bun scripts/build.ts --firefox --test
  *                                   the Firefox build with host access,
@@ -45,6 +47,11 @@ export interface BuildOptions {
 	 * `browser_specific_settings`.
 	 */
 	firefox?: boolean;
+	/**
+	 * The build goes to people (a zip of it is packed): with `store`, the
+	 * panel's server chooser does not offer the development server (DEC-041).
+	 */
+	forPeople?: boolean;
 	minify?: boolean;
 }
 
@@ -274,6 +281,8 @@ interface BundleOptions {
 	sourcemap: "none" | "linked";
 	test: boolean;
 	firefox: boolean;
+	/** The panel's chooser offers the development server (DEC-041). */
+	devServer: boolean;
 }
 
 async function bundle(
@@ -294,6 +303,7 @@ async function bundle(
 		define: {
 			SITEGLOSS_TEST_BUILD: String(options.test),
 			SITEGLOSS_FIREFOX: String(options.firefox),
+			SITEGLOSS_DEV_SERVER: String(options.devServer),
 		},
 		minify: options.minify,
 		splitting: format === "esm" && entrypoint.endsWith(".html"),
@@ -358,6 +368,7 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 		sourcemap: firefox && options.store ? "none" : "linked",
 		test: options.test === true,
 		firefox,
+		devServer: !options.store && !options.forPeople,
 	};
 	const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as {
 		version: string;
@@ -499,6 +510,7 @@ if (import.meta.main) {
 		...(values.store ? { store: true } : {}),
 		...(values.test ? { test: true } : {}),
 		...(values.firefox ? { firefox: true } : {}),
+		...(values.zip ? { forPeople: true } : {}),
 	});
 	const where = relative(process.cwd(), result.outdir) || ".";
 	console.log(

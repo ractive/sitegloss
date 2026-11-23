@@ -88,13 +88,29 @@ interface CaseFile {
  * what the person does.
  */
 function withoutSyncNotes(c: Case): Case {
-	const { via: _v, createdVia: _c, deletedVia: _d, ...rest } = c;
+	// An assignment that waits to be sent too (DEC-071): from a file it
+	// would be sent as the person's doing, to a team it may not be of.
+	const {
+		via: _v,
+		createdVia: _c,
+		deletedVia: _d,
+		assign: _a,
+		assignRefused: _r,
+		...rest
+	} = c;
 	return {
 		...rest,
 		// Images held back are this browser's too (DEC-058): not in a file.
 		marks: rest.marks.map(({ via: _a, heldImages: _h, ...a }) => a),
 	};
 }
+
+/** The hand-over's records of `c` (DEC-071), as they are. */
+const handOverOf = (c: Case): Partial<Case> => ({
+	...(c.createdBy === undefined ? {} : { createdBy: c.createdBy }),
+	...(c.assignee === undefined ? {} : { assignee: c.assignee }),
+	...(c.assignedBy === undefined ? {} : { assignedBy: c.assignedBy }),
+});
 
 /** A case's files, each name after `folder` (`""`: at the top), case.json first. */
 async function caseFiles(
@@ -457,7 +473,16 @@ export async function storeImport(
 		}
 	// `page`, the list and the screenshots are made to agree (DEC-038):
 	// nothing in a file says they do.
-	const { comments: _fileThread, ...fromFile } = withoutSyncNotes(parsed.case);
+	const {
+		comments: _fileThread,
+		// The hand-over's records (DEC-071) are the server's word on one case:
+		// a copy is another case, which nobody started or was given yet; a
+		// case put in place of one here keeps that one's.
+		createdBy: _by,
+		assignee: _to,
+		assignedBy: _from,
+		...fromFile
+	} = withoutSyncNotes(parsed.case);
 	// A file put in place of a case here replaces its marks and screenshots,
 	// not its thread (DEC-046): the thread is the conversation the case has
 	// here (and with the team), and a file is a copy of an earlier moment.
@@ -477,11 +502,15 @@ export async function storeImport(
 		// Who wrote a comment is what the file says (DEC-046). A comment's id
 		// is the server's too, taken there by the original's: a copy's
 		// comments are new ones.
+		...(options.copy
+			? {}
+			: handOverOf(existing ?? withoutSyncNotes(parsed.case))),
 		...(existing !== undefined
 			? {
 					...(existing.comments === undefined
 						? {}
 						: { comments: existing.comments }),
+					...(existing.assign === undefined ? {} : { assign: existing.assign }),
 					...(existing.deletedVia === undefined
 						? {}
 						: { deletedVia: existing.deletedVia }),

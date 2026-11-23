@@ -225,12 +225,13 @@ export function carryVia(before: Case | undefined, after: Case): Case {
 	if (via.at !== before.updatedAt) return after;
 	// A note of its own, made with the change: that one.
 	if (after.via !== undefined && after.via.at === after.updatedAt) return after;
-	const same =
+	const unchanged =
 		after.title === before.title &&
 		after.link === before.link &&
 		after.verdict === before.verdict &&
-		(after.closed === undefined) === (before.closed === undefined);
-	return same
+		(after.closed === undefined) === (before.closed === undefined) &&
+		canonical(after.assign) === canonical(before.assign);
+	return unchanged
 		? { ...after, via: { app: via.app, at: after.updatedAt } }
 		: after;
 }
@@ -481,6 +482,16 @@ export function casePatch(
 	return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
+/** The id `Case.assign` asks for, while the server is not known to have it; none: nothing waits. */
+export const assignWaiting = (
+	c: Case,
+	shadow: Shadow,
+): string | null | undefined => {
+	if (c.assign === undefined) return undefined;
+	const wanted = c.assign.to?.id ?? null;
+	return shadow.assignee === wanted ? undefined : wanted;
+};
+
 /**
  * Ids written down before their case was stored (`CaseBook.announced`) are
  * taken as the server's only for the mark or screenshot they were meant
@@ -655,6 +666,20 @@ export function deriveOps(
 				type: "case.patch",
 				caseId: c.id,
 				...patch,
+				...via,
+			});
+		// The assignment that waits here (DEC-071), in an operation of its
+		// own: the server refuses a patch whole, and a refused assignment
+		// (the person left the team) must not hold back the title, the
+		// summary or the link. Only ever from `Case.assign`, the person's
+		// (or their AI app's) doing here: the server's record is never sent.
+		const assignee = assignWaiting(c, shadow);
+		if (assignee !== undefined)
+			ops.push({
+				opId: newId("o"),
+				type: "case.patch",
+				caseId: c.id,
+				assignee,
 				...via,
 			});
 		// Open again before any mark goes (a mark sent first would open it
@@ -857,6 +882,7 @@ export function applyOp(book: CaseBook, op: Op, number?: number): void {
 				summary: op.summary === undefined ? shadow.case.summary : op.summary,
 				lastNumber: Math.max(shadow.case.lastNumber, op.lastNumber ?? 0),
 			};
+			if (op.assignee !== undefined) shadow.assignee = op.assignee;
 			return;
 		case "shot.create":
 			shadow.shots[op.shot.id] = {
@@ -1365,6 +1391,34 @@ function caseOf(w: WireCase, shots: readonly WireShot[]): Case {
 		verdict: null,
 		// As the server says: a case someone imported from a file stays one.
 		...(typeof w.importedAt === "string" ? { importedAt: w.importedAt } : {}),
+		...handOverIn(w, undefined),
+	};
+}
+
+/**
+ * The hand-over's records from the server's case (DEC-071), in place of
+ * what `c` had: who started it, who it is assigned to and who assigned it.
+ * A server that says nothing of the assignee (one from before) leaves what
+ * is known; who started it is said by every server.
+ */
+function handOverIn(
+	w: WireCase,
+	c: Case | undefined,
+): Pick<Case, "createdBy" | "assignee" | "assignedBy"> {
+	const createdBy = userIn(w.createdBy).user ?? c?.createdBy;
+	if (w.assignee === undefined)
+		return {
+			...(createdBy === undefined ? {} : { createdBy }),
+			...(c?.assignee === undefined ? {} : { assignee: c.assignee }),
+			...(c?.assignedBy === undefined ? {} : { assignedBy: c.assignedBy }),
+		};
+	const assignee = userIn(w.assignee).user ?? null;
+	return {
+		...(createdBy === undefined ? {} : { createdBy }),
+		assignee,
+		...(assignee !== null && w.assignedBy !== undefined
+			? { assignedBy: stampIn(w.assignedBy) }
+			: {}),
 	};
 }
 
@@ -1945,6 +1999,38 @@ export function mergeCase(
 			}
 			shadow.closed = w.closed !== null;
 		}
+		// The hand-over (DEC-071): the server's records, as it says them. An
+		// assignment that waits here stays until the server is known to have
+		// taken it (`applyOp`, or a book that knew it); taken, it goes, and
+		// what the server says now counts, a later change by a teammate too.
+		{
+			const {
+				createdBy: _b,
+				assignee: _a,
+				assignedBy: _s,
+				assign,
+				assignRefused,
+				...rest
+			} = c;
+			const wanted = assign?.to?.id ?? null;
+			// A refusal said here is over once the server's hand-over is
+			// another one (someone assigned the case since).
+			const moved =
+				w.assignee !== undefined &&
+				((w.assignee?.id ?? null) !== (c.assignee?.id ?? null) ||
+					(w.assignedBy?.at ?? null) !== (c.assignedBy?.at ?? null));
+			const taken =
+				assign !== undefined &&
+				(given?.shadow?.assignee === wanted ||
+					(w.assignee !== undefined && (w.assignee?.id ?? null) === wanted));
+			c = {
+				...rest,
+				...handOverIn(w, c),
+				...(assign === undefined || taken ? {} : { assign }),
+				...(assignRefused === undefined || moved ? {} : { assignRefused }),
+			};
+			if (w.assignee !== undefined) shadow.assignee = w.assignee?.id ?? null;
+		}
 		// Who wrote the summary as it reads now: the server's record, unless
 		// the summary was changed here since, which is sent next.
 		if (same(mine.summary, was.summary)) {
@@ -2105,6 +2191,7 @@ export function isClean(c: Case, book: CaseBook, me?: string): boolean {
 	const shadow = book.shadow;
 	if (shadow === undefined) return false;
 	if (casePatch(caseContent(c), shadow.case) !== undefined) return false;
+	if (assignWaiting(c, shadow) !== undefined) return false;
 	const wires = new Set<string>();
 	for (const a of c.marks) {
 		const wire = book.marks[a.id];

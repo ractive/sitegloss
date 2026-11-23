@@ -16,6 +16,7 @@ import type { CaseComment, ImageAdded } from "../case.ts";
 import type { Kv } from "../kv.ts";
 import type {
 	ImageRef,
+	Member,
 	Op,
 	Team,
 	WireFinding,
@@ -46,6 +47,11 @@ export const KEYS = {
 	atTeam: "atTeam",
 	/** When the team's whole state has to be read again. */
 	whole: "whole",
+	/**
+	 * The chosen team's members, to assign a case to (DEC-071): read by the
+	 * panel and the AI app's tools, so the menu works offline too.
+	 */
+	members: "members",
 } as const;
 
 /** What a case's book is kept under, before the case's id. */
@@ -112,6 +118,26 @@ export async function forgetCases(kv: Kv): Promise<void> {
 		}
 		return { set, remove };
 	});
+}
+
+/**
+ * The members of a team as the server last listed them (DEC-071), and when
+ * (ms). `members` null: the server lists none (one from before assignees).
+ */
+export interface TeamMembers {
+	teamId: string;
+	members: Member[] | null;
+	at: number;
+}
+
+/** The members of the team `teamId`, as stored; none: not known. */
+export function membersOf(
+	value: unknown,
+	teamId: string | undefined,
+): Member[] | undefined {
+	const stored = value as TeamMembers | undefined;
+	if (teamId === undefined || stored?.teamId !== teamId) return undefined;
+	return stored.members ?? undefined;
 }
 
 /** Who is signed in, and where. */
@@ -206,6 +232,11 @@ export interface Shadow {
 	marks: Record<string, ShadowMark>;
 	/** Closed at the server (DEC-046); none: open, or a build before it. */
 	closed?: boolean;
+	/**
+	 * The user id the case is assigned to at the server (DEC-071), `null`
+	 * nobody; none: not told (a server from before, a book from before).
+	 */
+	assignee?: string | null;
 	/** The thread at the server, by the comment's id (the same here). */
 	comments?: Record<string, ShadowComment>;
 }
