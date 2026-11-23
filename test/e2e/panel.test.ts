@@ -30,10 +30,13 @@ import {
 import { fullDescribe, fullTest } from "./mode.ts";
 import {
 	type Db,
+	FIELD,
+	fieldValue,
 	markElement,
 	putCases as putStored,
 	READ_DB,
 	resetPanel,
+	retypeField,
 	saveAs,
 	settingsOf,
 	shadow,
@@ -995,7 +998,7 @@ inBothSets("the side panel's page", () => {
 				// As closing and opening the side panel.
 				await openPanel();
 				await h.control.waitFor(
-					`!${id("case-view")}.hidden && ${id("verdict")}?.dataset.case === "${caseId}" && ${id("add-marks")}.textContent === "Done adding"`,
+					`!${id("case-view")}.hidden && ${id("verdict")}?.dataset.case === "${caseId}" && ${id("add-marks")}.textContent === "Adding marks: Done"`,
 					10_000,
 				);
 				// What the page found shows, without a draw again.
@@ -1075,7 +1078,7 @@ inBothSets("the side panel's page", () => {
 					"the marks back on the page",
 				);
 				await h.control.waitFor(
-					`${id("load-case")}.textContent === "Hide marks" && ${id("add-marks")}.textContent === "Done adding"`,
+					`${id("load-case")}.textContent === "Hide marks" && ${id("add-marks")}.textContent === "Adding marks: Done"`,
 				);
 				// A mark added now is the case's, drawn as the others are.
 				await markElement(page, "[data-truth=tip]", "And this");
@@ -1109,7 +1112,7 @@ inBothSets("the side panel's page", () => {
 					`.review [data-review="${before.number}"] [data-number] text`,
 				);
 				const popover = shadow(".popover");
-				const field = shadow(".popover textarea");
+				const field = FIELD;
 				const row = `document.querySelector('[data-mark="${before.id}"]')`;
 				await page.waitFor(pin);
 				expect(
@@ -1117,12 +1120,12 @@ inBothSets("the side panel's page", () => {
 				).toBe(false);
 				await page.click(pin);
 				await page.waitFor(`!${popover}.hidden && ${field} !== null`);
-				expect(await page.eval<string>(`${field}.value`)).toBe(before.comment);
+				expect(await fieldValue(page)).toBe(before.comment);
 				// The panel shows the mark, with its other actions.
 				await h.control.waitFor(`${row}.hasAttribute("data-open")`);
 
 				// Done stores the changed comment; the panel and the case have it.
-				await page.eval(`${field}.value = "Changed on the page"`);
+				await retypeField(page, "Changed on the page");
 				await page.click(shadow('[data-action="mark-done"]'));
 				await until(
 					async () =>
@@ -1343,7 +1346,7 @@ inBothSets("the side panel's page", () => {
 					);
 					expect(
 						await panel.eval<string>(`${id("add-marks")}.textContent`),
-					).toBe("Done adding");
+					).toBe("Adding marks: Done");
 					// Not a double click's second: that would do nothing.
 					await Bun.sleep(PAST_GUARD_MS);
 					await panel.eval(`${back}.click()`);

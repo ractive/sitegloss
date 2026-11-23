@@ -37,8 +37,14 @@ export function arrowHead(from: Point, to: Point): [Point, Point] {
 	return [corner(0.45), corner(-0.45)];
 }
 
-/** A note's badge is larger: it is all there is of the mark. */
-export const badgeRadius = (shape: Shape) => (shape.kind === "note" ? 13 : 11);
+/**
+ * A pin's radius: 20 px across, a note's 24 (it is all there is of the
+ * mark). One step smaller than before DEC-064 (22 and 26), as the web app's
+ * pins went to 24; two digits still fit. Pictures taken before keep theirs.
+ */
+export const badgeRadius = (shape: Shape) => (shape.kind === "note" ? 12 : 10);
+/** The pin's number: bold, two digits inside the smaller pin. */
+export const PIN_FONT = "700 11px system-ui, sans-serif";
 
 function paintShape(
 	ctx: OffscreenCanvasRenderingContext2D,
@@ -97,7 +103,7 @@ export function paintMark(
 	ctx.lineWidth = 2;
 	ctx.stroke();
 	ctx.fillStyle = "#fff";
-	ctx.font = "700 12px system-ui, sans-serif";
+	ctx.font = PIN_FONT;
 	ctx.textAlign = "center";
 	ctx.textBaseline = "middle";
 	ctx.fillText(String(mark.number), at.x, at.y);

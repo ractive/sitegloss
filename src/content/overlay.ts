@@ -13,6 +13,7 @@ import {
 	type Shape,
 	type StatusGroup,
 } from "../lib/case.ts";
+import { handPort } from "../lib/frame-port.ts";
 import { BAR_LOOP, pathData, strokeBounds } from "../lib/logo.ts";
 import {
 	arrowHead,
@@ -21,37 +22,14 @@ import {
 	MARK_COLOUR,
 	type RenderedMark,
 } from "../lib/marks.ts";
+import { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
+import type { ViewerInit } from "../viewer/pictures.ts";
 
 declare const SITEGLOSS_TEST_BUILD: boolean | undefined;
 
 export const HOST_ID = "sitegloss-root";
-export const HOVER_COLOUR = "#1f6feb";
-/**
- * The overlay's one look (DEC-024): it sits on pages Sitegloss knows nothing
- * about, so it is the same on each of them and in both colour schemes. A unit
- * test holds every pair of these to its contrast.
- */
-export const PAGE_LOOK = {
-	/** The toolbar and the review bar. */
-	bar: "#1b2130",
-	barText: "#ffffff",
-	barMuted: "#c5cbd8",
-	barHover: "#2f384c",
-	/** The pressed tool and the bar's one main action; ink on it. */
-	amber: "#ffb000",
-	amberHover: "#f0a400",
-	/** Under every stroke and around every pin: the edge on a dark page. */
-	casing: "#ffffff",
-	/** The comment's popover: white, whatever the page's scheme. */
-	popover: "#ffffff",
-	popoverText: "#1b2130",
-	popoverMuted: "#535c6e",
-	/** A placeholder on the popover's fields: lighter than text, still 4.5:1 (DEC-060). */
-	popoverPlaceholder: "#6e7583",
-	popoverEdge: "#7b8291",
-	/** The edge of an amber button on the popover's white. */
-	amberEdge: "#a06c00",
-} as const;
+export { HOVER_COLOUR, PAGE_LOOK } from "../lib/page-look.ts";
+
 /**
  * A loaded mark's colour is its status, by the group it counts in. Open is
  * the colour of the mark on its screenshot; each carries the pin's white number.
@@ -116,7 +94,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	position: fixed; left: 16px; right: 16px; bottom: 16px; margin-inline: auto;
 	box-sizing: border-box; width: fit-content; max-width: calc(100vw - 32px);
 	display: flex; gap: 2px; align-items: center; justify-content: center;
-	padding: 5px; border-radius: 12px;
+	padding: 5px; border-radius: 10px;
 	background: ${L.bar}; color: ${L.barText};
 	box-shadow: ${SHADOW};
 	pointer-events: auto;
@@ -132,7 +110,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 .toolbar .sep { flex: none; width: 1px; align-self: stretch; margin: 4px; background: rgba(255, 255, 255, 0.28); }
 .toolbar button {
 	all: unset; box-sizing: border-box; flex: none; cursor: pointer;
-	position: relative; min-width: 28px; min-height: 30px; padding: 4px 9px; border-radius: 8px;
+	position: relative; min-width: 28px; min-height: 30px; padding: 4px 9px; border-radius: 6px;
 	display: inline-flex; gap: 6px; align-items: center; justify-content: center;
 	color: ${L.barText}; font: inherit; white-space: nowrap;
 }
@@ -161,7 +139,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 .toolbar[data-fit~="tight"] .ring { margin: 0 2px; }
 .toolbar[data-fit~="tight"] .sep { display: none; }
 .popover {
-	box-sizing: border-box; position: fixed; width: 296px; padding: 10px; border-radius: 12px;
+	box-sizing: border-box; position: fixed; width: 296px; padding: 10px; border-radius: 10px;
 	/* A dark page does not restyle the field. */
 	color-scheme: light;
 	background: ${L.popover}; color: ${L.popoverText};
@@ -174,6 +152,10 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 	color: ${L.popoverText}; background: ${L.popover};
 }
 .popover textarea::placeholder { color: ${L.popoverPlaceholder}; opacity: 1; }
+/* The viewer over the page (DEC-064): the whole window, above everything of the page's. */
+iframe.viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; margin: 0; padding: 0; background: transparent; color-scheme: light dark; pointer-events: auto; z-index: 2147483647; }
+/* A field of the extension's own (DEC-064): its frame, as tall as the field in it says. */
+.popover iframe.field { display: block; box-sizing: border-box; width: calc(100% + 6px); height: 92px; margin: -3px; border: 0; background: transparent; color-scheme: light; }
 .popover textarea:focus-visible, .popover button:focus-visible { outline: 2px solid ${HOVER_COLOUR}; outline-offset: 1px; }
 .popover .row { display: flex; gap: 6px; justify-content: space-between; margin-top: 8px; }
 .popover .row.images { justify-content: flex-start; margin-top: 6px; }
@@ -217,7 +199,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 .reviewbar {
 	position: fixed; right: 16px; top: 16px;
 	box-sizing: border-box; display: flex; gap: 8px; align-items: center;
-	padding: 5px 5px 5px 2px; border-radius: 12px;
+	padding: 5px 5px 5px 2px; border-radius: 10px;
 	background: ${L.bar}; color: ${L.barText};
 	box-shadow: ${SHADOW};
 	pointer-events: auto; max-width: min(520px, calc(100vw - 32px));
@@ -242,7 +224,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
 .reviewbar .count { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
 .reviewbar button {
 	all: unset; box-sizing: border-box; flex: none; cursor: pointer;
-	min-height: 28px; padding: 3px 11px; border-radius: 8px;
+	min-height: 28px; padding: 3px 11px; border-radius: 6px;
 	display: inline-flex; align-items: center;
 	border: 1px solid rgba(255, 255, 255, 0.5);
 	color: ${L.barText}; font: inherit; font-weight: 600;
@@ -742,6 +724,53 @@ export class Overlay {
 	}
 
 	/** Its owner is done with the popover. */
+	#viewer: { frame: HTMLIFrameElement; port?: MessagePort } | undefined;
+
+	/**
+	 * A mark's pictures over the whole window (DEC-064): the viewer, a page
+	 * of the extension's own in a frame, told what to show over its port.
+	 * The page learns only that something of Sitegloss's covers it.
+	 */
+	showViewer(init: ViewerInit, closed: () => void): void {
+		this.closeViewer();
+		const frame = this.doc.createElement("iframe");
+		frame.className = "viewer";
+		frame.title = "Picture";
+		frame.src = chrome.runtime.getURL("viewer/index.html");
+		const viewer: { frame: HTMLIFrameElement; port?: MessagePort } = { frame };
+		frame.addEventListener("load", () => {
+			viewer.port?.close();
+			const port = handPort(frame, init);
+			port.onmessage = (e: MessageEvent<{ type?: string }>) => {
+				if (e.data?.type !== "close" || this.#viewer !== viewer) return;
+				this.closeViewer();
+				closed();
+			};
+			viewer.port = port;
+			frame.focus();
+		});
+		this.#viewer = viewer;
+		this.root.append(frame);
+		frame.focus();
+	}
+
+	/** A key for the viewer, heard by the side panel while it kept the focus. */
+	viewerKey(key: string): void {
+		this.#viewer?.port?.postMessage({ type: "key", key });
+	}
+
+	get viewerOpen(): boolean {
+		return this.#viewer !== undefined;
+	}
+
+	closeViewer(): void {
+		const viewer = this.#viewer;
+		if (viewer === undefined) return;
+		this.#viewer = undefined;
+		viewer.port?.close();
+		viewer.frame.remove();
+	}
+
 	closePopover(): void {
 		this.#popoverDismiss = undefined;
 		this.popover.hidden = true;
@@ -1068,7 +1097,7 @@ export class Overlay {
 			x: at.x,
 			y: at.y,
 			fill: "#fff",
-			"font-size": 12,
+			"font-size": 11,
 			"font-weight": 700,
 			"font-family": "system-ui, sans-serif",
 			"text-anchor": "middle",

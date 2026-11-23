@@ -18,6 +18,7 @@ import {
 	countColour,
 	type Db,
 	imagesOf,
+	keyboardTarget,
 	markElement,
 	openCase,
 	panelHome,
@@ -27,6 +28,7 @@ import {
 	shadow,
 	showToolbar,
 	testWaits,
+	typeInField,
 	until,
 	worker,
 } from "./steps.ts";
@@ -200,8 +202,7 @@ inBothSets("adding marks to a case", () => {
 		// moved: it shares the screenshot of mark 2, and its shot shows both.
 		await page.click(shadow('[data-action="tool-note"]'));
 		await page.click(`document.querySelector("[data-truth=tip]")`);
-		await page.waitFor(shadow(".popover textarea"));
-		await page.type("Say how much");
+		await typeInField(page, "Say how much");
 		await pressEscape(page);
 		await page.waitFor(`${status} === "Mark 3 added to “Straight in”"`, 20_000);
 		await panel.waitFor(`document.querySelectorAll(".mark").length === 3`);
@@ -353,7 +354,7 @@ inBothSets("adding marks to a case", () => {
 	/** The panel's case view shows `title`, with the toolbar adding to it. */
 	const inCase = (panel: Page, title: string) =>
 		panel.waitFor(
-			`!document.getElementById("case-view").hidden && document.querySelector("#case-view .case-title")?.textContent === ${JSON.stringify(title)} && document.getElementById("add-marks").textContent === "Done adding"`,
+			`!document.getElementById("case-view").hidden && document.querySelector("#case-view .case-title")?.textContent === ${JSON.stringify(title)} && document.getElementById("add-marks").textContent === "Adding marks: Done"`,
 			10_000,
 		);
 
@@ -726,5 +727,92 @@ inBothSets("adding marks to a case", () => {
 			await page.send("Page.close");
 		},
 		90_000,
+	);
+
+	fullTest(
+		"what is typed or pasted in the page's dialog never reaches the page's own scripts (DEC-064)",
+		async () => {
+			const { page, tabId } = await h.open("v1");
+			// The page's listeners, on window and document, capture phase,
+			// before anything of Sitegloss's.
+			await page.eval(`(() => {
+				globalThis.heard = [];
+				const hear = (e) => {
+					const d = e.clipboardData ?? e.dataTransfer ?? null;
+					const what = [e.key, e.data, d?.getData("text/plain")].filter(Boolean).join(" ");
+					if (what) globalThis.heard.push(e.type + ": " + what);
+				};
+				for (const type of ["keydown", "keypress", "keyup", "beforeinput", "input", "paste", "drop", "copy", "cut"]) {
+					window.addEventListener(type, hear, true);
+					document.addEventListener(type, hear, true);
+				}
+			})()`);
+			const caseId = await showToolbar(h, page, tabId);
+			await page.click(shadow('[data-action="tool-element"]'));
+			await page.waitFor(
+				`${shadow('[data-action="tool-element"]')}.getAttribute("aria-pressed") === "true"`,
+			);
+			const at = await page.eval<{ x: number; y: number }>(
+				`(() => { const r = document.querySelector("h1").getBoundingClientRect(); return { x: r.x + r.width - 30, y: r.y + r.height / 2 }; })()`,
+			);
+			await page.mouse("mouseMoved", at.x, at.y);
+			await page.clickAt(at.x, at.y);
+			await page.waitFor(
+				`${shadow(".popover")} && !${shadow(".popover")}.hidden`,
+			);
+			// A clipboard with a sentence from a ticket.
+			await h.browser.send("Browser.grantPermissions", {
+				origin: h.base,
+				permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
+			});
+			await page.activate();
+			await page.eval(`navigator.clipboard.writeText("from the ticket")`);
+			await page.eval("globalThis.heard.length = 0");
+			// Keys pressed, then a paste, where the person's keyboard goes.
+			const keys = await keyboardTarget(page);
+			for (const ch of "Too pale ") {
+				const code = ch === " " ? "Space" : `Key${ch.toUpperCase()}`;
+				await keys.send("Input.dispatchKeyEvent", {
+					type: "keyDown",
+					key: ch,
+					code,
+					text: ch,
+					unmodifiedText: ch,
+				});
+				await keys.send("Input.dispatchKeyEvent", {
+					type: "keyUp",
+					key: ch,
+					code,
+				});
+			}
+			await keys.send("Input.dispatchKeyEvent", {
+				type: "rawKeyDown",
+				key: "v",
+				code: "KeyV",
+				windowsVirtualKeyCode: 86,
+				modifiers: 4,
+				commands: ["paste"],
+			});
+			await keys.send("Input.dispatchKeyEvent", {
+				type: "keyUp",
+				key: "v",
+				code: "KeyV",
+				windowsVirtualKeyCode: 86,
+				modifiers: 4,
+			});
+			await page.click(shadow('[data-action="comment-done"]'));
+			const saved = await until(
+				async () =>
+					(await h.control.eval<Db>(READ_DB)).cases.find((c) => c.id === caseId)
+						?.marks[0]?.comment,
+				(comment) => comment !== undefined,
+				20_000,
+			);
+			// The comment has it all; the page heard nothing of it.
+			expect(saved).toBe("Too pale from the ticket");
+			expect(await page.eval<string[]>("globalThis.heard")).toEqual([]);
+			await page.send("Page.close");
+		},
+		60_000,
 	);
 });

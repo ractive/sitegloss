@@ -88,8 +88,8 @@ inFullSet("images added to a mark", () => {
 				`[...document.querySelectorAll(".mark[data-open] .pictures button.tile[data-action=open-larger]")].map((b) => b.getAttribute("aria-label"))`,
 			),
 		).toEqual([
-			"Screenshot of mark 1, taken by Sitegloss: opens it larger in a new tab",
-			"Image 1 of 1 on mark 1: opens it larger in a new tab",
+			"Screenshot of mark 1, taken by Sitegloss: shows it large",
+			"Image 1 of 1 on mark 1: shows it large",
 		]);
 		const db = await panel.eval<
 			Db & { cases: { marks: { images?: { image: string }[] }[] }[] }

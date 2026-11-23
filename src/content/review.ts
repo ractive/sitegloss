@@ -60,6 +60,7 @@ import {
 	ring,
 	withSaveKey,
 } from "./overlay.ts";
+import { PageField } from "./page-field.ts";
 
 interface Entry {
 	mark: Mark;
@@ -147,7 +148,8 @@ interface OpenMark {
 	/** The status its commands were drawn for. */
 	status: MarkStatus;
 	/** Of the view shown now. */
-	field: HTMLTextAreaElement | undefined;
+	/** The comment's field: a frame of the extension's own (DEC-064). */
+	field: PageField | undefined;
 	problem: HTMLElement;
 	controls: HTMLButtonElement[];
 	remove: HTMLButtonElement | undefined;
@@ -805,7 +807,7 @@ export class Reviewer {
 			this.#fill(open);
 		};
 		let content: Node[];
-		let focus: HTMLElement;
+		let focus: { focus(): void };
 		if (open.mode === "resolve") {
 			label.append(pin, `Mark ${mark.number} is`);
 			const name = `sitegloss-resolution-${mark.id}`;
@@ -826,17 +828,17 @@ export class Reviewer {
 				choice.append(radio, CHOICE_LABEL[kind]);
 				choices.append(choice);
 			}
-			const note = doc.createElement("input");
-			note.type = "text";
-			note.className = "note";
-			note.id = `sitegloss-note-${mark.id}`;
-			note.maxLength = MAX_COMMENT;
 			// A label that shows, not a placeholder in its place (DEC-060).
-			const noteLabel = doc.createElement("label");
+			const noteLabel = doc.createElement("p");
 			noteLabel.className = "note-label";
-			noteLabel.htmlFor = note.id;
 			noteLabel.textContent = "Note (optional): what was done, or why";
-			note.value = mark.resolution?.note ?? "";
+			// Typed in a frame of the extension's own (DEC-064); Enter saves.
+			const note = new PageField(doc, {
+				label: "Note (optional): what was done, or why",
+				value: mark.resolution?.note ?? "",
+				maxLength: MAX_COMMENT,
+				enterSubmits: true,
+			});
 			const save = () => {
 				const kind = (choices.querySelector<HTMLInputElement>("input:checked")
 					?.value ?? chosen) as ResolveChoice;
@@ -848,15 +850,13 @@ export class Reviewer {
 					note: note.value,
 				});
 			};
-			note.addEventListener("keydown", (e) => {
-				if (e.key === "Enter") save();
-				else if (e.key === "Escape") back();
-			});
+			note.onSubmit = save;
+			note.onEscape = back;
 			content = [
 				label,
 				choices,
 				noteLabel,
-				note,
+				note.element,
 				problem,
 				row(
 					"row",
@@ -867,18 +867,16 @@ export class Reviewer {
 			focus = note;
 		} else if (open.mode === "reopen") {
 			label.append(pin, "Reopen");
-			const note = doc.createElement("textarea");
-			note.maxLength = MAX_REOPEN_NOTE;
-			note.setAttribute(
-				"aria-label",
-				`What is still wrong with mark ${mark.number}`,
-			);
 			// Help under the label, not a placeholder that looks like text (DEC-060).
 			const help = doc.createElement("p");
 			help.className = "help";
-			help.id = `sitegloss-reopen-help-${mark.id}`;
 			help.textContent = "What is still wrong? The developer reads this first.";
-			note.setAttribute("aria-describedby", help.id);
+			const note = new PageField(doc, {
+				label: `What is still wrong with mark ${mark.number}`,
+				description: help.textContent,
+				value: "",
+				maxLength: MAX_REOPEN_NOTE,
+			});
 			const reopen = () => {
 				// The developer reads it first: a reopen says why.
 				if (note.value.trim() === "") return;
@@ -893,17 +891,15 @@ export class Reviewer {
 				button("Reopen", "mark-reopen-done", reopen, true),
 			);
 			done.disabled = true;
-			note.addEventListener("input", () => {
-				if (!open.busy) done.disabled = note.value.trim() === "";
-			});
-			note.addEventListener("keydown", (e) => {
-				if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) reopen();
-				else if (e.key === "Escape") back();
-			});
+			note.onInput = (value) => {
+				if (!open.busy) done.disabled = value.trim() === "";
+			};
+			note.onSubmit = reopen;
+			note.onEscape = back;
 			content = [
 				label,
 				help,
-				note,
+				note.element,
 				problem,
 				row("row", button("Cancel", "mark-back", back), done),
 			];
@@ -916,15 +912,14 @@ export class Reviewer {
 				state.textContent = STATUS_LABEL[open.status];
 				label.append(state);
 			}
-			const field = doc.createElement("textarea");
-			field.setAttribute("aria-label", `Comment of mark ${mark.number}`);
-			field.maxLength = MAX_COMMENT;
-			field.value = open.draft;
-			field.addEventListener("keydown", (e) => {
-				if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void this.#done();
-				// What was typed is dropped, as the panel's Cancel does.
-				else if (e.key === "Escape") this.#closeMark();
+			const field = new PageField(doc, {
+				label: `Comment of mark ${mark.number}`,
+				value: open.draft,
+				maxLength: MAX_COMMENT,
 			});
+			field.onSubmit = () => void this.#done();
+			// What was typed is dropped, as the panel's Cancel does.
+			field.onEscape = () => this.#closeMark();
 			open.field = field;
 			// The panel's commands for a mark of this status, in its order.
 			const commands: HTMLButtonElement[] = [];
@@ -982,7 +977,7 @@ export class Reviewer {
 			open.remove = remove;
 			content = [
 				label,
-				field,
+				field.element,
 				problem,
 				row("commands", ...commands),
 				...(addImage === undefined ? [] : [row("row", addImage)]),

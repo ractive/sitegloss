@@ -1772,11 +1772,9 @@ const actions: Actions = {
 	},
 
 	openPicture(c, a, pictureId) {
-		void chrome.tabs
-			.create({ url: chrome.runtime.getURL(viewerPath(c.id, a.id, pictureId)) })
-			.catch((error: unknown) =>
-				caseHintWriter()(`Could not open the picture: ${message(error)}`),
-			);
+		void showPicture(c.id, a.id, pictureId).catch((error: unknown) =>
+			caseHintWriter()(`Could not open the picture: ${message(error)}`),
+		);
 	},
 
 	openMarkPage(c, a, where) {
@@ -2652,6 +2650,90 @@ function askImages(s: PanelState): void {
 	void showAddImages(c, a);
 }
 
+/**
+ * The picture shown large (DEC-064), from the tile that was clicked: over the
+ * page in the tab in front, in a frame of the extension's own; where no
+ * content script may run there (the browser's own pages, the web store, a
+ * PDF), in a small window of its own, centred over the browser's. Never a
+ * tab: the owner found one confusing; the viewer has "Open in a tab".
+ */
+let viewerOn: { tabId: number; tile: string } | undefined;
+
+async function showPicture(
+	caseId: string,
+	markId: string,
+	pictureId: string,
+): Promise<void> {
+	const tile = `${markId}:${pictureId}`;
+	const tabId = state.tab?.id;
+	if (tabId !== undefined && isWebPage(state.tab?.url ?? "")) {
+		const shown = await sendToTab<{ ok?: boolean }>(tabId, {
+			type: "viewer:show",
+			caseId,
+			markId,
+			pictureId,
+		}).catch(() => undefined);
+		if (shown?.ok === true) {
+			viewerOn = { tabId, tile };
+			return;
+		}
+	}
+	const browser = await chrome.windows.getCurrent();
+	const width = Math.round(Math.min(1280, (browser.width ?? 1280) * 0.85));
+	const height = Math.round(Math.min(900, (browser.height ?? 900) * 0.85));
+	await chrome.windows.create({
+		url: chrome.runtime.getURL(
+			`${viewerPath(caseId, markId, pictureId)}&window=1`,
+		),
+		type: "popup",
+		width,
+		height,
+		left: Math.round(
+			(browser.left ?? 0) + ((browser.width ?? width) - width) / 2,
+		),
+		top: Math.round(
+			(browser.top ?? 0) + ((browser.height ?? height) - height) / 2,
+		),
+		focused: true,
+	});
+}
+
+// The panel keeps the keyboard after the tile's click: its keys go to the
+// viewer over the page, Escape closing it as there.
+document.addEventListener(
+	"keydown",
+	(e) => {
+		const on = viewerOn;
+		if (on === undefined || e.metaKey || e.ctrlKey || e.altKey) return;
+		if (!["Escape", "ArrowLeft", "ArrowRight", "f", "F"].includes(e.key))
+			return;
+		e.preventDefault();
+		e.stopPropagation();
+		void chrome.tabs
+			.sendMessage(on.tabId, { type: "viewer:key", key: e.key })
+			.then((answer: { ok?: boolean } | undefined) => {
+				if (answer?.ok !== true) viewerOn = undefined;
+			})
+			.catch(() => {
+				viewerOn = undefined;
+			});
+	},
+	true,
+);
+
+/** The viewer over the page went: the focus is back on its tile. */
+function viewerClosed(tabId: number | undefined): void {
+	const on = viewerOn;
+	if (on === undefined || on.tabId !== tabId) return;
+	viewerOn = undefined;
+	const [markId, pictureId] = on.tile.split(":");
+	document
+		.querySelector<HTMLElement>(
+			`li.mark[data-mark="${CSS.escape(markId ?? "")}"] [data-picture="${CSS.escape(pictureId ?? "")}"] [data-action="open-larger"], li.mark[data-mark="${CSS.escape(markId ?? "")}"] [data-picture="${CSS.escape(pictureId ?? "")}"][data-action="open-larger"]`,
+		)
+		?.focus({ preventScroll: true });
+}
+
 async function showAddImages(
 	c: Case,
 	a: Mark,
@@ -2990,6 +3072,10 @@ async function drawnFor(
 /** News from the pages and the worker: nothing is answered. */
 function hear(news: Broadcast, sender: chrome.runtime.MessageSender): false {
 	// Only the worker says so; the answer comes from it too.
+	if (news?.type === "viewer:closed") {
+		viewerClosed(sender.tab?.id);
+		return false;
+	}
 	if (news?.type === "panel:images") {
 		if (fromBackground(sender)) takeImages(state.tab?.id);
 		return false;

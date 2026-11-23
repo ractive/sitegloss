@@ -308,10 +308,84 @@ export const overlayOf = (h: Harness, tabId: number) =>
 		`chrome.tabs.sendMessage(${tabId}, { type: "overlay:state" }).catch(() => null)`,
 	);
 
+/** The comment field of the page's dialog that is open: a frame of the extension's own (DEC-064). */
+export const FIELD = shadow(".popover iframe.field");
+
+const fieldFrames = new Map<string, Page>();
+
+/**
+ * The open dialog's comment field, as a page of its own: the frame is the
+ * extension's, out of the page's reach and of a test's `page.eval`. Ready
+ * once the content script handed it its port.
+ */
+export async function dialogField(page: Page): Promise<Page> {
+	const owner = opened.get(page);
+	if (owner === undefined)
+		throw new Error("dialogField: a page the harness did not open");
+	await page.waitFor(FIELD);
+	type Frame = { frame: { id: string; url: string }; childFrames?: Frame[] };
+	const find = (f: Frame): string | undefined =>
+		f.frame.url.includes("/field/index.html")
+			? f.frame.id
+			: (f.childFrames ?? []).map(find).find((id) => id !== undefined);
+	const id = await until(
+		async () => {
+			const { frameTree } = (await page.send("Page.getFrameTree")) as {
+				frameTree: Frame;
+			};
+			return find(frameTree);
+		},
+		(found) => found !== undefined,
+		5000,
+	);
+	if (id === undefined) throw new Error("no comment field frame");
+	let frame = fieldFrames.get(id);
+	if (frame === undefined) {
+		frame = await owner.h.browser.attach(id);
+		fieldFrames.set(id, frame);
+	}
+	await frame.waitFor(`!document.getElementById("field").disabled`);
+	return frame;
+}
+
+/** Type `text` into the open dialog's comment field, where a person types. */
+export async function typeInField(page: Page, text: string): Promise<void> {
+	const frame = await dialogField(page);
+	await frame.eval(`document.getElementById("field").focus()`);
+	await frame.send("Input.insertText", { text });
+}
+
+/** What the open dialog's comment field holds. */
+export async function fieldValue(page: Page): Promise<string> {
+	const frame = await dialogField(page);
+	return frame.eval<string>(`document.getElementById("field").value`);
+}
+
+/** Replace what the open dialog's comment field holds, as a person would: all of it selected. */
+export async function retypeField(page: Page, text: string): Promise<void> {
+	const frame = await dialogField(page);
+	await frame.eval(`document.getElementById("field").select()`);
+	await frame.send("Input.insertText", { text });
+}
+
+/**
+ * Where a person's keys go in the open dialog: its field frame, which the
+ * browser sends the keys of a focused frame to (DEC-064); in a build before
+ * that, the textarea in the page.
+ */
+export async function keyboardTarget(page: Page): Promise<Page> {
+	if (await page.eval<boolean>(`!!${FIELD}`)) {
+		const frame = await dialogField(page);
+		await frame.eval(`document.getElementById("field").focus()`);
+		return frame;
+	}
+	await page.eval(`${shadow(".popover textarea")}.focus()`);
+	return page;
+}
+
 /** Finish the open comment field with `text`. */
 export async function comment(page: Page, text: string): Promise<void> {
-	await page.waitFor(shadow(".popover textarea"));
-	await page.type(text);
+	await typeInField(page, text);
 	await page.click(shadow('[data-action="comment-done"]'));
 }
 

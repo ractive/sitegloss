@@ -539,7 +539,8 @@ function caseItem(
 				title: `Open “${c.title}” and show its marks on the page in this tab`,
 				onclick: () => actions.openCase(c.id),
 			},
-			caseBand(c),
+			// No band without marks: an empty one read as a progress bar (DEC-064).
+			c.marks.length > 0 ? caseBand(c) : null,
 			h(
 				"span",
 				{ class: "card-head" },
@@ -553,9 +554,11 @@ function caseItem(
 					? h("span", { class: "tag device-only" }, "This device only")
 					: null,
 			),
+			// The summary is the case's own words: under the title, in the
+			// text's colour, apart from the facts (DEC-064).
+			summary ? h("span", { class: "card-summary" }, summary) : null,
 			whereLine(c),
 			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
-			summary ? h("span", { class: "card-summary" }, summary) : null,
 			caseChips(c),
 		),
 	);
@@ -887,8 +890,9 @@ const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 
 /**
  * A picture of a mark as a tile: a click opens it at its size in the viewer,
- * a tab of the extension's own, with the mark's other pictures (DEC-060; in
- * one step since DEC-061). It never goes through the web page being marked.
+ * the viewer, with the mark's other pictures (DEC-060; in one step since
+ * DEC-061): over the page in a frame of the extension's own, or in a window
+ * of its own (DEC-064). It never goes through the web page being marked.
  */
 function pictureTile(
 	src: string,
@@ -902,8 +906,8 @@ function pictureTile(
 			type: "button",
 			class: "tile",
 			"data-action": "open-larger",
-			"aria-label": `${label}: opens it larger in a new tab`,
-			title: `${title} Click to open it larger in a new tab.`,
+			"aria-label": `${label}: shows it large`,
+			title: `${title} Click to see it large; Escape closes it.`,
 			onclick: open,
 		},
 		h("img", { src, alt: "" }),
@@ -1165,7 +1169,7 @@ interface CaseParts {
 	/** Show, or Hide where the case is loaded on the tab in front. */
 	loadButton: HTMLButtonElement;
 	loadedHere: boolean;
-	/** "Add marks", or "Done adding" while the toolbar adds to the case. */
+	/** "Add marks", or "Adding marks: Done" while the toolbar adds to the case. */
 	addMarks: HTMLButtonElement;
 	/** The same under the last mark of the list, where it has marks. */
 	adding: boolean;
@@ -2817,10 +2821,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.adding =
 		state.overlay?.visible === true && state.overlay.target?.caseId === c.id;
 	p.addMarks.disabled = !ok || state.leaving?.phase === "finishing";
-	p.addMarks.textContent = p.adding ? "Done adding" : "Add marks";
-	p.addMarks.classList.toggle("primary", !p.adding);
-	// Adding is on: said by the button itself, dark, until Done adding.
-	p.addMarks.classList.toggle("strong", p.adding);
+	// Calm at rest, always in reach; amber only while adding is on, and it
+	// says so (DEC-064).
+	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
+	p.addMarks.classList.toggle("primary", p.adding);
+	p.addMarks.setAttribute("aria-pressed", String(p.adding));
 	p.addMarks.title = !ok
 		? NEEDS_ACCESS
 		: p.adding
@@ -3467,17 +3472,20 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 		// Its comments, at the mark, after what can be done with it (DEC-061).
 		markThreadView(c, a, x.thread, actions),
 	);
-	const sub = markSubline(
-		c,
-		a,
-		m,
-		edit === undefined,
-		actions,
-		x.elsewhere,
-		x.tabUrl,
-	);
+	const sub = markSubline(c, a, m, actions, x.elsewhere, x.tabUrl);
+	// A mark to verify: Verify in its title line, small, so a closed row is
+	// two lines like every other (DEC-064); Reopen… and the rest when open.
+	const headVerify =
+		markStatus(a) === "fixed" && edit === undefined
+			? (() => {
+					const b = verifyButton(c, a, actions);
+					b.className = "small head-verify";
+					b.setAttribute("aria-label", `Verify mark ${a.number}`);
+					return b;
+				})()
+			: null;
 	li.append(
-		h("div", { class: "mark-head" }, toggle, show),
+		h("div", { class: "mark-head" }, toggle, headVerify, show),
 		...(sub ? [sub] : []),
 		body,
 	);
@@ -3639,14 +3647,13 @@ function showElsewhere(
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
  * its AI findings; why it came back, for a reopened one. A mark of another
- * page names that page as a link. A mark to verify offers Verify and
- * Reopen… here, so verifying needs no expanding.
+ * page names that page as a link. (A mark to verify has Verify in its
+ * title line, DEC-064.)
  */
 function markSubline(
 	c: Case,
 	a: Mark,
 	m: MarkMatch | undefined,
-	buttons: boolean,
 	actions: Actions,
 	elsewhere = false,
 	tabUrl?: string,
@@ -3692,14 +3699,6 @@ function markSubline(
 					"span",
 					{ class: "tag comments-count" },
 					`${talk} comment${talk === 1 ? "" : "s"}`,
-				)
-			: null,
-		status === "fixed" && buttons
-			? h(
-					"span",
-					{ class: "head-actions" },
-					verifyButton(c, a, actions),
-					reopenButton(c, a, actions),
 				)
 			: null,
 	].filter((x) => x !== null);

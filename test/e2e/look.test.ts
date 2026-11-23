@@ -22,7 +22,7 @@ import {
 	PAST_GUARD_MS,
 	startHarness,
 } from "./harness.ts";
-import { markElement, parkControl, saveAs, shadow } from "./steps.ts";
+import { FIELD, markElement, parkControl, saveAs, shadow } from "./steps.ts";
 
 const id = (name: string) => `document.getElementById(${JSON.stringify(name)})`;
 
@@ -111,7 +111,7 @@ inFullSet("the look", () => {
 		// The case is made and open, the toolbar adding to it (DEC-026): Done
 		// adding is no amber button.
 		await panel.waitFor(
-			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Done adding"`,
+			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
 		);
 		await holds([]);
@@ -129,7 +129,7 @@ inFullSet("the look", () => {
 		);
 		// Still the case, renamed, the toolbar adding to it.
 		await panel.waitFor(
-			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Done adding"`,
+			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
 		);
 		await holds([]);
@@ -323,7 +323,7 @@ inFullSet("the look", () => {
 			`${shadow("svg.marks")}.querySelectorAll(".drafts rect.hover").length === 2`,
 		);
 		await page.clickAt(at.x, at.y);
-		await page.waitFor(shadow(".popover textarea"));
+		await page.waitFor(FIELD);
 		const drafts = await page.eval<[boolean, string | null, number][]>(
 			`[...${shadow("svg.marks")}.querySelectorAll(".drafts > rect:not(.hover)")].map((e) => [e.hasAttribute("data-casing"), e.getAttribute("stroke"), Number(e.getAttribute("stroke-width"))])`,
 		);

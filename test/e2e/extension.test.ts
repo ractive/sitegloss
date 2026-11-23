@@ -36,6 +36,7 @@ import {
 	saveAs,
 	shadow,
 	showToolbar,
+	typeInField,
 	until,
 } from "./steps.ts";
 
@@ -141,15 +142,13 @@ inBothSets("marking and saving", () => {
 			{ x: button.x - 6, y: button.y - 6 },
 			{ x: button.x + button.width + 6, y: button.y + button.height + 6 },
 		);
-		await page.waitFor(shadow(".popover textarea"));
-		await page.type("Contrast too low");
+		await typeInField(page, "Contrast too low");
 		await page.click(shadow('[data-action="comment-done"]'));
 
 		// 2: a note on the tip
 		await page.click(shadow('[data-action="tool-note"]'));
 		await page.click(`document.querySelector("[data-truth=tip]")`);
-		await page.waitFor(shadow(".popover textarea"));
-		await page.type("Say how much exactly");
+		await typeInField(page, "Say how much exactly");
 		await page.click(shadow('[data-action="comment-done"]'));
 
 		// 3: far below, the contact paragraph picked as an element. A person takes
@@ -168,8 +167,7 @@ inBothSets("marking and saving", () => {
 		);
 		await page.mouse("mouseMoved", contact.x, contact.y);
 		await page.clickAt(contact.x, contact.y);
-		await page.waitFor(shadow(".popover textarea"));
-		await page.type("Add a phone number");
+		await typeInField(page, "Add a phone number");
 		await page.click(shadow('[data-action="comment-done"]'));
 
 		// Each in the case as its comment is done (DEC-014, DEC-026), and the
@@ -623,7 +621,7 @@ inBothSets("marking and saving", () => {
 				// The case is open in the panel, the toolbar adding to it (DEC-026).
 				await inCase("Going on");
 				await h.control.waitFor(
-					`document.getElementById("add-marks").textContent === "Done adding"`,
+					`document.getElementById("add-marks").textContent === "Adding marks: Done"`,
 				);
 				// What was saved stays on the page, and the toolbar is still up.
 				await caseMarksAre(page, ["1"]);
@@ -688,8 +686,7 @@ inBothSets("marking and saving", () => {
 				await inCase("Comment open");
 				await page.click(shadow('[data-action="tool-box"]'));
 				await page.drag({ x: 500, y: 100 }, { x: 640, y: 160 });
-				await page.waitFor(shadow(".popover textarea"));
-				await page.type("Half typed");
+				await typeInField(page, "Half typed");
 				await allCases();
 				await until(
 					() => toolbarUp(tabId),

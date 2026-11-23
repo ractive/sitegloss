@@ -92,6 +92,15 @@ export type ContentRequest =
 	/** Hide the case's marks and keep it: the page's bar becomes the pill that shows them again (DEC-061). */
 	| { type: "case:hide"; caseId: string }
 	/**
+	 * A mark's picture over the page, in a frame of the extension's own
+	 * (DEC-064): the page sees none of it. Answered `{ ok: true }` once the
+	 * frame is there; it says `viewer:closed` when it goes.
+	 */
+	| { type: "viewer:show"; caseId: string; markId: string; pictureId: string }
+	/** A key the side panel heard while it kept the focus: for the viewer. */
+	| { type: "viewer:key"; key: string }
+	| { type: "viewer:close" }
+	/**
 	 * Scroll to the element `selector` and mark it with `number` for a
 	 * screenshot (`DescribedElement`); the overlay's own bars and the user's
 	 * unsaved marks are hidden, form fields blurred as for a save. Refused
@@ -401,7 +410,9 @@ export type Broadcast =
 	/** The worker's account or team sync changed (DEC-039): read it again. */
 	| { type: "cloud:changed" }
 	/** The page's "Add image…" left a mark for the panel (DEC-063): take it. */
-	| { type: "panel:images" };
+	| { type: "panel:images" }
+	/** The viewer over the page went (DEC-064): the panel's tile takes the focus back. */
+	| { type: "viewer:closed" };
 
 /**
  * What the side panel asks of the worker about the account and the sync

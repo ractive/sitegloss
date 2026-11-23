@@ -540,9 +540,7 @@ describe("a mark's status and actions", () => {
 			"button.tile",
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("data-action")).toBe("open-larger");
-		expect(crop.getAttribute("aria-label")).toContain(
-			"opens it larger in a new tab",
-		);
+		expect(crop.getAttribute("aria-label")).toContain("shows it large");
 	});
 
 	test("a mark opens and closes at its head; Expand all opens every one", () => {
@@ -696,7 +694,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		const names = [
 			...(row?.querySelectorAll("button.tile[data-action=open-larger]") ?? []),
 		].map((b) => b.getAttribute("aria-label"));
-		const larger = ": opens it larger in a new tab";
+		const larger = ": shows it large";
 		expect(names).toEqual([
 			`Screenshot of mark ${a.number}, taken by Sitegloss${larger}`,
 			`Image 1 of 3 on mark ${a.number}, added by Dana${larger}`,
@@ -727,7 +725,7 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 		)?.click();
 		expect(asked.splice(0)).toEqual(["open screenshot", "open i_b"]);
 		expect(shot?.querySelector("button")?.getAttribute("title")).toBe(
-			"Taken by Sitegloss when the mark was made. It stays with the mark. Click to open it larger in a new tab.",
+			"Taken by Sitegloss when the mark was made. It stays with the mark. Click to see it large; Escape closes it.",
 		);
 		(
 			row?.querySelector(
@@ -1384,25 +1382,28 @@ describe("Verify (DEC-023)", () => {
 			["Verify"],
 			[],
 		]);
-		// To verify: Verify and Reopen… in the collapsed head too.
+		// To verify: Verify alone, small, in the title line, so the closed row
+		// is two lines like the others (DEC-064); Reopen… when it is open.
 		expect(
-			[...row("m2").querySelectorAll(".mark-sub button")].map(
+			[...row("m2").querySelectorAll(".mark-head > button.head-verify")].map(
 				(b) => b.textContent,
 			),
-		).toEqual(["Verify", "Reopen…"]);
-		expect(row("m3").querySelector(".mark-sub button")).toBeNull();
+		).toEqual(["Verify"]);
+		expect(row("m2").querySelector(".mark-sub button")).toBeNull();
+		expect(row("m3").querySelector(".head-verify")).toBeNull();
+		expect(row("m2").querySelector(".head-verify")?.getAttribute("title")).toBe(
+			"The fix holds on the page you checked",
+		);
 		expect(
-			row("m2")
-				.querySelector('.mark-sub [data-mark-action="verify"]')
-				?.getAttribute("title"),
-		).toBe("The fix holds on the page you checked");
+			row("m2").querySelector(".head-verify")?.getAttribute("aria-label"),
+		).toBe("Verify mark 2");
 		// A mark to verify is drawn in full; verified and dismissed step back.
 		expect(row("m2").hasAttribute("data-resolved")).toBe(false);
 		expect(row("m2").dataset["status"]).toBe("fixed");
 		expect(row("m3").dataset["resolved"]).toBe("fixed");
 	});
 
-	test("Verified and Reopen… in the head call their actions", () => {
+	test("Verify in the head, and Verify and Reopen… in the body, call their actions", () => {
 		const c = fourMarks();
 		const calls: unknown[] = [];
 		render(
@@ -1412,13 +1413,15 @@ describe("Verify (DEC-023)", () => {
 				editMark: (_c, a, mode) => void calls.push(["edit", a.id, mode]),
 			}),
 		);
+		(row("m2").querySelector(".head-verify") as unknown as HTMLElement).click();
 		for (const name of ["verify", "reopen"])
 			(
 				row("m2").querySelector(
-					`.mark-sub [data-mark-action="${name}"]`,
+					`.body [data-mark-action="${name}"]`,
 				) as unknown as HTMLElement
 			).click();
 		expect(calls).toEqual([
+			["verify", "m2"],
 			["verify", "m2"],
 			["edit", "m2", "reopen"],
 		]);
@@ -3658,6 +3661,24 @@ describe("the summary for the developer", () => {
 		const none = window.document.querySelector('[data-case="c_none"]');
 		expect(none?.querySelector(".card-summary")).toBeNull();
 		expect(none?.getAttribute("aria-label")).not.toContain("summary");
+		// The summary is the case's content: right under its title, before
+		// the facts (DEC-064).
+		expect(
+			card?.querySelector(".card-head")?.nextElementSibling?.className,
+		).toBe("card-summary");
+	});
+
+	test("a case without marks has no band on its card (DEC-064)", () => {
+		const home = initialState();
+		home.cases = [
+			{ ...sampleCase("c_empty"), marks: [] },
+			withOneMark(sampleCase("c_one")),
+		];
+		render(home, noActions);
+		const band = (id: string) =>
+			window.document.querySelector(`[data-case="${id}"] > .progress.band`);
+		expect(band("c_empty") === null).toBe(true);
+		expect(band("c_one") === null).toBe(false);
 	});
 
 	test("a draft stays while the case changes, and comes back after leaving", () => {
@@ -4638,12 +4659,14 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 			"load-case",
 		]);
 		expect(el("case-view").querySelectorAll("#add-marks").length).toBe(1);
-		expect(el("add-marks").classList.contains("primary")).toBe(true);
+		// Calm at rest (DEC-064): the secondary look, amber only while adding.
+		expect(el("add-marks").classList.contains("primary")).toBe(false);
 		expect(el("add-marks").textContent).toBe("Add marks");
 		for (const id of ["export-case", "delete-case"])
 			expect(el(id).closest("[role=menu]")?.id).toBe("case-menu");
+		// No amber at rest: none of the case's view is loud (DEC-064).
 		expect(window.document.querySelectorAll("#case-view .primary").length).toBe(
-			1,
+			0,
 		);
 		// No second Add marks under the list: the bar is always in reach.
 		render(
@@ -4654,7 +4677,7 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		expect(window.document.querySelectorAll("#add-marks").length).toBe(1);
 	});
 
-	test("adding: Done adding, and the line says where the marks go", () => {
+	test("adding: Adding marks: Done, and the line says where the marks go", () => {
 		const c = sampleCase("c_adding");
 		const called: string[] = [];
 		const actions = actionsWith({
@@ -4674,8 +4697,9 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 			}),
 			actions,
 		);
-		expect(el("add-marks").textContent).toBe("Done adding");
-		expect(el("add-marks").classList.contains("primary")).toBe(false);
+		expect(el("add-marks").textContent).toBe("Adding marks: Done");
+		expect(el("add-marks").classList.contains("primary")).toBe(true);
+		expect(el("add-marks").getAttribute("aria-pressed")).toBe("true");
 		expect(line()).toContain("Adding marks: draw on the page");
 		el("add-marks").click();
 		expect(called).toEqual(["add", "done"]);

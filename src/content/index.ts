@@ -350,6 +350,28 @@ function start(): void {
 					reviewer.clearFor(message.caseId);
 					sendResponse(state());
 					break;
+				case "viewer:show":
+					overlay.showViewer(
+						{
+							caseId: message.caseId,
+							markId: message.markId,
+							pictureId: message.pictureId,
+						},
+						() => {
+							const closed: Broadcast = { type: "viewer:closed" };
+							chrome.runtime.sendMessage(closed).catch(() => {});
+						},
+					);
+					sendResponse({ ok: true });
+					break;
+				case "viewer:key":
+					overlay.viewerKey(message.key);
+					sendResponse({ ok: overlay.viewerOpen });
+					break;
+				case "viewer:close":
+					overlay.closeViewer();
+					sendResponse({ ok: true });
+					break;
 				case "case:hide":
 					if (reviewer.caseId === message.caseId) {
 						reviewer.hide();

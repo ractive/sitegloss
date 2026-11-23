@@ -8,7 +8,8 @@
 	</head>
 	<body>
 		<!-- A mark's pictures at their size (DEC-060): an extension page, so a picture
-		     never goes through the web page being marked. -->
+		     never goes through the web page being marked. Over the page in a frame of
+		     its own, in a window of its own, or in a tab (DEC-064). -->
 		<header class="bar">
 			<p id="caption" class="caption" aria-live="polite"><span id="caption-title">Loading…</span><span id="caption-detail" class="detail"></span></p>
 			<div class="tools">
@@ -16,7 +17,8 @@
 				<button id="previous" type="button" aria-keyshortcuts="ArrowLeft" title="The previous picture of this mark (←)">Previous</button>
 				<button id="next" type="button" aria-keyshortcuts="ArrowRight" title="The next picture of this mark (→)">Next</button>
 				<button id="size" type="button" aria-pressed="false" aria-keyshortcuts="F" title="Show the picture at its real size, or fitted to the window (F)">Actual size</button>
-				<button id="close" type="button" aria-keyshortcuts="Escape" title="Close this tab (Escape)">Close</button>
+				<button id="in-tab" type="button" hidden title="Open this picture in a tab of its own">Open in a tab</button>
+				<button id="close" type="button" aria-keyshortcuts="Escape" title="Close (Escape)"><span aria-hidden="true">✕</span> Close</button>
 			</div>
 		</header>
 		<main id="stage" class="stage" data-fit="">

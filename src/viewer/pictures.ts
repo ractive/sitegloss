@@ -75,6 +75,13 @@ export const pictureIndex = (list: readonly ViewerPicture[], id: string) =>
 		list.findIndex((p) => p.id === id),
 	);
 
+/** What the viewer over the page is to show, handed over its port (DEC-064). */
+export interface ViewerInit {
+	caseId: string;
+	markId: string;
+	pictureId: string;
+}
+
 /** The viewer's address for a mark's picture: an extension page, never the web page. */
 export const viewerPath = (caseId: string, markId: string, pictureId: string) =>
 	`viewer/index.html?${new URLSearchParams({ case: caseId, mark: markId, picture: pictureId })}`;

@@ -80,6 +80,7 @@ import {
 	ring,
 	withSaveKey,
 } from "./overlay.ts";
+import { PageField } from "./page-field.ts";
 
 export type Tool = "element" | "box" | "arrow" | "pen" | "note";
 
@@ -209,6 +210,8 @@ export class MarkAdder {
 	#drag: Drag | null = null;
 	#preview: Shape | null = null;
 	#editing: Draft | null = null;
+	/** The open dialog's comment field: a frame of the extension's own (DEC-064). */
+	#field: PageField | undefined;
 	#target: MarkTarget | undefined;
 	#blurForms = false;
 	#message = "";
@@ -594,9 +597,8 @@ export class MarkAdder {
 		const { popover } = this.overlay;
 		const pin = popover.querySelector(".pin");
 		if (pin !== null) pin.textContent = String(number);
-		popover
-			.querySelector("textarea")
-			?.setAttribute("aria-label", `Comment for mark ${number}`);
+		if (this.#field !== undefined)
+			this.#field.label = `Comment for mark ${number}`;
 	}
 
 	#nextNumber(): number {
@@ -667,13 +669,17 @@ export class MarkAdder {
 		const label = doc.createElement("div");
 		label.className = "label";
 		label.append(pin, "Comment");
-		const field = doc.createElement("textarea");
-		field.setAttribute("aria-label", `Comment for mark ${draft.number}`);
-		field.maxLength = MAX_COMMENT;
-		field.value = draft.comment;
-		field.addEventListener("keydown", (e) => {
-			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) this.#commitComment();
+		const field = new PageField(doc, {
+			label: `Comment for mark ${draft.number}`,
+			value: draft.comment,
+			maxLength: MAX_COMMENT,
 		});
+		field.onSubmit = () => this.#commitComment();
+		// Escape in the field, as on the page: the comment is done.
+		field.onEscape = () => {
+			if (this.#editing === draft) this.#commitComment();
+		};
+		this.#field = field;
 		const done = doc.createElement("button");
 		done.type = "button";
 		done.className = "primary";
@@ -711,7 +717,7 @@ export class MarkAdder {
 		more.append(image);
 		// A loaded mark's popover opened over this one (DEC-027): the comment
 		// typed so far is the mark's, as after a click beside it.
-		this.overlay.openPopover([label, field, more, row], () => {
+		this.overlay.openPopover([label, field.element, more, row], () => {
 			if (this.#editing === draft) this.#commitComment();
 		});
 		this.#placePopover(draft);
@@ -724,14 +730,16 @@ export class MarkAdder {
 
 	#commitComment(): void {
 		const draft = this.#editing;
-		const field = this.overlay.popover.querySelector("textarea");
-		if (draft !== null && field !== null) draft.comment = field.value.trim();
+		const field = this.#field;
+		if (draft !== null && field !== undefined)
+			draft.comment = field.value.trim();
 		this.#closeComment();
 		this.#addDone();
 	}
 
 	#closeComment(): void {
 		this.#editing = null;
+		this.#field = undefined;
 		this.overlay.closePopover();
 		this.#renderToolbar();
 		this.#render();

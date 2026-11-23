@@ -59,7 +59,8 @@
 	--s5: 24px;
 	--s6: 32px;
 	--r-control: 6px;
-	--r-card: 10px;
+	/* One step less round (DEC-064): controls 6 px, cards 8 px; chips and pins round. */
+	--r-card: 8px;
 	--r-pill: 999px;
 	/* The top bar's height: what sticks under it starts there. */
 	--bar: 44px;
@@ -644,7 +645,7 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	flex: none;
 	display: inline-flex;
 	align-items: center;
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 }
 
 /* "All cases" / "Back": large enough to be seen, and hit. */
@@ -1186,7 +1187,6 @@ ul.cases [data-case]:hover:not(:disabled) {
 
 .case-card .card-where,
 .case-card .card-date,
-.case-card .card-summary,
 .case-card .card-chips {
 	color: var(--ink-2);
 	font-size: 12px;
@@ -1203,10 +1203,22 @@ ul.cases [data-case]:hover:not(:disabled) {
 	flex: none;
 }
 
-/* The summary for the developer's start: one line, cut; read whole in the case. */
+/*
+ * The summary for the developer's start: the case's content, not a fact, so
+ * in the text's colour under the title, a gap before the facts; one line,
+ * cut, read whole in the case (DEC-064).
+ */
 .case-card .card-summary {
 	display: block;
-	margin-top: var(--s1);
+	margin: 2px 0 var(--s1);
+	color: var(--ink);
+	font-size: 13px;
+	line-height: 18px;
+}
+
+/* No band without marks: the card starts at its own padding. */
+ul.cases [data-case]:not(:has(> .progress.band)) {
+	padding-top: var(--s3);
 }
 
 .case-card .progress.band {
@@ -1638,7 +1650,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 	min-height: 0;
 	padding: 0;
 	border: 0;
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 	background: none;
 	color: var(--link);
 	font: inherit;
@@ -1787,7 +1799,7 @@ ul.cases [data-case]:hover:not(:disabled) {
 	min-height: 24px;
 	padding: 0 var(--s2);
 	border: 1.5px solid transparent;
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 	background: var(--wash);
 	color: var(--ink-2);
 	font: 600 12px / 16px var(--font);
@@ -1831,9 +1843,10 @@ ul.cases [data-case]:hover:not(:disabled) {
 }
 
 /*
- * The open case's tool bar (DEC-063): Add marks (or Done adding) as wide as
- * there is room, and the marks shown or not. Sticky at the panel's bottom
- * and resting after the content, so the last row is never under it.
+ * The open case's tool bar (DEC-063): Add marks as wide as there is room, and
+ * the marks shown or not. Sticky at the panel's bottom and resting after the
+ * content, so the last row is never under it. One step quieter (DEC-064):
+ * lower, secondary buttons at rest, amber only while adding is on.
  */
 .case-dock {
 	position: sticky;
@@ -1841,13 +1854,14 @@ ul.cases [data-case]:hover:not(:disabled) {
 	z-index: 2;
 	display: flex;
 	gap: var(--s2);
-	padding: var(--s2) var(--s4);
+	padding: 6px var(--s4);
 	border-top: 1px solid var(--rule);
 	background: var(--paper);
 }
 
 .case-dock > button {
-	min-height: 36px;
+	min-height: 30px;
+	padding-block: 2px;
 }
 
 .case-dock > #add-marks {
@@ -2280,8 +2294,7 @@ ol.marks {
 
 /*
  * A mark's second row (DEC-023), under its comment: the status pill, why a
- * reopened mark came back, where it is on the tab in front, its findings;
- * for a mark to verify, Verified and Reopen… without opening it.
+ * reopened mark came back, where it is on the tab in front, its findings.
  */
 .mark-sub {
 	display: flex;
@@ -2356,8 +2369,16 @@ ol.marks {
 	margin-left: auto;
 }
 
-/* Verify and Reopen… once: in the head while closed, in the body when open (DEC-063). */
-.mark[data-open] .mark-sub .head-actions {
+/*
+ * A closed mark to verify: Verify, small, in its title line, so the row is as
+ * high as the others (DEC-064); open, the body has Verify and Reopen….
+ */
+.mark-head > .head-verify {
+	flex: none;
+	margin-top: 9px;
+}
+
+.mark[data-open] .mark-head > .head-verify {
 	display: none;
 }
 
@@ -2517,7 +2538,7 @@ button.tile:hover:not(:disabled) {
 	min-height: 0;
 	padding: 0 6px;
 	border-color: var(--edge);
-	border-radius: var(--r-pill);
+	border-radius: var(--r-control);
 	background: var(--sheet);
 	font-size: 14px;
 	line-height: 20px;
