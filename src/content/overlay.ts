@@ -628,6 +628,44 @@ export class Overlay {
 			| { id: number; x: number; y: number; from: BarPlace; moved: boolean }
 			| undefined;
 		let swallow = false;
+		const win = this.doc.defaultView;
+		// The pointer is followed on the window, not by capturing it at the
+		// press: a captured pointer's click goes to the bar and not to the
+		// button pressed, so a press on the pill did nothing. It is captured
+		// only once it has moved, which is a drag and no press.
+		const move = (e: PointerEvent) => {
+			if (drag === undefined || e.pointerId !== drag.id) return;
+			const dx = e.clientX - drag.x;
+			const dy = e.clientY - drag.y;
+			if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+			if (!drag.moved) bar.setPointerCapture?.(e.pointerId);
+			drag.moved = true;
+			bar.classList.add("dragging");
+			this.setBarPlace({
+				right: drag.from.right - dx,
+				top: drag.from.top + dy,
+			});
+		};
+		const end = (e: PointerEvent) => {
+			if (drag === undefined || e.pointerId !== drag.id) return;
+			for (const type of ["pointermove", "pointerup", "pointercancel"])
+				win?.removeEventListener(type, follow[type] as EventListener, true);
+			bar.classList.remove("dragging");
+			if (drag.moved) {
+				// The click that ends a drag is no press of what is under it.
+				swallow = true;
+				setTimeout(() => {
+					swallow = false;
+				}, 0);
+				this.onBarMoved?.(this.#barPlace);
+			}
+			drag = undefined;
+		};
+		const follow: Record<string, (e: PointerEvent) => void> = {
+			pointermove: move,
+			pointerup: end,
+			pointercancel: end,
+		};
 		bar.addEventListener("pointerdown", (e) => {
 			if (e.button !== 0) return;
 			const target = e.target as Element | null;
@@ -647,35 +685,9 @@ export class Overlay {
 				from: this.#barPlace,
 				moved: false,
 			};
-			bar.setPointerCapture?.(e.pointerId);
+			for (const [type, listener] of Object.entries(follow))
+				win?.addEventListener(type, listener as EventListener, true);
 		});
-		bar.addEventListener("pointermove", (e) => {
-			if (drag === undefined || e.pointerId !== drag.id) return;
-			const dx = e.clientX - drag.x;
-			const dy = e.clientY - drag.y;
-			if (!drag.moved && Math.hypot(dx, dy) < 4) return;
-			drag.moved = true;
-			bar.classList.add("dragging");
-			this.setBarPlace({
-				right: drag.from.right - dx,
-				top: drag.from.top + dy,
-			});
-		});
-		const end = (e: PointerEvent) => {
-			if (drag === undefined || e.pointerId !== drag.id) return;
-			bar.classList.remove("dragging");
-			if (drag.moved) {
-				// The click that ends a drag is no press of what is under it.
-				swallow = true;
-				setTimeout(() => {
-					swallow = false;
-				}, 0);
-				this.onBarMoved?.(this.#barPlace);
-			}
-			drag = undefined;
-		};
-		bar.addEventListener("pointerup", end);
-		bar.addEventListener("pointercancel", end);
 		bar.addEventListener(
 			"click",
 			(e) => {

@@ -588,7 +588,7 @@ inBothSets("the side panel's page", () => {
 	);
 
 	slowTest(
-		"the page's own Hide holds: the searches again do not draw the marks back",
+		"the page's own Hide holds: the searches again do not draw the marks back, a press on the pill does",
 		async () => {
 			await fresh();
 			const { page, tabId } = await h.open("v1");
@@ -637,6 +637,14 @@ inBothSets("the side panel's page", () => {
 			expect(await pageCase(tabId)).toBeNull();
 			expect(await h.control.eval(`${id("load-case")}.textContent`)).toBe(
 				"Show marks",
+			);
+			// A real press on the pill brings them back. (Its pointer was once
+			// captured at the press, and a captured pointer's click goes to the
+			// bar, not to the button: the press did nothing.)
+			await page.click(shadow('[data-action="review-show"]'));
+			await until(
+				async () => (await pageCase(tabId)) !== null,
+				"the marks to come back",
 			);
 			await page.send("Page.close");
 		},
