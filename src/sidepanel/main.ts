@@ -76,7 +76,17 @@ import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { markPictures } from "../viewer/pictures.ts";
-import { declinedBefore, rememberDeclined, tookBack } from "./access.ts";
+import {
+	type AccessMemory,
+	afterAnswer,
+	asksForSite,
+	cannotRunText,
+	DECLINED,
+	noAccessHint,
+	readMemory,
+	refusalKind,
+	writeMemory,
+} from "./access.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
@@ -126,7 +136,7 @@ import {
 	type PanelState,
 } from "./state.ts";
 import { startSync, syncActions } from "./sync.ts";
-import { type Actions, lostMarksText, NO_ACCESS, render } from "./view.ts";
+import { type Actions, lostMarksText, render, wordsOf } from "./view.ts";
 import { viewerStays } from "./viewer-follow.ts";
 import { panelWindow } from "./window.ts";
 
@@ -151,13 +161,10 @@ const TEST_BUILD =
  */
 function askForSite(url: string): Promise<boolean> {
 	const pattern = sitePattern(url);
-	if (pattern === undefined || declinedSites.has(pattern))
+	// Not in Firefox, where the prompt could not be answered (`asksForSite`):
+	// the tab's notice offers all sites and the icon's click there.
+	if (!asksForSite(pattern, declinedSites, FIREFOX))
 		return Promise.resolve(false);
-	// Firefox's prompt belongs to the tab in front, and the click that asks
-	// also opens a tab or navigates this one: Firefox takes the prompt away
-	// before anyone sees it and answers no (tested, DEC-076). So nothing is
-	// asked there; the tab's notice offers all sites and the icon's click.
-	if (FIREFOX) return Promise.resolve(false);
 	return requestPermissions({ origins: [pattern] }).then(
 		(granted) => {
 			if (!granted) declinedSites.add(pattern);
@@ -177,10 +184,57 @@ const declinedSites = new Set<string>();
 const message = (error: unknown) =>
 	error instanceof Error ? error.message : String(error);
 
+/**
+ * Why an action that needed the page did nothing (DEC-076): a page no
+ * extension may run on says so, and the tab is taken for one from then on;
+ * else the ways on, all sites and the icon's click.
+ */
 function describeError(error: unknown): string {
-	return error instanceof NoAccessError
-		? NO_ACCESS
-		: `Could not reach the page: ${message(error)}`;
+	if (!(error instanceof NoAccessError))
+		return `Could not reach the page: ${message(error)}`;
+	// With all sites allowed, "no access" is a page that refuses everyone
+	// (Firefox says it so for a PDF in its viewer, tried).
+	const kind = refusalKind(error.message);
+	const cannot = kind === "cannot" || (kind === "no-access" && state.allSites);
+	if (!cannot) return noAccessHint(wordsOf(state));
+	const tab = state.tab;
+	if (tab !== undefined) {
+		cannotRunOn.set(tab.id, tab.url);
+		update((s) => {
+			if (s.tab?.id === tab.id) s.tab.cannotRun = "page";
+		});
+	}
+	return cannotRunText(wordsOf(state));
+}
+
+/** Tabs whose page the browser said no extension may run on, by the address then. */
+const cannotRunOn = new Map<number, string>();
+
+/**
+ * Whether the browser refuses the tab as a page no extension may run on: a
+ * script that does nothing, tried only where the address is hidden (so
+ * Sitegloss may not run there anyway and nothing runs in the page). Its
+ * refusal says which kind (`refusalKind`).
+ */
+async function refusedAsCannot(tabId: number): Promise<"page" | undefined> {
+	try {
+		const results = await chrome.scripting.executeScript({
+			target: { tabId },
+			func: () => true,
+		});
+		// Firefox reports a refusal in the result, Chrome by rejecting; on a
+		// page of Firefox's own (about:) it runs in no frame at all (tried).
+		if (results.length === 0) return "page";
+		const failed = (results as { error?: unknown }[]).find(
+			(r) => r.error !== undefined,
+		);
+		return failed !== undefined &&
+			refusalKind(message(failed.error)) === "cannot"
+			? "page"
+			: undefined;
+	} catch (error) {
+		return refusalKind(message(error)) === "cannot" ? "page" : undefined;
+	}
 }
 
 // --- the state and its work ------------------------------------------------------
@@ -747,6 +801,19 @@ async function refreshTab(): Promise<void> {
 		// Sitegloss may not run on it: hidden here, as in Chrome.
 		const hidden =
 			files === false && (tab?.url ?? "").toLowerCase().startsWith("file:");
+		// A page no extension may run on (DEC-076): the browser's refusal
+		// says so where the address is hidden; a refusal an action met says
+		// so for that address.
+		const cannotRun: "page" | "file" | undefined =
+			tab?.id === undefined
+				? undefined
+				: hidden
+					? "file"
+					: !tab.url && tab.status !== "loading"
+						? await refusedAsCannot(tab.id)
+						: tab.url !== undefined && cannotRunOn.get(tab.id) === tab.url
+							? "page"
+							: undefined;
 		if (!work.current()) return;
 		update((s) => {
 			if (files !== undefined) s.fileAccess = files;
@@ -759,6 +826,7 @@ async function refreshTab(): Promise<void> {
 							title: hidden ? "" : (tab.title ?? ""),
 							size,
 							loading: tab.status === "loading",
+							...(cannotRun ? { cannotRun } : {}),
 						};
 			// A hint is about the tab in front when it was given; the first read
 			// of that tab is no change of it.
@@ -1855,8 +1923,7 @@ const actions: Actions = {
 	},
 
 	declineAllSites() {
-		rememberDeclined(localStorage);
-		update((s) => (s.allSitesDeclined = true));
+		remember({ ...memory, declined: true });
 	},
 
 	allowAllSites() {
@@ -2564,23 +2631,53 @@ document.addEventListener("visibilitychange", () => {
 // "Blur form fields in screenshots" is the worker's (DEC-016): `ai.ts` shows
 // it and sends a change over the panel's port.
 
+/**
+ * What this browser remembers about all sites (DEC-076): "Not now", and that
+ * it was allowed, so that a take-back is a no also when it happened in the
+ * browser's settings with no panel open. The panel's own `localStorage`
+ * (the panel writes no storage of the extension's, DEC-063); Firefox may
+ * clear it with the site data, and then the offer comes once more.
+ */
+let memory: AccessMemory = readMemory(localStorage);
+update((s) => (s.allSitesDeclined = memory.declined));
+
+function remember(next: AccessMemory): void {
+	memory = next;
+	writeMemory(localStorage, next);
+	update((s) => (s.allSitesDeclined = next.declined));
+}
+
+// Answered in another panel of this browser (another window's): the same here.
+window.addEventListener("storage", (e) => {
+	if (e.key !== DECLINED && e.key !== null) return;
+	memory = readMemory(localStorage);
+	update((s) => (s.allSitesDeclined = memory.declined));
+});
+
 async function refreshAllSites(): Promise<void> {
 	const work = sitesWork.start();
 	const granted = await chrome.permissions.contains(ALL_SITES);
 	if (!work.current()) return;
-	// Taken back, here or in the browser's settings: the offer does not come
-	// again (DEC-076).
-	if (tookBack(state.allSitesKnown ? state.allSites : undefined, granted))
-		rememberDeclined(localStorage);
+	// Allowed once and not now: taken back, here or in the browser's
+	// settings; the offer does not come again.
+	remember(afterAnswer(readMemory(localStorage), granted));
 	update((s) => {
-		if (tookBack(s.allSitesKnown ? s.allSites : undefined, granted))
-			s.allSitesDeclined = true;
 		s.allSites = granted;
 		s.allSitesKnown = true;
 	});
 }
 
-update((s) => (s.allSitesDeclined = declinedBefore(localStorage)));
+/** The icon's shortcut, as the browser has it now (the person may change it). */
+async function refreshShortcut(): Promise<void> {
+	const all = await chrome.commands.getAll().catch(() => []);
+	const shortcut = all.find((c) => c.name === "_execute_action")?.shortcut;
+	update((s) => (s.shortcut = shortcut || undefined));
+}
+void refreshShortcut();
+// Chrome 110 and later; Firefox has no such event and is read at each opening.
+(
+	chrome.commands as { onChanged?: chrome.events.Event<() => void> }
+).onChanged?.addListener(() => void refreshShortcut());
 
 allSites.addEventListener("change", () => {
 	// Chrome asks only during a click: nothing may be awaited before this.
@@ -3374,6 +3471,7 @@ chrome.tabs.onUpdated.addListener((id, info) => {
 	}
 });
 chrome.tabs.onRemoved.addListener((id) => {
+	cannotRunOn.delete(id);
 	if (id === state.loaded?.tabId) void forgetLoaded();
 	if (id === pendingLoad?.tabId) pendingLoad = undefined;
 	if (id === drawn?.tabId) drawn = undefined;

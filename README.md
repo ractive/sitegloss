@@ -94,10 +94,16 @@ user agent. What differs from Chrome and Edge:
    its icon (Chrome keeps that while the tab stays on the same origin; Firefox only until the
    tab goes to another page). So the side panel's main view first offers "Allow on all sites",
    with "Not now"; the same setting is under Options, last on the main view, as "Allow on
-   all sites (highly recommended)", with what it means under it: the browser asks first,
-   and Sitegloss uses it on the tab in front only and sends nothing anywhere by itself.
-   After "Not now" the offer does not come again (nor after you take all sites back,
-   here or in the browser's settings, which the panel follows).
+   all sites (highly recommended)", with what it means under it: Sitegloss can then read
+   the page in front whenever you use it and, while AI access is on, whenever a connected
+   AI app asks (a screenshot, an element's details), on any site; it sends nothing
+   anywhere by itself; the browser asks first. After "Not now" the offer does not come
+   again, nor after you take all sites back, here or in the browser's settings (the panel
+   follows that, and remembers that it was allowed, so a take-back while no panel was
+   open counts too). The panel keeps this in its own storage in this browser: Firefox
+   may clear it with the site data, and then the offer comes once more. On a page no
+   extension may run on (the stores, the browser's own pages, in Firefox a PDF in its
+   viewer) the panel says that Sitegloss cannot work there, and offers no way.
 2. "New case for this page" creates a case at once, named after the page's title, opens it
    in the side panel and shows the toolbar on the page: Element (click one), Box, Arrow,
    Pen, Note and Highlight (select text on the page, or choose it with text selected; it
@@ -161,7 +167,8 @@ user agent. What differs from Chrome and Edge:
    reloading the extension), the browser hides the address, and the side panel says so
    with a warning where something is missing: "Sitegloss has no access to this tab yet",
    with "Allow on all sites (recommended)" and the way for this tab only (click the
-   Sitegloss icon there, or press Alt+Shift+O). On Home it stands in place of "New case
+   Sitegloss icon there, or press its shortcut, as the browser has it: Alt+Shift+O, ⌥⇧O
+   on a Mac, unless you changed it). On Home it stands in place of "New case
    for this page"; in an open case it is in the tool bar at the bottom, in place of Add
    marks and Show/Hide marks, and no mark has Show. With a click or all sites allowed,
    the marks are drawn and the buttons are back. The case's

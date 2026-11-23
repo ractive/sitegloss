@@ -4421,35 +4421,82 @@ intransparent, why suddenly no marks are there and why you can't show/hide marks
   are not what Home is for; what makes access findable is the offer at the top and the notice
   where something is missing, so Options only has to be where a setting is looked for. Access
   first, "Allow on all sites (highly recommended)" (the owner's words), then "Blur form fields
-  in screenshots", unchanged. Under the access box, always: "Without it, Sitegloss works on a
-  tab only after you click its icon there[, until the tab goes to another page]; on other tabs
-  your marks are not drawn and cannot be shown. Chrome asks first (“Read and change all your
-  data on all websites”). Sitegloss uses it on the tab in front only and sends nothing anywhere
-  by itself." (Firefox: its prompt's “Access your data for all websites”.) True to PRIVACY.md: no
-  script goes into a page by itself; the panel draws the open case on the tab in front, marking
-  and an AI app's tools act there. Settings keeps only the AI connection.
+  in screenshots" (while the worker cannot keep it, it says why under it: the AI card that
+  said so is not beside it any more). Under the access box, always (after review): "Without
+  it, Sitegloss works on a tab only after you click its icon there[, until the tab goes to
+  another page]; on other tabs your marks are not drawn and cannot be shown. With it,
+  Sitegloss can read the page in front whenever you use it and, while AI access is on,
+  whenever a connected AI app asks (a screenshot, an element's details), on any site. It
+  sends nothing anywhere by itself. Chrome asks first (“Read and change all your data on all
+  websites”)." (Firefox: its prompt's “Access your data for all websites”.) Each clause
+  checked: no script goes into a page by itself; the panel draws the open case on the tab in
+  front and marking acts there; an AI app's read tools act on whatever tab is in front
+  without a question (`src/worker/tab.ts`), which without all sites is only a clicked tab;
+  "the tab in front only" was dropped, as "Fill in the code for me", when on, reads the
+  relay's pairing page in whichever tab an AI app opened it. PRIVACY.md now says the AI-app
+  consequence under "All sites". Settings keeps only the AI connection.
 - **Wording.** The one-tab way says where the icon really is: Chrome "For this tab only: click
-  the Sitegloss icon in the toolbar (under the puzzle piece until you pin it) or press
-  Alt+Shift+O."; Firefox "For this tab only: click Sitegloss under the puzzle piece in the
-  toolbar (or its icon, if pinned) or press Alt+Shift+O. Firefox lets it in until the tab goes
-  to another page." "Allow on all sites" stays the button's name everywhere (the worker's
-  refusal text for an AI app names it); "(recommended)" goes with it where something is
-  missing, "(highly recommended)" on the option.
+  the Sitegloss icon in the toolbar (under the puzzle piece until you pin it) or press ⌥⇧O.";
+  Firefox "For this tab only: click Sitegloss under the puzzle piece in the toolbar (or its
+  icon, if pinned) or press ⌥⇧O. Firefox lets it in until the tab goes to another page." The
+  shortcut is the browser's own (`commands.getAll()`, so a changed one is named, an unset one
+  is left out), on a Mac in symbols as the panel writes keys elsewhere (Alt+Shift+O on other
+  systems). The browser is named as it is: Firefox by the build, Chrome or Edge by its brands,
+  any other "your browser" (it only names; nothing is decided by it). "Allow on all sites"
+  stays the button's name everywhere (the worker's refusal text for an AI app names it);
+  "(recommended)" goes with it where something is missing, "(highly recommended)" on the
+  option.
+- **Pages no extension may run on** (after review). Never "no access yet" with ways that
+  cannot help: the panel says "Sitegloss cannot work on this kind of page: …" with no button
+  (Chrome: "the browser's own pages, other extensions' pages and its extension store"; Firefox:
+  "its own pages (about:), addons.mozilla.org and PDFs in its viewer"). Recognised by: the
+  stores' addresses where the address shows (Chrome Web Store, Edge Add-ons, addons.mozilla.org
+  and Firefox's other restricted Mozilla sites); where it is hidden, the refusal of a script
+  that does nothing (it runs nowhere, as Sitegloss may not run there): Chrome says "Cannot
+  access a chrome:// URL" for its pages, Firefox runs it in no frame on about: pages (both
+  tried); an action's own refusal, which marks that tab and address from then on (with all
+  sites allowed Firefox refuses a PDF in its viewer with "Missing host permission", tried); and
+  in Firefox a file while "Access local files" is off (its own text with the way there). On
+  such a page the first-use offer, if still up, has the neutral head. Not recognisable: the
+  Chrome Web Store and addons.mozilla.org with no access, where the browsers refuse them in the
+  same words as any page without access (tried); there the notice says "no access yet" until
+  the icon's click shows the address.
+- **Focus** (after review). It never falls to the page's body when access changes what is shown:
+  after Not now to what comes next (the notice that takes the offer's place, else New case
+  for this page, else the heading "This page"); after Allow on all sites to the control the
+  offer or the notice stood for (New case, Add marks) once it is back; a focused New case, Add
+  marks, Show/Hide marks or mark's Show that the notice replaces hands it to the notice's
+  button. The notice writes its text only when it changes (a live region speaks each write);
+  the tool bar's name goes with its role while the notice fills it; a reader meets, under the
+  case's head, that the bar at the end of the case says why (the bar is last in the page, as
+  on screen).
 - **Firefox.** The checkbox and the offer's button ask in the click, as before; both tested
   in the real sidebar. Opening a case's page or a mark's link does not ask for the site in
   Firefox any more (it could not be answered); the tab's notice offers all sites and the click.
-  `consentChanged` ends AI access only when it is on or retrying. Unchanged: `permissions.onAdded`
-  and `onRemoved` already moved the box, the notice and the drawing in both browsers; now a
-  removal also counts as "said no", so the offer does not come back after it.
+  `consentChanged` ends AI access only when it is on or retrying (`consentGoneEnds`). Unchanged:
+  `permissions.onAdded` and `onRemoved` already moved the box, the notice and the drawing in
+  both browsers; now a removal also counts as "said no", so the offer does not come back after
+  it: the panel remembers that all sites was allowed, so a take-back in the browser's settings
+  with no panel open is a no too, decided when a panel next opens. "Not now" and that memory
+  live in the panel's own `localStorage` (the panel writes no storage of the extension's,
+  DEC-063); two open panels (two windows) agree through its `storage` event.
 - **Unchanged.** The manifest: `<all_urls>` optional, nothing new at install, no new warning.
   "Blur form fields in screenshots" apart from its place. Every other rule of the panel.
 - **What remains.** Firefox's sidebar strip shows a Sitegloss icon too; whether its click gives
   access was not tested (Firefox's code grants `activeTab` for the action and commands, not for
   sidebar switches), so the texts name the puzzle piece and the shortcut. A person who says
-  "Not now" in one browser profile is offered it again in another. Edge was not run.
-- Tests: `test/access.test.ts` (each state, both browsers' words, Not now kept, a take-back
-  counts as no), `test/view.test.ts` (the offer, Not now, the notice on Home and in the tool bar,
-  no Show, no next-step Add marks, all gone once allowed, Options on Home), `test/e2e/shipped.test.ts`
+  "Not now" in one browser profile is offered it again in another; Firefox clears the panel's
+  storage with the site data (and a temporary add-on gets a new origin at each load), and then
+  the offer comes once more. The gesture rule (`permissions.request` in the click, before any
+  `await`) is held by a check of the source; automation cannot click Chrome's real prompt.
+  Edge was not run.
+- Tests: `test/access.test.ts` (each state, a store page and a refused page, the refusals'
+  kinds, the words that differ by browser, the shortcut and the browser's name, Firefox's
+  skipped site prompt, the memory and a take-back with no panel open, the source check of the
+  gesture rule), `test/connection.test.ts` (`consentGoneEnds`), `test/view.test.ts` (the offer,
+  Not now, the notice on Home and in the tool bar, no Show, no next-step Add marks, all gone
+  once allowed, Options on Home, a store page, the focus after Not now, after a grant and when
+  the notice replaces a focused control, the tool bar's name), `test/e2e/shipped.test.ts`
   (the store package in Chromium: the offer on a tab without access asks for `<all_urls>` in
   the click, Not now puts the notice in its place and holds over a reopening),
   `test/e2e/firefox/firefox.test.ts` (the Firefox store package: no host access, the offer

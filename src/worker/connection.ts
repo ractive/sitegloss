@@ -190,6 +190,20 @@ async function broadcast(news: Broadcast): Promise<void> {
 export const NO_CONSENT =
 	"Firefox has not been allowed to let Sitegloss send the pages' content and addresses to the AI app. Turn on AI access to be asked again.";
 
+/**
+ * Whether a permission's removal ends AI access (`consentChanged`): only in
+ * Firefox, only while AI access is on or on its way, and only when the data
+ * collection consent is gone. With AI access off nothing is said: taking all
+ * sites back once showed "AI problem" (DEC-076).
+ */
+export function consentGoneEnds(
+	firefox: boolean,
+	aiOn: boolean,
+	consented: boolean,
+): boolean {
+	return firefox && aiOn && !consented;
+}
+
 /** The writes of "Stop AI access": the session's stop, Keep AI access on, the session's on. */
 type StopWrite = "stopped" | "keepOn" | "session";
 
@@ -706,9 +720,10 @@ export class Connection {
 	 * (taking all sites back said "AI problem" before, DEC-076).
 	 */
 	async consentChanged(): Promise<void> {
-		if (!FIREFOX) return;
-		if (this.#mcp.state === "disconnected" && !this.#keep.retrying) return;
-		if (await dataConsent().catch(() => false)) return;
+		const on = this.#mcp.state !== "disconnected" || this.#keep.retrying;
+		if (!FIREFOX || !on) return;
+		const consented = await dataConsent().catch(() => false);
+		if (!consentGoneEnds(FIREFOX, on, consented)) return;
 		this.#keep.stop();
 		this.#mcp.disconnect();
 		this.#problem = NO_CONSENT;

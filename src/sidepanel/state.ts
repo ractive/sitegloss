@@ -42,6 +42,13 @@ export interface TabInfo {
 	size: Size | undefined;
 	/** Still loading: an address not known yet says nothing about access. */
 	loading?: boolean;
+	/**
+	 * A page no extension may run on (DEC-076): the browser's refusal said
+	 * so (`page`: a store, a page of its own, a PDF's viewer), or it is a
+	 * file and files are not allowed (`file`, Firefox, which tells the
+	 * address). No click and no all sites helps.
+	 */
+	cannotRun?: "page" | "file";
 }
 
 /** The case loaded onto a tab, and where its marks were found there. */
@@ -239,6 +246,8 @@ export interface PanelState {
 	allSitesDeclined: boolean;
 	/** The browser has answered whether Sitegloss may run on all sites. */
 	allSitesKnown: boolean;
+	/** The shortcut that clicks the icon, as the browser has it (`commands.getAll`). */
+	shortcut: string | undefined;
 	/** Sitegloss may read file:// pages ("Allow access to file URLs"); unknown at first. */
 	fileAccess: boolean | undefined;
 	/** The sync to Downloads or a folder (DEC-021, DEC-025). */
@@ -384,6 +393,7 @@ export const initialState = (): PanelState => ({
 	allSites: false,
 	allSitesDeclined: false,
 	allSitesKnown: false,
+	shortcut: undefined,
 	fileAccess: undefined,
 	sync: {
 		target: undefined,

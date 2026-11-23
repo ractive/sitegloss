@@ -113,6 +113,7 @@ describe("the tab", () => {
 			(s) => {
 				s.allSitesKnown = true;
 				s.allSitesDeclined = true;
+				s.shortcut = "Alt+Shift+O";
 			},
 			{
 				...noActions,
@@ -126,7 +127,8 @@ describe("the tab", () => {
 			"Sitegloss has no access to this tab yet",
 		);
 		expect(notice.textContent).toContain("For this tab only: click");
-		expect(notice.textContent).toContain("Alt+Shift+O");
+		// The browser's shortcut, as the platform writes it.
+		expect(notice.textContent).toMatch(/or press (Alt\+Shift\+O|⌥⇧O)\./);
 		// Under the heading and the address, first thing on Home.
 		expect(notice.previousElementSibling?.id).toBe("all-sites-offer");
 		expect(el("all-sites-offer").hidden).toBe(true);
@@ -145,7 +147,7 @@ describe("the tab", () => {
 			s.allSitesKnown = true;
 		});
 		expect(el("access-notice").hidden).toBe(false);
-		expect(text("access-notice")).toContain("cannot run on this tab");
+		expect(text("access-notice")).toContain("cannot work on this kind of page");
 		expect(text("access-notice")).not.toContain("For this tab only");
 		expect(allow().hidden).toBe(true);
 		expect(el("all-sites-offer").hidden).toBe(true);
@@ -251,6 +253,65 @@ describe("the offer of all sites (DEC-076)", () => {
 		expect(offer().hidden).toBe(true);
 		expect(el("access-notice").hidden).toBe(true);
 		expect(el<HTMLInputElement>("all-sites").checked).toBe(true);
+	});
+
+	test("a store's page: that Sitegloss cannot work there, no way that cannot help; the offer stays neutral", () => {
+		home(
+			"https://chromewebstore.google.com/detail/sitegloss/x",
+			() => undefined,
+		);
+		expect(offer().hidden).toBe(false);
+		expect(offer().hasAttribute("data-no-access")).toBe(false);
+		expect(offer().textContent).not.toContain("For this tab only");
+		const notice = el("access-notice");
+		expect(notice.hidden).toBe(false);
+		expect(notice.textContent).toContain("cannot work on this kind of page");
+		expect(
+			(notice.querySelector("button") as unknown as HTMLElement).hidden,
+		).toBe(true);
+		expect(el("new-case").hidden).toBe(true);
+	});
+
+	test("a page the browser's refusal named: the same, also with the address hidden", () => {
+		home("", (s) => {
+			s.allSitesDeclined = true;
+			if (s.tab) s.tab.cannotRun = "page";
+		});
+		expect(el("access-notice").textContent).toContain(
+			"cannot work on this kind of page",
+		);
+		expect(el("access-notice").textContent).not.toContain("For this tab only");
+	});
+
+	test("the focus stays with the person: Not now hands it to what comes next", () => {
+		home("https://www.example.com/kk", () => undefined);
+		button("not-now").focus();
+		home("https://www.example.com/kk", (s) => (s.allSitesDeclined = true));
+		expect((window.document.activeElement as unknown) === el("new-case")).toBe(
+			true,
+		);
+		// On a tab without access, to the notice that takes the offer's place.
+		home("", () => undefined);
+		button("not-now").focus();
+		home("", (s) => (s.allSitesDeclined = true));
+		expect(
+			(window.document.activeElement as unknown) ===
+				el("access-notice").querySelector("button"),
+		).toBe(true);
+	});
+
+	test("the focus stays with the person: once allowed, to the New case the offer stood for; a focused New case that the notice replaces, to its button", () => {
+		home("", () => undefined);
+		button("allow-all-sites").focus();
+		home("https://www.example.com/kk", (s) => (s.allSites = true));
+		expect((window.document.activeElement as unknown) === el("new-case")).toBe(
+			true,
+		);
+		home("", (s) => (s.allSitesDeclined = true));
+		expect(
+			(window.document.activeElement as unknown) ===
+				el("access-notice").querySelector("button"),
+		).toBe(true);
 	});
 });
 
@@ -2330,7 +2391,9 @@ describe("a case on a tab Sitegloss may not run on", () => {
 
 	test("with all sites allowed: the tab is Chrome's own, no button", () => {
 		render(noAccess(sampleCase("c_never"), true), noActions);
-		expect(el("case-access").textContent).toContain("cannot run on this tab");
+		expect(el("case-access").textContent).toContain(
+			"cannot work on this kind of page",
+		);
 		expect(
 			(
 				el("case-access").querySelector(
@@ -2368,6 +2431,47 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		render(state, noActions);
 		expect(notice.textContent).not.toContain("file URLs");
 		expect(button.hidden).toBe(true);
+	});
+
+	test("the focus stays: a focused Add marks the notice replaces hands it to the notice's button, and back once allowed (DEC-076)", () => {
+		const c = withMark();
+		const withTab = (url: string) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		render(withTab("http://localhost:3000/kk"), noActions);
+		el("add-marks").focus();
+		render(withTab(""), noActions);
+		const allow = el("case-access").querySelector("button");
+		expect((window.document.activeElement as unknown) === allow).toBe(true);
+		render(withTab("http://localhost:3000/kk"), noActions);
+		expect((window.document.activeElement as unknown) === el("add-marks")).toBe(
+			true,
+		);
+	});
+
+	test("the tool bar's name goes with its role while the notice fills it; a reader meets the reason under the case's head", () => {
+		render(noAccess(withMark()), noActions);
+		expect(el("case-dock").getAttribute("aria-label")).toBeNull();
+		expect(el("case-access-pointer").hidden).toBe(false);
+		expect(el("case-access-pointer").textContent).toContain(
+			"the bar at the end of the case",
+		);
+		render(
+			caseState(withMark(), (s) => {
+				s.tab = {
+					id: 1,
+					url: "http://localhost:3000/kk",
+					title: "",
+					size: undefined,
+				};
+			}),
+			noActions,
+		);
+		expect(el("case-dock").getAttribute("aria-label")).toBe(
+			"Marks on this tab",
+		);
+		expect(el("case-access-pointer").hidden).toBe(true);
 	});
 
 	test("with access: no notice, the buttons on", () => {

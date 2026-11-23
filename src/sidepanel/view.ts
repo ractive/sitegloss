@@ -8,7 +8,6 @@
 import {
 	BROWSER,
 	CANNOT_RUN_FILES_TEXT,
-	CANNOT_RUN_TEXT,
 	FIREFOX,
 	PANEL,
 } from "../lib/browser.ts";
@@ -57,14 +56,17 @@ import {
 	ALLOW_ALL_SITES,
 	ALLOW_ALL_SITES_RECOMMENDED,
 	accessPlan,
+	browserLabel,
+	cannotRunText,
 	NO_ACCESS_CASE,
 	NO_ACCESS_HOME,
-	noAccessHint,
 	offerText,
 	oneTabWay,
 	optionNote,
+	shortcutText,
 	type TabAccess,
 	tabAccess,
+	type Words,
 } from "./access.ts";
 import {
 	type CloudActions,
@@ -331,14 +333,24 @@ export const IMPORT_BUSY =
 export const EXPORT_ALL_BUSY =
 	"An import is at work: wait for it, or answer its question below, before exporting all cases.";
 
-/** Why an action that needed the page did nothing, and the ways on (DEC-076). */
-export const NO_ACCESS = noAccessHint(FIREFOX);
-
-/** A tab Sitegloss is not let onto even with "Allow on all sites". */
-export const CANNOT_RUN = CANNOT_RUN_TEXT;
-
-/** The same, where Sitegloss may not read files either: that is the toggle for them. */
+/** Where Sitegloss may not read files: that is the toggle for them. */
 export const CANNOT_RUN_FILES = CANNOT_RUN_FILES_TEXT;
+
+/** The browser's name, as its brands say (display only; DEC-076). */
+const BROWSER_LABEL = browserLabel(
+	FIREFOX,
+	(navigator as { userAgentData?: { brands?: { brand: string }[] } })
+		.userAgentData?.brands,
+);
+
+/** How the access texts name the browser and its shortcut now (DEC-076). */
+export function wordsOf(state: PanelState): Words {
+	return {
+		firefox: FIREFOX,
+		browser: BROWSER_LABEL,
+		shortcut: shortcutText(state.shortcut, navigator),
+	};
+}
 
 /** Whether Sitegloss may run on the tab in front (`access.ts`). */
 export function access(state: PanelState): TabAccess {
@@ -480,7 +492,7 @@ function accessNotice(id: string, actions: () => Actions): Notice {
 	);
 }
 
-const ALLOW_ALL_SITES_TITLE = `Let Sitegloss run on every site, without a click on its icon on each tab. ${BROWSER} asks first; Options on the panel's main view takes it back.`;
+const ALLOW_ALL_SITES_TITLE = `Let Sitegloss run on every site, without a click on its icon on each tab. ${BROWSER_LABEL ?? "Your browser"} asks first; Options on the panel's main view takes it back.`;
 const DETAILS_TITLE =
 	"Open Sitegloss's page in chrome://extensions, where “Allow access to file URLs” is";
 
@@ -500,17 +512,35 @@ function renderAccess(
 	n.el.hidden = kind === undefined;
 	// Which tab it is about: the address and title are hidden too.
 	n.el.dataset["tab"] = state.tab === undefined ? "" : String(state.tab.id);
-	const files = kind === "cannot" && state.fileAccess === false;
-	n.text.textContent =
-		kind !== "cannot" ? sentence : files ? CANNOT_RUN_FILES : CANNOT_RUN;
+	// A file only where the address is hidden and files are not allowed: a
+	// page the browser's refusal named is no file.
+	const cannotRun = state.tab?.cannotRun;
+	const files =
+		kind === "cannot" &&
+		(cannotRun === "file" ||
+			(cannotRun === undefined && state.fileAccess === false));
+	const w = wordsOf(state);
+	// Written only when they change: the notice is a live region, and a
+	// render for something else must not make it speak again.
+	setText(
+		n.text,
+		kind !== "cannot" ? sentence : files ? CANNOT_RUN_FILES : cannotRunText(w),
+	);
 	// Firefox lets no extension open its add-ons page: the text says the way.
 	n.button.hidden = kind === "cannot" && (!files || FIREFOX);
 	n.button.dataset["action"] = files ? "file-access" : "allow-all-sites";
-	n.button.textContent = files
-		? "Open Sitegloss's details"
-		: ALLOW_ALL_SITES_RECOMMENDED;
-	n.button.title = files ? DETAILS_TITLE : ALLOW_ALL_SITES_TITLE;
-	setHint(n.way, kind === "no-access" ? oneTabWay(FIREFOX) : undefined);
+	setText(
+		n.button,
+		files ? "Open Sitegloss's details" : ALLOW_ALL_SITES_RECOMMENDED,
+	);
+	const title = files ? DETAILS_TITLE : ALLOW_ALL_SITES_TITLE;
+	if (n.button.title !== title) n.button.title = title;
+	setHint(n.way, kind === "no-access" ? oneTabWay(w) : undefined);
+}
+
+/** Text written only when it changed (a live region speaks each write). */
+function setText(el: HTMLElement, text: string): void {
+	if (el.textContent !== text) el.textContent = text;
 }
 
 /** The actions of the last render, for the home view's parts made once. */
@@ -566,7 +596,11 @@ const homeOffer = h(
 pageText.after(homeOffer, homeAccess.el);
 
 /** Under the option: the same words in every state, the browser's own (DEC-076). */
-byId<HTMLParagraphElement>("all-sites-note").textContent = optionNote(FIREFOX);
+byId<HTMLParagraphElement>("all-sites-note").textContent = optionNote({
+	firefox: FIREFOX,
+	browser: BROWSER_LABEL,
+	shortcut: undefined,
+});
 
 const sizeOf = (s: Size) => `${s.width}×${s.height}`;
 
@@ -1107,18 +1141,14 @@ function renderHome(state: PanelState, actions: Actions): void {
 	// Access (DEC-076): the offer of all sites until it is taken or declined;
 	// on a tab without access, why, with both ways on, in place of New case.
 	const plan = planOf(state);
-	homeOffer.hidden = plan.home !== "offer";
-	homeOffer.toggleAttribute("data-no-access", plan.offerForTab);
-	const offer = offerText(plan.offerForTab, FIREFOX);
+	const forTab = plan.offer === "for-tab";
+	homeOffer.hidden = plan.offer === undefined;
+	homeOffer.toggleAttribute("data-no-access", forTab);
+	const offer = offerText(forTab, wordsOf(state));
 	setHint(offerHead, offer.head);
 	setHint(offerLine, offer.text);
-	setHint(offerWay, plan.offerForTab ? oneTabWay(FIREFOX) : undefined);
-	renderAccess(
-		homeAccess,
-		state,
-		plan.home === "offer" ? undefined : plan.home,
-		NO_ACCESS_HOME,
-	);
+	setHint(offerWay, forTab ? oneTabWay(wordsOf(state)) : undefined);
+	renderAccess(homeAccess, state, plan.notice, NO_ACCESS_HOME);
 	setHint(hint, state.hint);
 	// Always a new case, stored and opened at once (DEC-023, DEC-026); not
 	// there where it could not work.
@@ -1521,6 +1551,12 @@ interface CaseParts {
 	access: Notice;
 	/** The tool bar at the bottom: Add marks, Show/Hide marks, or `access`. */
 	dock: HTMLElement;
+	/**
+	 * For a reader going down the case: under its head, that the tool bar at
+	 * the end says why nothing is drawn (the bar is last in the page, as it
+	 * is on screen).
+	 */
+	accessPointer: HTMLElement;
 	/** None of the case's marks were found on the tab in front (DEC-022). */
 	/** The quiet line where the marks start (DEC-063). */
 	noneFound: HTMLElement;
@@ -2133,6 +2169,11 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		pickedAt: undefined,
 		shots: h("section"),
 		shotsKey: "",
+		accessPointer: h("p", {
+			class: "visually-hidden",
+			id: "case-access-pointer",
+			hidden: true,
+		}),
 		dock: h("div", {
 			class: "case-dock",
 			id: "case-dock",
@@ -2219,6 +2260,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	);
 	caseView.replaceChildren(
 		header,
+		created.accessPointer,
 		thisTab,
 		created.marks,
 		created.thread,
@@ -3567,8 +3609,22 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const plan = planOf(state);
 	renderAccess(p.access, state, plan.inCase, NO_ACCESS_CASE);
 	const ok = plan.pageControls;
-	if (ok) p.dock.setAttribute("role", "toolbar");
-	else p.dock.removeAttribute("role");
+	// A tool bar with its name only while it holds the buttons.
+	if (ok) {
+		p.dock.setAttribute("role", "toolbar");
+		p.dock.setAttribute("aria-label", "Marks on this tab");
+	} else {
+		p.dock.removeAttribute("role");
+		p.dock.removeAttribute("aria-label");
+	}
+	setHint(
+		p.accessPointer,
+		plan.inCase === "no-access"
+			? "Sitegloss has no access to this tab yet: the bar at the end of the case says why and what to do."
+			: plan.inCase === "cannot"
+				? "Sitegloss cannot work on this kind of page: the bar at the end of the case says more."
+				: undefined,
+	);
 	p.dock.toggleAttribute("data-notice", !ok);
 	// The toolbar on the tab in front adds to this case (DEC-023).
 	p.adding =
@@ -4537,8 +4593,9 @@ function otherPage(
  * page's link in the second row does. "Every mark" holds while the case is
  * drawn on the tab: with its marks hidden no mark has Show, here or there.
  * There without access too, unlike the page's own Show (`canReach`): opening a page
- * needs no access to the page in front, and `openMarkPage` asks for the
- * site's access itself where it needs it.
+ * needs no access to the page in front. In Chrome `openMarkPage` asks for the
+ * site's access itself; in Firefox it cannot (`asksForSite`), and the tab's
+ * notice offers the ways on (DEC-076).
  */
 function showElsewhere(
 	c: Case,
@@ -4909,6 +4966,62 @@ function renderBack(state: PanelState, actions: Actions): void {
 
 /** Draw the panel from `state`. */
 export function render(state: PanelState, actions: Actions): void {
+	const had = document.activeElement as HTMLElement | null;
+	renderViews(state, actions);
+	keepAccessFocus(had);
+}
+
+/** Can take the focus now: in the page, shown, not disabled. */
+function focusable(el: HTMLElement | null): boolean {
+	return (
+		el !== null &&
+		el.isConnected &&
+		el.closest("[hidden]") === null &&
+		!(el as HTMLButtonElement).disabled
+	);
+}
+
+/**
+ * The focus never falls to the page's body when access changes what is
+ * shown (DEC-076): a control that removed itself (Not now, Allow on all
+ * sites once allowed) or that the notice replaced (New case, Add marks,
+ * Show marks, a mark's Show) hands it on, in reading order, to what now
+ * stands there: the notice's button, else the control the notice had
+ * replaced, else the view's heading.
+ */
+function keepAccessFocus(had: HTMLElement | null): void {
+	if (had === null || had === document.body || focusable(had)) return;
+	// Only what access shows or hides: other focus has its own rules.
+	const accessBound =
+		had.closest("#all-sites-offer, #access-notice, #case-access") !== null ||
+		["new-case", "add-marks", "load-case"].includes(had.id) ||
+		had.dataset["action"] === "show";
+	if (!accessBound) return;
+	if (
+		document.activeElement !== had &&
+		document.activeElement !== document.body
+	)
+		return;
+	const id = (x: string) => document.getElementById(x);
+	const button = (notice: string) =>
+		id(notice)?.querySelector<HTMLElement>("button") ?? null;
+	const onCase = !caseView.hidden && caseView.contains(had);
+	const onHome = !home.hidden && home.contains(had);
+	if (!onCase && !onHome) return;
+	const next = (
+		onCase
+			? [button("case-access"), id("add-marks"), id("load-case")]
+			: [
+					button("access-notice"),
+					id("new-case"),
+					id("open-here"),
+					id("page-heading"),
+				]
+	).find((el): el is HTMLElement => focusable(el));
+	next?.focus();
+}
+
+function renderViews(state: PanelState, actions: Actions): void {
 	lastActions = actions;
 	// A mark's comment opened for editing, or a Delete asked: drawn again.
 	onThreadChange(() => render(state, actions));
