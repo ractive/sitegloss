@@ -420,7 +420,8 @@ export class MarkAdder {
 		win?.addEventListener(
 			"keydown",
 			(e) => {
-				if (!overlay.addingMarks || e.key !== "Escape") return;
+				// The person's own key: the page's scripts can send an Escape too.
+				if (!e.isTrusted || !overlay.addingMarks || e.key !== "Escape") return;
 				if (this.#editing !== null) this.#escapeComment();
 				else if (this.#tool !== null) this.setTool(null);
 				else return;
@@ -1045,10 +1046,7 @@ export class MarkAdder {
 		// Cancel, not the deleting of a mark that was kept (the owner).
 		remove.textContent = "Cancel";
 		remove.title = "Take this mark back";
-		remove.addEventListener("click", () => {
-			this.#forget(draft);
-			this.#closeComment();
-		});
+		remove.addEventListener("click", () => this.#cancelDraft(draft));
 		const row = doc.createElement("div");
 		row.className = "row";
 		row.append(remove, done);
@@ -1090,11 +1088,17 @@ export class MarkAdder {
 	#escapeComment(): void {
 		const draft = this.#editing;
 		if (draft !== null && (this.#field?.value.trim() ?? "") === "") {
-			this.#forget(draft);
-			this.#closeComment();
+			this.#cancelDraft(draft);
 			return;
 		}
 		this.#commitComment();
+	}
+
+	/** Cancel, or Escape with nothing written: the mark just drawn goes, and the toolbar says so. */
+	#cancelDraft(draft: Draft): void {
+		this.#forget(draft);
+		this.#message = `Mark ${draft.number} taken back`;
+		this.#closeComment();
 	}
 
 	#commitComment(): void {
