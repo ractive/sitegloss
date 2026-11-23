@@ -6212,6 +6212,25 @@ describe("the hand-over in the panel (DEC-071)", () => {
 		(items[2] as unknown as HTMLButtonElement).click();
 		expect(picked).toEqual(["c_1 null"]);
 		expect(menu.hidden).toBe(true);
+		// Escape closes it, the focus back on its button.
+		button.click();
+		menu.dispatchEvent(
+			new window.KeyboardEvent("keydown", {
+				key: "Escape",
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(menu.hidden).toBe(true);
+		expect(window.document.activeElement === (button as unknown)).toBe(true);
+		// A press anywhere outside it closes it too.
+		button.click();
+		el("case-facts").dispatchEvent(
+			new window.PointerEvent("pointerdown", {
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(menu.hidden).toBe(true);
+		expect(button.getAttribute("aria-expanded")).toBe("false");
 	});
 
 	test("My cases: a chip with its count; on, the list keeps the person's cases only", () => {
@@ -6236,6 +6255,7 @@ describe("the hand-over in the panel (DEC-071)", () => {
 		const chip = el<HTMLButtonElement>("my-cases");
 		expect(chip.textContent).toBe("My cases1");
 		expect(chip.getAttribute("aria-pressed")).toBe("false");
+		chip.focus();
 		chip.click();
 		expect(shown).toEqual([true]);
 		const listed = () =>
@@ -6246,15 +6266,52 @@ describe("the hand-over in the panel (DEC-071)", () => {
 		state.mine = true;
 		render(state, actions);
 		expect(listed()).toEqual(["c_given"]);
+		// Pressed, it keeps the focus (drawn anew, focused anew).
+		expect(el("my-cases").getAttribute("aria-pressed")).toBe("true");
+		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
+			true,
+		);
+		// The person's case under "This page" counts, and the list says so.
+		const onPage = initialState();
+		signedIn(onPage);
+		onPage.mine = true;
+		onPage.tab = {
+			id: 1,
+			url: given.page.url,
+			title: "KK",
+			size: undefined,
+		};
+		onPage.cases = [theirs, given].map((x) =>
+			x.id === "c_given"
+				? x
+				: {
+						...x,
+						page: { ...x.page, url: "https://other.example/" },
+						shots: [],
+					},
+		);
+		render(onPage, actions);
+		expect(el("my-cases").textContent).toBe("My cases1");
+		expect(el("cases").querySelector(".empty")?.textContent).toBe(
+			"No other case waits for you.",
+		);
 		// A card says who has the open marks.
 		expect(
 			window.document.querySelector('[data-case="c_given"] .card-assignee')
 				?.textContent,
 		).toBe(" · Assigned to you");
-		// Not signed in: no filter, nothing about assignees.
+		// Not signed in, or a server that assigns no cases: no filter,
+		// nothing about assignees.
 		const out = initialState();
 		out.cases = [theirs, given];
 		render(out, actions);
+		expect(el("my-cases")).toBeNull();
+		expect(window.document.querySelector(".card-assignee")).toBeNull();
+		const old = initialState();
+		signedIn(old);
+		old.cloud.members = undefined;
+		old.cases = [theirs, given];
+		render(old, actions);
 		expect(el("my-cases")).toBeNull();
 		expect(window.document.querySelector(".card-assignee")).toBeNull();
 	});

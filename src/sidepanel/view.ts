@@ -49,6 +49,7 @@ import {
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
+import { reporterHere } from "../lib/case-state.ts";
 import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
 import { caseSites, siteOf } from "../lib/site.ts";
@@ -68,14 +69,11 @@ import {
 	type CardHandOver,
 	cardHandOver,
 	mineTest,
+	NO_OTHER_MINE,
 	NONE_MINE,
+	teamAssigns,
 } from "./my-cases.ts";
-import {
-	nextStep,
-	reporterGoneFrom,
-	type StepAction,
-	whereIs,
-} from "./next-step.ts";
+import { nextStep, type StepAction, whereIs } from "./next-step.ts";
 import {
 	nextStepParts,
 	renderNextStep,
@@ -736,6 +734,18 @@ function renderCases(state: PanelState, actions: Actions): void {
 	]);
 	if (key === casesKey) return;
 	casesKey = key;
+	// What has the focus in the lists, by what it is: the same control after
+	// they are drawn again (a press of My cases, a teammate's change).
+	const active = document.activeElement as HTMLElement | null;
+	const focused =
+		active === null ||
+		!(casesList.contains(active) || hereCases.contains(active))
+			? undefined
+			: active.id === "my-cases"
+				? "#my-cases"
+				: active.dataset["case"] !== undefined
+					? `[data-case="${CSS.escape(active.dataset["case"])}"]`
+					: undefined;
 	// The page's own cases stand under "This page" (the owner): going on with
 	// the case a page has is what is done most, a second case for it rarely.
 	// Only on the same page of the same site as one of its screenshots
@@ -753,9 +763,11 @@ function renderCases(state: PanelState, actions: Actions): void {
 		(c) => c.closed !== undefined && !own.includes(c),
 	);
 	const others = open.filter((c) => !own.includes(c));
-	// "My cases" (DEC-071): the list narrowed to them, while it is on.
+	// "My cases" (DEC-071): the list narrowed to them, while it is on. Its
+	// count is all of them, the one under "This page" too.
 	const mineOnly = mine !== undefined && state.mine;
 	const other = mineOnly ? others.filter(mine) : others;
+	const mineCount = mine === undefined ? 0 : open.filter(mine).length;
 	const one = own.length === 1 ? own[0] : undefined;
 	here.hidden = own.length === 0;
 	hereText.textContent =
@@ -787,15 +799,21 @@ function renderCases(state: PanelState, actions: Actions): void {
 	casesList.replaceChildren(
 		...(mine === undefined || state.cases.length === 0
 			? []
-			: [mineFilter(state.mine, others.filter(mine).length, actions)]),
+			: [mineFilter(state.mine, mineCount, actions)]),
 		state.cases.length === 0
-			? h("div", { class: "empty" }, ...EMPTY_LIST.map((t) => h("p", {}, t)))
+			? h(
+					"div",
+					{ class: "empty" },
+					...emptyList(state.cloud).map((t) => h("p", {}, t)),
+				)
 			: other.length === 0
 				? h(
 						"p",
 						{ class: "empty" },
 						mineOnly
-							? NONE_MINE
+							? mineCount > 0
+								? NO_OTHER_MINE
+								: NONE_MINE
 							: open.length === 0
 								? "No open cases."
 								: "No cases for other pages.",
@@ -808,6 +826,11 @@ function renderCases(state: PanelState, actions: Actions): void {
 		// Closed cases are nobody's turn: not under My cases.
 		...(closed.length === 0 || mineOnly ? [] : [closedGroup(closed, card)]),
 	);
+	if (focused !== undefined)
+		(
+			casesList.querySelector<HTMLElement>(focused) ??
+			hereCases.querySelector<HTMLElement>(focused)
+		)?.focus();
 }
 
 /**
@@ -818,6 +841,12 @@ export const EMPTY_LIST = [
 	"No cases yet. Start one with “New case for this page”, or import a case someone sent you.",
 	HAND_OVER_NOTE,
 ];
+
+/** The empty list's words: the hand-over only where it can happen, or before signing in. */
+const emptyList = (cloud: PanelState["cloud"]): string[] =>
+	cloud.account === undefined || teamAssigns(cloud)
+		? EMPTY_LIST
+		: EMPTY_LIST.slice(0, 1);
 
 /** "My cases" and how many (DEC-071): a chip to press, as the open case's status chips are. */
 function mineFilter(on: boolean, count: number, actions: Actions): HTMLElement {
@@ -2101,7 +2130,8 @@ function renderStep(
 		mayClose,
 		...(me === undefined ? {} : { me }),
 		mayAssign,
-		reporterGone: reporterGoneFrom(c, members),
+		mayVerify: teamOf(state.cloud)?.permissions.includes("mark:update") ?? true,
+		reporterHere: reporterHere(c, members),
 	});
 	const off: Partial<Record<StepAction, string>> = {};
 	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;

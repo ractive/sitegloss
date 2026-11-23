@@ -205,9 +205,11 @@ function assignMenu(
 	choices: AssignChoices,
 	off: string | undefined,
 ): HTMLElement {
+	listenOutside();
 	const close = (back: boolean) => {
 		menu.hidden = true;
 		button.setAttribute("aria-expanded", "false");
+		if (openMenu?.wrap === wrap) openMenu = undefined;
 		if (back) button.focus();
 	};
 	const you = choices.members.find((m) => m.id === choices.me);
@@ -272,24 +274,59 @@ function assignMenu(
 			title: off ?? LABEL.assign.title,
 			disabled: off !== undefined,
 			onclick: () => {
-				const open = menu.hidden;
-				menu.hidden = !open;
-				button.setAttribute("aria-expanded", String(open));
-				if (open)
-					(
-						menu.querySelector<HTMLElement>('[aria-checked="true"]') ??
-						menu.querySelector<HTMLElement>("button")
-					)?.focus();
+				if (!menu.hidden) return close(true);
+				menu.hidden = false;
+				button.setAttribute("aria-expanded", "true");
+				openMenu = { wrap, close };
+				(
+					menu.querySelector<HTMLElement>('[aria-checked="true"]') ??
+					menu.querySelector<HTMLElement>("button")
+				)?.focus();
+			},
+			onkeydown: (e: Event) => {
+				// Escape on the button too, while the menu is open.
+				if ((e as KeyboardEvent).key === "Escape" && !menu.hidden) {
+					e.preventDefault();
+					close(true);
+				}
 			},
 		},
 		label,
 		h("span", { class: "chevron", "aria-hidden": "true" }),
 	);
-	const wrap = h("span", { class: "assign" }, button, menu);
-	// A click outside closes it, as the case's "…" menu.
+	const wrap: HTMLElement = h("span", { class: "assign" }, button, menu);
+	// Tab or Shift+Tab out of it closes it; a press elsewhere is `listenOutside`'s.
 	wrap.addEventListener("focusout", (e) => {
 		const to = (e as FocusEvent).relatedTarget as Node | null;
 		if (to !== null && !wrap.contains(to)) close(false);
 	});
 	return wrap;
+}
+
+/** The Assign menu that is open, and how to close it. */
+let openMenu: { wrap: HTMLElement; close: (back: boolean) => void } | undefined;
+let listening = false;
+
+/**
+ * A press anywhere outside the open Assign menu closes it, as the case's
+ * "…" menu does: on text, the facts or another button alike (a click there
+ * moves no focus out of it in every browser). The focus stays where the
+ * press put it.
+ */
+function listenOutside(): void {
+	if (listening) return;
+	listening = true;
+	document.addEventListener(
+		"pointerdown",
+		(e) => {
+			const menu = openMenu;
+			if (menu === undefined) return;
+			if (!menu.wrap.isConnected) {
+				openMenu = undefined;
+				return;
+			}
+			if (!menu.wrap.contains(e.target as Node)) menu.close(false);
+		},
+		true,
+	);
 }

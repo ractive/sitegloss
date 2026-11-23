@@ -13,6 +13,7 @@ import type { Case } from "../lib/case.ts";
 import {
 	assignedTo,
 	type CaseState,
+	handOverKnown,
 	mineFor,
 	stateOf,
 } from "../lib/case-state.ts";
@@ -32,19 +33,38 @@ export const STATE_LABEL: Record<CaseState, string> = {
 };
 
 /**
+ * Whether the team's server assigns cases (DEC-071): it answered the
+ * members' list (`GET …/members`; a server from before answers 404, stored
+ * as none). Only then is anything about assignees or My cases shown: on a
+ * server without them every case would read as unassigned.
+ */
+export function teamAssigns(cloud: Cloud): boolean {
+	return (
+		cloud.account !== undefined &&
+		!cloud.account.expired &&
+		teamOf(cloud) !== undefined &&
+		cloud.members !== undefined
+	);
+}
+
+/**
  * Whether a case is the person's, for the list's filter; `undefined`: no
- * filter here (nobody signed in, no team chosen, the sign-in ran out).
+ * filter here (nobody signed in, no team chosen, the sign-in ran out, or a
+ * server that assigns no cases).
  */
 export function mineTest(cloud: Cloud): ((c: Case) => boolean) | undefined {
 	const me = cloud.account?.userId;
-	if (me === undefined || cloud.account?.expired || teamOf(cloud) === undefined)
-		return undefined;
+	if (me === undefined || !teamAssigns(cloud)) return undefined;
 	return (c) => mineFor(c, me, caseSync(cloud, c.id).kind === "synced");
 }
 
 /** What a card says of the hand-over: the state's badge, and who has it where that helps. */
 export interface CardHandOver {
-	/** The badge; none for a closed case, which has its own. */
+	/**
+	 * The badge, where it adds to the counts beside it: New, In progress.
+	 * None where the counts say it (To verify, Settled, an empty case) or the
+	 * card has its own (Closed).
+	 */
 	state: string | undefined;
 	/** "Assigned to you", "Assigned to Dana", "Nobody assigned": with open marks in the team's case only. */
 	assignee: string | undefined;
@@ -53,18 +73,13 @@ export interface CardHandOver {
 export function cardHandOver(c: Case, cloud: Cloud): CardHandOver {
 	const state = stateOf(c);
 	const me = cloud.account?.userId;
-	const team =
-		me !== undefined &&
-		teamOf(cloud) !== undefined &&
-		!cloud.account?.expired &&
-		caseSync(cloud, c.id).kind === "synced";
+	const team = teamAssigns(cloud) && caseSync(cloud, c.id).kind === "synced";
 	// Who has it, while its open marks wait for someone, and the server told.
-	const told = c.assign !== undefined || c.assignee !== undefined;
+	const told = handOverKnown(c);
 	const open = state === "new" || state === "in progress";
 	const who = assignedTo(c);
 	return {
-		state:
-			state === "closed" || state === "empty" ? undefined : STATE_LABEL[state],
+		state: open ? STATE_LABEL[state] : undefined,
 		assignee:
 			!team || !told || !open
 				? undefined
@@ -75,6 +90,9 @@ export function cardHandOver(c: Case, cloud: Cloud): CardHandOver {
 						: `Assigned to ${who.name}`,
 	};
 }
+
+/** What "My cases" says when the person's cases all stand under "This page". */
+export const NO_OTHER_MINE = "No other case waits for you.";
 
 /** What "My cases" says when it leaves nothing in the list. */
 export const NONE_MINE =

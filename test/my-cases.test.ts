@@ -23,6 +23,7 @@ function cloud(
 			expired: false,
 			...account,
 		},
+		members: [TESS, DANA],
 		...more,
 	};
 }
@@ -41,8 +42,10 @@ function one(id: string, fixed = false, more: Partial<Case> = {}): Case {
 }
 
 describe("My cases in the list", () => {
-	test("not signed in, no team, or a sign-in that ran out: no filter", () => {
+	test("not signed in, no team, a sign-in that ran out, or a server that assigns no cases: no filter", () => {
 		expect(mineTest(initialState().cloud)).toBeUndefined();
+		// The server listed no members (404 from a server from before).
+		expect(mineTest(cloud({ members: undefined }))).toBeUndefined();
 		expect(mineTest(cloud({}, { teamId: undefined }))).toBeUndefined();
 		expect(mineTest(cloud({}, { expired: true }))).toBeUndefined();
 	});
@@ -76,9 +79,10 @@ describe("a card's hand-over", () => {
 		expect(
 			cardHandOver(one("c_1", false, { assignee: null }), cloud()).assignee,
 		).toBe("Nobody assigned");
-		// Back with the reporter: who had it does not help.
+		// Back with the reporter: who had it does not help, and the counts
+		// say "to verify" already.
 		expect(cardHandOver(one("c_1", true, { assignee: DANA }), cloud())).toEqual(
-			{ state: "To verify", assignee: undefined },
+			{ state: undefined, assignee: undefined },
 		);
 	});
 
@@ -92,6 +96,9 @@ describe("a card's hand-over", () => {
 			cardHandOver(c, cloud({ modes: { c_1: "local" } })).assignee,
 		).toBeUndefined();
 		expect(cardHandOver(one("c_1"), cloud()).assignee).toBeUndefined();
+		expect(
+			cardHandOver(c, cloud({ members: undefined })).assignee,
+		).toBeUndefined();
 		expect(cardHandOver(sampleCase(), cloud()).state).toBeUndefined();
 	});
 });

@@ -196,39 +196,42 @@ function forOpen(where: Where): NextStep {
 	}
 }
 
+const marksAre = (n: number) =>
+	`${n} mark${n === 1 ? "" : "s"} ${n === 1 ? "is" : "are"} open`;
+
 /**
  * For the open marks of the team's case whose assignee the server told
- * (DEC-071): who has them and what is the viewer's to do. `me`: the viewer.
+ * (DEC-071): who has them and what is the viewer's to do, in the service's
+ * words. `me`: the viewer.
  */
 function forAssignee(
 	where: Extract<Where, { kind: "team" }>,
 	assignee: UserRef | null,
 	me: string,
+	open: number,
 	mayAssign: boolean,
 ): NextStep {
 	const copies: StepAction[] =
 		where.link === undefined ? [] : ["copy-link", "copy-ai"];
 	const menu: StepAction[] = mayAssign ? ["assign"] : [];
+	const are = marksAre(open);
 	if (assignee === null)
 		return mayAssign
 			? {
-					text: "Nobody is on it yet: assign it to whoever fixes the open marks.",
+					text: `${are}: assign the case to whoever fixes them.`,
 					actions: [...menu, ...copies],
 				}
-			: {
-					text: "Nobody is on it yet: send the case to whoever fixes the open marks.",
-					actions: copies,
-				};
+			: { text: `${are}, and nobody is on it yet.`, actions: copies };
 	if (assignee.id === me)
 		return {
-			text: "Assigned to you: fix the open marks, and set each one fixed.",
+			text: `It is assigned to you: ${are}.`,
 			actions: [
 				...(where.link === undefined ? [] : ["copy-ai" as const]),
 				...menu,
 			],
 		};
 	return {
-		text: `Assigned to ${assignee.name}: the open marks are theirs to fix.`,
+		text: `${assignee.name} is on it: ${are}.`,
 		actions: [
 			...(where.link === undefined ? [] : ["copy-link" as const]),
 			...menu,
@@ -238,16 +241,6 @@ function forAssignee(
 
 /** Said where the reporter's turn is nobody's: they left the team (DEC-071, the service's words). */
 const GONE = "and whoever started the case is no longer in the team";
-
-/** Whether whoever started `c` left the team, as far as its members are known. */
-export const reporterGoneFrom = (
-	c: Case,
-	members: readonly { id: string }[] | undefined,
-): boolean =>
-	members !== undefined &&
-	members.length > 0 &&
-	c.createdBy !== undefined &&
-	!members.some((m) => m.id === c.createdBy?.id);
 
 /** What the block says of an assignment made here that the server does not have yet (DEC-071). */
 export const assignWaits = (where: Where): string =>
@@ -261,11 +254,15 @@ export const assignWaits = (where: Where): string =>
  * hand already. `mayClose`: the role lets the user close it. Fixed marks and
  * open ones are both said, each with its actions: Start verifying first.
  *
- * In the team's case, with `me` (who is signed in): whose turn it is
- * (DEC-071). `mayAssign`: the role lets them change the case and the team's
+ * In the team's case, with `me` (who is signed in) and once the server told
+ * who has it (`handOverKnown`): whose turn it is (DEC-071), in the service's
+ * words. `mayAssign`: the role lets them change the case and the team's
  * members are known, so the Assign menu is offered with the open marks.
- * `reporterGone`: whoever started the case is no member of the team any
- * more, so their turn is nobody's and whoever may takes it.
+ * `mayVerify`: the role lets them settle marks. `reporterHere`: whoever
+ * started the case is a member of the team (`reporterHere` in
+ * case-state.ts); if not, their turn is nobody's and whoever may takes it.
+ * The panel's own addition: while marks are open and others wait to be
+ * verified, the reporter reads "Check the fixed marks ..." first.
  */
 export function nextStep(
 	c: Case,
@@ -275,13 +272,15 @@ export function nextStep(
 		mayClose,
 		me,
 		mayAssign = false,
-		reporterGone = false,
+		mayVerify = true,
+		reporterHere = true,
 	}: {
 		adding: boolean;
 		mayClose: boolean;
 		me?: string;
 		mayAssign?: boolean;
-		reporterGone?: boolean;
+		mayVerify?: boolean;
+		reporterHere?: boolean;
 	},
 ): NextStep | undefined {
 	if (c.closed !== undefined) return undefined;
@@ -292,52 +291,85 @@ export function nextStep(
 		};
 	const n = caseCounts(c);
 	const assignee = assigneeOf(c);
-	// The team's case with a known assignee: whose turn it is. The reporter
-	// not known yet (on its way to the server) is the viewer: it was made here.
-	const turns =
-		where.kind === "team" && me !== undefined && assignee !== undefined;
-	// Whoever started it left the team: their turn is nobody's, and whoever
-	// may does it (the service's rule, DEC-042).
-	const gone = turns && reporterGone;
-	const reporter =
-		turns && !gone && c.createdBy !== undefined && c.createdBy.id !== me
-			? c.createdBy
-			: undefined;
-	const left = gone ? `, ${GONE}` : "";
-	const waits = turns && c.assign !== undefined ? ` ${assignWaits(where)}` : "";
-	if (n.open === 0 && n.toVerify === 0)
-		return reporter === undefined
-			? {
-					text: turns
-						? `Every mark is settled${left}: close the case.`
-						: "Every mark is settled.",
-					actions: mayClose ? ["close"] : [],
-				}
-			: {
-					text: `Every mark is settled: ${reporter.name} closes the case.`,
-					actions: [],
-				};
+	if (where.kind !== "team" || me === undefined || assignee === undefined)
+		return untold(c, where, mayClose);
+	// An assignment that waits to be sent says so; one the server refused
+	// says why, until the next one (`Case.assignRefused`).
+	const waits =
+		c.assign !== undefined
+			? ` ${assignWaits(where)}`
+			: c.assignRefused !== undefined
+				? ` ${c.assignRefused.text}`
+				: "";
+	const reporter = reporterHere ? c.createdBy : undefined;
+	const mine = reporter !== undefined && reporter.id === me;
 	const open =
 		n.open === 0
 			? undefined
-			: turns
-				? forAssignee(where, assignee, me, mayAssign)
-				: forOpen(where);
-	if (n.toVerify === 0 && open !== undefined)
-		return { text: `${open.text}${waits}`, actions: open.actions };
-	if (reporter !== undefined)
-		return open === undefined
-			? {
-					text: `Every open mark is fixed: ${reporter.name} checks and verifies them.${waits}`,
-					actions: [],
-				}
-			: { text: `${open.text}${waits}`, actions: open.actions };
-	const check =
-		turns && open === undefined
-			? `Every open mark is fixed${left}: check them on the page that has the fix, and verify them.`
-			: "Check the fixed marks on the page that has the fix.";
+			: forAssignee(where, assignee, me, n.open, mayAssign);
+	const step = ((): NextStep => {
+		if (open !== undefined)
+			// Fixed marks wait too: whoever checks them reads that first.
+			return n.toVerify > 0 && (mine || (reporter === undefined && mayVerify))
+				? {
+						text: `Check the fixed marks on the page that has the fix. ${open.text}`,
+						actions: ["verify", ...open.actions],
+					}
+				: open;
+		if (n.toVerify > 0)
+			return reporter === undefined
+				? mayVerify
+					? {
+							text: `Every open mark is fixed, ${GONE}: check them and verify.`,
+							actions: ["verify"],
+						}
+					: { text: `Every open mark is fixed, ${GONE}.`, actions: [] }
+				: mine
+					? {
+							text: "Every open mark is fixed: check them and verify.",
+							actions: ["verify"],
+						}
+					: {
+							text: `Every open mark is fixed: ${reporter.name} checks them and verifies.`,
+							actions: [],
+						};
+		return reporter === undefined
+			? mayClose
+				? {
+						text: `Every mark is settled, ${GONE}: close the case.`,
+						actions: ["close"],
+					}
+				: { text: `Every mark is settled, ${GONE}.`, actions: [] }
+			: mine
+				? {
+						text: "Every mark is settled: close the case.",
+						actions: mayClose ? ["close"] : [],
+					}
+				: {
+						text: `Every mark is settled: ${reporter.name} closes the case.`,
+						actions: [],
+					};
+	})();
+	return { text: `${step.text}${waits}`, actions: step.actions };
+}
+
+/**
+ * The step where whose turn it is is not known (DEC-069 as it was): a case
+ * only in this browser, one not at the server yet, or one whose server
+ * told no assignee.
+ */
+function untold(c: Case, where: Where, mayClose: boolean): NextStep {
+	const n = caseCounts(c);
+	if (n.open === 0 && n.toVerify === 0)
+		return {
+			text: "Every mark is settled.",
+			actions: mayClose ? ["close"] : [],
+		};
+	const open = n.open > 0 ? forOpen(where) : undefined;
+	if (n.toVerify === 0 && open !== undefined) return open;
+	const check = "Check the fixed marks on the page that has the fix.";
 	return {
-		text: `${open === undefined ? check : `${check} ${open.text}`}${waits}`,
+		text: open === undefined ? check : `${check} ${open.text}`,
 		actions: ["verify", ...(open?.actions ?? [])],
 	};
 }
