@@ -1864,6 +1864,11 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	padding-block: 2px;
 }
 
+/* What is scrolled into view (a focus, a found row) stops above the tool bar. */
+:root:has(#case-view:not([hidden]) .case-dock) {
+	scroll-padding-bottom: 52px;
+}
+
 .case-dock > #add-marks {
 	flex: 1;
 	min-width: 0;

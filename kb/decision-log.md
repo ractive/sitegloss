@@ -3542,3 +3542,64 @@ asked in chat that night (the findings page's D10, D12, D13).
 - Tests: `test/match.test.ts` (two buttons named Edit in one card: failed before),
   `test/page-hosts.test.ts`, `test/view.test.ts` (the tool bar, the disclosures, the quiet
   line, the chip, Add comment at a mark), `test/e2e/panel.test.ts` (the quiet line).
+
+## DEC-064: Panel round 5, a draft for the owner to judge: the picture over the page, the page's fields in a frame, corners, the weak points
+
+2026-11-23. On `panel-round-5`. The owner, on round 4: a picture opening in a new tab is
+"super confusing", it should be a modal that Escape or an ✕ closes; the paste into the
+mark's dialog on the page that the page can read: "fix it"; buttons and elements "a bit
+less rounded"; the lead's weak points: "all valid. Please fix them."
+
+- **Probes first (Chrome, trusted input from CDP; listeners of the page on `window` and
+  `document`, capture phase, registered before Sitegloss's content script):**
+
+  | Shown or typed | Inside the closed shadow root | In a frame of another origin in it |
+  | --- | --- | --- |
+  | Keys typed | every `keydown`, `keypress`, `keyup` with `key`; `beforeinput` and `input` with `data` | nothing |
+  | Text pasted | `paste` with the text in `clipboardData`; `beforeinput`/`input` with it as `data` | nothing |
+  | A picture | its bytes in the page's process; a `blob:` URL the page can fetch if it learns it (not listed in resource timing) | nothing of it; `window.length` 0; `window[0]` and navigating the frame refused |
+  | What the page still learns | that the host exists and covers a point (`elementsFromPoint`) | the same; that the focus moved to the host (`focusin`, `blur`); for an http frame resource timing lists its address, for the extension's frame nothing |
+
+  The order of listeners cannot help: Sitegloss's content script is injected when needed,
+  after every script of the page; only a content script registered at `document_start`
+  (which needs the host permission ahead) runs before a page's own. The frame does not
+  depend on order.
+- **The page's fields in a frame.** A new mark's comment, a loaded mark's comment and the
+  resolve and reopen notes on the page are `field/index.html`, a page of the extension in a
+  frame (`src/content/page-field.ts`), talking to the content script over a MessageChannel
+  handed to it once; nothing is posted to the page's window and no address carries data.
+  End-to-end test (`adding.test.ts`): keys and a paste of text in the dialog; on round 4
+  the page heard every key and the pasted text, now nothing, and the comment is saved.
+- **The picture over the page.** A tile's click opens the viewer over the page in the tab
+  in front, in a frame of the extension's own across the whole window in the closed
+  shadow root (told what to show over its port; it reads the pictures from the extension's
+  store itself). Escape, ✕ Close or a click beside it closes it; the focus stays in the
+  panel after the click, so the panel passes Escape, the arrows and F to the viewer, and
+  the tile has the focus again after. Measured: the page had no frame in `window.length`,
+  no resource entry, no mutation, no key or click event. Where no content script may run
+  (the browser's own pages, the web store, a PDF), a small window of its own, 85% of the
+  browser's, centred over it. Never a tab; the viewer has "Open in a tab".
+- **Firefox: not checked.** The same code runs there (frames of `moz-extension://`,
+  MessageChannel, `windows.create` with `type: "popup"`); no Firefox run was made.
+- **Corners:** controls 6 px (the top bar's buttons, the page filter's menu, the page
+  counts, a tile's remove), cards and the mark's body 8 px, the page's bar and dialog
+  10 px with 6 px buttons; status chips and pins stay round.
+- **A closed mark to verify** has Verify, small and secondary, in its title line; Reopen…
+  only in the body. Its row is two lines like the others (104 px before, 88 at 340 px
+  where the title wraps beside the two buttons).
+- **The tool bar is calmer:** 6 px padding, 30 px buttons, Add marks in the secondary
+  look at rest; while adding it is amber and reads "Adding marks: Done". What is scrolled
+  into view stops above the bar (`scroll-padding-bottom`).
+- **The case card:** the summary right under the title in the text's colour, 13 px, a gap
+  before the facts; no band without marks.
+- **The pin in new screenshots** is 20 px (a note's 24), its number 11 px; on the page the
+  same. Pictures taken before keep their pins.
+- **The list rebuilt on every change (not changed):** a list that updates its rows in
+  place would key each row by mark with a key of its own (status, comment, match, open,
+  thread), replace only the rows whose key changed and move rows by `insertBefore`. It
+  touches `renderCase`'s list block and `markItem` in `src/sidepanel/view.ts` (about 600
+  of its 3980 lines to read, 250 to 400 to change), makes most of
+  `src/sidepanel/scroll-anchor.ts` (203 lines) unneeded, and changes about ten tests in
+  `test/view.test.ts` that hold rows found before a render.
+- Tests: `test/view.test.ts`, `test/review.test.ts` (the frame field driven by its
+  messages), end-to-end `adding`, `images`, `look`, `panel`, `extension`.

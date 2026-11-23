@@ -108,13 +108,13 @@ inFullSet("the look", () => {
 		// A case with a long title and three marks, drawn on the page.
 		await panel.eval(`${id("new-case")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
-		// The case is made and open, the toolbar adding to it (DEC-026): Done
-		// adding is no amber button.
+		// The case is made and open, the toolbar adding to it (DEC-026): the
+		// tool bar's "Adding marks: Done" is the one amber button (DEC-064).
 		await panel.waitFor(
 			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
 		);
-		await holds([]);
+		await holds(["add-marks"]);
 		await markElement(
 			page,
 			"[data-truth=submit]",
@@ -132,12 +132,13 @@ inFullSet("the look", () => {
 			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
 		);
-		await holds([]);
+		await holds(["add-marks"]);
 		await panel.eval(`${id("add-marks")}.click()`);
 		await panel.waitFor(
 			`${id("add-marks")}.textContent === "Add marks"`,
 			20_000,
 		);
+		// At rest the tool bar is calm: no amber in the case (DEC-064).
 
 		// Home, with the page's case under This page: opening it is the one
 		// amber button, a new case a plain one.
@@ -162,7 +163,7 @@ inFullSet("the look", () => {
 		await panel.waitFor(
 			`document.querySelectorAll(".mark[data-open]").length === 3`,
 		);
-		// One mark fixed: its second row has the pill, Verify and Reopen….
+		// One mark fixed: open, its body has Verify and Reopen… (DEC-064).
 		const first = `document.querySelector(".mark")`;
 		await panel.eval(
 			`${first}.querySelector('[data-mark-action="resolve"]').click()`,
@@ -174,10 +175,10 @@ inFullSet("the look", () => {
 			`document.querySelector('[data-mark-action="resolve-done"]').click()`,
 		);
 		await panel.waitFor(
-			`${first}.dataset.status === "fixed" && ${first}.querySelector('.mark-sub [data-mark-action="verify"]') !== null`,
+			`${first}.dataset.status === "fixed" && ${first}.querySelector('.body [data-mark-action="verify"]') !== null`,
 			20_000,
 		);
-		await holds(["add-marks"]);
+		await holds([]);
 		// The status block: a chip per status with marks, tinted in its colour.
 		expect(
 			await panel.eval<string[][]>(
@@ -204,13 +205,13 @@ inFullSet("the look", () => {
 			f.value = ${JSON.stringify(link)};
 			f.dispatchEvent(new Event("input"));
 		})()`);
-		await holds(["add-marks"]);
+		await holds([]);
 		await panel.eval(`${id("case-link-save")}.click()`);
 		await panel.waitFor(
 			`${id("case-link-form")}.hidden && ${id("case-link-open")}.getAttribute("href") === ${JSON.stringify(link)}`,
 			10_000,
 		);
-		await holds(["add-marks"]);
+		await holds([]);
 
 		// Settings, over the case: the pill turns AI access on, and the card
 		// shows the address and the code, its widest content.

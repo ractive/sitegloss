@@ -51,11 +51,13 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   the tab shows under the head. Round 4 on `panel-round-4` (DEC-063): Add marks moves to
   the sticky tool bar, the pages list is one disclosure, one row per page across hosts.
   Waits for the owner.
-- **The page's mark dialog could take pasted and dropped images safely** only if the page
-  never saw the event: a content script registered at `document_start` with a window
-  capture listener that stops the event when it is aimed at Sitegloss's dialog would run
-  before any listener of the page. Sitegloss injects its script on demand today, so it
-  cannot be first. Until then the dialog sends images to the panel (DEC-063).
+- **Images pasted or dropped in the page's mark dialog.** Since DEC-064 the dialog's
+  field is a frame of the extension's own, which the page cannot read: pasting or dropping
+  an image there could now be taken by the frame itself instead of sending the person to
+  the panel (DEC-063). Not built.
+- **The list of marks rebuilt on every change** (DEC-060's hold works around it): a list
+  that updates its rows in place, keyed by mark, would make the hold unneeded for most
+  actions. See DEC-064 for what it would take.
 - **Mark 48's box offset on "Delete finding"** (owner's case, 22 November 2026) was not
   reproduced; see DEC-063 for what was ruled out. Needs the mark's recorded details.
 - **An AI app cannot tell that AI access is off.** When AI access is off (after a reload or

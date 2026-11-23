@@ -323,18 +323,14 @@ export async function dialogField(page: Page): Promise<Page> {
 	if (owner === undefined)
 		throw new Error("dialogField: a page the harness did not open");
 	await page.waitFor(FIELD);
-	type Frame = { frame: { id: string; url: string }; childFrames?: Frame[] };
-	const find = (f: Frame): string | undefined =>
-		f.frame.url.includes("/field/index.html")
-			? f.frame.id
-			: (f.childFrames ?? []).map(find).find((id) => id !== undefined);
+	// The frame is out of the page's process: a target of its own. One
+	// dialog is open at a time; its field is the newest such frame.
 	const id = await until(
-		async () => {
-			const { frameTree } = (await page.send("Page.getFrameTree")) as {
-				frameTree: Frame;
-			};
-			return find(frameTree);
-		},
+		async () =>
+			(await owner.h.browser.targets())
+				.filter((t) => t.type === "iframe" && t.url.includes("/field/index.html"))
+				.map((t) => t.targetId)
+				.at(-1),
 		(found) => found !== undefined,
 		5000,
 	);

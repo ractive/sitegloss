@@ -1150,9 +1150,8 @@ inBothSets("the side panel's page", () => {
 					`(() => { const r = ${pin}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
 				);
 				await page.clickAt(at.x, at.y);
-				await page.waitFor(
-					`!${popover}.hidden && ${field}?.value === "Changed on the page"`,
-				);
+				await page.waitFor(`!${popover}.hidden && ${field} !== null`);
+				expect(await fieldValue(page)).toBe("Changed on the page");
 				expect(
 					await page.eval<number>(
 						`${shadow("svg.marks")}.querySelectorAll(".drafts [data-number]").length`,
