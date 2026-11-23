@@ -85,7 +85,7 @@ const STYLE = `
 	font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	color: ${L.popoverText};
 }
-svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; }
+svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; }
 /*
  * A highlight's marker strokes on a light ground (DEC-066): a layer of their
  * own, multiplied with the page under it, so the text keeps its colour. Not
@@ -93,7 +93,7 @@ svg.marks { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visi
  * Under .layer: the pins stay on top.
  */
 .ink { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; mix-blend-mode: multiply; }
-.ink.marking .review, .ink.marking .drafts { display: none !important; }
+.ink.marking .review-strokes, .ink.marking .draft-strokes { display: none !important; }
 .capture { position: fixed; inset: 0; pointer-events: none; cursor: crosshair; }
 .capture.active { pointer-events: auto; }
 .capture.element { cursor: default; }
@@ -526,10 +526,11 @@ export class Overlay {
 		this.ink = doc.createElement("div");
 		this.ink.className = "ink";
 		this.ink.hidden = true;
-		this.#inkReview = svg(doc, "g", { class: "review" });
-		this.#inkDrafts = svg(doc, "g", { class: "drafts" });
-		this.#inkTemporary = svg(doc, "g", { class: "temporary" });
-		const inkSvg = svg(doc, "svg", { class: "marks" });
+		// Names of their own: a query for the overlay's groups finds those.
+		this.#inkReview = svg(doc, "g", { class: "review-strokes" });
+		this.#inkDrafts = svg(doc, "g", { class: "draft-strokes" });
+		this.#inkTemporary = svg(doc, "g", { class: "temporary-strokes" });
+		const inkSvg = svg(doc, "svg", { class: "strokes" });
 		inkSvg.append(this.#inkReview, this.#inkDrafts, this.#inkTemporary);
 		this.ink.append(inkSvg);
 		this.capture = doc.createElement("div");
@@ -1021,7 +1022,7 @@ export class Overlay {
 		const ink: SVGElement[] = [];
 		if (saved.length > 0) {
 			const group = svg(doc, "g", { class: "saved", opacity: 0.5 });
-			const inkGroup = svg(doc, "g", { class: "saved", opacity: 0.5 });
+			const inkGroup = svg(doc, "g", { class: "saved-strokes", opacity: 0.5 });
 			const strokes: SVGElement[] = [];
 			const parts: SVGElement[] = [];
 			for (const mark of saved) {
