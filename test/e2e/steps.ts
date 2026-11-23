@@ -328,7 +328,9 @@ export async function dialogField(page: Page): Promise<Page> {
 	const id = await until(
 		async () =>
 			(await owner.h.browser.targets())
-				.filter((t) => t.type === "iframe" && t.url.includes("/field/index.html"))
+				.filter(
+					(t) => t.type === "iframe" && t.url.includes("/field/index.html"),
+				)
 				.map((t) => t.targetId)
 				.at(-1),
 		(found) => found !== undefined,

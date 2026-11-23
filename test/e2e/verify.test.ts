@@ -155,9 +155,7 @@ inFullSet("Verify", () => {
 		await panel.waitFor(`document.querySelectorAll("li.mark").length === 3`);
 
 		// Verify, from the collapsed head: the bar and the chips move.
-		await panel.click(
-			`${row("m1")}.querySelector('.mark-sub [data-mark-action="verify"]')`,
-		);
+		await panel.click(`${row("m1")}.querySelector('.head-verify')`);
 		await panel.waitFor(`${row("m1")}?.dataset.status === "verified"`);
 		expect(await panel.eval<string[]>(chips)).toEqual([
 			"● Open 1",
