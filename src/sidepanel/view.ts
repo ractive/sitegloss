@@ -20,6 +20,7 @@ import {
 	caseCounts,
 	casePages,
 	cleanTitle,
+	cutText,
 	type FindingApp,
 	GROUP_LABEL,
 	GROUP_OF,
@@ -43,6 +44,7 @@ import {
 	type ResolveChoice,
 	STATUS_GROUPS,
 	type StatusGroup,
+	textLength,
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
@@ -920,7 +922,7 @@ const QUOTE_SHOWN = 160;
  * as the newer Sitegloss that made it calls it, and what to do.
  */
 export function newerKindText(kind: string): string {
-	return `A mark of a kind made with a newer Sitegloss (“${kind.slice(0, 40)}”). Its comment, status and thread work here; to see it on the page, update Sitegloss.`;
+	return `A mark of a kind made with a newer Sitegloss (“${cutText(kind, 40)}”). Its comment, status and thread work here; to see it on the page, update Sitegloss. A team that does not have it yet gets it only from a newer version.`;
 }
 
 /**
@@ -3819,8 +3821,8 @@ function markSubline(
 			? h(
 					"q",
 					{ class: "quote", title: a.highlight.text },
-					a.highlight.text.length > QUOTE_SHOWN
-						? `${a.highlight.text.slice(0, QUOTE_SHOWN - 1)}…`
+					textLength(a.highlight.text) > QUOTE_SHOWN
+						? `${cutText(a.highlight.text, QUOTE_SHOWN - 1)}…`
 						: a.highlight.text,
 				)
 			: null,

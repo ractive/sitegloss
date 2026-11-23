@@ -15,6 +15,7 @@ import {
 	CASE_FORMAT,
 	type Case,
 	type CasePage,
+	caseExtras,
 	casePages,
 	cropImage,
 	type FindingApp,
@@ -279,6 +280,8 @@ export async function saveCase(
 		// list stays when its last mark goes) is not written into it now.
 		const value = withPagesOfShots(
 			validateCase({
+				// What a newer Sitegloss wrote on the case stays (DEC-066).
+				...(current === undefined ? {} : caseExtras(current)),
 				format: CASE_FORMAT,
 				id: request.caseId,
 				title: current?.title ?? (request.title.trim() || "Untitled case"),

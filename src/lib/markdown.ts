@@ -47,16 +47,19 @@ const KIND: Record<ShapeKind, string> = {
  * start a link, an image, an autolink, HTML, emphasis, strikethrough, a table
  * cell, math or a heading's end is escaped, and `&` where it would start a
  * named reference (`&lt;`; a numeric one loses its `#`), so the text shows as
- * written. `!` and `(` do nothing without a `[`. A bare URL is still linked
- * by previewers that link URLs in text (linkify, GitHub), and the escapes
- * end up in its text and address: `https://x.example/a_b` links to
- * `https://x.example/a%5C_b`, a broken link to the same host, never another.
+ * written. `!` and `(` do nothing without a `[`. And no live link in someone
+ * else's text (DEC-066, as the server's case.md): a previewer links a bare
+ * address by itself (`https://…`, `www.…`, `name@host`), so the colon before
+ * `//`, the dot after `www` and `@` are escaped, and it stays text.
  */
 function inline(text: string): string {
 	return text
 		.replace(/\s+/g, " ")
 		.replace(/([\\`*_[\]<>#|~$])/g, "\\$1")
-		.replace(/&(?=#?[0-9A-Za-z]+;)/g, "\\&");
+		.replace(/&(?=#?[0-9A-Za-z]+;)/g, "\\&")
+		.replace(/([A-Za-z][A-Za-z0-9+.-]*):(?=\/\/)/g, "$1\\:")
+		.replace(/\b(www)\./gi, "$1\\.")
+		.replace(/@/g, "\\@");
 }
 
 /**

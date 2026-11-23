@@ -852,15 +852,18 @@ describe("highlights and marks of a newer kind in the sync (DEC-066)", () => {
 				marks: [
 					wire(1, { highlight }),
 					wire(2, { shape: circle as unknown as WireMark["shape"] }),
+					// A kind that is no name: kept, under one, not refusing the case.
+					wire(3, {
+						shape: { kind: 5, r: 1 } as unknown as WireMark["shape"],
+					}),
 				],
 				removedMarks: [],
 				removedShots: [],
 			},
 			new Map(
-				["server shot", "server crop 1", "server crop 2"].map((p) => [
-					ref(p).sha256,
-					"image",
-				]),
+				["server shot", "server crop 1", "server crop 2", "server crop 3"].map(
+					(p) => [ref(p).sha256, "image"],
+				),
 			),
 			new Map(),
 			{ teamId: "team_1", whole: false, now: NOW },
@@ -868,6 +871,10 @@ describe("highlights and marks of a newer kind in the sync (DEC-066)", () => {
 		const value = validateCase(merged?.value);
 		expect(value.marks[0]?.highlight).toEqual(highlight);
 		expect(value.marks[1]?.shape).toEqual({ kind: "unknown", given: circle });
+		expect(value.marks[2]?.shape).toEqual({
+			kind: "unknown",
+			given: { kind: "unnamed", r: 1 },
+		});
 		const markOps = (x: Case) =>
 			deriveOps(x, merged?.book as CaseBook, ref, newId)
 				.ops.filter((op) => op.type.startsWith("mark."))

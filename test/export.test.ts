@@ -3,6 +3,7 @@ import {
 	type Case,
 	type Finding,
 	type Mark,
+	pendingImage,
 	validateCase,
 	withComment,
 } from "../src/lib/case.ts";
@@ -23,6 +24,7 @@ import {
 	webpSize,
 } from "../src/lib/export.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
+import { saveCase } from "../src/lib/save.ts";
 import { type CaseStore, MemoryStore } from "../src/lib/store.ts";
 import { readZip, writeZip } from "../src/lib/zip.ts";
 import { putCase, sampleCase } from "./fixtures.ts";
@@ -1178,7 +1180,8 @@ describe("what a newer Sitegloss wrote (DEC-066)", () => {
 		expect(new TextDecoder().decode(files.get("case.md"))).toContain(
 			"- Kind: circle, made with a newer Sitegloss",
 		);
-		// To the server: the shape as it came, and a comment as a patch.
+		// Shared with a team: API v1 takes no kind it does not name, so the
+		// mark waits here (a newer version sends it); the other one goes.
 		const { ops } = deriveOps(
 			changed,
 			emptyBook(changed.id, "synced", "team_1"),
@@ -1190,11 +1193,48 @@ describe("what a newer Sitegloss wrote (DEC-066)", () => {
 			}),
 			(prefix) => `${prefix}_1`,
 		);
-		const created = ops.find(
+		const created = ops.filter(
 			(op): op is Extract<Op, { type: "mark.create" }> =>
-				op.type === "mark.create" && op.mark.number === 1,
+				op.type === "mark.create",
 		);
-		expect(created?.mark.shape as unknown).toEqual(json.marks[0].shape);
+		expect(created.map((op) => op.mark.number)).toEqual([2]);
+		// Adding a mark rebuilds the case: what a newer version wrote stays.
+		await store.putImage(changed.id, pendingImage("p_new"), {
+			blob: new Blob([webpBytes() as Uint8Array<ArrayBuffer>]),
+			width: 10,
+			height: 10,
+		});
+		const added = await saveCase(
+			store,
+			{
+				caseId: changed.id,
+				isNew: false,
+				title: "",
+				page: changed.page,
+				shots: [
+					{
+						id: "p_new",
+						image: pendingImage("p_new"),
+						scrollX: 0,
+						scrollY: 0,
+						viewport: { width: 1280, height: 800, dpr: 2 },
+						capturedAt: "2026-11-05T10:00:00Z",
+					},
+				],
+				marks: [
+					{
+						...mark(3),
+						shot: "p_new",
+						cropRect: { x: 0, y: 0, width: 10, height: 10 },
+					},
+				],
+			},
+			async (_image, rects) =>
+				rects.map(() => ({ blob: new Blob(["c"]), width: 10, height: 10 })),
+		);
+		expect((added as unknown as { board: unknown }).board).toEqual({
+			lane: "triage",
+		});
 	});
 
 	test("a version that knows the kind draws it: the store's copy is looked at anew", () => {

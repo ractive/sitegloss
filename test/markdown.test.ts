@@ -187,12 +187,12 @@ describe("titles, app names and dates in case.md stay on their line as written",
 		caseMarkdown(caseWith("plain", text)).split("\n")[0];
 
 	test.each([
-		["![x](https://evil.example/)", "!\\[x\\](https://evil.example/)"],
+		["![x](https://evil.example/)", "!\\[x\\](https\\://evil.example/)"],
 		[
 			"[x][1] [1]: https://evil.example/",
-			"\\[x\\]\\[1\\] \\[1\\]: https://evil.example/",
+			"\\[x\\]\\[1\\] \\[1\\]: https\\://evil.example/",
 		],
-		["<https://evil.example/> <b>", "\\<https://evil.example/\\> \\<b\\>"],
+		["<https://evil.example/> <b>", "\\<https\\://evil.example/\\> \\<b\\>"],
 		[
 			"&lt;script&gt; &#60; &#x3C; AT&T",
 			// `#` is escaped, so a numeric reference is no reference either.
@@ -362,7 +362,7 @@ describe("every value on one line of case.md shows as written and stays there", 
 	test.each([
 		[
 			"![x](https://evil.example/)",
-			"!\\[x\\](https://evil.example/)",
+			"!\\[x\\](https\\://evil.example/)",
 			"`![x](https://evil.example/)`",
 		],
 		[

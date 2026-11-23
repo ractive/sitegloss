@@ -12,6 +12,7 @@ import {
 	type Mark,
 	validateCase,
 } from "../src/lib/case.ts";
+import { luminance } from "../src/lib/colour.ts";
 import {
 	contextOf,
 	cutSpan,
@@ -159,25 +160,19 @@ describe("the stroke", () => {
 				],
 			}),
 		).toEqual({ x: 109, y: 20 });
+		// At the window's left edge it moves in, whole.
+		expect(
+			pinPosition({
+				shape: { kind: "box", rect: { x: 4, y: 10, width: 300, height: 20 } },
+				lines: [{ x: 4, y: 10, width: 300, height: 20 }],
+			}).x,
+		).toBe(11);
 	});
 
-	// WCAG luminance of an sRGB colour.
-	const luminance = (c: number[]) => {
-		const f = (v: number) => {
-			const s = v / 255;
-			return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-		};
-		return (
-			0.2126 * f(c[0] as number) +
-			0.7152 * f(c[1] as number) +
-			0.0722 * f(c[2] as number)
-		);
-	};
-	const ratio = (a: number[], b: number[]) => {
-		const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [
-			number,
-			number,
-		];
+	const lum = ([r, g, b]: number[]) =>
+		luminance({ r: r as number, g: g as number, b: b as number, a: 1 });
+	const ratio = (x: number[], y: number[]) => {
+		const [hi, lo] = [lum(x), lum(y)].sort((p, q) => q - p) as [number, number];
 		return (hi + 0.05) / (lo + 0.05);
 	};
 	const hex = (h: string) =>
@@ -263,6 +258,15 @@ describe("what a case keeps of a highlight", () => {
 			{ ...highlight, rects: [{ x: 210, y: 300, width: 58, height: 22 }] },
 			"wekend",
 		];
+		// On a box drawn right to left (a negative size), as the server reads it.
+		expect(
+			validateCase(
+				marked(highlight, {
+					kind: "box",
+					rect: { x: 268, y: 162, width: -58, height: -22 },
+				}),
+			).marks[0]?.highlight,
+		).toEqual(highlight);
 		for (const h of outside) {
 			const [a] = validateCase(marked(h)).marks;
 			expect(a?.highlight).toBeUndefined();
@@ -281,9 +285,17 @@ describe("what a case keeps of a highlight", () => {
 
 	test("case.md names it a highlight and quotes its text, as the server's does", () => {
 		const md = caseMarkdown(
-			validateCase(marked({ ...highlight, text: "a *wekend* [x](y)" })),
+			validateCase(
+				marked({
+					...highlight,
+					text: "a *wekend* [x](y) https://evil.example www.evil.example a@b.example",
+				}),
+			),
 		);
 		expect(md).toContain("### 1. highlight");
-		expect(md).toContain("- Highlighted text: a \\*wekend\\* \\[x\\](y)");
+		// No live link in page text: a previewer links no bare address.
+		expect(md).toContain(
+			"- Highlighted text: a \\*wekend\\* \\[x\\](y) https\\://evil.example www\\.evil.example a\\@b.example",
+		);
 	});
 });

@@ -21,6 +21,7 @@ import {
 	type Highlight,
 	highlightWithin,
 	type ImageAdded,
+	isKindName,
 	isSafeId,
 	LANGUAGE,
 	lookOf,
@@ -706,6 +707,10 @@ export function deriveOps(
 	for (const a of sorted) {
 		const wire = book.marks[a.id];
 		if (wire !== undefined && marks[wire] !== undefined) continue;
+		// A kind this version does not know (DEC-066): API v1 takes only the
+		// kinds it names, so a mark the server does not have yet waits here
+		// until a version that knows it sends it. What it is said in the panel.
+		if (a.shape.kind === "unknown") continue;
 		const shotId = book.shots[a.shot];
 		const ref = image(a.crop);
 		if (shotId === undefined || left.has(a.shot) || ref === undefined) {
@@ -1170,9 +1175,14 @@ function shapeIn(shape: WireMark["shape"]): Shape {
 		kind === "note"
 	)
 		return shape as Shape;
+	// The format's rule for a kind's name (`isKindName`), or the merge's
+	// check would refuse the whole case; a server sends none other.
 	return {
 		kind: "unknown",
-		given: { ...(shape as Record<string, unknown>), kind: String(kind) },
+		given: {
+			...(shape as Record<string, unknown>),
+			kind: isKindName(kind) ? kind : "unnamed",
+		},
 	};
 }
 
@@ -2096,6 +2106,8 @@ export function isClean(c: Case, book: CaseBook, me?: string): boolean {
 	for (const a of c.marks) {
 		const wire = book.marks[a.id];
 		const before = wire === undefined ? undefined : shadow.marks[wire];
+		// Held back, not waiting to be sent (`deriveOps`).
+		if (wire === undefined && a.shape.kind === "unknown") continue;
 		if (wire === undefined || before === undefined) return false;
 		if (before.fixed !== fixedOf(a)) return false;
 		if (markPatch(markContent(a), before.content) !== undefined) return false;

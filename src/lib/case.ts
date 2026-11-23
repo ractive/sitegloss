@@ -123,12 +123,26 @@ export interface UnknownShape {
 
 export type ShapeKind = Shape["kind"];
 
-/** The kinds of shape this version knows. */
-export const SHAPE_KINDS = ["element", "box", "arrow", "pen", "note"] as const;
+/**
+ * A name a kind of shape may have (DEC-066): the rule for one this version
+ * does not know, in a file and from the server alike. 1 to 64 characters,
+ * any but control characters.
+ */
+export const isKindName = (kind: unknown): kind is string =>
+	typeof kind === "string" &&
+	kind.length >= 1 &&
+	kind.length <= 64 &&
+	![...kind].some((ch) => {
+		const code = ch.charCodeAt(0);
+		return code < 0x20 || code === 0x7f;
+	});
 
-/** Whether a shape is of a kind this version draws. */
-export const isKnownShape = (shape: Shape): shape is KnownShape =>
-	shape.kind !== "unknown";
+/**
+ * The most a shape of an unknown kind may hold, and an unknown field, as
+ * JSON (DEC-066): a pen stroke of 5000 points is under 200 KB.
+ */
+export const MAX_UNKNOWN_SHAPE = 256 * 1024;
+export const MAX_EXTRA = 16 * 1024;
 
 /** A shape as a file and the server have it: an unknown one as it came. */
 export const shapeOut = (shape: Shape): Shape | UnknownShape["given"] =>
@@ -170,11 +184,19 @@ const finiteRect = (v: unknown): v is Rect => {
 };
 
 /** Whether `r` lies inside `box`, give or take 4 px (the server's tolerance). */
-const within = (r: Rect, box: Rect): boolean =>
-	r.x >= box.x - 4 &&
-	r.y >= box.y - 4 &&
-	r.x + r.width <= box.x + box.width + 4 &&
-	r.y + r.height <= box.y + box.height + 4;
+function within(r: Rect, box: Rect): boolean {
+	// A box drawn right to left has a negative size: its edges, as the server reads them.
+	const left = Math.min(box.x, box.x + box.width);
+	const right = Math.max(box.x, box.x + box.width);
+	const top = Math.min(box.y, box.y + box.height);
+	const bottom = Math.max(box.y, box.y + box.height);
+	return (
+		r.x >= left - 4 &&
+		r.y >= top - 4 &&
+		r.x + r.width <= right + 4 &&
+		r.y + r.height <= bottom + 4
+	);
+}
 
 /**
  * A highlight within what a case and the server keep, or none: all of it or
@@ -1094,17 +1116,6 @@ export function shapeOnBox(shape: Shape, from: Rect, to: Rect): Shape {
 	}
 }
 
-/** A highlight's lines that were on the box `from`, on the box `to` (`shapeOnBox`). */
-export function highlightOnBox(h: Highlight, from: Rect, to: Rect): Highlight {
-	return {
-		...h,
-		rects: h.rects.map(
-			(r) =>
-				(shapeOnBox({ kind: "box", rect: r }, from, to) as { rect: Rect }).rect,
-		),
-	};
-}
-
 /** A highlight's lines moved by `dx`, `dy`. */
 export const translateHighlight = (
 	h: Highlight,
@@ -1589,8 +1600,9 @@ function shape(v: unknown, path: string): Shape {
  */
 function unknownShape(o: Obj, path: string): UnknownShape {
 	const kind = o["kind"];
-	if (typeof kind !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(kind))
-		fail(`${path}.kind`, "must name a kind of shape");
+	if (!isKindName(kind)) fail(`${path}.kind`, "must name a kind of shape");
+	if (JSON.stringify(o).length > MAX_UNKNOWN_SHAPE)
+		fail(path, `is larger than ${MAX_UNKNOWN_SHAPE / 1024} KB`);
 	return { kind: "unknown", given: { ...o, kind } };
 }
 
@@ -1718,11 +1730,19 @@ const MARK_KEYS = new Set([
 	"highlight",
 ]);
 
+/** A case's fields this version does not know (DEC-066), for code that rebuilds a case from its named fields. */
+export const caseExtras = (c: Case): Record<string, unknown> =>
+	extrasOf(c as unknown as Obj, CASE_KEYS);
+
 /** The fields of `o` this version does not know, as they are (`CASE_KEYS`). */
 function extrasOf(o: Obj, known: ReadonlySet<string>): Obj {
 	const out: Obj = {};
-	for (const [key, value] of Object.entries(o))
-		if (!known.has(key) && value !== undefined) out[key] = value;
+	for (const [key, value] of Object.entries(o)) {
+		if (known.has(key) || value === undefined) continue;
+		// Bounded: what nothing here reads does not grow a case without end.
+		const size = JSON.stringify(value)?.length ?? 0;
+		if (size <= MAX_EXTRA) out[key] = value;
+	}
 	return out;
 }
 
