@@ -816,23 +816,6 @@ function renderImportPrompt(state: PanelState, actions: Actions): void {
 	importPrompt.hidden = false;
 }
 
-/**
- * The tab in front is the web app of the server the account is signed in
- * to (DEC-045): its case pages show the same team's cases, marks and all,
- * as this panel does. Said in one line, where the address is known.
- */
-export function webAppNote(state: PanelState): string | undefined {
-	const server = state.cloud.account?.server;
-	const url = state.tab?.url;
-	if (server === undefined || !url) return undefined;
-	try {
-		if (new URL(url).origin !== new URL(server).origin) return undefined;
-	} catch {
-		return undefined;
-	}
-	return `This tab is your team's web app at ${hostOf(server)}: it shows the same cases as this panel.`;
-}
-
 function renderHome(state: PanelState, actions: Actions): void {
 	const tab = state.tab;
 	// Under "This page": its address, else its title (Chrome tells the
@@ -841,7 +824,6 @@ function renderHome(state: PanelState, actions: Actions): void {
 	pageText.hidden = pageText.textContent === "";
 	renderAccess(homeAccess, state);
 	setHint(hint, state.hint);
-	setHint(byId<HTMLElement>("web-app-note"), webAppNote(state));
 	const ok = access(state) === "yes";
 	// Always a new case, stored and opened at once (DEC-023, DEC-026).
 	newCaseButton.disabled = !ok;

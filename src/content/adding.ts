@@ -420,8 +420,9 @@ export class MarkAdder {
 		win?.addEventListener(
 			"keydown",
 			(e) => {
-				if (!overlay.addingMarks || e.key !== "Escape") return;
-				if (this.#editing !== null) this.#commitComment();
+				// The person's own key: the page's scripts can send an Escape too.
+				if (!e.isTrusted || !overlay.addingMarks || e.key !== "Escape") return;
+				if (this.#editing !== null) this.#escapeComment();
 				else if (this.#tool !== null) this.setTool(null);
 				else return;
 				// It was for Sitegloss, not for a dialog the page has open.
@@ -1026,9 +1027,9 @@ export class MarkAdder {
 			this.onAddImages?.(caseId, draft.number, "comment");
 			this.#commitComment();
 		};
-		// Escape in the field, as on the page: the comment is done.
+		// Escape in the field, as on the page.
 		field.onEscape = () => {
-			if (this.#editing === draft) this.#commitComment();
+			if (this.#editing === draft) this.#escapeComment();
 		};
 		this.#field = field;
 		const done = doc.createElement("button");
@@ -1045,10 +1046,7 @@ export class MarkAdder {
 		// Cancel, not the deleting of a mark that was kept (the owner).
 		remove.textContent = "Cancel";
 		remove.title = "Take this mark back";
-		remove.addEventListener("click", () => {
-			this.#forget(draft);
-			this.#closeComment();
-		});
+		remove.addEventListener("click", () => this.#cancelDraft(draft));
 		const row = doc.createElement("div");
 		row.className = "row";
 		row.append(remove, done);
@@ -1079,6 +1077,28 @@ export class MarkAdder {
 
 	#placePopover(draft: Draft): void {
 		this.overlay.placePopover(shapeBounds(this.#onWindow(draft)));
+	}
+
+	/**
+	 * Escape in the dialog of a mark just drawn: with nothing written, the
+	 * mark is taken back, as Cancel does (the owner: the button says Cancel,
+	 * and Escape did the opposite); with something written, the mark is kept
+	 * with it, so that Escape never throws words away.
+	 */
+	#escapeComment(): void {
+		const draft = this.#editing;
+		if (draft !== null && (this.#field?.value.trim() ?? "") === "") {
+			this.#cancelDraft(draft);
+			return;
+		}
+		this.#commitComment();
+	}
+
+	/** Cancel, or Escape with nothing written: the mark just drawn goes, and the toolbar says so. */
+	#cancelDraft(draft: Draft): void {
+		this.#forget(draft);
+		this.#message = `Mark ${draft.number} taken back`;
+		this.#closeComment();
 	}
 
 	#commitComment(): void {

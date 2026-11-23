@@ -4035,3 +4035,19 @@ hand-back) will need from this block: `Where`'s team branch gains the assignee, 
 "Hand over…"; all fixed: "Hand back to" the reporter); "Copy link" stays as the way
 outside the mail. The API needs the assignee and the case's state first; the block needs
 no new place in the panel.
+
+## DEC-070: Escape takes a new mark back while its comment is empty (owner)
+
+2026-11-23. The dialog that opens as a mark is drawn got "Cancel" where it said "Delete
+mark" (pull request 57), and Escape still did the opposite: it kept the mark. The lead
+asked whether Escape should discard a new mark while its comment is empty; the owner:
+"Yes".
+
+- Escape with nothing written (blanks count as nothing) takes the mark back, exactly as
+  Cancel does, and the toolbar says "Mark N taken back". With something written, Escape
+  keeps the mark and the words, as before: Escape never throws words away.
+- A mark without a comment is still possible (an arrow or a stroke that says it all):
+  Done, the save key and a click beside the dialog keep it. Only Escape changed.
+- The window's Escape handler takes the person's own key only (`isTrusted`): before,
+  a page's script could close the dialog with a made-up key; now it could have taken a
+  mark back with one.
