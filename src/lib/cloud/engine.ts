@@ -297,6 +297,9 @@ function local(book: CaseBook): CaseBook {
 /** A case that has to be read from the server before anything of it is sent. */
 const blocks = (mark: Reread): boolean => mark.why !== "failed";
 
+/** The most books from before DEC-071 read again in one run (`#readHandOverOnce`). */
+export const HAND_OVER_READS = 25;
+
 /** The most rejected changes kept per case. */
 const MAX_REJECTED = 50;
 
@@ -1161,6 +1164,7 @@ export class CloudSync {
 		if (left > 0) await this.#progress(left);
 		for (const [c, book] of todo) {
 			more = (await this.#pushCase(api, team, c, book)) || more;
+			if (c.assign !== undefined) await this.#assignTaken(c.id);
 			if (--left > 0) await this.#progress(left);
 		}
 		// Deleted for the team only when the user deleted it: the store keeps
@@ -1927,8 +1931,50 @@ export class CloudSync {
 		if (renumbered) await this.#renumber(book, numbers);
 		await this.#books.put(book);
 		if (refusedAssign !== undefined)
-			await this.#assignRefused(book.caseId, refusedAssign);
+			await this.#assignRefused(book.caseId, refusedAssign, team.id);
 		return { clean, renumbered, taken };
+	}
+
+	/**
+	 * An assignment made here that the server is known to have (DEC-071):
+	 * the book's shadow says that assignee, because the operation was taken
+	 * (applied, or a duplicate: the server had it already) or nothing had to
+	 * be sent (a pick back to what the server has). It goes, and the case's
+	 * record says that assignee until the server's copy says more. Only
+	 * while the case still asks for that very assignment.
+	 */
+	async #assignTaken(caseId: string): Promise<void> {
+		const shadow = (await this.#books.get(caseId))?.shadow;
+		if (shadow === undefined || !("assignee" in shadow)) return;
+		let dropped = false;
+		try {
+			this.#stored++;
+			await this.#deps.store.updateCase(caseId, (current) => {
+				const assign = current?.assign;
+				if (
+					current === undefined ||
+					assign === undefined ||
+					(assign.to?.id ?? null) !== shadow.assignee
+				)
+					throw NOTHING;
+				const { assign: _a, assignedBy, ...rest } = current;
+				const same = (current.assignee?.id ?? null) === shadow.assignee;
+				dropped = true;
+				return {
+					value: validateCase(
+						carryVia(current, {
+							...rest,
+							assignee: assign.to,
+							...(same && assignedBy !== undefined ? { assignedBy } : {}),
+							updatedAt: this.#now().toISOString(),
+						}),
+					),
+				};
+			});
+		} catch (error) {
+			if (error !== NOTHING) throw error;
+		}
+		if (dropped) this.#deps.onChange?.([caseId]);
 	}
 
 	/**
@@ -1940,7 +1986,18 @@ export class CloudSync {
 	async #assignRefused(
 		caseId: string,
 		refused: { wanted: string | null; code: string; message: string },
+		teamId: string,
 	): Promise<void> {
+		// "Not in the team" only where that is what happened: the server said
+		// the operation was invalid and the person is not among the members
+		// as last listed. The extension says "invalid" itself for an answer
+		// it did not get.
+		const members = membersOf(await this.#deps.kv.get(KEYS.members), teamId);
+		const left =
+			refused.code === "invalid" &&
+			refused.wanted !== null &&
+			members !== undefined &&
+			!members.some((m) => m.id === refused.wanted);
 		let dropped = false;
 		try {
 			this.#stored++;
@@ -1953,12 +2010,11 @@ export class CloudSync {
 				)
 					throw NOTHING;
 				const name = assign.to?.name ?? "nobody";
-				const text =
-					refused.code === "invalid" && assign.to !== null
-						? `${name} is not in the team any more, so the case was not assigned to them.`
-						: refused.code === "forbidden"
-							? `Your role in the team does not allow assigning its cases, so it was not assigned to ${name}.`
-							: `The server did not take the assignment to ${name}${refused.message ? `: ${refused.message}` : "."}`;
+				const text = left
+					? `${name} is not in the team any more, so the case was not assigned to them.`
+					: refused.code === "forbidden"
+						? `Your role in the team does not allow assigning its cases, so it was not assigned to ${name}.`
+						: `The server did not take the assignment to ${name}${refused.message ? `: ${refused.message}` : "."}`;
 				const { assign: _a, ...rest } = current;
 				const now = this.#now().toISOString();
 				dropped = true;
@@ -2095,6 +2151,7 @@ export class CloudSync {
 	 * would never answer what is asked, and every start would read again.
 	 */
 	async #readHandOverOnce(team: Team): Promise<void> {
+		// (A look at the books each run while some are left: cheap beside a read.)
 		if (this.#handOverChecked === team.id) return;
 		const assigns =
 			membersOf(await this.#deps.kv.get(KEYS.members), team.id) !== undefined;
@@ -2107,14 +2164,18 @@ export class CloudSync {
 				!("assignee" in b.shadow) &&
 				b.reread === undefined,
 		);
-		if (before.length > 0)
+		// At most so many a run, so that a large team's are read over a few
+		// runs and the sync is not held for all of them at once; those left
+		// are looked for again by the next run, whose look finds them.
+		const now = before.slice(0, HAND_OVER_READS);
+		if (now.length > 0)
 			await this.#books.put(
-				...before.map((b) => ({
+				...now.map((b) => ({
 					...b,
 					reread: { why: "failed" as const, tries: 0, after: 0 },
 				})),
 			);
-		this.#handOverChecked = team.id;
+		if (before.length <= HAND_OVER_READS) this.#handOverChecked = team.id;
 	}
 
 	/** Fetch what the team changed; whether it was the team's whole state. */

@@ -298,7 +298,7 @@ export function nextStep(
 	const waits =
 		c.assign !== undefined
 			? ` ${assignWaits(where)}`
-			: c.assignRefused !== undefined
+			: c.assignRefused !== undefined && n.open > 0
 				? ` ${c.assignRefused.text}`
 				: "";
 	const reporter = reporterHere ? c.createdBy : undefined;

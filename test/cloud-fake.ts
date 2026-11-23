@@ -219,6 +219,19 @@ export class FakeServer {
 			.map((k) => k.value);
 	}
 
+	/**
+	 * A case as the server sends it: one that knows assignees always says
+	 * one, `null` for nobody, also of a case made before it knew them; one
+	 * from before says none.
+	 */
+	caseOut(c: WireCase): WireCase {
+		if (this.beforeAssignees) {
+			const { assignee: _a, assignedBy: _b, ...rest } = c;
+			return rest;
+		}
+		return { ...c, assignee: c.assignee ?? null };
+	}
+
 	caseOf(caseId: string): WireCase | undefined {
 		const row = this.cases.get(caseId);
 		return row === undefined || row.deleted ? undefined : row.value;
@@ -1008,7 +1021,7 @@ export class FakeServer {
 			if (!inRange(row)) continue;
 			if (row.deleted) {
 				if (!whole) removed.push({ type: "case", id, rev: row.rev });
-			} else out.cases.push({ ...row.value, ...extra });
+			} else out.cases.push({ ...this.caseOut(row.value), ...extra });
 		}
 		for (const [id, row] of this.shots) {
 			if (!inRange(row)) continue;
@@ -1115,7 +1128,7 @@ export class FakeServer {
 				const row = server.cases.get(caseId);
 				if (row === undefined || row.deleted) return undefined;
 				return structuredClone({
-					...row.value,
+					...server.caseOut(row.value),
 					shots: server.shotsOf(caseId),
 					marks: server.marksOf(caseId),
 					comments: server.commentsOf(caseId),

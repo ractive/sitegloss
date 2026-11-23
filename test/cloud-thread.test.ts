@@ -18,8 +18,9 @@ import {
 	withResolution,
 } from "../src/lib/case.ts";
 import { mineFor } from "../src/lib/case-state.ts";
-import type { Op } from "../src/lib/cloud/api.ts";
+import { ApiFailure, type Op } from "../src/lib/cloud/api.ts";
 import { type CaseBook, KEYS, membersOf } from "../src/lib/cloud/book.ts";
+import { ACCOUNT_FRESH_MS } from "../src/lib/cloud/engine.ts";
 import { commentIn, mergeCase, viaOf } from "../src/lib/cloud/wire.ts";
 import { exportCase, readExport, storeImport } from "../src/lib/export.ts";
 import { nextStep } from "../src/sidepanel/next-step.ts";
@@ -68,6 +69,8 @@ const withVerdict = (c: Case, verdict: string, now: string): Case => ({
 	verdict,
 	updatedAt: now,
 });
+/** The requests a device made since the last look, and forgets them. */
+const calls = (d: Device<FakeApi>): string[] => d.api.calls.splice(0);
 const caseHere = async (d: Device, id = "c_flow") =>
 	(await d.store.getCase(id)) as Case;
 
@@ -397,6 +400,99 @@ describe("the hand-over (DEC-071)", () => {
 			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
 		);
 		expect((await caseHere(tess)).assignRefused).toBeUndefined();
+	});
+
+	test("a pick back to the assignee the server has: nothing waits, nothing is sent", async () => {
+		await shared();
+		server.members.set("u_pat", { id: "u_pat", name: "Pat" });
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(tess);
+		recording(tess);
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: "u_pat", name: "Pat" }, now),
+		);
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		expect((await caseHere(tess)).assign?.to?.id).toBe(DANA.id);
+		await tess.engine.request();
+		expect(sent(tess, "case.patch").some((o) => "assignee" in o)).toBe(false);
+		const here = await caseHere(tess);
+		expect(here.assign).toBeUndefined();
+		expect(here.assignee?.id).toBe(DANA.id);
+		expect(server.caseOf("c_flow")?.assignee?.id).toBe(DANA.id);
+	});
+
+	test("a refusal that is not about the team says the server's reason, and goes once someone assigns the case", async () => {
+		await shared();
+		server.refuseWith = {
+			type: "case.patch",
+			code: "invalid",
+			message: "Not now.",
+		};
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(tess);
+		expect((await caseHere(tess)).assignRefused?.text).toBe(
+			"The server did not take the assignment to Dana Developer: Not now.",
+		);
+		server.refuseWith = undefined;
+		// Dana assigns it from her device: the note is over.
+		await sync(dana);
+		await change(dana, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		await sync(dana, tess);
+		const here = await caseHere(tess);
+		expect(here.assignee?.id).toBe(DANA.id);
+		expect(here.assignRefused).toBeUndefined();
+	});
+
+	test("an assignment whose request fails (the server is busy) waits, and goes later", async () => {
+		await shared();
+		await change(tess, "c_flow", (c, now) =>
+			withAssigned(c, { id: DANA.id, name: DANA.name }, now),
+		);
+		const ops = tess.api.ops.bind(tess.api);
+		tess.api.ops = async () => {
+			throw new ApiFailure("server", "Busy.", 503);
+		};
+		await tess.engine.request();
+		const here = await caseHere(tess);
+		expect(here.assign?.to?.id).toBe(DANA.id);
+		expect(here.assignRefused).toBeUndefined();
+		tess.api.ops = ops;
+		await sync(tess);
+		expect(server.caseOf("c_flow")?.assignee?.id).toBe(DANA.id);
+		expect((await caseHere(tess)).assign).toBeUndefined();
+	});
+
+	test("a server that assigns no cases: no members kept, nothing read again, no assignee sent; once it does, the old cases are read", async () => {
+		server.beforeAssignees = true;
+		await shared();
+		expect(tess.kv.data.get(KEYS.members)).toMatchObject({ members: null });
+		expect(book(tess, "c_flow")?.reread).toBeUndefined();
+		expect(book(tess, "c_flow")?.shadow?.assignee).toBeUndefined();
+		recording(tess);
+		await change(tess, "c_flow", (c, now) => withVerdict(c, "Both.", now));
+		await sync(tess);
+		expect(sent(tess, "case.patch").some((o) => "assignee" in o)).toBe(false);
+		expect(book(tess, "c_flow")?.reread).toBeUndefined();
+		// The server is updated: the next look at the members finds them, and
+		// the case synced before is read again.
+		server.beforeAssignees = false;
+		tess.clock.now = new Date(tess.clock.now.getTime() + ACCOUNT_FRESH_MS);
+		calls(tess);
+		await tess.engine.request();
+		expect(
+			membersOf(tess.kv.data.get(KEYS.members), TEAM)?.length,
+		).toBeGreaterThan(0);
+		expect(calls(tess)).toContain("GET case c_flow");
+		expect(book(tess, "c_flow")?.shadow?.assignee).toBeNull();
+		expect((await caseHere(tess)).createdBy).toEqual(TESS);
 	});
 
 	test("a case synced before this version is read again once, and is nobody's until then", async () => {

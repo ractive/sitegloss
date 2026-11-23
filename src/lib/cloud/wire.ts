@@ -2009,9 +2009,16 @@ export function mergeCase(
 				assignee: _a,
 				assignedBy: _s,
 				assign,
+				assignRefused,
 				...rest
 			} = c;
 			const wanted = assign?.to?.id ?? null;
+			// A refusal said here is over once the server's hand-over is
+			// another one (someone assigned the case since).
+			const moved =
+				w.assignee !== undefined &&
+				((w.assignee?.id ?? null) !== (c.assignee?.id ?? null) ||
+					(w.assignedBy?.at ?? null) !== (c.assignedBy?.at ?? null));
 			const taken =
 				assign !== undefined &&
 				(given?.shadow?.assignee === wanted ||
@@ -2020,6 +2027,7 @@ export function mergeCase(
 				...rest,
 				...handOverIn(w, c),
 				...(assign === undefined || taken ? {} : { assign }),
+				...(assignRefused === undefined || moved ? {} : { assignRefused }),
 			};
 			if (w.assignee !== undefined) shadow.assignee = w.assignee?.id ?? null;
 		}
