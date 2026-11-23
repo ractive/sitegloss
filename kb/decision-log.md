@@ -4278,3 +4278,26 @@ user is another browser. The panel said only "AI access is off · paired apps st
   Connection with a test relay that ends them: record, store, forgotten on connect, nothing
   with keep-on; a restart, kept over a second start, forgotten on connect, Stop, ticking
   keep-on and a change of relay; nothing after a stop; a stale record).
+
+## DEC-074: tab-mcp client 0.24.0: WebMCP that comes late, pictures through the extension; none of it reaches Sitegloss (owner)
+
+2026-11-23. The owner's plan: the candidate first, then the release. `@ractive-ch/tab-mcp-client`
+goes from 0.23.0 to 0.24.0 (tested first as 0.24.0-rc.1 on a branch); the relay used by the tests
+stays `@ractive-ch/tab-mcp` 0.13.3.
+
+- **What 0.24.0 changes in the library:** a `TabMcp` that found no WebMCP when it was made listens
+  on `document` for `tab-mcp-webmcp` (`WEBMCP_EVENT`, from `./extension`) and mirrors its tools
+  when WebMCP arrives later; a WebMCP call the tab-mcp browser extension announces gets the whole
+  MCP result (pictures included) instead of text; `client.via` is `'tab-mcp-extension'` also for
+  read-only tools, and the new `client.allowed` says whether the user allowed the call (code that
+  read `via` as "the user allowed it" must read `allowed`); `WebMcpClient` has the new field
+  `allowed`.
+- **Not reached:** Sitegloss has one `TabMcp`, in the service worker, with `webmcp: false`
+  (DEC-068). The library returns before it touches `document` in that case, so there is no
+  listener and no mirror. Nothing in Sitegloss reads `client.via` as permission; the worker looks
+  only at `client.kind`, `name` and `host`. No code change.
+- **Checked:** on 0.24.0-rc.1: type check, Biome, both builds, `bun run verify` and the full
+  Chromium end-to-end set (the connection, pairing and tools files all pass; two toolbar layout
+  tests fail the same way on main). On 0.24.0: the published package equals the candidate except
+  for the version strings and the bundler's own chunk and debug ids; then type check, Biome,
+  both builds and `bun run verify` again.
