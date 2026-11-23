@@ -805,6 +805,15 @@ inFullSet("loading in another environment", () => {
 			await markElement(v1.page, "[data-truth=submit]", "Too pale");
 			await markElement(v1.page, "[data-truth=tip]", "Say how much");
 			await markElement(v1.page, "[data-truth=contact]", "Add a phone number");
+			// The screenshot of the mark above scrolls the page while it is
+			// taken: a click aimed at the footer then lands on the filler above
+			// it, and the mark is the filler's, which v2 has (found probable,
+			// not lost). A person clicks where the page is: after it.
+			await until(
+				() => overlayOf(h, v1.tabId),
+				(state) => state?.drafts === 0 && !state.saving,
+				10_000,
+			);
 			await markElement(v1.page, "footer", "Footer is gone in v2");
 			await saveAs(v1.page, "Reload test");
 			await v1.page.send("Page.close");
