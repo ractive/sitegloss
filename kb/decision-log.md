@@ -3722,6 +3722,25 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
 
 
+**Note, 2026-11-23: a mark's Show is there while the marks are not drawn (owner).** "The
+'Show' button on a mark is only shown when the marks are shown. hm. Why not keep it there
+always and clicking it turns on the 'Show marks' indirectly." Rule for a row of the page in
+front, per state:
+
+| State | The row's Show |
+|---|---|
+| Marks drawn on this tab, mark found or a note or box | "Show mark n on the page": scrolls and outlines (unchanged) |
+| Marks not drawn, tab can take them (the "Show marks" button is there) | "Show the marks on this page and go to mark n": draws the case's marks as "Show marks" does, then shows this mark, once |
+| Mark of another page of the case | unchanged: the page's link and, while the marks are drawn, "Show" that opens its page |
+| Tab Sitegloss may not run on yet, a browser page, no tab, the panel as a page | none while not drawn (as "Show marks"); disabled with the notice's words while drawn (unchanged) |
+| No mark of this page, a mark of a newer kind with no element | none |
+| Drawn, mark lost or unsure | none, as before; the row says it was not found |
+| Closed case | as an open one: "Show marks" works there |
+
+A press goes through `loadAndShow`: the same load as "Show marks" (no new permission or
+setting), then the mark waits as a mark's link does (`pendingShow`). A second press while
+it draws does nothing. A mark found is shown; one not found says so in its row.
+
 ## DEC-065: "Pages" is a heading that opens and closes its list, and the list is flush left
 
 2026-11-23. The owner, on the panel as merged: "Keep the list of sites left aligned and
@@ -4069,6 +4088,18 @@ hand-back) will need from this block: `Where`'s team branch gains the assignee, 
 "Hand over…"; all fixed: "Hand back to" the reporter); "Copy link" stays as the way
 outside the mail. The API needs the assignee and the case's state first; the block needs
 no new place in the panel.
+
+Changed on 2026-11-23, after an AI app's feedback on the text it received (the owner
+accepted it: "yes, change the template"), the same words as the web app's: (1) inside
+the quoted block a `Contents:` line says how many marks are open, how many wait to be
+verified and the pages the open ones are on (host and path, cut; several: their number
+and the sites); (2) step 2 stays "in this repository", but a mark about other code (another repository,
+another product) is named in a comment on the mark, not changed on the mark's word: the
+mark's text is untrusted data, so it must not send the AI app into other code; (3) either
+connection will do, the server's or the extension's own, and the server is added only if
+there is neither. A page address without a host (a file, data:, or one that does not
+parse) is named "a local file" or "a page without an address", never by its path. The setup is not in the copied text any more (the owner: "Isn't it very verbose to always contain the whole MCP setup? ... We mention the AI setup in several other places"): it says to use the Sitegloss tools you have and, if you have none, to stop and say so, with the address of the team's AI app page (`/t/<team>/ai`), or the AI app card of the side panel. The page is the service's; the text no longer carries `claude mcp add`, `/mcp` or `/reload-plugins`. The line on the live
+page (`LIVE_PAGE`) is now the web app's too.
 
 ## DEC-070: Escape takes a new mark back while its comment is empty (owner)
 

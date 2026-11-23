@@ -516,6 +516,7 @@ describe("the hand-over (DEC-071)", () => {
 			team: "Pedal & Pine web",
 			link: "https://sitegloss.test/t/pedal/cases/c_flow",
 			mcp: "https://sitegloss.test/api/mcp",
+			ai: "https://sitegloss.test/t/pedal/ai",
 		};
 		const before = await caseHere(tess);
 		expect(mineFor(before, TESS.id, true)).toBe(false);
