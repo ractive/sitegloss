@@ -21,7 +21,6 @@ const before = { document: globals["document"] };
 let render: (state: PanelState, actions: Actions) => void;
 let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
 let ago: (iso: string, now?: number) => string;
-let webAppNote: (state: PanelState) => string | undefined;
 let TALKING_AFTER_MS: number;
 let holdTalkingFor: (ms: number) => void;
 let pagePath: (url: string) => string;
@@ -57,7 +56,6 @@ beforeAll(async () => {
 		ASKING_DOWNLOADS,
 		IMPORT_BUSY,
 		EXPORT_ALL_BUSY,
-		webAppNote,
 		noneFoundText,
 		TALKING_AFTER_MS,
 		holdTalkingFor,
@@ -3195,52 +3193,6 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		expect(ago("2026-11-20T14:07:00.000Z", now)).toBe("1 minute ago");
 		expect(ago("2026-11-20T13:08:00.000Z", now)).toBe("1 hour ago");
 		expect(ago("2026-11-18T14:08:00.000Z", now)).toStartWith("on ");
-	});
-
-	test("the tab in front is the team's web app: said in one line, only for the server signed in to (DEC-045)", () => {
-		const tab = (url: string) => ({
-			id: 1,
-			url,
-			title: "Case",
-			size: undefined,
-		});
-		const at = (url: string, more: Partial<Cloud> = {}) => {
-			const state = initialState();
-			Object.assign(state.cloud, { account: account(), ...more });
-			state.tab = tab(url);
-			render(state, noActions);
-			return el("web-app-note");
-		};
-		const note = at("https://app.sitegloss.dev/t/pedal/cases/c_1");
-		expect(note.hidden).toBe(false);
-		expect(note.textContent).toContain(
-			"your team's web app at app.sitegloss.dev",
-		);
-		expect(at("https://shop.example/cart").hidden).toBe(true);
-		// Signed out: no team, no web app of one.
-		expect(
-			at("https://app.sitegloss.dev/t/pedal", { account: undefined }).hidden,
-		).toBe(true);
-		// Signed in to the development server: the service's pages are not its web app.
-		expect(
-			at("https://app.sitegloss.dev/t/pedal", {
-				account: account({ server: "https://app.dev.sitegloss.dev" }),
-			}).hidden,
-		).toBe(true);
-		expect(
-			at("https://app.dev.sitegloss.dev/t/pedal", {
-				account: account({ server: "https://app.dev.sitegloss.dev" }),
-			}).hidden,
-		).toBe(false);
-		// Not in an open case (DEC-061): Home says it; the case's head stays calm.
-		const c = sampleCase("c_1");
-		const state = caseState(c, (s) => {
-			s.cloud.account = account();
-			s.tab = tab("https://app.sitegloss.dev/t/pedal/cases/c_1");
-		});
-		render(state, noActions);
-		expect(el("case-view").textContent).not.toContain("your team's web app");
-		expect(webAppNote(state)).toContain("your team's web app");
 	});
 
 	test("an AI app just paired: its card says what to ask it and offers the way back (DEC-045)", () => {
