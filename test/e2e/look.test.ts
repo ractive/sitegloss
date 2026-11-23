@@ -423,7 +423,9 @@ inFullSet("the look", () => {
 		/** From wide to narrow: what must hold whatever the font and the scrollbar. */
 		const check = async (): Promise<Layout[]> => {
 			const seen: Layout[] = [];
-			for (const width of [1600, 1200, 1000, 900, 800, 700, 600, 500, 440]) {
+			for (const width of [
+				1600, 1200, 1030, 1000, 900, 800, 700, 600, 500, 440,
+			]) {
 				const layout = await at(width);
 				seen.push(layout);
 				// The tools never wrap in the middle, and the bar stays on the page.

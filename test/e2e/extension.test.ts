@@ -270,17 +270,16 @@ inBothSets("marking and saving", () => {
 			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; }</style>");
 		})()`);
 		const caseId = await showToolbar(h, page, tabId);
-		// A long title, as the bug needed: about 40 characters.
+		// A long title, as the bug needed: 29 characters need 987 px in one row in
+		// CI's Linux font (a longer one wraps in the status, and the bar is taller).
 		await h.control.eval(
 			`chrome.tabs.sendMessage(${tabId}, ${JSON.stringify({
 				type: "overlay:title",
 				caseId,
-				title: "Krankenkasse vergleichen: Prämienrechner",
+				title: "Krankenkasse vergleichen (v1)",
 			})})`,
 		);
-		await page.waitFor(
-			`${shadow(".status")}.textContent.includes("Prämienrechner")`,
-		);
+		await page.waitFor(`${shadow(".status")}.textContent.includes("(v1)")`);
 		const height = await page.eval<number>(
 			`${shadow(".toolbar")}.getBoundingClientRect().height`,
 		);
