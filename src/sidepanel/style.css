@@ -1099,62 +1099,171 @@ main {
 	font-weight: 600;
 }
 
-/* Rows from edge to edge of the panel, a rule between them. */
+/*
+ * A case, wherever the panel lists it: one card, its own surface and edge,
+ * the whole of it the control; a band in the status colours along its top
+ * edge, the counts as chips.
+ */
 ul.cases {
+	display: grid;
+	gap: var(--s2);
 	list-style: none;
-	margin: 0 calc(-1 * var(--s4));
+	margin: 0;
 	padding: 0;
-	border-top: 1px solid var(--rule);
-}
-
-.cases > li {
-	border-bottom: 1px solid var(--rule);
 }
 
 ul.cases [data-case] {
 	position: relative;
 	display: grid;
-	gap: 1px;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: start;
 	width: 100%;
 	min-width: 0;
-	padding: 10px 40px 12px var(--s4);
-	border: 0;
-	border-radius: 0;
-	background: none;
+	padding: calc(var(--s3) + 5px) var(--s3) var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
 	font-weight: 400;
 	text-align: left;
-}
-
-/* It opens: a chevron at its end. */
-ul.cases [data-case]::after {
-	content: "";
-	position: absolute;
-	top: 50%;
-	right: 20px;
-	width: 7px;
-	height: 7px;
-	border-top: 1.75px solid var(--ink-2);
-	border-right: 1.75px solid var(--ink-2);
-	transform: translateY(-50%) rotate(45deg);
+	overflow: hidden;
 }
 
 ul.cases [data-case]:hover:not(:disabled) {
 	background: var(--wash);
 }
 
-ul.cases [data-case]:hover::after {
-	border-color: var(--ink);
+.case-card .card-head {
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+	min-width: 0;
 }
 
-ul.cases [data-case]:focus-visible {
-	outline-offset: -2px;
+/* One line each: what does not fit is cut. */
+.case-card .title,
+.case-card .where-url,
+.case-card .card-summary {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
-ul.cases .title {
+.case-card .title {
+	flex: 1 1 auto;
 	font-size: 14px;
 	line-height: 20px;
 	font-weight: 600;
-	overflow-wrap: anywhere;
+}
+
+.case-card .card-where,
+.case-card .card-date,
+.case-card .card-summary,
+.case-card .card-chips {
+	color: var(--ink-2);
+	font-size: 12px;
+	line-height: 17px;
+}
+
+.case-card .card-where {
+	display: flex;
+	min-width: 0;
+	white-space: pre;
+}
+
+.case-card .where-more {
+	flex: none;
+}
+
+/* The summary for the developer's start: one line, cut; read whole in the case. */
+.case-card .card-summary {
+	display: block;
+	margin-top: var(--s1);
+}
+
+.case-card .progress.band {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 5px;
+	border-radius: 0;
+}
+
+.case-card .progress.empty {
+	background: var(--rule);
+}
+
+/* The chips wrap to a further line rather than being cut. */
+.case-card .card-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--s1);
+	min-width: 0;
+	margin-top: var(--s2);
+}
+
+.case-card .card-chips > span {
+	flex: none;
+	padding: 0 6px;
+	border-radius: var(--r-pill);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.case-card .card-chips [data-kind="open"] {
+	background: var(--st-open-bg);
+	color: var(--st-open);
+}
+
+.case-card .card-chips [data-kind="toVerify"] {
+	background: var(--st-verify-bg);
+	color: var(--st-verify);
+}
+
+.case-card .card-chips [data-kind="verified"] {
+	background: var(--st-verified-bg);
+	color: var(--st-verified);
+}
+
+.case-card .card-chips [data-kind="dismissed"] {
+	background: var(--st-dismissed-bg);
+	color: var(--st-dismissed);
+}
+
+.case-card .card-chips .none {
+	padding: 0;
+	font-weight: 400;
+}
+
+/* The page's one case and its Open button: one unit; a new case is outside it. */
+.here li.with-action {
+	display: grid;
+	gap: var(--s3);
+	padding-bottom: var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
+	overflow: hidden;
+}
+
+.here li.with-action > [data-case] {
+	border: 0;
+	border-radius: var(--r-card) var(--r-card) 0 0;
+	background: none;
+}
+
+.here li.with-action > [data-case]:hover:not(:disabled) {
+	background: var(--wash);
+}
+
+.here li.with-action > [data-case]:focus-visible {
+	outline-offset: -2px;
+}
+
+.here li.with-action > #open-here {
+	margin: 0 var(--s3);
+	width: auto;
 }
 
 /* --- home: files and the sync -------------------------------------------------- */
@@ -1518,12 +1627,6 @@ ul.cases .title {
 	margin: 0;
 }
 
-/* A case the team does not have, in the list; a closed one under This page (DEC-050). */
-.cases .device-only,
-.cases .closed-tag {
-	align-self: start;
-}
-
 /* Where a mark was made: its address is a link in the line (DEC-050). */
 .mark-page button.page-link {
 	display: inline;
@@ -1856,13 +1959,6 @@ ul.cases .title {
 .progress > span {
 	min-width: 4px;
 	background: var(--st-dismissed);
-}
-
-/* In a case's row: the same picture, quieter. */
-ul.cases .progress {
-	height: 4px;
-	margin-top: 6px;
-	max-width: 160px;
 }
 
 .progress [data-kind="open"] {

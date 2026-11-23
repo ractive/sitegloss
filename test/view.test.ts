@@ -1608,11 +1608,17 @@ describe("Verify (DEC-023)", () => {
 		const item = window.document.querySelector(
 			`[data-case="${c.id}"]`,
 		) as unknown as HTMLElement;
-		expect(item.textContent).toContain(
-			"4 marks (1 open, 1 to verify, 1 verified, 1 dismissed)",
+		// One sentence for a screen reader; the bar and the words for the eye.
+		expect(item.getAttribute("aria-label")).toContain(
+			"4 marks, 1 open, 1 to verify, 1 verified, 1 dismissed",
 		);
 		expect(
-			[...item.querySelectorAll(".progress > span")].map((s) =>
+			[...item.querySelectorAll(".card-chips > span")].map(
+				(s) => s.textContent,
+			),
+		).toEqual(["● 1 open", "◐ 1 to verify", "✓ 1 verified", "– 1 dismissed"]);
+		expect(
+			[...item.querySelectorAll(".progress.band > span")].map((s) =>
 				s.getAttribute("data-kind"),
 			),
 		).toEqual(["open", "toVerify", "verified", "dismissed"]);
@@ -2205,7 +2211,10 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		expect(row?.textContent).toContain("shop.example/cart and 1 more page");
+		expect(row?.textContent).toContain("shop.example/cart · 2 pages");
+		expect(row?.getAttribute("aria-label")).toContain(
+			"on shop.example/cart and 1 more page",
+		);
 		expect(
 			window.document.querySelector(
 				'ul.cases[data-group="other"] [data-case="c_other"]',
@@ -3553,7 +3562,7 @@ describe("what stays between renders", () => {
 describe("the summary for the developer", () => {
 	const value = () => el<HTMLTextAreaElement>("verdict").value;
 
-	test("is labelled so, says what it is for, and shows in the case list", () => {
+	test("is labelled so and says what it is for", () => {
 		const c = { ...sampleCase("c_s"), verdict: "Darker button" };
 		render(caseState(c), noActions);
 		expect(
@@ -3567,12 +3576,27 @@ describe("the summary for the developer", () => {
 		// A comment box gets no placeholder (the owner, DEC-060).
 		expect(el<HTMLTextAreaElement>("comment-new").placeholder).toBe("");
 		expect(el("save-verdict").textContent).toBe("Save summary");
+	});
+
+	test("a case's card shows its start on one line; its name only says there is one", () => {
+		const long = `Darker button\n\nand ${"more ".repeat(100)}`;
 		const home = initialState();
-		home.cases = [c];
+		home.cases = [
+			{ ...sampleCase("c_s"), verdict: long },
+			{ ...sampleCase("c_none"), verdict: null },
+		];
 		render(home, noActions);
-		expect(
-			window.document.querySelector('[data-case="c_s"]')?.textContent,
-		).toContain("Summary for the developer: Darker button");
+		const card = window.document.querySelector('[data-case="c_s"]');
+		const line = card?.querySelector(".card-summary")?.textContent ?? "";
+		expect(line.startsWith("Darker button and more")).toBe(true);
+		expect(line.length).toBe(200);
+		expect(card?.getAttribute("aria-label")).not.toContain("Darker");
+		expect(card?.getAttribute("aria-label")).toEndWith(
+			", with a summary for the developer",
+		);
+		const none = window.document.querySelector('[data-case="c_none"]');
+		expect(none?.querySelector(".card-summary")).toBeNull();
+		expect(none?.getAttribute("aria-label")).not.toContain("summary");
 	});
 
 	test("a draft stays while the case changes, and comes back after leaving", () => {

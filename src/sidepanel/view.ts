@@ -456,17 +456,84 @@ function renderSaved(
 
 // --- home ----------------------------------------------------------------------
 
-/** A case: opening it draws its marks on the tab in front (DEC-022). */
+/** "shop.example/cart · 8 pages": where the case is; the address is cut, the count stays. */
+function whereLine(c: Case): HTMLElement {
+	const pages = casePages(c);
+	return h(
+		"span",
+		{ class: "card-where" },
+		h("span", { class: "where-url" }, shortUrl(pages[0]?.url ?? c.page.url)),
+		pages.length > 1
+			? h("span", { class: "where-more" }, ` · ${pages.length} pages`)
+			: null,
+	);
+}
+
+/** The case's bar as the card's top edge; an empty track while it has no marks. */
+function caseBand(c: Case): HTMLElement {
+	const band =
+		statusBar(c) ??
+		h("span", { class: "progress empty", "aria-hidden": "true" });
+	band.classList.add("band");
+	return band;
+}
+
+/** "25 open", "6 to verify", …: a chip per status with marks, each with its sign. */
+function caseChips(c: Case): HTMLElement {
+	const n = caseCounts(c);
+	const groups = STATUS_GROUPS.filter((g) => n[g] > 0);
+	return h(
+		"span",
+		{ class: "card-chips" },
+		...(groups.length === 0
+			? [h("span", { class: "none" }, "No marks yet")]
+			: groups.map((g) =>
+					h(
+						"span",
+						{ "data-kind": g },
+						h("span", { class: "sign", "aria-hidden": "true" }, CHIP_SIGN[g]),
+						` ${n[g]} ${GROUP_LABEL[g].toLowerCase()}`,
+					),
+				)),
+	);
+}
+
+/**
+ * The start of the summary for the developer, for one line: the style sheet
+ * cuts it; more than a wide panel shows is not drawn.
+ */
+function summaryStart(c: Case): string | undefined {
+	const text = c.verdict?.replace(/\s+/g, " ").trim();
+	return text ? text.slice(0, 200) : undefined;
+}
+
+/**
+ * The card's name, in one sentence: title, state, counts, where, when. Of the
+ * summary only that there is one: the whole would be read on every card.
+ */
+function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
+	const count = c.marks.length;
+	const counts = marksText(c);
+	const state = [
+		c.closed !== undefined ? "closed" : undefined,
+		team ? "shared with the team" : undefined,
+		deviceOnly ? "on this device only" : undefined,
+	].filter(Boolean);
+	return `${c.title}${state.length > 0 ? `, ${state.join(", ")}` : ""}: ${count === 0 ? "no marks" : `${count} mark${count === 1 ? "" : "s"}, ${counts}`}, on ${pagesLine(c)}, changed ${formatDate(c.updatedAt)}${summaryStart(c) ? ", with a summary for the developer" : ""}`;
+}
+
+/**
+ * A case, as one object wherever the panel lists it: a card, the whole of
+ * it the control, its bar along its top edge and its counts as chips;
+ * opening it draws its marks on the tab in front (DEC-022).
+ */
 function caseItem(
 	c: Case,
 	actions: Actions,
 	deviceOnly = false,
-	/** Under "This page", a closed case says so: elsewhere it stands under Closed. */
-	sayClosed = false,
+	team = false,
 ): HTMLLIElement {
-	const count = c.marks.length;
-	// The bar beside it is a picture; the words say the same.
-	const counts = countsText(caseCounts(c));
+	const summary = summaryStart(c);
 	return h(
 		"li",
 		{},
@@ -474,32 +541,31 @@ function caseItem(
 			"button",
 			{
 				type: "button",
+				class: "case-card",
 				"data-case": c.id,
+				...(c.closed !== undefined ? { "data-closed": true } : {}),
+				"aria-label": cardName(c, deviceOnly, team),
 				title: `Open “${c.title}” and show its marks on the page in this tab`,
 				onclick: () => actions.openCase(c.id),
 			},
-			h("span", { class: "title" }, c.title),
-			sayClosed && c.closed !== undefined
-				? h("span", { class: "tag closed-tag" }, "Closed")
-				: null,
-			// Signed in, a case the team does not have says so (DEC-039).
-			deviceOnly
-				? h("span", { class: "tag device-only" }, "This device only")
-				: null,
-			h("span", { class: "meta" }, pagesLine(c)),
+			caseBand(c),
 			h(
 				"span",
-				{ class: "meta" },
-				`${count} mark${count === 1 ? "" : "s"}${counts ? ` (${counts})` : ""}, ${formatDate(c.updatedAt)}`,
+				{ class: "card-head" },
+				h("span", { class: "title" }, c.title),
+				c.closed !== undefined
+					? h("span", { class: "tag closed-tag" }, "Closed")
+					: null,
+				// Signed in: shared with the team, or not (DEC-039).
+				team ? h("span", { class: "tag team-tag" }, "Team") : null,
+				deviceOnly
+					? h("span", { class: "tag device-only" }, "This device only")
+					: null,
 			),
-			statusBar(c),
-			c.verdict
-				? h(
-						"span",
-						{ class: "meta" },
-						`Summary for the developer: ${c.verdict.slice(0, 80)}`,
-					)
-				: null,
+			whereLine(c),
+			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
+			summary ? h("span", { class: "card-summary" }, summary) : null,
+			caseChips(c),
 		),
 	);
 }
@@ -511,13 +577,15 @@ let importKey: string | undefined;
 function renderCases(state: PanelState, actions: Actions): void {
 	const url = state.tab?.url ?? "";
 	const local = (c: Case) => caseSync(state.cloud, c.id).kind === "local";
+	const team = (c: Case) => caseSync(state.cloud, c.id).kind === "synced";
 	const key = JSON.stringify([
 		url,
 		state.cases.map((c) => [
 			c.id,
 			c.updatedAt,
 			c.importedAt,
-			local(c),
+			c.verdict,
+			caseSync(state.cloud, c.id).kind,
 			c.closed !== undefined,
 		]),
 	]);
@@ -554,7 +622,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 					h(
 						"ul",
 						{ class: "cases", "data-group": "here" },
-						...own.map((c) => caseItem(c, actions, local(c), true)),
+						...own.map((c) => caseItem(c, actions, local(c), team(c))),
 					),
 				]
 			: []),
@@ -562,6 +630,12 @@ function renderCases(state: PanelState, actions: Actions): void {
 	// One case: opening it is the view's one amber button, a new case steps
 	// back. Several: each row opens its case, and none is the one.
 	openHere.hidden = one === undefined;
+	// One case: its Open button is part of its card; several: none.
+	const unit = hereCases.querySelector("li");
+	if (one && unit) {
+		unit.classList.add("with-action");
+		unit.append(openHere);
+	} else hereCases.after(openHere);
 	openHere.onclick = one ? () => actions.openCase(one.id) : null;
 	openHere.title = one
 		? `Open “${one.title}” and show its marks on the page in this tab`
@@ -584,9 +658,9 @@ function renderCases(state: PanelState, actions: Actions): void {
 				: h(
 						"ul",
 						{ class: "cases", "data-group": "other" },
-						...other.map((c) => caseItem(c, actions, local(c))),
+						...other.map((c) => caseItem(c, actions, local(c), team(c))),
 					),
-		...(closed.length === 0 ? [] : [closedGroup(closed, actions, local)]),
+		...(closed.length === 0 ? [] : [closedGroup(closed, actions, local, team)]),
 	);
 }
 
@@ -598,6 +672,7 @@ function closedGroup(
 	closed: Case[],
 	actions: Actions,
 	local: (c: Case) => boolean,
+	team: (c: Case) => boolean,
 ): HTMLElement {
 	const group = h(
 		"details",
@@ -618,7 +693,7 @@ function closedGroup(
 		h(
 			"ul",
 			{ class: "cases", "data-group": "closed" },
-			...closed.map((c) => caseItem(c, actions, local(c))),
+			...closed.map((c) => caseItem(c, actions, local(c), team(c))),
 		),
 	);
 	return group;
@@ -1837,14 +1912,6 @@ function renderLink(state: PanelState, p: CaseParts, c: Case): void {
 }
 
 // --- a mark's status and its actions ---------------------------------------
-
-/** "2 open, 1 to verify, 1 dismissed": the groups with marks; nothing while every mark is open. */
-function countsText(n: Record<StatusGroup, number>): string | undefined {
-	if (n.toVerify + n.verified + n.dismissed === 0) return undefined;
-	return STATUS_GROUPS.filter((g) => n[g] > 0)
-		.map((g) => `${n[g]} ${GROUP_LABEL[g].toLowerCase()}`)
-		.join(", ");
-}
 
 /** "3 open", "1 open, 2 to verify", "no marks": for the import prompt. */
 function marksText(c: Case): string {
