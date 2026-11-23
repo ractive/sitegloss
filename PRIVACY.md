@@ -157,8 +157,9 @@ creditworthiness.
 - While you select text with the Highlight tool, the page's own scripts can see the
   selection change and read which of its text is selected, as with any selection you
   make; the selection is cleared when the mark's dialog opens.
-- The page's own scripts can see what Sitegloss shows in the page and the keys you
-  press there, such as a comment while you type it.
+- The page's own scripts can see what Sitegloss draws in the page and that the focus
+  moved to it, but not what you type into a mark's comment or note: that field is a page
+  of the extension's own, in a frame the page cannot read.
 
 ## Permissions
 

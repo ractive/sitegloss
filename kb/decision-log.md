@@ -3748,9 +3748,15 @@ The service's side is its DEC-040; the format both build to is one contract.
   Highlight tool it stays: on the press and each move the place in the page's text under
   the pointer is read with `caretPositionFromPoint` (`caretRangeFromPoint` where that is
   missing) while the layer is let through for that synchronous call alone, and the page's
-  own selection is set to it (`setBaseAndExtent`); a double click takes a word, a triple
-  click a paragraph. A selection made before the tool is chosen counts too, taken at the
-  press of the button (the press would clear it). Probed in Chrome, listeners of the page
+  own selection is set to it (`setBaseAndExtent`). Over Sitegloss's own (a pin, the
+  toolbar) Chrome gives the caret as the host's place in its parent (measured: `(HTML, 3)`),
+  so a point where `elementFromPoint` is the host has no caret, and a drag keeps its last
+  one; a caret inside an editor is refused too, as setting the selection there focuses
+  it. A double click takes a word, a triple click a paragraph: counted by `click`, since
+  `pointerdown`'s `detail` is 0 in Chrome (measured, presses 1 to 3); a double click waits
+  450 ms for a third before it takes its word, or its dialog would be closed by the third
+  press. A selection made before the tool is chosen counts too, taken at the press of the
+  button (the press would clear it). Probed in Chrome, listeners of the page
   in the capture phase on `window`: during a drag the page hears `pointerdown`,
   `pointermove`, `pointerup` and `click` retargeted to Sitegloss's host (as with every
   tool), no `mousedown`, and `selectionchange`; it can read which of its own text is
@@ -3759,7 +3765,10 @@ The service's side is its DEC-040; the format both build to is one contract.
   editors is read: such text cannot be highlighted, and their text is left out of
   `before` and `after`.
 - **Limits, said in the toolbar.** Text in a form field, an editor, an image, a canvas,
-  an SVG or a frame: the dialog does not open, the hint names the Box tool. A selection
+  an SVG, a frame or a component's shadow root (the caret does not reach into one): the
+  dialog does not open, the hint names the Box tool. Text that is there but shows nowhere
+  says so. An element's text is read up to 200,000 text nodes with words; past that a
+  selection says it reaches too far, and a quote not found is not called changed. A selection
   longer than 500 characters or 40 lines is cut to that and the toolbar says so. Frames
   as for the other tools: the page's top document only.
 - **The stroke (decided here).** The logo's swipe (`swipe` in `logo.ts`: its uneven
@@ -3785,7 +3794,10 @@ The service's side is its DEC-040; the format both build to is one contract.
   drawn on the lines that text has now, from a live range. Where the text is not in the
   element any more, often the fix itself, the element is drawn as a box, a found match is
   only probable (`textChanged` in the match), and the panel says "Text changed" and why.
-  A text replaced while the case is drawn (a fix with hot reload) is looked for again.
+  While the case is drawn, a change under the live range (it collapsed, left the page, or
+  holds other text: a fix that set one of its text nodes) has it looked for again, and a
+  text that was gone is looked for again every 2 s (text that came late, a fix undone).
+  Show, and an AI app's add_mark, scroll to the text, not to the middle of its element.
 - **Where it shows.** The panel's row quotes the text on one line, cut, beside the status;
   the toolbar names the tool with a tooltip; get_case carries the highlight (its text and
   the number of lines in a large case); add_mark takes an optional `text` to highlight
@@ -3798,16 +3810,25 @@ The service's side is its DEC-040; the format both build to is one contract.
   kind draws it. The mark is listed with its number, comment, status and thread, named
   "Newer kind" with a hint to update, and can be commented, settled and reopened; it is
   not drawn and has no pin on the page (its element is outlined while it is looked for);
-  Show is not offered when it has no element. A shape without a kind's name is still
-  refused: that is a broken file, not a newer one.
+  Show is not offered when it has no element. A shape without a kind's name (1 to 64
+  characters, no control characters), or larger than 256 KB, is still refused: that is a
+  broken file, not a newer one; from the server such a kind is kept under "unnamed".
+  **Not sent to a team that does not have it**: API v1 takes only the kinds it names, so
+  `mark.create` would be refused for good. Such a mark waits here, and the sync counts it
+  as nothing to send; a newer version sends it. The panel's hint says so.
 - **Unknown fields, where they survive.** `validateCase` keeps every field it does not
   know on a case, a screenshot and a mark (it ran on every change, so they were lost on
-  the first comment). So they survive an import, a change in the panel, the store and an
-  export. Not on an element's details, whose allow-list is a privacy rule (DEC-009), nor
+  the first comment), each up to 16 KB as JSON. So they survive an import, a change in the
+  panel, adding a mark (`saveCase` carries the case's), the store and an export. Not on an element's details, whose allow-list is a privacy rule (DEC-009), nor
   inside a resolution, a finding, a comment or an image. They are never sent: the sync
   builds what it sends from known fields, and a teammate's mark comes in from the
   server's known fields only. An AI app's views name their fields, so it sees none of
-  them.
+  them. **A rule for later versions:** a field from a file is kept unmarked, so a field
+  that only the browser may write (as `via` and `createdVia` now) cannot be told from one
+  a crafted file brought, once a later version knows it. Such a field must be dropped on
+  import by name, as `storeImport` drops those of today, and dropped again when read
+  from a case that has `importedAt`, unless the field is about something done here after
+  the import.
 - **What the released version (0.3.1) does with a highlight.** Its case format is the old
   one; a file of this version is refused by it, and the other way round. Through the
   team: it drops `highlight` when it takes in a teammate's mark, but what it sends of a
@@ -3815,7 +3836,10 @@ The service's side is its DEC-040; the format both build to is one contract.
   it, and the server keeps it. Only a `mark.create` built by 0.3.1 (a mark the server
   does not have) comes without it, which a teammate's existing highlight never needs. A
   highlight made now is therefore not lost by a teammate on 0.3.1; they see a box.
+- **case.md and page text.** `inline()` now also escapes a scheme's colon before `//`,
+  the dot after `www` and `@`, as the server's does: a previewer makes no live link of an
+  address in someone else's text (highlighted text, titles, element names).
 - **What remains.** Auto-scrolling while dragging near the window's edge, as a native
-  selection does, is not built. Text in the page's own shadow roots and in frames cannot
-  be selected with the tool. Firefox runs the same code (it has `caretPositionFromPoint`)
+  selection does, is not built. Text in a component's shadow root and in frames cannot be
+  selected with the tool (refused with a hint). Firefox runs the same code (it has `caretPositionFromPoint`)
   and was not driven through a highlight by hand.
