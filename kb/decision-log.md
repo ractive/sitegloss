@@ -866,7 +866,8 @@ scrollbar takes 15 px of the page). The toolbar
 measures itself when its parts change, when it shows and when the page is resized, and
 takes the first layout that fits: the status beside the tools; the same with the buttons
 closer (added 2026-11-23: with the Highlight tool, DEC-066, the eight words and a long case
-title need about 975 px, and a 1000 px window made a two-row bar; a test guards one row
+title need 975 to 990 px (more in a Linux font), and a 1000 px window with a classic
+scrollbar made a two-row bar; buttons, logo and status come closer; a test guards one row
 at 1000); the status on a second
 row; the tools as icons; Undo and Close as icons too; the buttons closer. Their words
 stay as accessible names. The side panel holds at 345 px of content (Chrome's 360 px

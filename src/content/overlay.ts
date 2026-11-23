@@ -50,8 +50,8 @@ export const RESOLVED_OPACITY = 0.35;
 export const CASING_EXTRA = 3;
 /**
  * How the toolbar is laid out, from the roomiest to the tightest: one row
- * with the status beside the tools; the same with the buttons closer (the
- * eight tools' words and a long case title need about 975 px otherwise);
+ * with the status beside the tools; the same with the buttons, logo and status
+ * closer (the eight tools' words and a long case title need 975 to 990 px otherwise);
  * the status on a second, centred row;
  * the tools as icons; every button with an icon as an icon; the buttons
  * closer. `fitToolbar` takes the first that fits the page, measured, so no
@@ -151,7 +151,8 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 .toolbar[data-fit~="all"] button:has(.icon) .word { ${NO_WORD} }
 .toolbar[data-fit~="snug"] button, .toolbar[data-fit~="tight"] button { padding-inline: 6px; }
 .toolbar[data-fit~="snug"] button.primary, .toolbar[data-fit~="tight"] button.primary { padding-inline: 9px; }
-.toolbar[data-fit~="tight"] .ring { margin: 0 2px; }
+.toolbar[data-fit~="snug"] .ring, .toolbar[data-fit~="tight"] .ring { margin: 0 2px; }
+.toolbar[data-fit~="snug"] .status { padding-inline: 4px; }
 .toolbar[data-fit~="tight"] .sep { display: none; }
 .popover {
 	box-sizing: border-box; position: fixed; width: 296px; padding: 10px; border-radius: 10px;

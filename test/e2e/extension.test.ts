@@ -262,10 +262,10 @@ inBothSets("marking and saving", () => {
 			deviceScaleFactor: 1,
 			mobile: false,
 		});
-		// A page's own styles do not reach it, not even on the host element.
+		// A page's own styles do not reach it, not even on the host element. A classic scrollbar takes 15 px of the window (Windows, Linux).
 		await page.eval(`(() => {
 			document.documentElement.dir = "rtl";
-			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; }</style>");
+			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; } html { overflow-y: scroll; } ::-webkit-scrollbar { width: 15px; } body { min-height: 200vh; }</style>");
 		})()`);
 		await showToolbar(h, page, tabId);
 		const height = await page.eval<number>(
