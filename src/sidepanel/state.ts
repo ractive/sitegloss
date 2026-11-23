@@ -203,6 +203,11 @@ export interface PanelState {
 	 * a few seconds (`COPIED_MS` in main.ts), or until the next copy.
 	 */
 	copied: (Copied & { caseId: string; at: number }) | undefined;
+	/**
+	 * "My cases" in the list of cases (DEC-071): only the cases where it is
+	 * the person's turn. Kept for the browser's session.
+	 */
+	mine: boolean;
 	/** A mark's Delete, clicked once: the second click deletes. */
 	markDeleteArmed: { markId: string; mark: string; at: number } | undefined;
 	/**
@@ -281,6 +286,11 @@ export interface PanelState {
 		 * team's id (DEC-069). None named: not known to be there.
 		 */
 		atTeam: Record<string, string>;
+		/**
+		 * The chosen team's members, to assign a case to (DEC-071), as the
+		 * server last listed them; none: not known, or the server lists none.
+		 */
+		members: { id: string; name: string }[] | undefined;
 		/** The browser's sign-in window is open. */
 		signingIn: boolean;
 		/** What the panel itself could not do (the sign-in, the address). */
@@ -355,6 +365,7 @@ export const initialState = (): PanelState => ({
 	markPage: undefined,
 	picked: undefined,
 	copied: undefined,
+	mine: false,
 	markDeleteArmed: undefined,
 	findingDeleteArmed: undefined,
 	imageDeleteArmed: undefined,
@@ -378,6 +389,7 @@ export const initialState = (): PanelState => ({
 		status: undefined,
 		modes: {},
 		atTeam: {},
+		members: undefined,
 		signingIn: false,
 		problem: undefined,
 		live: undefined,

@@ -241,8 +241,8 @@ The tools:
 
 | Tool | What it does |
 |---|---|
-| `list_cases` | The saved cases, with their pages and their marks by status |
-| `get_case` | A case's pages, its summary for the developer, its marks with their page (and the address with its query where it had one), comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, and whether it is closed |
+| `list_cases` | The saved cases, with their pages, their marks by status and where each stands; in a team's case whose turn it is, who it is assigned to and who started it; `mine` lists only yours |
+| `get_case` | A case's pages, its summary for the developer, its marks with their page (and the address with its query where it had one), comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, whether it is closed, where it stands, and in a team's case whose turn it is and who it is assigned to |
 | `get_image` | One screenshot or crop |
 | `load_case` | Finds the marks' elements on the tab in front and draws the marks there |
 | `open_case` | Opens a case in the side panel, as a click on it there would, and draws its marks on the tab in front (the case made on production, the tab on `localhost:3000`), leaving the case shown as a click would and never while something is being typed there; navigates nowhere; asks first |
@@ -260,6 +260,7 @@ The tools:
 | `edit_comment` | Changes one of the app's own comments; asks first |
 | `delete_comment` | Deletes one of the app's own comments; asks first |
 | `set_case_status` | Closes a case or opens it again; asks first |
+| `assign_case` | Assigns a team's case to a member (`me`, an id or a name) or to nobody; asks first |
 | `delete_case` | Deletes a case; asks first |
 
 What an AI app changes through these tools carries its name: in a team the change says
@@ -404,6 +405,16 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
 - The thread and closing sync like the rest: a comment written offline waits and is
   sent. A Sitegloss before 0.3.1 on the same team keeps syncing its marks and does not
   see the comments or that a case is closed; a mark it adds opens a closed case again.
+- A case is handed over: "Assign" in the open case gives it to a member of the team
+  (whoever may change the team's cases), "Nobody" takes it back. The case says whose
+  turn it is: the open marks are the assignee's to fix, the fixed ones are back with
+  whoever started the case to check and verify, and a settled case is theirs to close.
+  "My cases" above the list shows only the cases where it is your turn, with their
+  number, and each card says where its case stands and who has its open marks. An
+  assignment made offline waits and is sent, as every change. The website mails the
+  assignee, and the reporter when the case is ready to check. All of this shows only
+  where the team's server assigns cases. Sitegloss 0.4.0 and older show no assignee and
+  leave it as it is.
 - Deleting a case the team has deletes it for the team; the button says so. A case
   deleted for the team goes here too. What you delete while signed out is not deleted
   for the team: at the next sign-in the team's marks are back, and Sitegloss says so.

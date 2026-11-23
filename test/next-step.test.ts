@@ -305,3 +305,154 @@ describe("the instructions for an AI app", () => {
 		).toBe('Title: "abcd"');
 	});
 });
+
+describe("the team's case with an assignee: whose turn it is, in the service's words (DEC-071)", () => {
+	const TESS = { id: "u_tess", name: "Tess" };
+	const DANA = { id: "u_dana", name: "Dana" };
+	const PAT = { id: "u_pat", name: "Pat" };
+	/** As `me` sees the case Tess started, assigned to `to`. */
+	const as = (
+		c: Case,
+		me: string,
+		to: typeof DANA | null,
+		more: Partial<Parameters<typeof nextStep>[2]> & { where?: Where } = {},
+	) =>
+		nextStep({ ...c, createdBy: TESS, assignee: to }, more.where ?? TEAM_HAS, {
+			adding: false,
+			mayClose: true,
+			me,
+			mayAssign: true,
+			...more,
+		});
+
+	test("open marks and nobody on them: whoever may assigns, the others send the link", () => {
+		const c = withMarks("open", "open");
+		expect(as(c, TESS.id, null)).toEqual({
+			text: "2 marks are open: assign the case to whoever fixes them.",
+			actions: ["assign", "copy-link", "copy-ai"],
+		});
+		expect(as(c, TESS.id, null, { mayAssign: false })).toEqual({
+			text: "2 marks are open, and nobody is on it yet.",
+			actions: ["copy-link", "copy-ai"],
+		});
+	});
+
+	test("the assignee, the reporter and a third member each read what is theirs", () => {
+		const c = withMarks("open", "fixed");
+		expect(as(c, DANA.id, DANA)).toEqual({
+			text: "It is assigned to you: 1 mark is open.",
+			actions: ["copy-ai", "assign"],
+		});
+		// The reporter also has a fix to check while marks are open.
+		expect(as(c, TESS.id, DANA)).toEqual({
+			text: "Check the fixed marks on the page that has the fix. Dana is on it: 1 mark is open.",
+			actions: ["verify", "copy-link", "assign"],
+		});
+		expect(as(c, PAT.id, DANA, { mayAssign: false })).toEqual({
+			text: "Dana is on it: 1 mark is open.",
+			actions: ["copy-link"],
+		});
+	});
+
+	test("every open mark fixed: back with the reporter to verify", () => {
+		const c = withMarks("fixed", "verified");
+		expect(as(c, TESS.id, DANA)).toEqual({
+			text: "Every open mark is fixed: check them and verify.",
+			actions: ["verify"],
+		});
+		expect(as(c, DANA.id, DANA)).toEqual({
+			text: "Every open mark is fixed: Tess checks them and verifies.",
+			actions: [],
+		});
+	});
+
+	test("every mark settled: the reporter closes it", () => {
+		const c = withMarks("verified", "wontfix");
+		expect(as(c, TESS.id, DANA)?.text).toBe(
+			"Every mark is settled: close the case.",
+		);
+		expect(as(c, PAT.id, DANA)).toEqual({
+			text: "Every mark is settled: Tess closes the case.",
+			actions: [],
+		});
+	});
+
+	test("whoever started it left the team: whoever may verifies and closes, the others are told", () => {
+		const gone = { reporterHere: false };
+		expect(as(withMarks("fixed"), DANA.id, DANA, gone)).toEqual({
+			text: "Every open mark is fixed, and whoever started the case is no longer in the team: check them and verify.",
+			actions: ["verify"],
+		});
+		expect(
+			as(withMarks("fixed"), DANA.id, DANA, { ...gone, mayVerify: false })
+				?.text,
+		).toBe(
+			"Every open mark is fixed, and whoever started the case is no longer in the team.",
+		);
+		expect(as(withMarks("verified"), DANA.id, DANA, gone)).toEqual({
+			text: "Every mark is settled, and whoever started the case is no longer in the team: close the case.",
+			actions: ["close"],
+		});
+		expect(
+			as(withMarks("verified"), DANA.id, DANA, { ...gone, mayClose: false }),
+		).toEqual({
+			text: "Every mark is settled, and whoever started the case is no longer in the team.",
+			actions: [],
+		});
+	});
+
+	test("an assignment not at the server yet says it waits; one refused says why", () => {
+		const c = {
+			...withMarks("open"),
+			createdBy: TESS,
+			assignee: null,
+			assign: { to: DANA, at: AT },
+		};
+		const said = (x: Case, where: Where) =>
+			nextStep(x, where, { adding: false, mayClose: true, me: TESS.id })?.text;
+		expect(said(c, TEAM_HAS)).toBe(
+			"Dana is on it: 1 mark is open. The change goes to the team with the next sync.",
+		);
+		expect(said(c, { ...TEAM_HAS, offline: true })).toBe(
+			"Dana is on it: 1 mark is open. The change waits here until the server can be reached.",
+		);
+		const { assign: _a, ...refused } = c;
+		expect(
+			said(
+				{
+					...refused,
+					assignRefused: {
+						text: "Dana is not in the team any more, so the case was not assigned to them.",
+						at: AT,
+					},
+				},
+				TEAM_HAS,
+			),
+		).toBe(
+			"1 mark is open, and nobody is on it yet. Dana is not in the team any more, so the case was not assigned to them.",
+		);
+	});
+
+	test("not known who has it (a server that told none, a case read before this version, one kept here): as before", () => {
+		const c = { ...withMarks("open"), createdBy: TESS };
+		expect(
+			nextStep(c, TEAM_HAS, { adding: false, mayClose: true, me: DANA.id })
+				?.text,
+		).toBe("Send the case to whoever fixes the open marks.");
+		expect(
+			as(c, TESS.id, DANA, { where: { kind: "browser", share: "may" } }),
+		).toEqual({
+			text: "It is only in this browser. Share it so whoever fixes it can open it.",
+			actions: ["share"],
+		});
+	});
+
+	test("offline is part of where the team's case is", () => {
+		expect(
+			whereIs(
+				cloud({ atTeam: { c_1: "t_1" }, status: synced({ state: "offline" }) }),
+				withMarks("open"),
+			),
+		).toEqual({ ...TEAM_HAS, offline: true });
+	});
+});

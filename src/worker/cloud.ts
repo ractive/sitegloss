@@ -41,6 +41,7 @@ import {
 	casesForgotten,
 	forgetCases,
 	KEYS,
+	membersOf,
 	readAccount,
 	teamOf,
 } from "../lib/cloud/book.ts";
@@ -57,6 +58,7 @@ import { cropImages } from "../lib/images.ts";
 import type { Kv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
 import { type CaseStore, DB_VERSION } from "../lib/store.ts";
+import type { HandOver } from "./tools.ts";
 
 /** The alarm that looks for the team's changes while no panel listens. */
 export const CLOUD_ALARM = "sitegloss-cloud";
@@ -221,6 +223,33 @@ export class Cloud {
 			| undefined;
 		const mode = modes?.[caseId];
 		return mode === undefined || mode === "synced" ? team.name : undefined;
+	}
+
+	/**
+	 * The hand-over in the team chosen, for the AI app's tools (DEC-071):
+	 * who is signed in, the members as last listed, whether the role lets
+	 * them assign, which cases are the team's. None: nobody signed in, no
+	 * team, or the sign-in ran out.
+	 */
+	async handOver(): Promise<HandOver | undefined> {
+		const { kv } = await this.current();
+		const account = await readAccount(kv);
+		const team = teamOf(account);
+		if (account === undefined || team === undefined || account.expired)
+			return undefined;
+		const modes = (await kv.get(KEYS.modes)) as
+			| Record<string, string>
+			| undefined;
+		return {
+			me: account.user.id,
+			team: team.name,
+			members: membersOf(await kv.get(KEYS.members), team.id),
+			mayAssign: (team.permissions ?? []).includes("case:update"),
+			synced: (caseId) => {
+				const mode = modes?.[caseId];
+				return mode === undefined || mode === "synced";
+			},
+		};
 	}
 
 	/**
