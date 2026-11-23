@@ -28,6 +28,8 @@ import {
 	backgroundLog,
 	clickButton,
 	draw,
+	drawOnly,
+	FIELD_FRAME,
 	type FirefoxHarness,
 	firefoxReady,
 	LOCK_WAIT_MS,
@@ -38,6 +40,7 @@ import {
 	type StoredCase,
 	startFirefox,
 	toHome,
+	typeInField,
 } from "./harness.ts";
 
 /** The page the tests mark: the fixture's first version, on the local server. */
@@ -182,6 +185,50 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 		expect(sizeProblems(c)).toEqual([]);
 	}, 60_000);
 
+	test("the dialog's comment field is a frame of the extension's own: focus on open, typing, Ctrl+Enter, Escape, and the page hears none of it (DEC-064)", async () => {
+		await h.rdp.eval(
+			h.page,
+			`(() => {
+				window.heard = [];
+				for (const type of ["keydown", "keyup", "beforeinput", "input", "paste"])
+					window.addEventListener(type, (e) => window.heard.push(type), true);
+				return true;
+			})()`,
+		);
+		await newCase(h);
+		const key = (k: string, mod: boolean) =>
+			h.rdp.evalInFrame(
+				h.page,
+				FIELD_FRAME,
+				`document.getElementById("field").dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)}, ctrlKey: ${mod}, bubbles: true, cancelable: true }))`,
+			);
+		const open = `!!document.getElementById("sitegloss-root").shadowRoot.querySelector(".popover iframe.field")`;
+		await drawOnly(h, { tool: "element", selector: "h1", comment: "" });
+		expect(await typeInField(h, "Typed in Firefox")).toBe(true);
+		await key("Enter", true);
+		await h.rdp.waitFor(
+			h.page,
+			`!(${open})`,
+			"the dialog closed by Ctrl+Enter",
+		);
+		await marksInPanel(h, 1);
+		await drawOnly(h, {
+			tool: "box",
+			selector: "main section p",
+			comment: "",
+		});
+		await typeInField(h, "Closed with Escape");
+		await key("Escape", false);
+		await h.rdp.waitFor(h.page, `!(${open})`, "the dialog closed by Escape");
+		await marksInPanel(h, 2);
+		const c = await readCase(h, TITLE);
+		expect(c.marks.map((a) => a.comment)).toEqual([
+			"Typed in Firefox",
+			"Closed with Escape",
+		]);
+		expect(await h.rdp.eval<string[]>(h.page, "window.heard")).toEqual([]);
+	}, 60_000);
+
 	test("at 150 % zoom too", async () => {
 		const tabId = await h.rdp.eval<number>(
 			h.panel,
@@ -242,7 +289,9 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 	}, 60_000);
 
 	test("export, and import as a copy", async () => {
-		await clickButton(h, "Export");
+		// Export is in the case's … menu (DEC-061).
+		await h.rdp.eval(h.panel, `document.getElementById("case-more").click()`);
+		await clickButton(h, "Export…");
 		let file = "";
 		await until(() => {
 			file =
@@ -305,8 +354,18 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 		};
 		// On Home: every case so far gets a file of its own.
 		await toHome(h);
+		// As many as the tests before made.
+		const cases = await h.rdp.eval<number>(
+			h.panel,
+			`document.querySelectorAll("button[data-case]").length`,
+		);
+		expect(cases).toBeGreaterThan(0);
 		await clickButton(h, "Copy to Downloads");
-		await until(() => synced().length === 3, "three synced files", 30_000);
+		await until(
+			() => synced().length === cases,
+			`${cases} synced files`,
+			30_000,
+		);
 		const before = new Set(synced());
 
 		// A new case: one more file; a second mark: the same file again.
@@ -458,6 +517,48 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 			await client.close();
 		}
 	}, 120_000);
+
+	test("a picture opens in a window of its own, a popup, and Close closes it (DEC-064)", async () => {
+		await newCase(h);
+		await draw(h, { tool: "element", selector: "h1", comment: "Seen large" });
+		await marksInPanel(h, 1);
+		await h.rdp.eval(
+			h.panel,
+			`(() => { const t = document.querySelector("li.mark .mark-toggle"); if (!document.querySelector("li.mark[data-open]")) t.click(); return true; })()`,
+		);
+		await h.rdp.waitFor(
+			h.panel,
+			`document.querySelector('li.mark[data-open] [data-picture="screenshot"] [data-action="open-larger"]') !== null`,
+			"the mark's picture tile",
+			30_000,
+		);
+		await h.rdp.eval(
+			h.panel,
+			`document.querySelector('li.mark[data-open] [data-picture="screenshot"] [data-action="open-larger"]').click()`,
+		);
+		const viewers = `browser.windows.getAll({ populate: true }).then((ws) => ws.filter((w) => w.tabs.some((t) => (t.url ?? "").includes("/viewer/index.html"))).map((w) => w.type + " " + w.tabs.length))`;
+		expect(
+			await h.rdp.waitFor<string[]>(
+				h.panel,
+				`${viewers}.then((v) => v.length > 0 && v)`,
+				"the viewer's window",
+			),
+		).toEqual(["popup 1"]);
+		await h.rdp.waitFor(
+			"/viewer/index.html",
+			`!document.getElementById("picture").hidden`,
+			"the picture in the viewer",
+		);
+		await h.rdp.eval(
+			"/viewer/index.html",
+			`document.getElementById("close").click()`,
+		);
+		await h.rdp.waitFor(
+			h.panel,
+			`${viewers}.then((v) => v.length === 0)`,
+			"the viewer's window closed",
+		);
+	}, 60_000);
 
 	test("the event page logged no error all along", async () => {
 		expect(await backgroundLog(h)).toEqual([]);
