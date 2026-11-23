@@ -28,21 +28,17 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   (Hide marks leaves a pill that shows them again; adding shows them; hiding ends adding),
   "Add marks" on the bar, the bar steps aside while marks are added. Round 4 on
   `panel-round-4` (DEC-063) makes "Add marks" the bar's main action and adds the panel's
-  sticky tool bar. Waits for the owner.
+  sticky tool bar. Merged on 23 November 2026 with pull request 53 (panel round 5,
+  DEC-064); what the owner says after using it comes here.
 - **The sync state on the case itself.** The sync knows its state (syncing with the number
   of cases left, offline, a problem per case, synced with a count still waiting), but shows
   it only as one line in the Team section. After "Sync it" nothing shows on the case. Wanted:
   the state on the case in the list and on the open case ("Sending… 3 of 12 images",
   "Synced", "Not sent:" with the reason). Needs progress per case from the sync engine.
   Known gap beside it: an error of the browser's own storage has no place in the panel.
-- **What comes next, on the open case.** The panel never says how to go on. One block that
-  follows the case's state: no marks yet (add marks), marks but not synced (sync or
-  export), marks and synced (hand over), marks fixed (verify them), all settled (close).
-- **Hand-over, the small part.** "Copy link" (the case's address in the web app is enough
-  for a team member; for someone outside the team, open the web app's share dialog) and
-  "Copy instructions for your AI agent" (the same text as the web app's, from one shared
-  template that names the case's title and address, says how to add the MCP server, and
-  what to do with a mark that cannot be fixed).
+  The next step on the open case (DEC-069) reads the one fact per case the sync now
+  publishes (`atTeam`: the server has the case, in which team); the progress would let it
+  say how far a case on its way is.
 - **The open case's head in the panel is a pile.** Built as a draft after the web's case
   page, on the branch `panel-round-3` (DEC-061): the title with a "…" menu (Rename, the
   link, Export, Delete case), the counts, one action (Add marks), one quiet facts block
@@ -50,7 +46,7 @@ An entry here is not a decision to build it. When one is taken up, its design mo
   screen reader only, "Match size" only past 24 px of width or 100 px of height, and what
   the tab shows under the head. Round 4 on `panel-round-4` (DEC-063): Add marks moves to
   the sticky tool bar, the pages list is one disclosure, one row per page across hosts.
-  Waits for the owner.
+  Merged on 23 November 2026 with pull request 53 (DEC-064).
 - **Images pasted or dropped in the page's mark dialog.** Since DEC-064 the dialog's
   field is a frame of the extension's own, which the page cannot read: pasting or dropping
   an image there could now be taken by the frame itself instead of sending the person to
@@ -180,4 +176,7 @@ the case. It touches the case file and the service's API, so it is not a one-eve
 The larger part of the hand-over: an assignee on the case, an e-mail to that member with
 the case's link and the instructions for an AI agent, and "my cases" in the web app, the
 panel and the MCP tools ("work on my open cases"). The service's API and database have no
-assignee today. After the small hand-over part above.
+assignee today. The small part (what comes next on the open case, Copy link, Copy for
+your AI app) is built (DEC-069), and says what this part needs from it. Also open there:
+the AI app template lives twice, in the service and in the extension, kept in step by
+hand.

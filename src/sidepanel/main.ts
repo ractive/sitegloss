@@ -105,6 +105,7 @@ import {
 	type PendingShow,
 	tryShow,
 } from "./mark-link.ts";
+import { type Copied, copyStep, firstToVerify, whereIs } from "./next-step.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
@@ -1181,6 +1182,32 @@ function followHint(): (text: CaseHint | undefined) => void {
 	};
 }
 
+/** How long the next step says what its copy did (DEC-069). */
+const COPIED_MS = 8000;
+
+/**
+ * The next step's copies (DEC-069), written to the clipboard in the click;
+ * what it did is said in the block for `COPIED_MS`, while the step offers it.
+ */
+async function copyFromStep(c: Case, what: Copied["what"]): Promise<void> {
+	const hint = caseHintWriter();
+	const done = await copyStep(c, whereIs(state.cloud, c), what, (text) =>
+		navigator.clipboard.writeText(text),
+	);
+	if (done === undefined) {
+		// The case left the team between the draw and the click: say so.
+		hint(
+			"Nothing was copied: as far as this browser knows now, the team does not have this case.",
+		);
+		return;
+	}
+	const at = Date.now();
+	update((s) => (s.copied = { caseId: c.id, ...done, at }));
+	setTimeout(() => {
+		if (state.copied?.at === at) update((s) => (s.copied = undefined));
+	}, COPIED_MS);
+}
+
 /** The loaded case's results no longer describe the tab: drop them (and the marks). */
 async function forgetLoaded(
 	options: { hint?: string; clearTab?: boolean } = {},
@@ -2001,6 +2028,29 @@ const actions: Actions = {
 		),
 	setCaseClosed: (caseId, closed) =>
 		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
+
+	copyCaseLink: (c) => void copyFromStep(c, "copy-link"),
+	copyForAiApp: (c) => void copyFromStep(c, "copy-ai"),
+
+	startVerifying(c) {
+		// The case as it is now, and only while it is the one open.
+		const now = state.current;
+		if (now?.id !== c.id) return;
+		const first = firstToVerify(now);
+		if (first === undefined) {
+			// Verified meanwhile (by the team, an AI app): say so, filter nothing.
+			if (state.markFilter?.group === "toVerify")
+				actions.filterMarks(c.id, undefined);
+			caseHintWriter()("No mark waits to be checked any more.");
+			return;
+		}
+		// As a status chip and a picked pin: those marks, on every page, the first open.
+		actions.filterMarks(c.id, "toVerify");
+		actions.filterPage(c.id, undefined);
+		update(
+			(s) => (s.picked = { caseId: c.id, markId: first.id, at: Date.now() }),
+		);
+	},
 
 	cancelLink: () => update((s) => (s.linking = undefined)),
 
