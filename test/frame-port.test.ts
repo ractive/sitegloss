@@ -143,3 +143,16 @@ describe("a field's frame that loads again (DEC-064's review)", () => {
 		}
 	});
 });
+
+test("the token needs no secure context: 128 random bits as hex, from getRandomValues", async () => {
+	const { frameToken } = await import("../src/lib/frame-port.ts");
+	const had = crypto.randomUUID;
+	(crypto as { randomUUID?: unknown }).randomUUID = undefined;
+	try {
+		const a = frameToken();
+		expect(a).toMatch(/^[0-9a-f]{32}$/);
+		expect(frameToken() === a).toBe(false);
+	} finally {
+		(crypto as { randomUUID?: unknown }).randomUUID = had;
+	}
+});

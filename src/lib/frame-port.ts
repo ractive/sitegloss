@@ -23,9 +23,14 @@ export interface Hello<T> {
 	init: T;
 }
 
-/** A random token for a frame's address fragment, and its first hello. */
+/**
+ * A random token for a frame's address fragment, and its first hello: 128
+ * bits from `getRandomValues`, which a plain http: page has too
+ * (`randomUUID` is only in secure contexts).
+ */
 export function frameToken(): string {
-	return crypto.randomUUID();
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
