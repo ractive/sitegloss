@@ -239,7 +239,9 @@ inFullSet("Verify", () => {
 		await panel.waitFor(`${row("m1")}?.dataset.status === "fixed"`);
 		await panel.click(`${row("m1")}.querySelector(".mark-toggle")`);
 		await panel.waitFor(`${row("m1")}.hasAttribute("data-open")`);
-		await panel.click(act("m1", "verify"));
+		await panel.click(
+			`${row("m1")}.querySelector('.body [data-mark-action="verify"]')`,
+		);
 		// The state, not the time: stored as verified, then the next row is open.
 		await until(
 			async () =>
