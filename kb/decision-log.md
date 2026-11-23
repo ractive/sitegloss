@@ -3339,3 +3339,25 @@ access switch and to ask about it when AI access is first turned on.
 - Tests: `test/card.test.ts` (the table: each way AI access comes on, keep-on ticked or
   not, answered or not, taken over; the question's course; when an answer is kept),
   `test/view.test.ts` (the question's markup, its two answers, the focus when it goes).
+
+## DEC-062: tab-mcp client 0.22.0 changes nothing for Sitegloss (owner)
+
+2026-11-23. The owner: "if there's no change, I recommend just bumping the library to the
+latest version." `@ractive-ch/tab-mcp-client` goes from 0.21.0 to 0.22.0, and the relay
+used by the tests, `@ractive-ch/tab-mcp`, from 0.13.0 to 0.13.3. (DEC-060 and DEC-061 are
+taken by the panel's rounds 2 and 3, which are on branches.)
+
+- **Not reached: `BrowserExtension` has no `version` any more** (the library's DEC-221).
+  That is the state a web page reads about the tab-mcp browser extension
+  (`TabMcp.extension`, the `extensionchange` event). Sitegloss is not such a page: its
+  `TabMcp` runs in the service worker as a server over the relay with WebMCP off
+  (`src/worker/connection.ts`), and nothing in `src` or `test` reads `extension` or
+  listens for `extensionchange`. The `version` it passes is `server.version`, the MCP
+  server's own, which is unchanged.
+- **Not reached: a page on 0.21.0 loses the extension's state** with the tab-mcp browser
+  extension after 0.3.2. Same reason.
+- **The relay 0.13.1 to 0.13.3** changes its own connect page (the code shown as boxes)
+  and fixes two faults in how it limits and frames requests. The filler of the pairing
+  code (`./extension`, DEC-049) writes into one input, which the page still is.
+- Tests: none added. `bun run verify`, and the connection and always-allowed end-to-end
+  files against the new relay, were run once with the new versions.
