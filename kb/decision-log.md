@@ -4416,9 +4416,11 @@ the extension? Colors etc." and "You don't need to replicate the Astryx componen
   site. Amber keeps what it is as the logo's colour: the loop in the page's bars, the AI
   pill's dot while it waits, the edge of a highlight's quote, the Highlight tool's marker
   stroke, and the toolbar icon's badge while the sync is paused (the web app's amber is its
-  warning colour too). The Verify cue's highlight of the next mark (DEC-061), amber at 30 %
-  when it came, is the green, the web app's highlight, at 18 % (the forest green is far
-  darker than the amber; 30 % of it reads as a dark band) with its border.
+  warning colour too). The Verify cue's highlight of the next mark (DEC-061) stays as the
+  owner approved it: the amber at 30 % with its amber edge. Seen on the new cream in both
+  schemes it is as plain as on the old paper (the tint against the paper 1.19:1 in light,
+  1.98:1 in dark, before 1.18:1 and 1.96:1), so its share is unchanged; the row's words
+  read on it (ink 13.27:1 and 7.93:1).
 - **The dark scheme's main button** is the web app's own (green 9 in dark, #53ba9e with the
   page's colour as text); it is loud at the panel's full width, and stays as the web has it.
 - **Pins are the page's colours in both schemes**, as the web app's: a screenshot does not

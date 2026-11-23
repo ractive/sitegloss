@@ -2468,10 +2468,10 @@ ol.marks {
 	content: "";
 	position: absolute;
 	inset: 0 var(--s2);
-	/* The highlight is the web app's: the green (DEC-077), not the logo's amber. */
-	border: 2px solid var(--strong);
+	/* A highlighter: the logo's amber (DEC-077), as the owner approved it. */
+	border: 2px solid var(--accent-edge);
 	border-radius: var(--r-card);
-	background: color-mix(in srgb, var(--strong) 18%, transparent);
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
 	pointer-events: none;
 	animation: verify-glow 1900ms linear var(--cue-elapsed, 0ms) forwards;
 }

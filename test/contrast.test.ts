@@ -239,6 +239,51 @@ describe("the panel's tokens", () => {
 				});
 });
 
+/**
+ * The Verify cue's highlight (DEC-061, DEC-077): the logo's amber mixed into
+ * the paper at the share the style sheet gives it, with the amber edge. The
+ * row's words must still read on it.
+ */
+describe("the Verify highlight", () => {
+	const share = Number(
+		/\.mark\[data-arrived\][^}]*color-mix\(in srgb, var\(--accent\) (\d+)%/.exec(
+			css,
+		)?.[1],
+	);
+	const mix = (top: string, under: string, t: number) =>
+		`#${[1, 3, 5]
+			.map((i) =>
+				Math.round(
+					Number.parseInt(top.slice(i, i + 2), 16) * t +
+						Number.parseInt(under.slice(i, i + 2), 16) * (1 - t),
+				)
+					.toString(16)
+					.padStart(2, "0"),
+			)
+			.join("")}`;
+	for (const [scheme, t, want] of [
+		["light", light, [13.27, 6.14, 4.29]],
+		["dark", dark, [7.93, 4.85, 9.8]],
+	] as const)
+		test(`${scheme}: the ink and the meta on the tint, the edge on the paper: ${want.join(", ")}`, () => {
+			expect(share).toBeGreaterThan(0);
+			const tint = mix(
+				t["--accent"] as string,
+				t["--paper"] as string,
+				share / 100,
+			);
+			const got = [
+				ratio(t["--ink"] as string, tint),
+				ratio(t["--ink-2"] as string, tint),
+				ratio(t["--accent-edge"] as string, t["--paper"] as string),
+			];
+			expect(got).toEqual([...want]);
+			expect(got[0] as number).toBeGreaterThanOrEqual(TEXT);
+			expect(got[1] as number).toBeGreaterThanOrEqual(TEXT);
+			expect(got[2] as number).toBeGreaterThanOrEqual(EDGE);
+		});
+});
+
 describe("the page's fixed colours", () => {
 	const L = PAGE_LOOK;
 	const WHITE = "#ffffff";
