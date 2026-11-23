@@ -717,6 +717,14 @@ export class CloudSync {
 		this.#deps.onStatus?.(status);
 	}
 
+	/** The books as the run's push read them, while none was written since. */
+	#booksAsRead(): Map<string, CaseBook> | undefined {
+		const read = this.#read;
+		return read !== undefined && read.books === this.#books.writes
+			? read.all
+			: undefined;
+	}
+
 	/** The status with what the books and this run have to say. */
 	async #status(
 		state: CloudStatus["state"],
@@ -892,7 +900,6 @@ export class CloudSync {
 				});
 				return;
 			}
-			const written = this.#books.writes;
 			this.#read = undefined;
 			await this.#readThreadsOnce(team);
 			await this.#flush(api, team);
@@ -908,11 +915,8 @@ export class CloudSync {
 				await this.#reread(api, team);
 				more = await this.#push(api, team, true);
 			}
-			if (
-				this.#books.writes !== written ||
-				!(await this.#books.atTeamPublished())
-			)
-				await this.#books.publishModes();
+			// Written only where it changed: also what a run stopped before it left.
+			await this.#books.publishModes(this.#booksAsRead());
 			const done = await this.#status("synced", {
 				lastSyncedAt: this.#now().toISOString(),
 			});

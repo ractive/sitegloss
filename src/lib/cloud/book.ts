@@ -438,29 +438,54 @@ export class Books {
 	}
 
 	/**
-	 * Write how each case syncs, and which cases the server has and in which
-	 * team (a synced book with the server's copy, `shadow`), for the panel.
+	 * Write how each case syncs, and which cases the server confirmed and in
+	 * which team (`confirmedTeam`), for the panel: only when either differs
+	 * from what is stored, so it is cheap to call at the end of every run,
+	 * and a run that stopped before it is made good by the next. `books`:
+	 * the books as just read, while none was written since.
 	 */
-	async publishModes(): Promise<Record<string, SyncMode>> {
+	async publishModes(
+		books?: Map<string, CaseBook>,
+	): Promise<Record<string, SyncMode>> {
 		const modes: Record<string, SyncMode> = {};
 		const atTeam: Record<string, string> = {};
-		for (const book of (await this.all()).values()) {
+		for (const book of (books ?? (await this.all())).values()) {
 			modes[book.caseId] = book.mode;
-			if (
-				book.mode === "synced" &&
-				book.shadow !== undefined &&
-				book.teamId !== undefined
-			)
-				atTeam[book.caseId] = book.teamId;
+			const team = confirmedTeam(book);
+			if (team !== undefined) atTeam[book.caseId] = team;
 		}
-		await this.kv.set({ [KEYS.modes]: modes, [KEYS.atTeam]: atTeam });
+		const same =
+			sameRecord(await this.kv.get(KEYS.modes), modes) &&
+			sameRecord(await this.kv.get(KEYS.atTeam), atTeam);
+		if (!same)
+			await this.kv.set({ [KEYS.modes]: modes, [KEYS.atTeam]: atTeam });
 		return modes;
 	}
+}
 
-	/** Whether the panel's list of the cases the server has was written (a build before it wrote none). */
-	async atTeamPublished(): Promise<boolean> {
-		return (await this.kv.get(KEYS.atTeam)) !== undefined;
-	}
+/** Whether `stored` is a record of the very entries of `now`. */
+function sameRecord(stored: unknown, now: Record<string, string>): boolean {
+	if (typeof stored !== "object" || stored === null) return false;
+	const entries = Object.entries(stored as Record<string, unknown>);
+	return (
+		entries.length === Object.keys(now).length &&
+		entries.every(([key, value]) => now[key] === value)
+	);
+}
+
+/**
+ * The team whose server confirmed the case as its book has it now, or none
+ * (DEC-069): what the panel's link for it rests on. Synced, with the
+ * server's copy (`shadow`), and no read of it pending that holds back what
+ * is sent: a book taken up again (`resumed`), joined with the team's copy
+ * (`join`) or missing here has a copy of before until the server answers.
+ * A `failed` read leaves the server's copy as it was (`blocks` in engine.ts).
+ */
+export function confirmedTeam(book: CaseBook): string | undefined {
+	if (book.mode !== "synced" || book.shadow === undefined) return undefined;
+	if (book.reread !== undefined && book.reread.why !== "failed")
+		return undefined;
+	return book.teamId;
 }
 
 /** The account, as stored; `undefined`: nobody is signed in. */
