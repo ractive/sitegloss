@@ -3735,6 +3735,25 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
 
 
+**Note, 2026-11-23: a mark's Show is there while the marks are not drawn (owner).** "The
+'Show' button on a mark is only shown when the marks are shown. hm. Why not keep it there
+always and clicking it turns on the 'Show marks' indirectly." Rule for a row of the page in
+front, per state:
+
+| State | The row's Show |
+|---|---|
+| Marks drawn on this tab, mark found or a note or box | "Show mark n on the page": scrolls and outlines (unchanged) |
+| Marks not drawn, tab can take them (the "Show marks" button is there) | "Show the marks on this page and go to mark n": draws the case's marks as "Show marks" does, then shows this mark, once |
+| Mark of another page of the case | unchanged: the page's link and, while the marks are drawn, "Show" that opens its page |
+| Tab Sitegloss may not run on yet, a browser page, no tab, the panel as a page | none while not drawn (as "Show marks"); disabled with the notice's words while drawn (unchanged) |
+| No mark of this page, a mark of a newer kind with no element | none |
+| Drawn, mark lost or unsure | none, as before; the row says it was not found |
+| Closed case | as an open one: "Show marks" works there |
+
+A press goes through `loadAndShow`: the same load as "Show marks" (no new permission or
+setting), then the mark waits as a mark's link does (`pendingShow`). A second press while
+it draws does nothing. A mark found is shown; one not found says so in its row.
+
 ## DEC-065: "Pages" is a heading that opens and closes its list, and the list is flush left
 
 2026-11-23. The owner, on the panel as merged: "Keep the list of sites left aligned and

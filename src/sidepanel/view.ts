@@ -64,7 +64,7 @@ import {
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
-import { markTargets, shortAddress } from "./mark-link.ts";
+import { markTargets, mayLoadAndShow, shortAddress } from "./mark-link.ts";
 import {
 	type CardHandOver,
 	cardHandOver,
@@ -193,6 +193,11 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	typeVerdict(caseId: string, text: string): void;
 	saveVerdict(caseId: string, text: string): void;
 	showMatch(caseId: string, a: Mark, candidate: number): void;
+	/**
+	 * A mark's Show while the case's marks are not drawn on the tab in front:
+	 * what "Show marks" does, and then this mark is shown, in one press.
+	 */
+	loadAndShow(c: Case, a: Mark): void;
 	importReplace(): void;
 	importCopy(): void;
 	importCancel(): void;
@@ -3649,6 +3654,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 		// A mark's link offers the host in front too (DEC-050).
 		tabOrigin(state.tab?.url),
 		markArmed ?? null,
+		// Whether a mark's Show must draw the marks first.
+		p.loadedHere,
+		p.loadButton.hidden,
+		state.showingMark ?? null,
 		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
 		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
 		notSent ?? null,
@@ -3690,6 +3699,16 @@ function renderCase(state: PanelState, actions: Actions): void {
 				actions,
 				thread: threadContext,
 				canReach: ok,
+				// What "Show marks" would do here; a mark of another page, or of
+				// a kind this version cannot show, has nothing to go to.
+				busy:
+					state.showingMark?.caseId === c.id &&
+					state.showingMark.markId === a.id,
+				loadFirst:
+					!p.loadedHere &&
+					!p.loadButton.hidden &&
+					mayLoadAndShow(c, a, state.tab?.url, true) &&
+					!(a.shape.kind === "unknown" && a.element === null),
 				changed: () => syncToggleAll(),
 			});
 		});
@@ -4113,6 +4132,13 @@ interface MarkContext {
 	actions: Actions;
 	/** Sitegloss may run on the tab in front: Show can scroll it. */
 	canReach: boolean;
+	/**
+	 * The case's marks are not drawn on the tab in front, which can take
+	 * them, and this mark is of its page: Show draws them, then shows it.
+	 */
+	loadFirst: boolean;
+	/** This mark's Show is drawing the marks now. */
+	busy: boolean;
 	/** A mark opened or closed by its own head. */
 	changed: () => void;
 	/** Who may write a mark's comments (DEC-061). */
@@ -4161,8 +4187,23 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	);
 	// A mark of an unknown kind with no element is nowhere this version can
 	// show (DEC-066).
-	const show =
-		canShow(m) && !(a.shape.kind === "unknown" && m.status === "no-element")
+	const show = x.loadFirst
+		? h(
+				"button",
+				{
+					type: "button",
+					class: "small show",
+					"data-action": "show",
+					"data-loads": "",
+					"aria-busy": x.busy ? "true" : "false",
+					"aria-label": `Show the marks on this page and go to mark ${a.number}`,
+					title:
+						"Show this case's marks on this page, scroll to this one and outline it",
+					onclick: () => actions.loadAndShow(c, a),
+				},
+				"Show",
+			)
+		: canShow(m) && !(a.shape.kind === "unknown" && m.status === "no-element")
 			? h(
 					"button",
 					{

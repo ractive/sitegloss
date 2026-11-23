@@ -103,7 +103,9 @@ import { markChange } from "./mark-change.ts";
 import {
 	linkStep,
 	markTargets,
+	mayLoadAndShow,
 	type PendingShow,
+	pendingAfterDraw,
 	tryShow,
 } from "./mark-link.ts";
 import { type Copied, copyStep, firstToVerify, whereIs } from "./next-step.ts";
@@ -237,6 +239,8 @@ function startLoad(target: Drawn): ReturnType<Latest["start"]> {
 function stopLoads(): void {
 	loadTarget = undefined;
 	loadWork.cancel();
+	// A mark's Show that was waiting for this draw has nothing to wait for.
+	if (pendingShow?.fromShow) pendingShow = undefined;
 	// A draw waiting to search again is over too: a follow may draw anew.
 	setDrawing(undefined);
 }
@@ -313,6 +317,9 @@ let pendingLoad: { tabId: number; caseId: string } | undefined;
  */
 let pendingShow: PendingShow | undefined;
 
+/** A mark's Show is drawing the case's marks first: no second press meanwhile. */
+let showLoading = false;
+
 /** How long a mark's link waits for its page and the marks on it. */
 const SHOW_WAIT_MS = 120_000;
 
@@ -338,6 +345,12 @@ async function showPending(): Promise<void> {
 		if (s.loaded?.tabId === p.tabId && s.loaded.caseId === p.caseId)
 			s.loaded.matches.set(p.markId, shown);
 	});
+	const n = shown.number;
+	p.say?.(
+		shown.status === "lost"
+			? `Mark ${n} was not found on this page.`
+			: `Showing mark ${n}.`,
+	);
 }
 
 /**
@@ -1140,6 +1153,7 @@ function closeCase(): void {
 	stopLoads();
 	hiddenOn.clear();
 	pendingLoad = undefined;
+	pendingShow = undefined;
 	toolbarOn.clear();
 	if (drawn !== undefined) takeOff(drawn);
 	update((s) => {
@@ -1764,6 +1778,46 @@ const actions: Actions = {
 			// This load replaces one the icon's click would start.
 			if (pendingLoad?.tabId === tab.id) pendingLoad = undefined;
 			await loadInto(c, tab.id, hint, work);
+		})();
+	},
+
+	loadAndShow(c, a) {
+		// A second press while the first is drawing does nothing more; the
+		// button says it is busy.
+		if (showLoading) return;
+		showLoading = true;
+		update((s) => (s.showingMark = { caseId: c.id, markId: a.id }));
+		const hint = caseHintWriter();
+		void (async () => {
+			try {
+				const tab = await activeTab();
+				if (tab?.id === undefined || tab.url === undefined)
+					return hint("Could not find the tab to show the mark on.");
+				// What the row offered still holds: the tab may have gone on.
+				if (!mayLoadAndShow(c, a, tab.url, showing(c.id))) return;
+				const work = startLoad({ tabId: tab.id, caseId: c.id });
+				hiddenOn.delete(tab.id);
+				if (pendingLoad?.tabId === tab.id) pendingLoad = undefined;
+				// What "Show marks" does; `showPending` brings this mark into
+				// view once the draw is in (as for a mark's link).
+				const mine: PendingShow = {
+					tabId: tab.id,
+					caseId: c.id,
+					markId: a.id,
+					mark: markKey(c, a),
+					url: tab.url,
+					until: Date.now() + SHOW_WAIT_MS,
+					fromShow: true,
+					say: hint,
+				};
+				pendingShow = mine;
+				const result = await loadInto(c, tab.id, hint, work);
+				// Nothing drawn (busy, no access, stale): nothing waits.
+				pendingShow = pendingAfterDraw(mine, pendingShow, result !== undefined);
+			} finally {
+				showLoading = false;
+				update((s) => (s.showingMark = undefined));
+			}
 		})();
 	},
 

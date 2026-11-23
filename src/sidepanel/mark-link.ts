@@ -11,6 +11,7 @@ import {
 	isWebPage,
 	type Mark,
 	markAddress,
+	onPageInFront,
 } from "../lib/case.ts";
 import type { MarkMatch } from "../lib/messages.ts";
 
@@ -80,6 +81,39 @@ export interface PendingShow {
 	mark: string;
 	url: string;
 	until: number;
+	/** Set by a mark's Show while the marks were not drawn: it says how it went. */
+	say?: (text: string) => void;
+	/** Held for that one press: a failed draw, a closed case or a stopped load drops it. */
+	fromShow?: true;
+}
+
+/**
+ * A mark's Show may draw the case's marks and show the mark (the row offered
+ * it) only if the case is still the one shown and the tab in front is a web
+ * page that is the mark's. Checked again when the press is answered: the tab
+ * may have gone elsewhere meanwhile.
+ */
+export function mayLoadAndShow(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+	shownCase: boolean,
+): tabUrl is string {
+	return (
+		shownCase &&
+		tabUrl !== undefined &&
+		isWebPage(tabUrl) &&
+		onPageInFront(c, a, tabUrl)
+	);
+}
+
+/** What is pending once a draw is over: a press's own goes if nothing was drawn. */
+export function pendingAfterDraw(
+	mine: PendingShow,
+	current: PendingShow | undefined,
+	drawn: boolean,
+): PendingShow | undefined {
+	return !drawn && current === mine ? undefined : current;
 }
 
 /** What the panel's draw found on a tab, as `showPending` reads it. */
