@@ -20,6 +20,7 @@ import {
 	caseCounts,
 	casePages,
 	cleanTitle,
+	cutText,
 	type FindingApp,
 	GROUP_LABEL,
 	GROUP_OF,
@@ -43,6 +44,7 @@ import {
 	type ResolveChoice,
 	STATUS_GROUPS,
 	type StatusGroup,
+	textLength,
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
@@ -860,6 +862,9 @@ function colourOf(m: MarkMatch): "found" | "unsure" | "lost" {
 /** Where the mark is on the tab in front, in words: the number's colour says it too, but not to everyone. */
 function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
+	// A highlight whose text is not there any more (DEC-066).
+	if (m.textChanged && m.status !== "lost") return "Text changed";
+	if (m.textUnread && m.status !== "lost") return "Text not looked for";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
 }
 
@@ -873,6 +878,10 @@ const PILL: Record<MarkStatus, string | undefined> = {
 };
 
 function matchText(m: MarkMatch): string {
+	if (m.textChanged && m.status !== "lost")
+		return `The highlighted text is no longer in the element: it changed, or the fix changed it. Its element is outlined (${percent(m.score)}).`;
+	if (m.textUnread && m.status !== "lost")
+		return `The element is too long to look for the highlighted text in it. Its element is outlined (${percent(m.score)}).`;
 	if (m.current > 0)
 		return `Candidate ${m.current + 1} of ${m.candidates.length} (${percent(m.score)})`;
 	switch (m.status) {
@@ -907,6 +916,17 @@ function shownText(
 /** Whether the page can scroll to the mark: then its head offers Show. */
 const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 	m !== undefined && (m.candidates.length > 0 || m.status === "no-element");
+
+/** A highlight's text, cut to the most a row's line shows (DEC-066). */
+const QUOTE_SHOWN = 160;
+
+/**
+ * A mark of a kind this version does not know (DEC-066): its kind's name,
+ * as the newer Sitegloss that made it calls it, and what to do.
+ */
+export function newerKindText(kind: string): string {
+	return `A mark of a kind made with a newer Sitegloss (“${cutText(kind, 40)}”). Its comment, status and thread work here; to see it on the page, update Sitegloss. A team that does not have it yet gets it only from a newer version.`;
+}
 
 /**
  * A picture of a mark as a tile: a click opens it at its size in the viewer,
@@ -3549,27 +3569,33 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 		),
 		a.author === "ai" ? h("span", { class: "tag" }, "AI") : null,
 	);
-	const show = canShow(m)
-		? h(
-				"button",
-				{
-					type: "button",
-					class: "small show",
-					"data-action": "show",
-					"aria-label": `Show mark ${a.number} on the page`,
-					title: x.canReach
-						? "Scroll the page to this mark and outline it"
-						: NEEDS_ACCESS,
-					disabled: !x.canReach,
-					onclick: () => actions.showMatch(c.id, a, m.current),
-				},
-				"Show",
-			)
-		: showElsewhere(c, a, x, actions);
+	// A mark of an unknown kind with no element is nowhere this version can
+	// show (DEC-066).
+	const show =
+		canShow(m) && !(a.shape.kind === "unknown" && m.status === "no-element")
+			? h(
+					"button",
+					{
+						type: "button",
+						class: "small show",
+						"data-action": "show",
+						"aria-label": `Show mark ${a.number} on the page`,
+						title: x.canReach
+							? "Scroll the page to this mark and outline it"
+							: NEEDS_ACCESS,
+						disabled: !x.canReach,
+						onclick: () => actions.showMatch(c.id, a, m.current),
+					},
+					"Show",
+				)
+			: showElsewhere(c, a, x, actions);
 	const body = h(
 		"div",
 		{ class: "body", id: bodyId },
 		picturesView(c, a, x),
+		a.shape.kind === "unknown"
+			? h("p", { class: "hint newer-kind" }, newerKindText(a.shape.given.kind))
+			: null,
 		historyList(a),
 		findingsList(c, a, x.findingArmed, actions),
 		markPlace(c, a, x.tabUrl, actions),
@@ -3793,6 +3819,23 @@ function markSubline(
 	// The thread's comments about this mark (DEC-046).
 	const talk = commentCount(c, a.id);
 	const parts = [
+		// A highlight's text, as a quote on one line (DEC-066): page text, shown as text.
+		a.highlight
+			? h(
+					"q",
+					{ class: "quote", title: a.highlight.text },
+					textLength(a.highlight.text) > QUOTE_SHOWN
+						? `${cutText(a.highlight.text, QUOTE_SHOWN - 1)}…`
+						: a.highlight.text,
+				)
+			: null,
+		a.shape.kind === "unknown"
+			? h(
+					"span",
+					{ class: "tag newer-kind", title: newerKindText(a.shape.given.kind) },
+					"Newer kind",
+				)
+			: null,
 		pill ? h("span", { class: "pill", "data-status": status }, pill) : null,
 		status === "open" && last
 			? h(

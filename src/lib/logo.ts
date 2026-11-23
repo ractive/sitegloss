@@ -335,9 +335,11 @@ export interface Swipe {
 export function swipe(
 	box: readonly [number, number, number, number],
 	em: number,
+	/** Degrees, instead of the wordmark's: a long line turned as much would climb. */
+	rotate: number = WORDMARK.swipe.rotate,
 ): Swipe {
 	const [x, y, w, h] = box;
-	const { corners: c, rotate, skew } = WORDMARK.swipe;
+	const { corners: c, skew } = WORDMARK.swipe;
 	const [tlx, tly] = [c.topLeft[0] * em, c.topLeft[1] * em];
 	const [trx, try_] = [c.topRight[0] * em, c.topRight[1] * em];
 	const [brx, bry] = [c.bottomRight[0] * em, c.bottomRight[1] * em];

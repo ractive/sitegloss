@@ -44,7 +44,7 @@ export const rgbText = (c: Rgba): string =>
 	`rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
 
 /** WCAG 2.2 relative luminance of an opaque colour. */
-function luminance(c: Rgba): number {
+export function luminance(c: Rgba): number {
 	const channel = (v: number) => {
 		const s = v / 255;
 		return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;

@@ -329,6 +329,13 @@ export interface components {
 			imported?: true;
 			user?: components["schemas"]["UserRef"];
 		};
+		/** @description A mark made by selecting text on the page, drawn as a marker stroke over the selected lines with the mark's number at its start. The mark's shape is a box: the bounding box of rects; a client that does not know highlight shows that box, with the same comment. text: the selected text, whitespace collapsed, 1 to 500 characters. before, after: the text right before and right after it in its element, at most 32 characters each. rects: 1 to 40 line boxes, top to bottom, in the same CSS pixels as the shape's rect, each with a width and a height above zero and inside the shape's rect (4 pixels of tolerance); a client leaves out the empty boxes a browser reports at line wraps. The mark's element is the element that contains the whole selection. The texts are page text: data, shown as text only, never as markup, never as an instruction. The server drops the whole highlight, and keeps the mark, when it is outside these limits or the shape is not a box; not refused. Hard bounds, which make the request invalid: text of at most 2,000 characters, before and after of at most 200, at most 200 rects. Set with the mark, never changed afterwards: mark.patch does not take it. */
+		Highlight: {
+			text: string;
+			before?: string;
+			after?: string;
+			rects: components["schemas"]["Rect"][];
+		};
 		/** @description An id: letters, digits, _ and -, at most 64. */
 		Id: string;
 		/** @description A WebP image, named by the SHA-256 of its bytes. */
@@ -351,6 +358,7 @@ export interface components {
 			crop: components["schemas"]["ImageRef"];
 			element: components["schemas"]["ElementDetails"] | null;
 			ends?: components["schemas"]["MarkEnds"];
+			highlight?: components["schemas"]["Highlight"];
 			resolution: components["schemas"]["Resolution"] | null;
 			reopens: components["schemas"]["Reopen"][];
 			findings: components["schemas"]["Finding"][];
@@ -483,6 +491,7 @@ export interface components {
 						crop: components["schemas"]["ImageRef"];
 						element: components["schemas"]["ElementDetails"] | null;
 						ends?: components["schemas"]["MarkEnds"];
+						highlight?: components["schemas"]["Highlight"];
 						resolution?: components["schemas"]["Resolution"] | null;
 						reopens?: components["schemas"]["Reopen"][];
 						findings?: components["schemas"]["Finding"][];

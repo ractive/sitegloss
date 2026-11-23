@@ -18,7 +18,10 @@ import {
 	type ElementDetails,
 	type Finding,
 	type FindingApp,
+	type Highlight,
+	highlightWithin,
 	type ImageAdded,
+	isKindName,
 	isSafeId,
 	LANGUAGE,
 	lookOf,
@@ -35,6 +38,7 @@ import {
 	MAX_REOPEN_NOTE,
 	MAX_REOPENS,
 	MAX_TITLE,
+	MAX_UNKNOWN_SHAPE,
 	MAX_URL,
 	MAX_VERDICT,
 	type Mark,
@@ -53,6 +57,7 @@ import {
 	type Stamp,
 	samePage,
 	shapeBounds,
+	shapeOut,
 	shotImage,
 	shotUrl,
 	type UserRef,
@@ -252,7 +257,8 @@ export function fixedOf(a: Pick<Mark, "shape" | "element">): string {
 	const element = elementIn(elementOut(a.element));
 	return hashText(
 		canonical([
-			shapeIn(a.shape),
+			// As the server has it: an unknown kind as it came (DEC-066).
+			shapeOut(shapeIn(shapeOut(a.shape) as WireMark["shape"])),
 			element === null ? null : withoutLook(element),
 		]),
 	);
@@ -349,7 +355,8 @@ export function newMarkOf(
 		shotId,
 		comment: content.comment,
 		author: content.author,
-		shape: a.shape,
+		// A kind this version does not know, as it came (DEC-066).
+		shape: shapeOut(a.shape) as WireMark["shape"],
 		crop,
 		element: elementOut(a.element),
 		resolution: content.resolution,
@@ -367,6 +374,9 @@ export function newMarkOf(
 						end: elementOut(a.ends.end),
 					},
 				}),
+		// The text it marks (DEC-066; the server's DEC-040): with the new
+		// mark only, as `ends`; the server keeps it or drops it whole.
+		...(a.highlight === undefined ? {} : { highlight: a.highlight }),
 	};
 }
 
@@ -698,6 +708,10 @@ export function deriveOps(
 	for (const a of sorted) {
 		const wire = book.marks[a.id];
 		if (wire !== undefined && marks[wire] !== undefined) continue;
+		// A kind this version does not know (DEC-066): API v1 takes only the
+		// kinds it names, so a mark the server does not have yet waits here
+		// until a version that knows it sends it. What it is said in the panel.
+		if (a.shape.kind === "unknown") continue;
 		const shotId = book.shots[a.shot];
 		const ref = image(a.crop);
 		if (shotId === undefined || left.has(a.shot) || ref === undefined) {
@@ -1147,11 +1161,39 @@ function elementIn(e: WireElement | null | undefined): ElementDetails | null {
 	} as ElementDetails;
 }
 
+/**
+ * A mark's shape from the server: one of a kind this version does not know
+ * is kept as it came (DEC-066), and the case still syncs.
+ */
 function shapeIn(shape: WireMark["shape"]): Shape {
-	return shape.kind === "pen"
-		? { kind: "pen", points: shape.points.slice(0, MAX_PEN_POINTS) }
-		: (shape as Shape);
+	const kind = (shape as { kind: unknown }).kind;
+	if (kind === "pen" && "points" in shape)
+		return { kind: "pen", points: shape.points.slice(0, MAX_PEN_POINTS) };
+	if (
+		kind === "element" ||
+		kind === "box" ||
+		kind === "arrow" ||
+		kind === "note"
+	)
+		return shape as Shape;
+	// The format's rules for a kind's name (`isKindName`) and its size, or
+	// the merge's check would refuse the whole case. One too large is kept
+	// as its kind alone: it is not drawn here, nor sent from here, and the
+	// server keeps the whole of it.
+	const name = isKindName(kind) ? kind : "unnamed";
+	const given = { ...(shape as Record<string, unknown>), kind: name };
+	return {
+		kind: "unknown",
+		given:
+			JSON.stringify(given).length > MAX_UNKNOWN_SHAPE ? { kind: name } : given,
+	};
 }
+
+/** A highlight from the server, within the limits, on a box; else none (DEC-066). */
+const highlightIn = (w: WireMark, shape: Shape): { highlight?: Highlight } => {
+	const highlight = highlightWithin(w.highlight, shape);
+	return highlight === undefined ? {} : { highlight };
+};
 
 const pagesIn = (pages: readonly WirePage[]): CasePage[] =>
 	pages.slice(0, MAX_PAGES).map((p) => ({
@@ -1753,11 +1795,15 @@ export function mergeCase(
 				mergeContent(markContent(a), before?.content, content),
 			);
 			// Its ends are set once: what this device drew stays; one drawn
-			// elsewhere comes from the server.
-			const merged =
+			// elsewhere comes from the server. Its highlight too (DEC-066).
+			const ended =
 				kept.ends === undefined && w.ends !== undefined
 					? { ...kept, ends: endsIn(w.ends) }
 					: kept;
+			const merged =
+				ended.highlight === undefined
+					? { ...ended, ...highlightIn(w, ended.shape) }
+					: ended;
 			const next: Mark = records(
 				creator === undefined ? merged : { ...merged, createdBy: creator },
 			);
@@ -1792,6 +1838,7 @@ export function mergeCase(
 					element: drawn.element,
 					...(creator === undefined ? {} : { createdBy: creator }),
 					...(w.ends === undefined ? {} : { ends: endsIn(w.ends) }),
+					...highlightIn(w, drawn.shape),
 				},
 				content,
 			),
@@ -2062,6 +2109,8 @@ export function isClean(c: Case, book: CaseBook, me?: string): boolean {
 	for (const a of c.marks) {
 		const wire = book.marks[a.id];
 		const before = wire === undefined ? undefined : shadow.marks[wire];
+		// Held back, not waiting to be sent (`deriveOps`).
+		if (wire === undefined && a.shape.kind === "unknown") continue;
 		if (wire === undefined || before === undefined) return false;
 		if (before.fixed !== fixedOf(a)) return false;
 		if (markPatch(markContent(a), before.content) !== undefined) return false;
@@ -2074,6 +2123,13 @@ export function isClean(c: Case, book: CaseBook, me?: string): boolean {
 	const here = new Map((c.comments ?? []).map((k) => [k.id, k]));
 	for (const k of here.values()) {
 		const before = known[k.id];
+		// About a mark held back (`deriveOps`): it waits with it, as
+		// `commentOps` has it, and is nothing to send now.
+		if (before === undefined && k.mark !== undefined) {
+			const a = c.marks.find((x) => x.id === k.mark);
+			if (a?.shape.kind === "unknown" && book.marks[a.id] === undefined)
+				continue;
+		}
 		if (before === undefined) return false;
 		// Another's text that differs is not sent: it does not wait.
 		if (before.text !== k.text && ownAtServer(before, me)) return false;
@@ -2184,7 +2240,10 @@ export function wholeShotCrops(
 			incoming.shots.find((s) => s.id === m.shotId)?.viewport ??
 			current?.shots.find((s) => s.id === shotHere.get(m.shotId))?.viewport;
 		if (viewport === undefined || viewport.width <= 0) continue;
-		const bounds = shapeBounds(shapeIn(m.shape));
+		const shape = shapeIn(m.shape);
+		// Where an unknown kind is, this version cannot say (DEC-066).
+		if (shape.kind === "unknown") continue;
+		const bounds = shapeBounds(shape);
 		const on =
 			bounds.x <= viewport.width &&
 			bounds.y <= viewport.height &&
