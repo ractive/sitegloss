@@ -724,29 +724,48 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 
 /*
  * An AI app is talking (DEC-063): while its call runs and a moment after,
- * the dot pulses a soft ring in its own green. A shadow, so nothing moves.
+ * the whole button glows in the connection's green. (First only the dot
+ * pulsed, 8 px of it: the owner did not see it.) The halo is a layer of its
+ * own whose opacity breathes, which costs no repaint; it stays inside the 8 px
+ * the bar has above the button; nothing moves and nothing changes size. Only
+ * on a connection that is up: a red or grey dot has no green beside it.
  */
-.ai-pill[data-talking] .dot {
-	animation: talking 1.2s ease-in-out infinite;
+:where(#bar)[data-ai="connected"] .ai-pill[data-talking] {
+	position: relative;
+	border-color: var(--st-verified);
+}
+
+:where(#bar)[data-ai="connected"] .ai-pill[data-talking]::after {
+	content: "";
+	position: absolute;
+	inset: -1px;
+	border-radius: inherit;
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--st-verified) 50%, transparent),
+		0 0 5px 3px color-mix(in srgb, var(--st-verified) 70%, transparent);
+	pointer-events: none;
+	animation: talking 0.6s ease-in-out infinite alternate;
+}
+
+/* The keyboard's ring stays readable outside the halo. */
+:where(#bar)[data-ai="connected"] .ai-pill[data-talking]:focus-visible {
+	outline-offset: 4px;
 }
 
 @keyframes talking {
-	0%,
-	100% {
-		box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-verified) 55%, transparent);
+	from {
+		opacity: 0.15;
 	}
-	50% {
-		box-shadow: 0 0 0 4px
-			color-mix(in srgb, var(--st-verified) 25%, transparent);
+	to {
+		opacity: 1;
 	}
 }
 
-/* Without motion: a steady ring for the same time. */
+/* Without motion: the halo, steady, for the same time. */
 @media (prefers-reduced-motion: reduce) {
-	.ai-pill[data-talking] .dot {
+	:where(#bar)[data-ai="connected"] .ai-pill[data-talking]::after {
 		animation: none;
-		box-shadow: 0 0 0 3px
-			color-mix(in srgb, var(--st-verified) 35%, transparent);
+		opacity: 0.7;
 	}
 }
 
@@ -3142,6 +3161,11 @@ button.copy {
 	button.strong,
 	button[data-armed] {
 		border-color: ButtonText;
+	}
+
+	/* Shadows are dropped here: the talking button says it by its edge. */
+	:where(#bar)[data-ai="connected"] .ai-pill[data-talking] {
+		border-color: Highlight;
 	}
 
 	.switch input {

@@ -4162,12 +4162,21 @@ function renderAi({ ai }: PanelState): void {
 	// connected, the pill leads to the switch, which is enough.
 	keepOn.checked = ai.keepOn;
 	setHint(aiCall, ai.lastCall && callText(ai.lastCall));
-	// Only a connection that is up has an app talking.
-	showTalking(ai.connected && ai.working);
+	// Only a connection that is up has an app talking: the glow goes with
+	// the connection at once, not a moment after.
+	if (ai.connected) showTalking(ai.working);
+	else {
+		clearTimeout(talkingUntil);
+		talkingUntil = undefined;
+		delete aiButton.dataset["talking"];
+	}
 }
 
-/** How long the chip keeps saying an app talks after its last call ended. */
-export const TALKING_AFTER_MS = 1500;
+/**
+ * How long the chip keeps saying an app talks after its last call ended:
+ * most calls take a blink, and the glow has to be seen.
+ */
+export const TALKING_AFTER_MS = 2500;
 let talkingUntil: ReturnType<typeof setTimeout> | undefined;
 
 /**

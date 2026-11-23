@@ -4159,6 +4159,21 @@ describe("the AI app", () => {
 		expect(talking()).toBe(true);
 		await Bun.sleep(TALKING_AFTER_MS + 50);
 		expect(talking()).toBe(false);
+		// The connection drops while the glow is on: it goes at once, not a
+		// moment after, beside a dot that is no longer green.
+		render(
+			caseState(c, ai({ ...on, status: "Connected: Claude", working: true })),
+			noActions,
+		);
+		expect(talking()).toBe(true);
+		render(
+			caseState(
+				c,
+				ai({ active: true, connected: false, apps: 0, status: "Connecting" }),
+			),
+			noActions,
+		);
+		expect(talking()).toBe(false);
 		// A call said to run on a connection that is gone: no glow (DEC-064's review).
 		render(
 			caseState(
