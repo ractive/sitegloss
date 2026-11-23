@@ -908,7 +908,11 @@ export class CloudSync {
 				await this.#reread(api, team);
 				more = await this.#push(api, team, true);
 			}
-			if (this.#books.writes !== written) await this.#books.publishModes();
+			if (
+				this.#books.writes !== written ||
+				!(await this.#books.atTeamPublished())
+			)
+				await this.#books.publishModes();
 			const done = await this.#status("synced", {
 				lastSyncedAt: this.#now().toISOString(),
 			});

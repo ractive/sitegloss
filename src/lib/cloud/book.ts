@@ -38,6 +38,12 @@ export const KEYS = {
 	status: "status",
 	/** How each case syncs: read by the panel, which needs no more of a book. */
 	modes: "modes",
+	/**
+	 * The cases the server has, as the sync last knew it, with the team's id
+	 * (DEC-069): those synced with a book that holds the server's copy. Read
+	 * by the panel, which offers a case's link only then.
+	 */
+	atTeam: "atTeam",
 	/** When the team's whole state has to be read again. */
 	whole: "whole",
 } as const;
@@ -59,6 +65,7 @@ const ABOUT_CASES: ReadonlySet<string> = new Set([
 	KEYS.queue,
 	KEYS.whole,
 	KEYS.modes,
+	KEYS.atTeam,
 	KEYS.status,
 ]);
 
@@ -430,13 +437,29 @@ export class Books {
 		await this.kv.remove(BOOK + caseId);
 	}
 
-	/** Write how each case syncs, for the panel. */
+	/**
+	 * Write how each case syncs, and which cases the server has and in which
+	 * team (a synced book with the server's copy, `shadow`), for the panel.
+	 */
 	async publishModes(): Promise<Record<string, SyncMode>> {
 		const modes: Record<string, SyncMode> = {};
-		for (const book of (await this.all()).values())
+		const atTeam: Record<string, string> = {};
+		for (const book of (await this.all()).values()) {
 			modes[book.caseId] = book.mode;
-		await this.kv.set({ [KEYS.modes]: modes });
+			if (
+				book.mode === "synced" &&
+				book.shadow !== undefined &&
+				book.teamId !== undefined
+			)
+				atTeam[book.caseId] = book.teamId;
+		}
+		await this.kv.set({ [KEYS.modes]: modes, [KEYS.atTeam]: atTeam });
 		return modes;
+	}
+
+	/** Whether the panel's list of the cases the server has was written (a build before it wrote none). */
+	async atTeamPublished(): Promise<boolean> {
+		return (await this.kv.get(KEYS.atTeam)) !== undefined;
 	}
 }
 

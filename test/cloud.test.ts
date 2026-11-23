@@ -133,6 +133,7 @@ describe("the first time a device meets its team", () => {
 			c_old: "undecided",
 			c_older: "undecided",
 		});
+		expect(tess.kv.data.get(KEYS.atTeam)).toEqual({});
 		// "Sync them".
 		await tess.engine.decide(true);
 		expect([...server.cases.keys()].sort()).toEqual(["c_old", "c_older"]);
@@ -161,6 +162,9 @@ describe("the first time a device meets its team", () => {
 			c_old: "synced",
 			c_other: "local",
 		});
+		// For the panel's link (DEC-069): the server has the shared one, in this team.
+		const { teamId } = (await tess.engine.account()) as Account;
+		expect(tess.kv.data.get(KEYS.atTeam)).toEqual({ c_old: teamId });
 	});
 
 	test("a case made after that is the team's, once it has a mark", async () => {
@@ -372,6 +376,7 @@ describe("the status line, from the engine's real states (DEC-045)", () => {
 			},
 			status: status(d),
 			modes: {},
+			atTeam: {},
 			signingIn: false,
 			problem: undefined,
 			live,

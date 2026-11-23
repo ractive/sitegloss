@@ -15,6 +15,7 @@ import type { CloudStatus, SyncMode } from "../lib/cloud/book.ts";
 import type { CheckedExport } from "../lib/export.ts";
 import type { MarkMatch, OverlayState } from "../lib/messages.ts";
 import type { SyncStatus, SyncTargetKind } from "../lib/sync.ts";
+import type { Copied } from "./next-step.ts";
 import type { ChosenPage } from "./page-filter.ts";
 import type { Size } from "./size.ts";
 
@@ -201,7 +202,7 @@ export interface PanelState {
 	 * What the next step's last copy did (DEC-069), said in its block for
 	 * a few seconds (`COPIED_MS` in main.ts), or until the next copy.
 	 */
-	copied: { caseId: string; text: string; at: number } | undefined;
+	copied: (Copied & { caseId: string; at: number }) | undefined;
 	/** A mark's Delete, clicked once: the second click deletes. */
 	markDeleteArmed: { markId: string; mark: string; at: number } | undefined;
 	/**
@@ -275,6 +276,11 @@ export interface PanelState {
 		status: CloudStatus | undefined;
 		/** How each case syncs, by its id; one not named was made since. */
 		modes: Record<string, SyncMode>;
+		/**
+		 * The cases the server has, as the sync last knew it, by id: the
+		 * team's id (DEC-069). None named: not known to be there.
+		 */
+		atTeam: Record<string, string>;
 		/** The browser's sign-in window is open. */
 		signingIn: boolean;
 		/** What the panel itself could not do (the sign-in, the address). */
@@ -371,6 +377,7 @@ export const initialState = (): PanelState => ({
 		account: undefined,
 		status: undefined,
 		modes: {},
+		atTeam: {},
 		signingIn: false,
 		problem: undefined,
 		live: undefined,
