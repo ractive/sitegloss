@@ -48,7 +48,7 @@ import {
 } from "../lib/case.ts";
 import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
-import { caseSites } from "../lib/site.ts";
+import { caseSites, siteOf } from "../lib/site.ts";
 import {
 	type CloudActions,
 	caseSync,
@@ -1154,6 +1154,8 @@ interface CaseParts {
 	/** The sites' headings and lists, in `groupsBox`; the groups they were drawn for. */
 	groups: GroupParts[];
 	groupsBox: HTMLElement;
+	/** Numbers a site's heading and list in their ids, once each. */
+	groupSeq: number;
 	siteGroups: SiteGroup[];
 	/** The case's page in the tab in front, as last drawn: which site starts open. */
 	front: CasePage | undefined;
@@ -1637,6 +1639,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		sitesHeading: h("h2", { id: "case-sites-heading" }, "Site"),
 		groups: [],
 		groupsBox: h("div", { class: "site-groups", id: "case-pages" }),
+		groupSeq: 0,
 		siteGroups: [],
 		front: undefined,
 		pageRow: h("div", { class: "fact" }),
@@ -2780,8 +2783,37 @@ function renderPages(
 			: undefined;
 	// The page in front is said once, in the first list it is in.
 	let said = false;
-	// `current`: the row above the heading, which its label names.
-	const row = (page: (typeof pages)[number], current = false) => {
+	/**
+	 * On which hosts a page was marked, the last first: said where it was
+	 * marked on more than one or not on the usual one. Under a site's
+	 * heading (`group`), only what the heading does not say: another host of
+	 * that site, or a local one; never the site's own name again.
+	 */
+	const hostLine = (
+		hosts: { origins: string[] } | undefined,
+		group: string | undefined,
+	): string | undefined => {
+		if (!hosts || !(hosts.origins.length > 1 || hosts.origins[0] !== usual))
+			return undefined;
+		const shown =
+			group === undefined
+				? hosts.origins
+				: hosts.origins.filter((o) => {
+						if (hostOf(o) === group) return false;
+						const site = siteOf(o);
+						return site === null || site === group;
+					});
+		if (shown.length === 0 || (shown.length === 1 && shown[0] === usual))
+			return undefined;
+		return shown.map((o) => hostOf(o)).join(", ");
+	};
+	// `current`: the row above the heading, which its label names; `group`:
+	// the heading a row is under.
+	const row = (
+		page: (typeof pages)[number],
+		current = false,
+		group?: string,
+	) => {
 		const marks = marksOn(page.url);
 		const front = here !== undefined && here.url === page.url;
 		const title = page.title.trim();
@@ -2802,6 +2834,7 @@ function renderPages(
 		const filtered = byPage.page?.url === page.url;
 		const sayCurrent = front && !current && !said;
 		if (sayCurrent) said = true;
+		const marked = hostLine(hosts, group);
 		return h(
 			"li",
 			{
@@ -2825,22 +2858,19 @@ function renderPages(
 			// The count sets the list's page filter; the title opens the page.
 			pageCount(p.current, page, marks, byPage, actions),
 			title ? h("span", { class: "page-address cut-start" }, address()) : null,
-			// Marked on more than one host, or not on the usual one: on which, the last first.
-			hosts && (hosts.origins.length > 1 || hosts.origins[0] !== usual)
-				? h(
-						"span",
-						{ class: "page-hosts" },
-						hosts.origins.map((o) => hostOf(o)).join(", "),
-					)
-				: null,
+			marked === undefined ? null : h("span", { class: "page-hosts" }, marked),
 		);
 	};
-	// A site's heading and list are made again only when the sites change.
+	// When the sites change, a site's heading and list are kept by its name
+	// and only put in their new order; a new site's are made.
 	if (
 		groups.length !== p.groups.length ||
 		groups.some((g, i) => g.name !== p.groups[i]?.name)
 	) {
-		p.groups = groups.map((g, i) => groupParts(p, g.name, i));
+		const byName = new Map(p.groups.map((g) => [g.name, g]));
+		p.groups = groups.map(
+			(g) => byName.get(g.name) ?? groupParts(p, g.name, p.groupSeq++),
+		);
 		p.groupsBox.replaceChildren(...p.groups.flatMap((g) => [g.head, g.list]));
 	}
 	p.siteGroups = groups;
@@ -2849,17 +2879,34 @@ function renderPages(
 		const parts = p.groups[i];
 		if (parts === undefined) return;
 		parts.count.textContent = String(g.pages.length);
-		parts.list.replaceChildren(...g.pages.map((page) => row(page)));
+		parts.list.replaceChildren(
+			...g.pages.map((page) => row(page, false, g.name)),
+		);
 	});
 	// The page in front, said above the heading: there while the list is closed.
 	const current = pages.find((page) => page.url === here?.url);
 	p.currentPage.hidden = current === undefined;
 	p.currentRow.replaceChildren(...(current ? [row(current, true)] : []));
-	if (focused?.page !== undefined)
-		[...focused.list.children]
-			.find((li) => (li as HTMLElement).dataset["page"] === focused.page)
-			?.querySelector<HTMLElement>(focused.control)
-			?.focus();
+	// Moved or made again, a focused element loses the focus: it goes back to
+	// the same heading, or to the same row, in its list or, where that list
+	// is gone (its site left the case), in the first that has the page.
+	if (at !== null && at.isConnected && document.activeElement !== at)
+		at.focus();
+	if (focused?.page !== undefined) {
+		const lists = [
+			focused.list,
+			...p.groups.map((g) => g.list),
+			p.currentRow,
+		].filter((ul) => ul.isConnected);
+		for (const ul of lists) {
+			const li = [...ul.children].find(
+				(x) => (x as HTMLElement).dataset["page"] === focused.page,
+			);
+			if (li === undefined) continue;
+			li.querySelector<HTMLElement>(focused.control)?.focus();
+			break;
+		}
+	}
 }
 
 function renderCase(state: PanelState, actions: Actions): void {

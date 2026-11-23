@@ -7,7 +7,13 @@
  */
 
 import { type Case, type CasePage, casePages, pageKey } from "../lib/case.ts";
-import { caseAddresses, siteOf, sitesOf } from "../lib/site.ts";
+import {
+	caseAddresses,
+	caseSites,
+	type Kept,
+	keptFor,
+	siteOf,
+} from "../lib/site.ts";
 import { shortUrl } from "./dom.ts";
 
 /** The group of the pages marked only on local addresses, in a case of several sites. */
@@ -35,11 +41,16 @@ const hostOf = (url: string): string => {
  * a page under each site it was marked on, and the pages marked only on
  * local addresses in a group of their own at the end.
  */
-export function siteGroups(c: Case): SiteGroup[] {
+export const siteGroups = (c: Case): SiteGroup[] =>
+	keptFor(groupsOf, c, () => groupsNow(c));
+
+const groupsOf = new WeakMap<Case, Kept<SiteGroup[]>>();
+
+function groupsNow(c: Case): SiteGroup[] {
 	const pages = casePages(c);
 	if (pages.length === 0) return [];
 	const addresses = caseAddresses(c);
-	const sites = sitesOf(addresses);
+	const sites = caseSites(c);
 	if (sites.length <= 1)
 		return [
 			{
@@ -57,10 +68,13 @@ export function siteGroups(c: Case): SiteGroup[] {
 		sitesOfPage.set(key, of);
 	}
 	const on = (p: CasePage) => sitesOfPage.get(pageKey(p.url));
-	const groups = sites.map((site) => ({
-		name: site,
-		pages: pages.filter((p) => on(p)?.has(site)),
-	}));
+	// A site none of the listed pages is on (a screenshot past the 200) has no group.
+	const groups = sites
+		.map((site) => ({
+			name: site,
+			pages: pages.filter((p) => on(p)?.has(site)),
+		}))
+		.filter((g) => g.pages.length > 0);
 	const local = pages.filter((p) => on(p) === undefined);
 	if (local.length > 0) groups.push({ name: LOCAL_GROUP, pages: local });
 	return groups;
@@ -98,7 +112,7 @@ export function sitesText(sites: readonly string[]): string {
 export function whereText(c: Case): { where: string; pages?: string } {
 	const pages = casePages(c);
 	const first = pages[0]?.url ?? c.page.url;
-	const sites = sitesOf(caseAddresses(c));
+	const sites = caseSites(c);
 	if (pages.length <= 1 && sites.length <= 1) return { where: shortUrl(first) };
 	return {
 		where: sites.length === 0 ? hostOf(first) || first : sitesText(sites),

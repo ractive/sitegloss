@@ -2335,8 +2335,9 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(opened).toEqual([PAY, CART]);
 
 		// One row per page whatever the host (DEC-063): the payment page marked
-		// on shop.example and listed on staging is one row, its hosts under
-		// it, the last marked first; one without a title by its path.
+		// on shop.example and listed on staging is one row; one without a
+		// title by its path. Under the heading "shop.example" its host line
+		// names only what the heading does not: the other host (DEC-067).
 		const other = "https://staging.shop.example/checkout/pay";
 		render(
 			caseState({
@@ -2347,7 +2348,7 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		expect(pages()).toEqual([
 			"Your cart2 marks/cart",
-			"/checkout/pay1 markshop.example, staging.shop.example",
+			"/checkout/pay1 markstaging.shop.example",
 		]);
 		// A click opens it where it was last marked: the tab shows another host.
 		expect(
@@ -2470,6 +2471,9 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(el("case-pages").querySelectorAll("[aria-current]").length).toBe(1);
 		// A list that closed by itself hands the focus to its heading.
 		expect(document.activeElement?.id).toBe("case-site-toggle-2");
+		// A row under a site's heading does not name that site again, nor
+		// another site, which has the row under its own heading.
+		expect(el("case-site-pages-1").querySelector(".page-hosts")).toBeNull();
 		// A choice holds for that case and site.
 		el<HTMLButtonElement>("case-site-toggle-3").click();
 		render(at("https://www.comparis.ch/a"), noActions);
@@ -2479,6 +2483,36 @@ describe("a case of several pages (DEC-038)", () => {
 			"false",
 			"true",
 		]);
+		// The sites' order changes (ractive.ch gets the most pages): each
+		// heading is kept, only moved, and the one with the focus keeps it.
+		el<HTMLButtonElement>("case-site-toggle-1").focus();
+		const more = ["y", "z", "w"].map((x) => `https://ractive.ch/${x}`);
+		render(
+			caseState(
+				{
+					...c,
+					pages: [
+						...(c.pages ?? []),
+						...more.map((url) => ({ url, title: url, lang: "en" })),
+					],
+					shots: [
+						...c.shots,
+						...more.map((url, i) => shot(`s${i + 7}`, url, 1280)),
+					],
+				},
+				(s) => {
+					s.tab = {
+						id: 1,
+						url: "https://www.comparis.ch/a",
+						title: "",
+						size: undefined,
+					};
+				},
+			),
+			noActions,
+		);
+		expect(heads()[0]?.[0]).toBe("ractive.ch 4");
+		expect(document.activeElement?.id).toBe("case-site-toggle-1");
 	});
 
 	test("the marks by page: this page follows the tab, any page from the list or the menu, combined with the status chips, which count what it leaves", () => {
