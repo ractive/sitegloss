@@ -116,7 +116,7 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 }
 .toolbar.top { top: 16px; bottom: auto; }
 /* The logo's loop is thinner in the icon; at 20 px this weighs about what the old ring did (BAR_LOOP lifts its end, so the two ends stay apart). */
-.ring { flex: none; width: 20px; height: 20px; margin: 0 6px; fill: none; stroke: ${L.amber}; stroke-width: ${RING_WIDTH}; stroke-linecap: round; stroke-linejoin: round; }
+.ring { flex: none; width: 20px; height: 20px; margin: 0 6px; fill: none; stroke: ${L.logo}; stroke-width: ${RING_WIDTH}; stroke-linecap: round; stroke-linejoin: round; }
 /* Beside the tools it keeps its width (and wraps inside it): what does not fit shows as overflow, which fitToolbar reads. */
 .toolbar .status {
 	flex: none; max-width: 300px; padding: 0 8px;
@@ -134,9 +134,9 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 	stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
 }
 .toolbar button:hover, .toolbar button:focus-visible { background: ${L.barHover}; }
-.toolbar button[aria-pressed="true"] { background: ${L.amber}; color: ${L.bar}; }
-.toolbar button.primary { background: ${L.amber}; color: ${L.bar}; font-weight: 600; padding-inline: 12px; }
-.toolbar button.primary:hover, .toolbar button.primary:focus-visible { background: ${L.amberHover}; }
+.toolbar button[aria-pressed="true"] { background: ${L.action}; color: ${L.bar}; }
+.toolbar button.primary { background: ${L.action}; color: ${L.bar}; font-weight: 600; padding-inline: 12px; }
+.toolbar button.primary:hover, .toolbar button.primary:focus-visible { background: ${L.actionHover}; }
 /* Not opacity alone: muted, and nothing answers the pointer. */
 .toolbar button:disabled { color: ${L.barMuted}; opacity: 0.6; cursor: default; background: none; }
 .toolbar button:focus-visible, .reviewbar button:focus-visible { outline: 2px solid ${L.barText}; outline-offset: 1px; }
@@ -179,11 +179,11 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 .popover button {
 	box-sizing: border-box; min-height: 28px; font: inherit; font-weight: 600;
 	padding: 3px 12px; border-radius: 6px; cursor: pointer;
-	border: 1px solid ${L.popoverEdge}; background: ${L.popover}; color: ${L.popoverText};
+	border: 1px solid ${L.popoverEdge}; background: ${L.popoverControl}; color: ${L.popoverText};
 }
-.popover button:hover { background: #eef0f4; }
-.popover button.primary { background: ${L.amber}; border-color: ${L.amberEdge}; }
-.popover button.primary:hover { background: ${L.amberHover}; }
+.popover button:hover { background: ${L.popoverControlHover}; }
+.popover button.primary { background: ${L.popoverAction}; border-color: ${L.popoverAction}; color: ${L.popoverActionText}; }
+.popover button.primary:hover { background: ${L.popoverActionHover}; border-color: ${L.popoverActionHover}; }
 /* The key that presses it, quieter by weight only: the label's colour keeps its contrast. */
 .popover button .keys { margin-inline-start: 6px; font-weight: 400; }
 .popover .label { display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 8px; }
@@ -246,9 +246,9 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 	color: ${L.barText}; font: inherit; font-weight: 600;
 }
 .reviewbar button:hover, .reviewbar button:focus-visible { background: ${L.barHover}; border-color: ${L.barText}; }
-/* Add marks is the bar's main action (DEC-063): amber, as the toolbar's own. */
-.reviewbar button[data-action="review-add"] { background: ${L.amber}; border-color: ${L.amber}; color: ${L.bar}; }
-.reviewbar button[data-action="review-add"]:hover, .reviewbar button[data-action="review-add"]:focus-visible { background: ${L.amberHover}; border-color: ${L.amberHover}; color: ${L.bar}; }
+/* Add marks is the bar's main action (DEC-063): the action's green, as the toolbar's own. */
+.reviewbar button[data-action="review-add"] { background: ${L.action}; border-color: ${L.action}; color: ${L.bar}; }
+.reviewbar button[data-action="review-add"]:hover, .reviewbar button[data-action="review-add"]:focus-visible { background: ${L.actionHover}; border-color: ${L.actionHover}; color: ${L.bar}; }
 /* The user's own colours: the system's, with every edge drawn. */
 @media (forced-colors: active) {
 	.toolbar, .reviewbar, .popover {
@@ -259,7 +259,7 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 	.toolbar button, .reviewbar button, .popover button {
 		border: 1px solid CanvasText; background: Canvas; color: CanvasText;
 	}
-	/* Also hovered and focused: no state brings amber back under the system's text colour. */
+	/* Also hovered and focused: no state brings the green back under the system's text colour. */
 	.toolbar button[aria-pressed="true"], .toolbar button[aria-pressed="true"]:hover, .toolbar button[aria-pressed="true"]:focus-visible,
 	.toolbar button.primary, .toolbar button.primary:hover, .toolbar button.primary:focus-visible,
 	.popover button.primary, .popover button.primary:hover, .popover button.primary:focus-visible,

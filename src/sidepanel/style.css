@@ -1,54 +1,81 @@
 /*
- * A proof sheet (DEC-024): paper with ink on it. Structure comes from space,
- * rules and edges that can be seen; amber marks the one action of a view that
- * starts drawing; a mark's colour is its status. test/contrast.test.ts reads
- * the two token blocks and holds every pair to its contrast.
+ * A proof sheet (DEC-024) in the web app's family (sitegloss.dev's theme,
+ * its DEC-034): cream paper with ink on it, a lighter cream for cards, the
+ * forest green for a view's main action, links and focus, a darker cream for
+ * the other buttons. Each value is a role of the web theme's palette
+ * (`packages/ui/src/palette.ts` there), named beside it. Amber is the
+ * logo's: the AI pill waiting and a highlight's quote, no button. A mark's
+ * colour is its status. test/contrast.test.ts reads the two token blocks and
+ * holds every pair to its contrast.
  */
+@import "../fonts/fonts.css";
+
 :root {
 	color-scheme: light dark;
-	/* Surfaces: the panel; cards, fields, buttons; code, plain chips, hover */
-	--paper: #f6f4ee;
-	--sheet: #ffffff;
-	--wash: #ebe8e0;
-	/* Text; meta and placeholders */
-	--ink: #1b2130;
-	--ink-2: #535c6e;
-	/* A placeholder: clearly lighter than typed text, still 4.5:1 on a field (DEC-060) */
-	--placeholder: #6e7583;
-	/* Lines: separators (decoration only); boundaries of buttons, fields, chips */
-	--rule: #dedad0;
-	--edge: #7b8291;
-	/* Action */
+	/* Surfaces: the panel (page); cards (card); fields and menus (field); code, plain chips, hover (quiet fill) */
+	--paper: #fcf9ed;
+	--sheet: #fefdf7;
+	--field: #ffffff;
+	--wash: #f1efe3;
+	/* A button that is not the main one: the darker cream (control fill, hovered, pressed) */
+	--control: #dbd8cb;
+	--control-hover: #cfccbf;
+	--control-press: #c4c1b4;
+	/* Text; meta and placeholders (text, secondary text) */
+	--ink: #211e13;
+	--ink-2: #565346;
+	/* A placeholder: clearly lighter than typed text, still 4.5:1 on a field (DEC-060; disabled text) */
+	--placeholder: #797564;
+	/* Lines: separators (rule, decoration only); boundaries of fields and chips (control edge) */
+	--rule: #dbd8cb;
+	--edge: #8b8672;
+	/* The logo's amber: the AI pill waiting, a highlight's quote */
 	--accent: #ffb000;
-	--accent-hover: #f0a400;
-	--accent-ink: #1b2130;
 	--accent-edge: #a06c00;
-	--strong: #1b2130;
-	--on-strong: #ffffff;
-	--link: #1a55c2;
-	--focus: #1a55c2;
-	/* A mark's status: text and fill, and its tint */
+	/* A view's main action: the forest green (primary, hovered; primary text) */
+	--strong: #00362a;
+	--strong-hover: #002c22;
+	--on-strong: #fcf9ed;
+	/* Link (green 11) and focus (green 9) */
+	--link: #00614e;
+	--focus: #00362a;
+	/* A mark's status: text and pin (the page's pins where they read as text), and its chip's fill */
 	--st-open: #c20f4c;
-	--st-open-bg: #fce4ec;
-	--st-verify: #4347c9;
-	--st-verify-bg: #e8e9fd;
-	--st-verified: #166d2d;
-	--st-verified-bg: #dff2e3;
-	--st-dismissed: #535c6e;
-	--st-dismissed-bg: #e9ebef;
+	--st-open-bg: #fee8eb;
+	--st-verify: #4f53e0;
+	--st-verify-bg: #eaeeff;
+	--st-verified: #006425;
+	--st-verified-bg: #e4f3e6;
+	--st-dismissed: #565346;
+	--st-dismissed-bg: #f1efe3;
+	/* A pin: the page's and the web app's pins, the same in both schemes (a screenshot does not change) */
+	--pin-open: #e0185c;
+	--pin-verify: #4f53e0;
+	--pin-verified: #1a7f37;
+	--pin-dismissed: #797564;
 	--on-pin: #ffffff;
-	/* Messages */
-	--danger: #b3261e;
-	--danger-bg: #fbe6e3;
-	--on-danger: #ffffff;
-	--warn: #7d4500;
-	--warn-bg: #fff0cc;
-	--warn-edge: #a86400;
-	/* Behind the questions' dialog: dims the panel */
-	--scrim: #1b213066;
-	/* Type */
-	--font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-	--font-num: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+	/* Messages: error (destructive text, tint), warning (text, tint, edge) */
+	--danger: #9e0016;
+	--danger-bg: #ffe9e6;
+	--on-danger: #fcf9ed;
+	--warn: #625200;
+	--warn-bg: #f7efcd;
+	--warn-edge: #907900;
+	/* Behind the questions' dialog: dims the panel (the web's overlay) */
+	--scrim: #211e1380;
+	/* A card's edge (the rule) and soft shadow (the web's --shadow-low); in dark the edge
+	   is one step stronger, as the shadow does not show on the dark paper */
+	--card-edge: #dbd8cb;
+	--shadow-card: 0 1px 2px #211e130f, 0 6px 20px #211e1314;
+	/* Type: the web app's faces (src/fonts/fonts.css), the system's as the fallback */
+	--font:
+		"Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-head:
+		"Manrope Variable", "Inter Variable", system-ui, -apple-system, "Segoe UI",
+		Roboto, sans-serif;
+	/* Rounded digits where the system has them, else the text's face (not the system's) */
+	--font-num:
+		ui-rounded, "SF Pro Rounded", "Inter Variable", system-ui, sans-serif;
 	--font-mono:
 		ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 	/* Space and shape */
@@ -59,8 +86,8 @@
 	--s5: 24px;
 	--s6: 32px;
 	--r-control: 6px;
-	/* One step less round (DEC-064): controls 6 px, cards 8 px; chips and pins round. */
-	--r-card: 8px;
+	/* As the web app: controls 6 px, cards 10 px; chips and pins round. */
+	--r-card: 10px;
 	--r-pill: 999px;
 	/* The top bar's height: what sticks under it starts there. */
 	--bar: 44px;
@@ -70,36 +97,41 @@
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--paper: #11141a;
-		--sheet: #1a1e27;
-		--wash: #242a37;
-		--ink: #eceef3;
-		--ink-2: #a6aebd;
-		--placeholder: #7f8797;
-		--rule: #2b313d;
-		--edge: #737c8e;
-		--accent-hover: #ffc233;
+		--paper: #181712;
+		--sheet: #201e18;
+		--field: #27251f;
+		--wash: #2d2b24;
+		--control: #39372f;
+		--control-hover: #424038;
+		--control-press: #4b4940;
+		--ink: #f2f0e9;
+		--ink-2: #c0beb4;
+		--placeholder: #928f83;
+		--rule: #39372f;
+		--edge: #7e7c71;
 		--accent-edge: #ffb000;
-		--strong: #eceef3;
-		--on-strong: #11141a;
-		--link: #8fb8ff;
-		--focus: #8fb8ff;
-		--st-open: #ff7aa5;
-		--st-open-bg: #3a1524;
-		--st-verify: #a9adff;
-		--st-verify-bg: #22244d;
-		--st-verified: #72d18c;
-		--st-verified-bg: #13301d;
-		--st-dismissed: #a6aebd;
-		--st-dismissed-bg: #272c38;
-		--on-pin: #11141a;
-		--danger: #ff8f85;
-		--danger-bg: #3a1714;
-		--on-danger: #11141a;
-		--warn: #ffc861;
-		--warn-bg: #33270d;
-		--warn-edge: #c98a1a;
-		--scrim: #000000a3;
+		--strong: #53ba9e;
+		--strong-hover: #5dc4a7;
+		--on-strong: #181712;
+		--link: #74d3b7;
+		--focus: #53ba9e;
+		--st-open: #f6a3af;
+		--st-open-bg: #402025;
+		--st-verify: #abb9fe;
+		--st-verify-bg: #242944;
+		--st-verified: #91d099;
+		--st-verified-bg: #19321d;
+		--st-dismissed: #c0beb4;
+		--st-dismissed-bg: #2d2b24;
+		--danger: #ffa098;
+		--danger-bg: #41211e;
+		--on-danger: #181712;
+		--warn: #d5bd5d;
+		--warn-bg: #332b0a;
+		--warn-edge: #907900;
+		--scrim: #181712cc;
+		--card-edge: #4b4940;
+		--shadow-card: 0 1px 2px #18171259, 0 6px 20px #18171266;
 	}
 }
 
@@ -142,6 +174,7 @@ body {
 
 h2 {
 	margin: 0 0 var(--s2);
+	font-family: var(--font-head);
 	font-size: 15px;
 	line-height: 20px;
 	font-weight: 700;
@@ -151,6 +184,7 @@ h2 {
 h3,
 .group-title {
 	margin: var(--s4) 0 var(--s2);
+	font-family: var(--font-head);
 	font-size: 13px;
 	line-height: 18px;
 	font-weight: 700;
@@ -195,13 +229,17 @@ pre {
 
 /* --- buttons ------------------------------------------------------------------ */
 
-/* The default button: a sheet with an edge. */
+/*
+ * The default button: the darker cream, no edge (the web app's secondary
+ * button); a field has the edge. The border stays, transparent, for the size
+ * and for forced colours.
+ */
 button {
 	min-height: 30px;
 	padding: 4px var(--s3);
-	border: 1px solid var(--edge);
+	border: 1px solid transparent;
 	border-radius: var(--r-control);
-	background: var(--sheet);
+	background: var(--control);
 	color: var(--ink);
 	font: inherit;
 	font-weight: 600;
@@ -212,7 +250,11 @@ button {
 }
 
 button:where(:hover:not(:disabled)) {
-	background: var(--wash);
+	background: var(--control-hover);
+}
+
+button:where(:active:not(:disabled)) {
+	background: var(--control-press);
 }
 
 button.small {
@@ -222,16 +264,17 @@ button.small {
 	line-height: 16px;
 }
 
-/* The one action of a view that starts drawing. */
+/* The one action of a view that starts drawing: the main action, larger. */
 button.primary {
 	min-height: 36px;
-	border-color: var(--accent-edge);
-	background: var(--accent);
-	color: var(--accent-ink);
+	border-color: var(--strong);
+	background: var(--strong);
+	color: var(--on-strong);
 }
 
 button.primary:hover:not(:disabled) {
-	background: var(--accent-hover);
+	border-color: var(--strong-hover);
+	background: var(--strong-hover);
 }
 
 button.wide {
@@ -239,7 +282,7 @@ button.wide {
 	min-height: 36px;
 }
 
-/* A view's other main actions: ink. */
+/* A view's other main actions: the green too. */
 button.strong {
 	border-color: var(--strong);
 	background: var(--strong);
@@ -247,8 +290,8 @@ button.strong {
 }
 
 button.strong:hover:not(:disabled) {
-	border-color: color-mix(in srgb, var(--strong) 84%, var(--paper));
-	background: color-mix(in srgb, var(--strong) 84%, var(--paper));
+	border-color: var(--strong-hover);
+	background: var(--strong-hover);
 }
 
 /* A quiet one is its words: Hide marks, Expand all, an address. */
@@ -288,7 +331,7 @@ button.danger {
 }
 
 button.danger:hover:not(:disabled) {
-	background: var(--danger-bg);
+	background: var(--control-hover);
 }
 
 button[data-armed],
@@ -301,7 +344,7 @@ button[data-armed]:hover:not(:disabled) {
 /* Never opacity alone: a disabled button is flat and says so in its colours. */
 button:disabled,
 button[aria-disabled="true"] {
-	border-color: var(--rule);
+	border-color: transparent;
 	background: var(--wash);
 	color: var(--ink-2);
 	cursor: default;
@@ -327,7 +370,7 @@ input:is([type="text"], [type="url"], [type="search"]),
 	padding: 6px var(--s2);
 	border: 1px solid var(--edge);
 	border-radius: var(--r-control);
-	background: var(--sheet);
+	background: var(--field);
 	color: var(--ink);
 	font: inherit;
 }
@@ -560,18 +603,21 @@ textarea + .row {
 [data-group="open"] {
 	--tone: var(--st-open);
 	--tint: var(--st-open-bg);
+	--pin: var(--pin-open);
 }
 
 [data-status="fixed"],
 [data-group="toVerify"] {
 	--tone: var(--st-verify);
 	--tint: var(--st-verify-bg);
+	--pin: var(--pin-verify);
 }
 
 [data-status="verified"],
 [data-group="verified"] {
 	--tone: var(--st-verified);
 	--tint: var(--st-verified-bg);
+	--pin: var(--pin-verified);
 }
 
 [data-status="wontfix"],
@@ -579,6 +625,7 @@ textarea + .row {
 [data-group="dismissed"] {
 	--tone: var(--st-dismissed);
 	--tint: var(--st-dismissed-bg);
+	--pin: var(--pin-dismissed);
 }
 
 /* A status with its count, to filter by; a pill is the same on a card, smaller. */
@@ -1136,6 +1183,25 @@ body:has(#settings:not([hidden])) .ai-allow {
 	background: var(--danger-bg);
 }
 
+/*
+ * A button on a warning's or an error's tint: the darker cream is only about
+ * 1.2:1 from the tint, so there it takes a field's edge (3:1, DEC-077).
+ */
+:is(
+		.notice,
+		#import-prompt,
+		#pair-problem,
+		#pair-replaced,
+		.hint[role="alert"],
+		#import-error,
+		.sync-banner,
+		.ai-problem,
+		.cloud-server-note
+	)
+	button:not(.link, .quiet, .strong, .primary, [data-armed]) {
+	border-color: var(--edge);
+}
+
 .sync-banner[data-sync="failed"]::before,
 .ai-problem::before {
 	background: var(--danger);
@@ -1296,9 +1362,11 @@ ul.cases [data-case] {
 	width: 100%;
 	min-width: 0;
 	padding: calc(var(--s3) + 5px) var(--s3) var(--s3);
-	border: 1px solid var(--edge);
+	/* A card: the lighter cream, a rule-coloured edge and a soft shadow (the web app's). */
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
+	box-shadow: var(--shadow-card);
 	font-weight: 400;
 	text-align: left;
 	overflow: hidden;
@@ -1463,9 +1531,10 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	display: grid;
 	gap: var(--s3);
 	padding-bottom: var(--s3);
-	border: 1px solid var(--edge);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
+	box-shadow: var(--shadow-card);
 	overflow: hidden;
 }
 
@@ -1605,10 +1674,10 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	display: grid;
 	min-width: 180px;
 	padding: var(--s1);
-	border: 1px solid var(--edge);
+	border: 1px solid var(--rule);
 	border-radius: var(--r-control);
-	background: var(--sheet);
-	box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+	background: var(--field);
+	box-shadow: var(--shadow-card);
 }
 
 .case-menu > button {
@@ -2127,7 +2196,7 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
  * The open case's tool bar (DEC-063): Add marks as wide as there is room, and
  * the marks shown or not. Sticky at the panel's bottom and resting after the
  * content, so the last row is never under it. One step quieter (DEC-064):
- * lower, secondary buttons at rest, amber only while adding is on.
+ * lower, secondary buttons at rest, primary only while adding is on.
  */
 .case-dock {
 	position: sticky;
@@ -2316,19 +2385,19 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 
 .progress > span {
 	min-width: 4px;
-	background: var(--st-dismissed);
+	background: var(--pin-dismissed);
 }
 
 .progress [data-kind="open"] {
-	background: var(--st-open);
+	background: var(--pin-open);
 }
 
 .progress [data-kind="toVerify"] {
-	background: var(--st-verify);
+	background: var(--pin-verify);
 }
 
 .progress [data-kind="verified"] {
-	background: var(--st-verified);
+	background: var(--pin-verified);
 }
 
 .marks > .empty {
@@ -2474,6 +2543,7 @@ ol.marks {
 	content: "";
 	position: absolute;
 	inset: 0 var(--s2);
+	/* A highlighter: the logo's amber (DEC-077), as the owner approved it. */
 	border: 2px solid var(--accent-edge);
 	border-radius: var(--r-card);
 	background: color-mix(in srgb, var(--accent) 30%, transparent);
@@ -2597,7 +2667,7 @@ ol.marks {
 	height: 24px;
 	padding-inline: 5px;
 	border-radius: 12px;
-	background: var(--tone, var(--st-open));
+	background: var(--pin, var(--pin-open));
 	box-shadow: 0 0 0 2px var(--paper);
 	color: var(--on-pin);
 	font: 700 12px / 1 var(--font-num);
@@ -2605,7 +2675,7 @@ ol.marks {
 }
 
 .mark[data-colour="unsure"] .number {
-	outline: 1.5px dashed var(--tone, var(--st-open));
+	outline: 1.5px dashed var(--pin, var(--pin-open));
 	outline-offset: 2px;
 }
 
@@ -2788,9 +2858,10 @@ ol.marks {
 	min-width: 0;
 	margin: 0 var(--s4) var(--s3);
 	padding: var(--s3);
-	border: 1px solid var(--rule);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
+	box-shadow: var(--shadow-card);
 }
 
 .mark .body > * {
@@ -3149,7 +3220,7 @@ button.tile-add:hover:not(:disabled) {
 	padding: 4px var(--s2);
 	border: 1px solid var(--edge);
 	border-radius: var(--r-control);
-	background: var(--sheet);
+	background: var(--field);
 	color: var(--ink);
 	font: inherit;
 }
@@ -3336,9 +3407,10 @@ ul.always button.link {
 .pairing {
 	margin: 0 0 var(--s4);
 	padding: var(--s3);
-	border: 1px solid var(--rule);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
+	box-shadow: var(--shadow-card);
 }
 
 .pairing .group-title {
@@ -3619,7 +3691,7 @@ ol.comments {
 	padding: 4px var(--s2);
 	border: 1px solid var(--edge);
 	border-radius: var(--r-control);
-	background: var(--sheet);
+	background: var(--field);
 	color: var(--ink);
 	font: inherit;
 }

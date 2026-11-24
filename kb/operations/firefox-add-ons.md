@@ -141,6 +141,15 @@ To enter or check by hand before that version is published:
   link, instructions or an id write to the clipboard in the click, with no permission.
   The Highlight tool was not driven by hand in Firefox, and only a Chromium test covers it (DEC-066): try it in a Firefox
   build before submitting.
+  Also (DEC-077): two font files in `fonts/`, `inter-latin-wght-normal.woff2` (48,256
+  bytes) and `manrope-latin-wght-normal.woff2` (24,836 bytes), are data, not code: copied
+  unchanged from `src/fonts/` in the source archive (the variable Latin files of
+  `@fontsource-variable/inter` and `/manrope` 5.3.0, SIL OFL 1.1, both licences in
+  `LICENSES.txt`); loaded only by the sidebar and the picture viewer, never from the
+  network and never into a web page. The package grows by about 85 KB.
+- **Screenshots:** the listing's four (`screenshots/1-…png` to `4-…png` in the listing
+  notes kept outside the repository) show the old look and need retaking after DEC-077,
+  as do the Chrome Web Store's.
 - **Listing and privacy policy:** as in the Chrome Web Store runbook (the new
   `PRIVACY.md`, changed 23 November 2026).
 
