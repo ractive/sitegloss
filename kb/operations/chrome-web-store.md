@@ -387,7 +387,8 @@ dashboard first: everything below is the full text to paste, not a change to 0.3
      folder's Copy write with `navigator.clipboard.writeText` in the click; no
      `clipboardWrite` permission. The clipboard is read only when the user pastes a
      picture into the side panel. The AI app text is built in the package
-     (`src/lib/agent-instructions.ts`) and names the case's id, address and contents.
+     (`src/lib/agent-instructions.ts`) and names the case's id and address, nothing of
+     its contents.
    - **The team's members:** after sign-in Sitegloss asks the service for the team's
      members (id and name, at most every ten minutes) and keeps the list in its IndexedDB,
      so "Assign" works offline; signing out forgets it.

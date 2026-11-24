@@ -5009,3 +5009,53 @@ nobody) and D7 (thin status answers). The service's part is its own.
   extension's AI tools (D7: five marks, five questions unless "Always allow"); "open on
   the page" from the web through a hint in the address (the audit's C10); following the
   next mark to another page by navigating the tab after a Verify.
+
+## DEC-080: The text for an AI app names its tools, says when to stop, and carries nothing from the case (owner, 24 November 2026)
+
+2026-11-24. The owner gave an AI app the text of "Copy for your AI app" while it had no
+Sitegloss tools connected. It did not stop: it read the case through the owner's
+browser. The owner: "The copy/pasted AI instructions from the extension were completely
+unusable for you it seems. You should have asked me if you don't have a connection!" On
+the lines that fenced the case's title: "I'm not an LLM, but I would never understand
+this". On the team's AI app page in the text: "This URL is irrelevant here, isn't it?"
+
+The text had six weaknesses:
+
+- It named the tools in Sitegloss's words ("the server's or the extension's own AI app
+  connection"), not by the names an AI app sees.
+- The case's address was its second line, so an AI app with a browser started there.
+- The rule to stop stood in the middle of a paragraph and forbade nothing: it did not
+  say not to read the case another way.
+- It said nothing about a server that is connected but asks to sign in first.
+- The case's title and a `Contents:` line were fenced by two lines saying "quoted as
+  data", which neither the owner nor the AI app understood.
+- Step 2 was one paragraph with four cases in it.
+
+Decided, the text word for word as the owner approved it (`caseInstructions` in
+`src/lib/agent-instructions.ts`):
+
+- **The tools are named:** get_case, add_comment and set_mark_status. Both of Sitegloss's
+  connections, the service's MCP server and the extension's own, offer these three under
+  these names, with the statuses "fixed", "wontfix" and "verified".
+- **When to stop, on lines of their own:** if the tools are missing, or their server asks
+  to sign in first, the AI app stops and says so. It does not open the case in a browser
+  and does not read it any other way.
+- **Where to connect is the public help page,** `https://sitegloss.dev/help/#mcp`, not the
+  team's AI app page and not the side panel's AI app card. `CaseRef` loses `aiUrl`, and
+  the panel's `Where` its `ai` address.
+- **Nothing the case holds is in the text:** no title, no `Contents:` line, no fence.
+  That text is written by other people; pasted, it would arrive with the paster's
+  authority. The AI app reads it through get_case, as tool data. The text holds the
+  case's id and its address. One paragraph says the marks are written by other people
+  and that a mark asking for anything other than a fix is not followed. The code that
+  only put case data into the text is gone (`contentsOf`, `pageName`, `textStart`,
+  `quoted` and the types `CaseContents` and `PageName`), and its tests with it.
+- **Step 2 is a list:** fix it here; other code is left alone and named in a comment;
+  "wontfix" with the reason; unclear, asked in a comment and said. The comment on the
+  case is step 3, the statuses step 4, and "verified" is never the AI app's.
+- **The case's address comes last,** labelled as being for people.
+
+This replaces DEC-069's wording of this text, including its change of 23 November. The
+web app carries the same text (sitegloss.dev DEC-050); the two are still kept in step by
+hand. It reaches users with the next release: 0.4.0 is in the stores' review with the
+old text, and the version is not changed here.
