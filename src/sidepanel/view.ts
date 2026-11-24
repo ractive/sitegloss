@@ -93,6 +93,8 @@ import {
 	NO_OTHER_MINE,
 	NONE_MINE,
 	teamAssigns,
+	waitsText,
+	waitsToVerify,
 } from "./my-cases.ts";
 import { nextStep, type StepAction, whereIs } from "./next-step.ts";
 import {
@@ -136,6 +138,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	copyForAiApp(c: Case): void;
 	/** The next step's "Start verifying": the marks to verify, the first one open. */
 	startVerifying(c: Case): void;
+	/** "This page"'s Start verifying (DEC-079): the case opens, then Start verifying. */
+	verifyCase(id: string): void;
 	/** The next step's Assign menu: the case to a member, or to nobody (DEC-071). */
 	assignCase(caseId: string, to: UserRef | null): void;
 	/** "My cases" in the list of cases, on or off (DEC-071). */
@@ -932,12 +936,17 @@ function renderCases(state: PanelState, actions: Actions): void {
 	hereClosed.replaceChildren(
 		...(ownClosed.length > 0 ? [closedGroup(ownClosed, card, "here")] : []),
 	);
+	// The one case here waits for this person to verify it: said so, and
+	// Start verifying is the action (DEC-079).
+	const waits = one ? waitsToVerify(one, url, state.cloud) : undefined;
 	hereText.textContent =
 		own.length === 0
 			? ""
-			: one
-				? "This page already has a case. Open it to go on with its marks, or start a new one."
-				: `This page already has ${own.length} cases. Open one to go on with its marks, or start a new one.`;
+			: waits
+				? waitsText(waits)
+				: one
+					? "This page already has a case. Open it to go on with its marks, or start a new one."
+					: `This page already has ${own.length} cases. Open one to go on with its marks, or start a new one.`;
 	hereCases.replaceChildren(
 		...(own.length > 0
 			? [h("ul", { class: "cases", "data-group": "here" }, ...own.map(card))]
@@ -952,10 +961,17 @@ function renderCases(state: PanelState, actions: Actions): void {
 		unit.classList.add("with-action");
 		unit.append(openHere);
 	} else hereCases.after(openHere);
-	openHere.onclick = one ? () => actions.openCase(one.id) : null;
-	openHere.title = one
-		? `Open “${one.title}” and show its marks on the page in this tab`
-		: "";
+	openHere.textContent = waits ? "Start verifying" : "Open this case";
+	openHere.onclick = !one
+		? null
+		: waits
+			? () => actions.verifyCase(one.id)
+			: () => actions.openCase(one.id);
+	openHere.title = !one
+		? ""
+		: waits
+			? `Open “${one.title}”, show its marks on the page in this tab, and open the first mark to verify`
+			: `Open “${one.title}” and show its marks on the page in this tab`;
 	newCaseButton.classList.toggle("primary", own.length === 0);
 	casesHeading.textContent = own.length > 0 ? "Other cases" : "Cases";
 	casesList.replaceChildren(

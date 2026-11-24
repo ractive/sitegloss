@@ -5743,6 +5743,45 @@ describe("the New case button (DEC-023, DEC-026)", () => {
 		expect(primary("new-case")).toBe(true);
 	});
 
+	test("a page whose case waits for me to verify: This page says so, and Start verifying is the action (DEC-079)", () => {
+		const calls: string[] = [];
+		const actions = actionsWith({
+			openCase: (id) => void calls.push(`open ${id}`),
+			verifyCase: (id) => void calls.push(`verify ${id}`),
+		});
+		const base = withOneMark(sampleCase("c_back"));
+		const mark = base.marks[0] as Mark;
+		const withStatus = (...fixed: boolean[]): Case => ({
+			...base,
+			marks: fixed.map((f, i) => ({
+				...mark,
+				id: `m${i + 1}`,
+				number: i + 1,
+				...(f ? { resolution: { kind: "fixed", at: base.updatedAt } } : {}),
+			})),
+		});
+		const at = (cases: Case[]) => {
+			const state = initialState();
+			state.tab = { id: 1, url: base.page.url, title: "", size: undefined };
+			state.cases = cases;
+			render(state, actions);
+		};
+		// Signed out, two marks fixed on this page.
+		at([withStatus(true, true, false)]);
+		expect(el("here-text").textContent).toBe(
+			"2 marks wait for you to verify on this page.",
+		);
+		expect(el("open-here").textContent).toBe("Start verifying");
+		expect(el("open-here").classList.contains("primary")).toBe(true);
+		el("open-here").click();
+		// Nothing fixed: the ordinary sentence and Open this case.
+		at([withStatus(false, false)]);
+		expect(el("here-text").textContent).toContain("already has a case");
+		expect(el("open-here").textContent).toBe("Open this case");
+		el("open-here").click();
+		expect(calls).toEqual(["verify c_back", "open c_back"]);
+	});
+
 	test("no hint lines for drafts: there are no drafts (DEC-026)", () => {
 		home(overlay({ visible: true, drafts: 3 }));
 		expect(el("hint").hidden).toBe(true);

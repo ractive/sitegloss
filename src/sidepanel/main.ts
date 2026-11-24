@@ -1041,7 +1041,8 @@ async function refreshCase(): Promise<void> {
 }
 
 /** Open a case, and draw its marks on the tab in front (DEC-022). */
-function openCase(id: string): void {
+/** Open a case; done once it is read (`refreshCase`). */
+function openCase(id: string): Promise<void> {
 	caseHints.cancel();
 	const other = state.view.kind !== "case" || state.view.id !== id;
 	// Opened again: a Hide on a tab holds no longer.
@@ -1068,7 +1069,7 @@ function openCase(id: string): void {
 		s.leaving = undefined;
 	});
 	followed = undefined;
-	void refreshCase();
+	return refreshCase();
 }
 
 /**
@@ -2245,6 +2246,15 @@ const actions: Actions = {
 		update(
 			(s) => (s.picked = { caseId: c.id, markId: first.id, at: Date.now() }),
 		);
+	},
+
+	verifyCase(id) {
+		// As "Open this case", then the next step's Start verifying on the
+		// case as read, while it is still the one shown.
+		void openCase(id).then(() => {
+			const c = state.current;
+			if (c?.id === id && showing(id)) actions.startVerifying(c);
+		});
 	},
 
 	cancelLink: () => update((s) => (s.linking = undefined)),
