@@ -4787,6 +4787,23 @@ describe("after Close case", () => {
 		expect((window.document.activeElement as unknown) === other).toBe(true);
 	});
 
+	test("the hint is a status line, and the Close button is busy while the panel leaves", () => {
+		expect(el("hint").getAttribute("role")).toBe("status");
+		const c = sampleCase("c_busy");
+		render(caseState(c), noActions);
+		expect(el<HTMLButtonElement>("close-case").disabled).toBe(false);
+		render(
+			caseState(c, (s) => {
+				s.leaving = { phase: "finishing" };
+			}),
+			noActions,
+		);
+		expect(el<HTMLButtonElement>("close-case").disabled).toBe(true);
+		expect(el("close-case").getAttribute("aria-busy")).toBe("true");
+		render(caseState(c), noActions);
+		expect(el("close-case").hasAttribute("aria-busy")).toBe(false);
+	});
+
 	test("under This page only open cases are promoted: closed ones fold in their own Closed section under the main action", () => {
 		const url = "https://www.example.com/kk";
 		const shut = (id: string): Case => ({

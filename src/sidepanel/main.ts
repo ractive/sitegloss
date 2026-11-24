@@ -1181,7 +1181,10 @@ const leavingNow = (): PanelState["leaving"] => state.leaving;
  * goes then, as with its own Done again; one drawn or tried since is tried
  * once more (DEC-014).
  */
-async function leaveCase(keep = false): Promise<boolean> {
+async function leaveCase(
+	keep = false,
+	save?: () => Promise<boolean>,
+): Promise<boolean> {
 	if (state.view.kind !== "case" || state.leaving?.phase === "finishing")
 		return false;
 	const caseId = state.view.id;
@@ -1207,6 +1210,10 @@ async function leaveCase(keep = false): Promise<boolean> {
 		// case the person has just closed: it is kept, under Closed.
 		if (!keep && !timedOut) await forgetUntouched(caseId);
 		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
+		// The toolbars are done and can leave: only now is a close saved, so a
+		// blocked leave closes nothing. A save that fails stays on the case.
+		if (save !== undefined && !(await save())) return false;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		closeCase();
 		return true;
 	} finally {
@@ -1217,19 +1224,21 @@ async function leaveCase(keep = false): Promise<boolean> {
 }
 
 /**
- * The person's own press on "Close case": the case is closed and saved, then
- * the panel leaves it as "← All cases" does, and the list says once where
+ * The person's own press on "Close case": the panel leaves the case as
+ * "← All cases" does, and the close is saved once the toolbars are done, and the list says once where
  * the case is and takes the focus. Failing to save, or marks the toolbar has
  * not added yet, keep the panel on the case, which says why. Reopening, and
  * a close from anywhere else (an AI app, the web app, the sync), never move
  * the panel.
  */
 async function closeFromPanel(caseId: string): Promise<void> {
-	const ok = await changeThread(caseId, (c, now) => withClosed(c, true, now));
-	if (!ok || !showing(caseId)) return;
-	const saved = state.current;
-	if (saved?.id !== caseId || saved.closed === undefined) return;
-	if (!(await leaveCase(true))) return;
+	const left = await leaveCase(true, () =>
+		changeThread(caseId, (c, now) => withClosed(c, true, now)),
+	);
+	if (!left) return;
+	// Read again: another writer may have reopened it meanwhile.
+	const saved = await store.getCase(caseId).catch(() => undefined);
+	if (saved?.closed === undefined || state.view.kind !== "home") return;
 	update((s) => {
 		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
 		s.hint = closedSaid(saved);

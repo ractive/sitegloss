@@ -51,7 +51,6 @@ import { reporterHere } from "../lib/case-state.ts";
 import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
 import { caseSites, siteOf } from "../lib/site.ts";
-import { pageCases } from "./closed.ts";
 import {
 	ALLOW_ALL_SITES,
 	ALLOW_ALL_SITES_RECOMMENDED,
@@ -69,6 +68,7 @@ import {
 	tabAccess,
 	type Words,
 } from "./access.ts";
+import { pageCases } from "./closed.ts";
 import {
 	type CloudActions,
 	caseSync,
@@ -3927,7 +3927,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 		sync.kind !== "synced" ||
 		(team?.permissions.includes("case:close") ?? true);
 	p.closeButton.textContent = c.closed ? "Reopen case" : "Close case";
-	p.closeButton.disabled = !mayClose;
+	// Leaving after a Close: the button is busy, so no press reopens the case
+	// before the panel is on the list.
+	const leavingNow = state.leaving?.phase === "finishing";
+	p.closeButton.disabled = !mayClose || leavingNow;
+	if (leavingNow) p.closeButton.setAttribute("aria-busy", "true");
+	else p.closeButton.removeAttribute("aria-busy");
 	p.closeButton.title = !mayClose
 		? `Your role in “${sync.team}” does not allow closing its cases`
 		: c.closed
