@@ -306,6 +306,10 @@ describe("build", () => {
 				"tldts\n\nCopyright (c) 2017 Thomas Parisot, 2018 Rémi Berson",
 			);
 			expect(text).not.toContain("CDN build");
+			// The side panel's icons, the web app's (DEC-078).
+			expect(text).toContain(
+				"Heroicons (the side panel's icons, heroicons 2.2.0)\n\nMIT License\n\nCopyright (c) Tailwind Labs, Inc.",
+			);
 		}
 	});
 

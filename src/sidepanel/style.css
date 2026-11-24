@@ -355,6 +355,52 @@ button:is(.quiet, .link):disabled {
 	background: none;
 }
 
+/*
+ * An action's icon (DEC-078): the web app's (heroicons, icons.ts), before
+ * its words and in their colour, so it has their contrast and their forced
+ * colour; 16 px, as the web app's buttons have it.
+ */
+button > .icon {
+	flex: none;
+	width: 16px;
+	height: 16px;
+}
+
+button:has(> .icon) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+}
+
+/* A small button (12 px words): a 14 px icon, its line as heavy as the
+   16 px one's (1 px), a little closer to its words. */
+button.small > .icon {
+	width: 14px;
+	height: 14px;
+	stroke-width: 1.7143;
+}
+
+button.small:has(> .icon) {
+	gap: 4px;
+	padding-inline-start: 7px;
+}
+
+/* A button that is its icon alone (Show on a mark's row): square, as the
+   top bar's copy; its name in aria-label, its tooltip in title. */
+button.icon-only {
+	width: 28px;
+	min-height: 28px;
+	padding: 0;
+}
+
+/* Among small buttons (Copy link in the Next step): as high as they are. */
+button.small.icon-only {
+	width: 26px;
+	min-height: 26px;
+	padding: 0;
+}
+
 .row {
 	display: flex;
 	flex-wrap: wrap;
@@ -728,15 +774,6 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	padding: 0;
 }
 
-#copy-case-id .icon {
-	flex: none;
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 1.5;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
 #copy-case-id .done {
 	display: none;
 }
@@ -753,15 +790,6 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 /* The id to copy by hand, where the browser refused: one press selects it all. */
 #copy-case-shown {
 	user-select: all;
-}
-
-#back .icon {
-	flex: none;
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 1.75;
-	stroke-linecap: round;
-	stroke-linejoin: round;
 }
 
 /*
@@ -1697,6 +1725,11 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 .case-menu > button.danger {
 	margin: 0;
 	color: var(--danger);
+}
+
+/* An item without an icon: its words where the others' begin. */
+#case-menu > button:not(:has(> .icon)) {
+	padding-inline-start: calc(var(--s3) + 22px);
 }
 
 /* The status counts under the title. */
@@ -2731,9 +2764,10 @@ ol.marks {
 	margin-top: 2px;
 }
 
+/* Its centre on the Verify beside it, and on the comment's first line. */
 .mark-head .show {
 	flex: none;
-	margin-top: 9px;
+	margin-top: 8px;
 }
 
 /*
@@ -3044,9 +3078,12 @@ button.tile-add:hover:not(:disabled) {
 	background: var(--wash);
 }
 
-.tile-add .plus {
-	font-size: 14px;
-	font-weight: 700;
+/* The plus as wide as the "+ " it took the place of: the words wrap as before. */
+.tile-add > .icon {
+	width: 12px;
+	height: 12px;
+	margin-inline-end: 1px;
+	vertical-align: -2px;
 }
 
 /* An image added here that the team does not have: said in words under it. */
@@ -3460,6 +3497,11 @@ ul.always button.link {
 button.copy {
 	min-width: 5em;
 	flex: none;
+}
+
+/* With its icon (DEC-078): as wide as "Copied" with its tick. */
+button.copy:has(> .icon) {
+	min-width: 7.5em;
 }
 
 /* "How do I add it?": per AI app its steps, each command with its own Copy. */

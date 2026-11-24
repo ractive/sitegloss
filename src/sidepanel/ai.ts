@@ -51,6 +51,7 @@ import {
 	wentOffSentence,
 } from "./card.ts";
 import { byId, h } from "./dom.ts";
+import { icon, setLabel, withIcon } from "./icons.ts";
 import { copyText, startSetup } from "./setup.ts";
 import type { PanelState } from "./state.ts";
 import { panelWindow } from "./window.ts";
@@ -693,6 +694,9 @@ export async function startAi(
 	}
 
 	const copyAddress = byId<HTMLButtonElement>("pair-copy");
+	// The Copy buttons of index.html, with their icon (DEC-078).
+	for (const id of ["pair-copy", "pair-copy-code"])
+		byId<HTMLButtonElement>(id).prepend(icon("copy"));
 	copyAddress.addEventListener("click", () =>
 		copy(copyAddress, current?.address, "address", byId("pair-address")),
 	);
@@ -716,8 +720,12 @@ export async function startAi(
 		"pair-replaced-new-address",
 	].map((id) => byId<HTMLButtonElement>(id));
 	const newAddressText = (text: string) => {
-		for (const b of newAddressButtons) b.textContent = text;
+		// In the takeover notice without its icon: beside Connect again it
+		// would take a line more at 340 px (DEC-078).
+		for (const b of newAddressButtons)
+			setLabel(b, b.id === "pair-new-address" ? "disconnect" : undefined, text);
 	};
+	newAddressText(DISCONNECT_ALL);
 	for (const button of newAddressButtons)
 		button.addEventListener("click", () => {
 			const armed =
@@ -779,7 +787,10 @@ export async function startAi(
 					if (current) showCard(current);
 				},
 			},
-			armed ? "Disconnect? Click again" : "Disconnect",
+			...withIcon(
+				"disconnect",
+				armed ? "Disconnect? Click again" : "Disconnect",
+			),
 		);
 	}
 

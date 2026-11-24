@@ -4657,3 +4657,89 @@ the extension? Colors etc." and "You don't need to replicate the Astryx componen
 - **Remains:** icons on the panel's buttons (a pass of its own; until then the cream buttons
   of a long list of marks read heavier than the old outlined ones); the store screenshots
   of both stores, which show the old look.
+
+## DEC-078: Icons on the panel's action buttons, the web app's; Show is its icon alone (owner)
+
+2026-11-23. The owner, with a picture of a mark's row and its cream "Show" button: "What
+about showing just an icon instead of the 'Show' buttons (which look a bit clumsy) plus a
+tooltip. Anyway: Add icons to all action buttons when applicable. I like this..." The
+same day he liked that the web app's buttons carry icons; DEC-077 had left the cream Show
+and Verify buttons reading heavier than the old outlined ones.
+
+- **One family, the web app's**: heroicons' outline set (24 px grid, 1.5 stroke), the
+  paths copied from heroicons 2.2.0 into `src/sidepanel/icons.ts` (data, no runtime
+  dependency; MIT, its licence in every build's `LICENSES.txt`, `scripts/build.ts`). An
+  icon is an inline `<svg aria-hidden="true">` in `currentColor`, 16 px on a button, 14 px
+  on a small one (its line kept at 1 px). The top bar's back chevron and copy icon are now
+  the family's (chevron-left, clipboard-document; the tick after a copy, check). The
+  disclosure chevrons (a mark's row, Comments, Screenshots, a site's pages, Assign's menu)
+  stay drawn in CSS: the same open chevron, the same weight. The marks' pins and the
+  status chips' signs stay as they are: they are data, not actions.
+- **The same action has the same icon as in the web app, and one icon is one action:**
+
+| Action | Where in the panel | Web app's icon | Panel's icon |
+|---|---|---|---|
+| Show a mark on the page (all three states) | a mark's row | ViewfinderCircle ("The mark" in the viewer) | viewfinder-circle, the button is the icon alone |
+| Verify; Start verifying | a mark to verify (row and actions); Next step | Check (Verify; "Show the marks to verify") | check |
+| Reopen…; Reopen case | a settled mark; the case's end | ArrowUturnLeft | arrow-uturn-left |
+| Close case | the case's end; Next step | CheckCircle | check-circle |
+| Edit comment; a comment's Edit; Rename… | a mark; the thread; the case's "…" menu | PencilSquare (Edit text…, Rename…) | pencil-square |
+| Delete mark; Delete comment; Delete case | a mark; the thread; the "…" menu | Trash | trash |
+| Add comment | a mark's comments | ChatBubbleLeft | chat-bubble-left |
+| Assign / Reassign | Next step | User | user |
+| Copy for your AI app; Copy (address, code, commands, a file's path) | Next step; Pair an AI app; How do I add it?; Saved as; the top bar's case id | ClipboardDocument (the tick when copied) | clipboard-document, check when copied |
+| Copy link | Next step | (none; its Share dialog's button has none) | link, the icon alone (below) |
+| Share with team | Next step | Share (Share…) | share |
+| Export…; Export all cases | the "…" menu, Next step; Files | ArrowDownTray (Download) | arrow-down-tray |
+| Import a case… | Files | (none in the web app) | arrow-up-tray |
+| New case for this page; Add marks; Add another image… | This page; the tool bar, Next step; a mark's pictures | Plus (New team) | plus |
+| Show marks / Hide marks | the tool bar | (none in the web app) | eye / eye-slash |
+| Sign in / Sign in again; Sign out | Team | ArrowRightStartOnRectangle (Sign out) | arrow-right-end-on-rectangle; arrow-right-start-on-rectangle |
+| Sync now | Team | (none) | arrow-path |
+| Allow on all sites | the first-use offer; the no-access notice | (none) | globe-alt |
+| Disconnect (an app); Disconnect all apps | AI app: the connected apps, Pair an AI app | (none) | link-slash |
+| All cases / Back | the top bar | ChevronLeft | chevron-left |
+
+- **Show is its icon alone**, a 28 × 28 square in the row's action place (the top bar's
+  copy is its model), its name and tooltip saying what it does in each state: "Show mark 2
+  on the page" (tooltip: "…: scroll to it and outline it"); while the marks are not drawn
+  "Show the marks on this page and go to mark 2" (tooltip: "Show this case's marks on this
+  page, scroll to mark 2 and outline it"; `aria-busy` while it draws); for a mark of
+  another page "Show mark 2: open <page> in this tab". The viewfinder, not the eye: the
+  eye is Show marks / Hide marks, the marks drawn or not; the viewfinder is the web app's
+  "the mark", one element found and framed. A row's comment gets the width Show's word
+  took: no row wraps more than before (340 px, beside Verify too).
+- **When a button has no icon.** A button gets one only where a heroicon says its action
+  honestly and the same action has it everywhere; never a guess (a wrong icon is worse than
+  none), never one that would only repeat a neighbour's, and never one that costs a row a
+  line it did not take before at 340 or 460 px (the icon goes first, not the words). So no
+  icon on: Resolve… and Change… (the web app has none; no picture says "fixed, won't fix
+  or can't reproduce"), Open this case (the primary green, its words say it), Adding
+  marks: Done and Done (a tick is Verify here), Save, Cancel and the other buttons of a
+  form, Turn on AI access, Stop AI access and a question's Allow/Deny (DEC-037: alike on
+  purpose), Keep it on / Not now, the sync's Copy to Downloads and Choose a folder… (with
+  icons the pair takes two lines at 340 px), Show in folder, Try again, Allow access,
+  Change…, Stop copying, Match size, Next candidate, Sync them / Keep them, Connect
+  again, and Disconnect all apps in the takeover notice (beside Connect again it would
+  take a line more; under the code it has its icon). Not at all: text links (Share with
+  team in the facts, Add a link, Expand all, + Add another AI app, Fill in the code for
+  me), chips, a menu's items where the web app gives them none (Add a link…, the
+  members in Assign), the cards of cases.
+- **The weight.** Show as a square in place of a word is the change that calms a list of
+  marks; with an icon and a label the filled buttons are as heavy as before (the icon is
+  the words' colour and weight). Where a row of three or four small buttons in the Next
+  step took a line more with icons (Start verifying, Assign, Copy link, Copy for your AI
+  app at 460 px; Start verifying, Copy link, Reassign at 340 px), Copy link, the least of
+  them and never alone, is its icon alone with its name and tooltip; no text was made
+  smaller. Checked at 340 and 460 px, light and dark: the main view, an open case, an open
+  mark of each status, the Next step's rows, the "…" menu, the tool bar, the AI view.
+- **Accessibility.** Icons are decoration (`aria-hidden`, `focusable="false"`); a name is
+  the words or `aria-label`; an icon-only button has both and a `title`. In forced colours
+  the icon is `currentColor`, so `ButtonText` and the rest; nothing is said by an icon's
+  colour; the focus ring and reduced motion are unchanged. Contrast: the icon is drawn in
+  its button's text colour, so the text's rows of `test/contrast.test.ts` cover it (4.5:1
+  where a graphic needs 3:1).
+- **Tests:** `test/icons.test.ts` (every icon an `svg` hidden from readers in
+  `currentColor`; `setLabel`), `test/view.test.ts` (Show has no text, its name and tooltip
+  in both states; Copy link the same; a labelled button keeps its words beside its icon),
+  `test/build.test.ts` (heroicons' licence in every build).

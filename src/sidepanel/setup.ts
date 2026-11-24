@@ -11,6 +11,7 @@ import {
 } from "@ractive-ch/tab-mcp-client/setup";
 import { SERVER_NAME } from "../worker/protocol.ts";
 import { byId, h } from "./dom.ts";
+import { setLabel, withIcon } from "./icons.ts";
 
 /** How long a Copy button says "Copied". */
 export const COPIED_MS = 1500;
@@ -37,7 +38,7 @@ export function copyText(
 	announce: (message: string) => void,
 ): void {
 	const say = (what: "Copy" | "Copied") => {
-		button.textContent = what;
+		setLabel(button, what === "Copied" ? "check" : "copy", what);
 		button.setAttribute("aria-label", `${what} ${noun}`);
 	};
 	const refused = () => {
@@ -86,7 +87,7 @@ export function setupSteps(
 						"aria-label": `Copy ${noun}`,
 						onclick: () => copyText(copy, command, noun, pre, announce),
 					},
-					"Copy",
+					...withIcon("copy", "Copy"),
 				);
 				parts.push(h("div", { class: "command" }, pre, copy));
 			}

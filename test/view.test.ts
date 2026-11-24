@@ -839,6 +839,63 @@ describe("a mark's status and actions", () => {
 		}
 	});
 
+	test("Show is its icon alone, named and with a tooltip in both its states; a labelled button keeps its words beside its icon (DEC-078)", () => {
+		const c = twoMarks();
+		const page = c.marks[0] ? markUrl(c, c.marks[0]) : "";
+		const show = () =>
+			row("m1").querySelector(
+				".mark-head [data-action=show]",
+			) as unknown as HTMLButtonElement;
+		const iconOnly = (b: HTMLButtonElement) => {
+			expect(b.textContent).toBe("");
+			const svg = b.querySelector("svg");
+			expect(svg?.getAttribute("aria-hidden")).toBe("true");
+		};
+		// Not drawn: it draws the marks, then goes to this one.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+			}),
+			noActions,
+		);
+		iconOnly(show());
+		expect(show().getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
+		expect(show().title).toContain("scroll to mark 1");
+		// The labelled buttons beside it: their words, and an icon before them.
+		const load = el<HTMLButtonElement>("load-case");
+		expect(load.textContent).toBe("Show marks");
+		expect(load.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+		// Drawn: it goes to the mark.
+		const found: MarkMatch = {
+			markId: "m1",
+			number: 1,
+			status: "found",
+			score: 1,
+			current: 0,
+			candidates: [
+				{ score: 1, summary: "p", selector: "p", visible: true, found: true },
+			],
+		};
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					matches: new Map([["m1", found]]),
+					url: page,
+				};
+			}),
+			noActions,
+		);
+		iconOnly(show());
+		expect(show().getAttribute("aria-label")).toBe("Show mark 1 on the page");
+		expect(show().title).toContain("Show mark 1 on the page");
+		expect(load.textContent).toBe("Hide marks");
+	});
+
 	test("a mark opens and closes at its head; Expand all opens every one", () => {
 		const c = twoMarks();
 		render(caseState(c), noActions);
@@ -7028,6 +7085,11 @@ describe("what comes next on the open case (DEC-069)", () => {
 				copyForAiApp: (x) => void done.push(`ai ${x.id}`),
 			}),
 		);
+		// Copy link is its icon alone, named; Copy for your AI app keeps its words (DEC-078).
+		expect(step("copy-link")?.textContent).toBe("");
+		expect(step("copy-link")?.getAttribute("aria-label")).toBe("Copy link");
+		expect(step("copy-link")?.title.startsWith("Copy link: ")).toBe(true);
+		expect(step("copy-ai")?.textContent).toBe("Copy for your AI app");
 		step("copy-link")?.click();
 		step("copy-ai")?.click();
 		expect(done).toEqual(["link c_1", "ai c_1"]);
