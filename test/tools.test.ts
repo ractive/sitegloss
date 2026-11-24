@@ -32,6 +32,7 @@ import { MemoryStore } from "../src/lib/store.ts";
 import { relayProblem } from "../src/worker/settings.ts";
 import {
 	type CurrentTab,
+	caseAfter,
 	confirmLines,
 	createTools,
 	DEFAULT_MESSAGE_BYTES,
@@ -1135,8 +1136,9 @@ describe("tools", () => {
 				name: "Claude",
 				host: "claude.ai",
 			};
+			// Each answer says where the case stands now, as this browser knows it.
 			expect(await status(2, "fixed", "Darker text")).toBe(
-				"Mark 2 is fixed, to verify.",
+				"Mark 2 is fixed, to verify. Still open: 1.",
 			);
 			expect((await stored())?.resolution).toMatchObject({
 				kind: "fixed",
@@ -1145,10 +1147,12 @@ describe("tools", () => {
 			});
 			// The panels hear of the case.
 			expect(changed).toEqual(["c_1"]);
-			expect(await status(2, "verified")).toBe("Mark 2 is verified.");
+			expect(await status(2, "verified")).toBe(
+				"Mark 2 is verified. Still open: 1.",
+			);
 			expect((await stored())?.resolution?.verified).toMatchObject({ app });
 			expect(await status(2, "open", "Still pale on hover")).toBe(
-				"Mark 2 is open again (it was Verified).",
+				"Mark 2 is open again (it was Verified). Still open: 1, 2.",
 			);
 			const reopened = await stored();
 			expect(reopened?.resolution).toBeUndefined();
@@ -1157,12 +1161,14 @@ describe("tools", () => {
 				app,
 				was: { kind: "fixed", note: "Darker text", verified: { app } },
 			});
-			expect(await status(1, "wontfix")).toBe("Mark 1 is resolved: Won't fix.");
+			expect(await status(1, "wontfix")).toBe(
+				"Mark 1 is resolved: Won't fix. Still open: 2.",
+			);
 			expect(await status(1, "cantreproduce")).toBe(
-				"Mark 1 is resolved: Can't reproduce.",
+				"Mark 1 is resolved: Can't reproduce. Still open: 2.",
 			);
 			expect(await status(1, "open")).toBe(
-				"Mark 1 is open again (it was Can't reproduce).",
+				"Mark 1 is open again (it was Can't reproduce). Still open: 1, 2.",
 			);
 			// Without a note, as calls before Verify made it.
 			expect((await stored(1))?.reopens?.[0]?.note).toBeUndefined();
@@ -1293,7 +1299,9 @@ describe("tools", () => {
 			const verified = (await stored())?.resolution;
 			await status(2, "open", "Not fixed after all");
 			expect((await stored())?.reopens?.[0]?.was).toEqual(verified as never);
-			expect(await status(2, "wontfix")).toBe("Mark 2 is resolved: Won't fix.");
+			expect(await status(2, "wontfix")).toBe(
+				"Mark 2 is resolved: Won't fix. Still open: 1.",
+			);
 			expect(tools.get("set_mark_status")?.description).toContain(
 				"changes only by a reopen",
 			);
@@ -1438,6 +1446,18 @@ describe("tools", () => {
 			expect(tool?.description).toContain("only on a mark that is fixed");
 			expect(INSTRUCTIONS).toContain("leave verified to the user");
 			expect(INSTRUCTIONS).toContain("come from whoever wrote the case");
+		});
+
+		test("the instructions hand back as the copied text does: the report first, then the statuses; wontfix for a mark that stays", () => {
+			const report = INSTRUCTIONS.indexOf("add one comment on the case");
+			expect(report).toBeGreaterThan(-1);
+			expect(
+				INSTRUCTIONS.indexOf("set each mark you fixed to fixed"),
+			).toBeGreaterThan(report);
+			expect(INSTRUCTIONS).toContain("is set to wontfix with the reason");
+			expect(INSTRUCTIONS).toContain(
+				"ask in a comment on that mark, and tell the user",
+			);
 		});
 	});
 
@@ -2518,6 +2538,64 @@ describe("the thread and closing (DEC-046)", () => {
 		);
 		expect(lines.join("\n")).toContain(
 			"It is deleted for the team “Pedal & Pine web” too.",
+		);
+	});
+
+	test("the question for a mark's new status says it syncs with the team, where it changes the mark", async () => {
+		await seed();
+		const team = { team: async () => "Web" };
+		const line = "It syncs with the team “Web”: its members see it.";
+		const fixed = await ask(
+			"set_mark_status",
+			{ caseId: "c_1", mark: 2, status: "fixed" },
+			CLAUDE,
+			team,
+		);
+		expect(fixed).toContain(line);
+		// On this device only: nothing to say.
+		expect(
+			await ask("set_mark_status", { caseId: "c_1", mark: 2, status: "fixed" }),
+		).not.toContain(line);
+		// A call that changes nothing, or is refused, syncs nothing.
+		await call("set_mark_status", { caseId: "c_1", mark: 2, status: "fixed" });
+		await call("set_mark_status", {
+			caseId: "c_1",
+			mark: 2,
+			status: "verified",
+		});
+		for (const status of ["verified", "wontfix"])
+			expect(
+				await ask(
+					"set_mark_status",
+					{ caseId: "c_1", mark: 2, status },
+					CLAUDE,
+					team,
+				),
+			).not.toContain(line);
+	});
+
+	test("where the case stands after a mark's status changed, as this browser knows it", () => {
+		const at = "2026-11-20T10:00:00.000Z";
+		const c = (statuses: ("open" | "fixed" | "wontfix")[]): Case => ({
+			...sampleCase("c_after"),
+			marks: statuses.map((st, i) => ({
+				id: `m${i + 1}`,
+				number: i + 1,
+				shot: "s1",
+				comment: "",
+				author: "user",
+				shape: { kind: "note", at: { x: 1, y: 1 } },
+				crop: `crops/m${i + 1}.webp`,
+				element: null,
+				...(st === "open" ? {} : { resolution: { kind: st, at } }),
+			})),
+		});
+		expect(caseAfter(c(["fixed", "open", "open"]))).toBe("Still open: 2, 3.");
+		expect(caseAfter(c(["fixed", "wontfix"]))).toBe(
+			"No mark is open now: the case is ready to verify.",
+		);
+		expect(caseAfter(c(["wontfix"]))).toBe(
+			"No mark is open now, and none waits to be verified.",
 		);
 	});
 

@@ -9,7 +9,7 @@
  * has. Not signed in, or no team: no filter, and nothing about assignees.
  */
 
-import type { Case } from "../lib/case.ts";
+import { type Case, markStatus, onPageInFront } from "../lib/case.ts";
 import {
 	assignedTo,
 	type CaseState,
@@ -97,3 +97,40 @@ export const NO_OTHER_MINE = "No other case waits for you.";
 /** What "My cases" says when it leaves nothing in the list. */
 export const NONE_MINE =
 	"Nothing waits for you: no open case is assigned to you, and none you started waits for you to hand it over, check it or close it.";
+
+/**
+ * What "This page" says of a case that waits for this person to verify it
+ * (DEC-079); `undefined`: it does not, and the ordinary sentence stays. The
+ * team's case: it is "to verify" and among their cases (`mineFor`, as My
+ * cases asks: they started it and the server told its hand-over). A case of this browser only, or anyone's while signed out or with
+ * a server that assigns nothing: fixed marks on the page in front. `here`
+ * counts the marks to verify on the page at `url`, `elsewhere` the rest.
+ */
+export function waitsToVerify(
+	c: Case,
+	url: string,
+	cloud: Cloud,
+): { here: number; elsewhere: number } | undefined {
+	const fixed = c.marks.filter((a) => markStatus(a) === "fixed");
+	const here = fixed.filter((a) => onPageInFront(c, a, url)).length;
+	const counts = { here, elsewhere: fixed.length - here };
+	const me = cloud.account?.userId;
+	// The team's case: the rule of My cases (`mineFor`), in its "to verify".
+	if (
+		me !== undefined &&
+		teamAssigns(cloud) &&
+		caseSync(cloud, c.id).kind === "synced"
+	)
+		return mineFor(c, me, true) && stateOf(c) === "to verify"
+			? counts
+			: undefined;
+	return c.closed === undefined && here > 0 ? counts : undefined;
+}
+
+/** "3 marks wait for you to verify on this page." */
+export function waitsText(n: { here: number; elsewhere: number }): string {
+	const marks = (k: number) => (k === 1 ? "1 mark waits" : `${k} marks wait`);
+	return n.here > 0
+		? `${marks(n.here)} for you to verify on this page.`
+		: `${marks(n.elsewhere)} for you to verify, on other pages of this case.`;
+}

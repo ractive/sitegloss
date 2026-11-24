@@ -285,16 +285,17 @@ same pictures as Firefox's at half the size).
 ## For version 0.4.0, to enter by hand before it is published
 
 Written at `main` 363d126 (24 November 2026). Pull requests 75 (marks clipped by
-scrolling panes, DEC-075), 79, 80 and 81 are on `main` and included. **Not** assumed, still
-open when this was written:
+scrolling panes, DEC-075), 79, 80 and 81 are on `main` and included; so is
+[sitegloss#84](https://github.com/ractive/sitegloss/pull/84) (`hand-back`, DEC-079: Verify
+only for marks of the page in front, with "Verify anyway"; "This page" telling a returning
+tester what waits; the copied AI text's new order) once it is merged. Checked for it: the
+description's "you verify it, or reopen it with a note" and the clipboard note still hold;
+it changes no permission, the manifest, `PRIVACY.md` or what leaves the browser. **Not**
+assumed, still open when this was written:
 - [sitegloss#83](https://github.com/ractive/sitegloss/pull/83), icons on the panel's
   buttons. It waits for the owner's eye. If it merges before the tag, add to the reviewer
   notes: the side panel's icons are paths copied from heroicons 2.2.0 (MIT), with that
   licence in `LICENSES.txt` (its only change to `scripts/build.ts`).
-- The pull request `hand-back`, being built: Verify only for marks of the page in front;
-  "This page" telling a returning tester what waits; a new order of the copied AI text. Not
-  included. If it merges before the tag, check whether the description's verify sentence
-  and the clipboard note still hold.
 
 Neither touches the manifest, `PRIVACY.md` or what leaves the browser as far as known; if
 one does when it merges, this section is behind. It replaces the earlier notes for the team sync, for 0.3.1 and for 0.4.0 (written

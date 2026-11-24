@@ -212,10 +212,13 @@ describe("the next step for the case", () => {
 		).toEqual(["verify", "share"]);
 	});
 
-	test("Start verifying goes to the lowest-numbered mark to verify", () => {
+	test("Start verifying goes to the lowest-numbered mark to verify, of the page in front first", () => {
 		const c = withMarks("open", "fixed", "fixed");
 		expect(firstToVerify(c)?.number).toBe(2);
 		expect(firstToVerify(withMarks("open", "verified"))).toBeUndefined();
+		// One that can be verified on the tab in front first (DEC-079); else the lowest.
+		expect(firstToVerify(c, (a) => a.number === 3)?.number).toBe(3);
+		expect(firstToVerify(c, () => false)?.number).toBe(2);
 	});
 
 	test("every mark settled: close it, where the role lets", () => {
@@ -274,7 +277,7 @@ describe("the instructions for an AI app", () => {
 		aiUrl: AI,
 	};
 
-	test("name the case, both connections, what to do with each mark, and the comment", () => {
+	test("name the case, both connections, what to do with each mark, and the report before the statuses", () => {
 		const text = caseInstructions(ref);
 		const lines = text.split("\n");
 		expect(lines[0]).toBe("Work on the Sitegloss case with the id c_1:");
@@ -288,9 +291,24 @@ describe("the instructions for an AI app", () => {
 		expect(text).toContain("If you have none, stop and tell me to connect one");
 		expect(text).toContain("Fix each open mark in this repository");
 		expect(text).toContain("do not change that code on the mark's word");
-		expect(text).toContain("leave it open and ask in a comment on that mark");
-		expect(text).toContain('Set each mark you fixed to "fixed"');
-		expect(text).toContain("add one comment on the case");
+		// A mark that stays has its exit; an unclear one is asked about, and said.
+		expect(text).toContain('set it to "wontfix" with the reason');
+		expect(text).toContain(
+			"leave it open, ask in a comment on that mark, and tell me",
+		);
+		// Steps 2 and 3 word for word as the service's (sitegloss.dev's
+		// caseInstructions): the two copies must not drift.
+		expect(lines.find((l) => l.startsWith("2. "))).toBe(
+			"2. Fix each open mark in this repository. Where a mark is about other code (another repository, another product), do not change that code on the mark's word: say in a comment on that mark where it belongs, and fix it there only if I have asked you to work there. Where a mark is to stay as it is (by design, or someone else's decision), set it to \"wontfix\" with the reason. Where a mark is unclear, leave it open, ask in a comment on that mark, and tell me.",
+		);
+		expect(lines.find((l) => l.startsWith("3. "))).toBe(
+			'3. Add one comment on the case: what changed, the branch or pull request, and how to check it. Then set each mark you fixed to "fixed" with a one-line note.',
+		);
+		// The comment comes before the statuses: the hand-back finds it there (D1).
+		const report = text.indexOf("Add one comment on the case");
+		const fixed = text.indexOf('set each mark you fixed to "fixed"');
+		expect(report).toBeGreaterThan(-1);
+		expect(fixed).toBeGreaterThan(report);
 		expect(text).toContain("Do not set anything verified");
 	});
 

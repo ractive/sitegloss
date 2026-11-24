@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Case, Mark } from "../src/lib/case.ts";
-import { cardHandOver, mineTest } from "../src/sidepanel/my-cases.ts";
+import {
+	cardHandOver,
+	mineTest,
+	waitsText,
+	waitsToVerify,
+} from "../src/sidepanel/my-cases.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import { sampleCase, withOneMark } from "./fixtures.ts";
 
@@ -100,5 +105,101 @@ describe("a card's hand-over", () => {
 			cardHandOver(c, cloud({ members: undefined })).assignee,
 		).toBeUndefined();
 		expect(cardHandOver(sampleCase(), cloud()).state).toBeUndefined();
+	});
+});
+
+describe("This page for whoever came to verify (DEC-079)", () => {
+	const PAGE = "https://www.example.com/kk";
+	const OTHER = "https://www.example.com/other";
+	/** Marks 1 and 2 on PAGE, 3 on OTHER, with these statuses. */
+	const three = (
+		statuses: ("open" | "fixed" | "wontfix")[],
+		more: Partial<Case> = {},
+	): Case => {
+		const c = withOneMark(sampleCase("c_3"));
+		const a = c.marks[0] as Mark;
+		const shot = c.shots[0] as Case["shots"][number];
+		return {
+			...c,
+			shots: [shot, { ...shot, id: "s2", url: OTHER }],
+			marks: statuses.map((st, i) => ({
+				...a,
+				id: `m${i + 1}`,
+				number: i + 1,
+				shot: i < 2 ? "s1" : "s2",
+				...(st === "open" ? {} : { resolution: { kind: st, at: c.updatedAt } }),
+			})),
+			...more,
+		};
+	};
+	const signedOut = initialState().cloud;
+
+	test("the team's case: to verify, and I started it", () => {
+		const team = cloud();
+		const c = three(["fixed", "fixed", "fixed"], {
+			createdBy: TESS,
+			assignee: DANA,
+		});
+		expect(waitsToVerify(c, PAGE, team)).toEqual({ here: 2, elsewhere: 1 });
+		// Started by someone else: not mine to verify.
+		expect(
+			waitsToVerify({ ...c, createdBy: DANA }, PAGE, team),
+		).toBeUndefined();
+		// A mark still open: in progress, the assignee's turn.
+		expect(
+			waitsToVerify(
+				three(["fixed", "open", "fixed"], { createdBy: TESS }),
+				PAGE,
+				team,
+			),
+		).toBeUndefined();
+		// To verify, but nothing of it on this page: said, with where.
+		const there = three(["wontfix", "wontfix", "fixed"], {
+			createdBy: TESS,
+			assignee: DANA,
+		});
+		expect(waitsToVerify(there, PAGE, team)).toEqual({
+			here: 0,
+			elsewhere: 1,
+		});
+		// The same rule as My cases: nobody assigned, still mine to verify;
+		// neither reporter nor assignee, not mine; a hand-over the server never
+		// told (a case synced before DEC-071), not mine, as My cases has it.
+		expect(waitsToVerify({ ...c, assignee: null }, PAGE, team)).toEqual({
+			here: 2,
+			elsewhere: 1,
+		});
+		expect(
+			waitsToVerify({ ...c, createdBy: DANA, assignee: DANA }, PAGE, team),
+		).toBeUndefined();
+		const { assignee: _, ...untold } = c;
+		expect(waitsToVerify(untold, PAGE, team)).toBeUndefined();
+		expect(mineTest(team)?.(untold)).toBe(false);
+	});
+
+	test("signed out, or a case of this browser only: fixed marks on this page", () => {
+		const c = three(["fixed", "open", "fixed"]);
+		expect(waitsToVerify(c, PAGE, signedOut)).toEqual({
+			here: 1,
+			elsewhere: 1,
+		});
+		const local = cloud({ modes: { c_3: "local" } });
+		expect(waitsToVerify(c, PAGE, local)).toEqual({ here: 1, elsewhere: 1 });
+		// None on this page: the ordinary sentence.
+		expect(
+			waitsToVerify(three(["open", "open", "fixed"]), PAGE, signedOut),
+		).toBeUndefined();
+	});
+
+	test("what it says", () => {
+		expect(waitsText({ here: 3, elsewhere: 1 })).toBe(
+			"3 marks wait for you to verify on this page.",
+		);
+		expect(waitsText({ here: 1, elsewhere: 0 })).toBe(
+			"1 mark waits for you to verify on this page.",
+		);
+		expect(waitsText({ here: 0, elsewhere: 2 })).toBe(
+			"2 marks wait for you to verify, on other pages of this case.",
+		);
 	});
 });
