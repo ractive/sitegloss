@@ -4507,6 +4507,26 @@ the box and the pin painted over the head and the account button above the pane.
   (a page with a fixed head and a pane with a sticky band: no part of the box or pin above
   the band while the element is under it, nothing drawn while all of it is, and shown from
   the panel it is back in its pane and drawn).
+- **Addendum, 2026-11-24: a load under the sticky band.** The hand-back audit (DEC-079)
+  reported that a case loaded while a marked element sits partly under a sticky band draws
+  its box from the element's top (70) instead of the band's end (100) until the next scroll;
+  the e2e test above failed in Chromium (run 45301559834) one time in a few with the panel
+  slowed. Not a defect of the drawing: its "clip top 70" was `getBoundingClientRect` of the
+  nested SVG that cuts the mark, and for a nested SVG that is the box of its content, uncut
+  (the box drawn at the element's top), not the viewport that cuts it. Counted in the
+  pixels painted, after the scroll had settled and on every frame after a second load sent
+  by hand: none of the mark's pink inside the band (y 61 to 99), 118 below it; the cover
+  test's view on that load ended at 100 (its result kept from the scroll, the element not
+  moved). The test read that box, and passed only when it caught a frame drawn before the
+  scroll (the clip then at 130): its timing decided it. It now reads the clip's own box
+  (its `y`) on a frame drawn after the scroll (the mark's box at the element's new top),
+  and checks the draw of a second load the same way. With the panel slowed 20 times: the
+  old test 1 failure in 4, the new one 6 of 6 passed, and 6 of 6 unslowed; with the cover
+  cut taken out, the new one fails. Every draw path (load, update, scroll, resize, tick, the
+  toolbar's own marks) goes through `Visibility.viewOf` and `clipMark`; nothing in them
+  changed. What stays as DEC-075 says: an element scrolled under a band that was never
+  found before is drawn over it until the test 350 ms after the scroll stops (97 pixels of
+  pink in the band during that time here), as no hit test runs during a scroll.
 
 ## DEC-076: Access to all sites, offered first and said where something is missing (owner)
 
@@ -4820,7 +4840,7 @@ and Verify buttons reading heavier than the old outlined ones.
 | Action | Where in the panel | Web app's icon | Panel's icon |
 |---|---|---|---|
 | Show a mark on the page (all three states) | a mark's row | ViewfinderCircle ("The mark" in the viewer) | viewfinder-circle, the button is the icon alone |
-| Verify; Start verifying | a mark to verify (row and actions); Next step | Check (Verify; "Show the marks to verify") | check |
+| Verify; Verify anyway; Start verifying | a mark to verify (row and actions); a mark to verify of another page (DEC-079); Next step, This page | Check (Verify; "Show the marks to verify") | check |
 | Reopen…; Reopen case | a settled mark; the case's end | ArrowUturnLeft | arrow-uturn-left |
 | Close case | the case's end; Next step | CheckCircle | check-circle |
 | Edit comment; a comment's Edit; Rename… | a mark; the thread; the case's "…" menu | PencilSquare (Edit text…, Rename…) | pencil-square |
@@ -4860,8 +4880,10 @@ and Verify buttons reading heavier than the old outlined ones.
   purpose), Keep it on / Not now, the sync's Copy to Downloads and Choose a folder… (with
   icons the pair takes two lines at 340 px), Show in folder, Try again, Allow access,
   Change…, Stop copying, Match size, Next candidate, Sync them / Keep them, Connect
-  again, and Disconnect all apps in the takeover notice (beside Connect again it would
-  take a line more; under the code it has its icon). Not at all: text links (Share with
+  again, Disconnect all apps in the takeover notice (beside Connect again it would
+  take a line more; under the code it has its icon), and Open its page to verify
+  (DEC-079: the same action as Show on a mark of another page, but with the viewfinder
+  its row took four lines at 340 px where it takes three). Not at all: text links (Share with
   team in the facts, Add a link, Expand all, + Add another AI app, Fill in the code for
   me), chips, a menu's items where the web app gives them none (Add a link…, the
   members in Assign), the cards of cases.
@@ -4883,3 +4905,101 @@ and Verify buttons reading heavier than the old outlined ones.
   `currentColor`; `setLabel`), `test/view.test.ts` (Show has no text, its name and tooltip
   in both states; Copy link the same; a labelled button keeps its words beside its icon),
   `test/build.test.ts` (heroicons' licence in every build).
+
+## DEC-079: The hand-back in the panel: Verify where the page was checked, on to the next mark, "This page" for whoever came to verify
+
+2026-11-24, the night before the public release. The owner, on 24 November: "see how
+the workflow can be enhanced so that the handover from a tester to a dev and back from
+the dev to a tester can be simplified. Gather ideas and implement them." A walk through
+the whole flow that night (service at 7e06b47, extension at fa7c0ac, in the e2e
+harness) found, for the extension: B6 (from the web to the live page, "This page" speaks
+of marking, not of verifying), B7 (Verify does not move on, and every row offers Verify,
+also for marks of pages the tester has not opened), B10 (the hand-over paragraph twice;
+the `set_mark_status` question without the sync line), D1 to D3 (the copied text: the
+report after the statuses, no exit for a mark that stays, a question that reaches
+nobody) and D7 (thin status answers). The service's part is its own.
+
+- **B7 was real, in one situation.** On the audit's build the rule "after a Verify the
+  next mark that waits opens" (`afterVerify`, `opensAfterVerify`, the cue; DEC-061, the
+  motion of pull request 78) held in the whole list. After Start verifying, which
+  filters the list to the marks to verify, it did not: the verified row left the
+  filtered list, the redraw handed the focus to the next row's head (`focusInMarks`,
+  the rule for a deleted mark), and the rule "only a focus the Verify left behind is
+  moved" took that focus for the person's own. Nothing opened, as the audit's picture
+  shows ("Showing 3 of 5 marks", all closed). Shown in a view test of the audit's case
+  (five marks on two pages; 1, 2, 4 fixed, 3 won't fix, 5 open; the tab on /v1): from
+  the head and from the open row, with the focus on the pressed button, the whole list
+  opened mark 2, the filtered list nothing. Now a focus the redraw moved, because the
+  verified row left the list, is still the Verify's (`movedTo`), there and when the
+  held opening runs. Unchanged: a focus on the body counts as left behind (the next
+  opens), a field or a button elsewhere that the person went to is theirs (nothing
+  opens), also a button outside the list that kept the focus because the browser does
+  not focus a clicked button (Safari, Firefox on macOS) after it was reached by keyboard.
+- **Which rows offer Verify (the rule).** The one-click Verify in a row's head and the
+  Verify in an open row are there for a mark to verify of the page in front, as the
+  panel knows "this page": `onPageInFront` with the tab's address, the rule of the
+  row's Show (`verifiesHere` in `mark-link.ts`). A mark to verify of another page has
+  neither: its second line names its page as the link that opens it in this tab and
+  shows the mark there (the existing "On <page>" link, now also while the marks are not
+  drawn), and its open row has "Open its page to verify" as its strong action, the same
+  `openMarkPage`. That link takes the tab's host only where the tab shows a page of
+  this case (another environment: `pageInFront`) or the case is drawn on it; from any
+  other site (the hand-back mail in a webmail, the case on the web app) it opens the
+  address where the mark was made, and its tooltip names that whole address (review).
+  **Verify is never impossible (review):** paths differ between environments (ids in a
+  path), a fix moves a route, a page redirects. So the open row of such a mark has a
+  quiet "Verify anyway" beside it ("You checked it somewhere else: set mark N
+  verified"), the same Verify with its cue and the next mark; the row's head has none.
+  The row says what is true: "Open its page to verify it there, or verify anyway if you
+  checked it elsewhere." With no page of the case in front (a browser page, no tab) no
+  row offers Verify and each mark to verify names its page. Where the tab's address is
+  not known (no access yet: Firefox after the tab went to another page, any tab not
+  let in) the open row offers no page to open again but the access notice's way: "To
+  verify here, click the Sitegloss icon …", and Verify anyway. A mark of no web page
+  (an imported file's) has nowhere to open, so it keeps Verify. Rows of other states
+  are as they were.
+- **After a Verify** the next mark to verify of the page in front opens first, then one
+  of another page; that row opens with "Open its page to verify" as its one obvious
+  action, and the status line says "Mark 4 opened: it is on another page; open its page
+  to verify it." The tab is not navigated by itself. Start verifying (the next step's,
+  and This page's) opens the first mark to verify of the page in front, else the lowest.
+- **B6, "This page" for whoever came to verify.** When the page in front has one open
+  case (pull request 81: only open cases are promoted there) that waits for this person
+  to verify it, it says so instead of "This page already has a case …": "3 marks wait
+  for you to verify on this page." (or "…, on other pages of this case." when none of
+  them is on this page), and its main button is Start verifying: the case opens, its
+  marks are drawn, the first mark to verify of this page opens with the focus on its
+  head (`verifyCase`: Open this case; the step waits in the panel's state,
+  `verifyOnOpen`, until a read of the case makes it current, whichever read that is).
+  Waits for this person: the team's case (a server that assigns cases) is "to verify"
+  and among their cases by the rule of My cases (`mineFor`: they started it and the
+  server told its hand-over); signed out, a case of this browser only, or a server that
+  assigns none: fixed marks on this page (`waitsToVerify` in `my-cases.ts`). Every other state, and several
+  cases on the page, keep the sentence and Open this case.
+- **The copied text (D1, D2, D3)** in the service's words, step 2: "… Where a mark is to
+  stay as it is (by design, or someone else's decision), set it to "wontfix" with the
+  reason. Where a mark is unclear, leave it open, ask in a comment on that mark, and tell
+  me." Step 3: "Add one comment on the case: what changed, the branch or pull request,
+  and how to check it. Then set each mark you fixed to "fixed" with a one-line note."
+  The extension's AI tools' instructions say the same order and the wontfix exit.
+- **Small ones.** The first-use main view says the hand-over once: before signing in
+  under Team beside Sign in, in the empty list only where a team assigns cases (B10).
+  The question before an AI app's `set_mark_status` says "It syncs with the team …: its
+  members see it." where the case syncs and the call changes the mark, as add_comment's
+  does (B10). `set_mark_status` answers where the case stands after the change, as this
+  browser knows it: "Still open: 5." or "No mark is open now: the case is ready to
+  verify." (or "…, and none waits to be verified."); no mail is claimed, the server
+  sends those (D7).
+- **Not changed:** no permission, the manifest, settings, the version; the marks'
+  drawing on the page; the web app.
+- **Found on the way, not this change's:** the full Chromium run on this branch once
+  failed "a loaded mark shows only where its element does …" (`marks.test.ts`, DEC-075),
+  by timing: with the side panel's page slowed it failed on `main` too. It was the test,
+  not the content script: it read `getBoundingClientRect()` of the nested `<svg>` that
+  cuts the mark, which is its content's box uncut, and passed only when it caught a frame
+  drawn before the scroll. Fixed on `main` by pull request 85 (it reads the clip's own
+  box and checks a second load).
+- **Known, left for later:** a batch status tool (`set_marks_status`) for the
+  extension's AI tools (D7: five marks, five questions unless "Always allow"); "open on
+  the page" from the web through a hint in the address (the audit's C10); following the
+  next mark to another page by navigating the tab after a Verify.

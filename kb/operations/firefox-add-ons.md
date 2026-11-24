@@ -126,9 +126,10 @@ To enter or check by hand before that version is published:
 ## For version 0.4.0, the first version on AMO
 
 Written at `main` 363d126 (24 November 2026), on the same footing as the Chrome Web Store
-runbook's section for 0.4.0. Pull requests 75, 79, 80 and 81 are included. The open
-[sitegloss#83](https://github.com/ractive/sitegloss/pull/83) (panel icons) and the
-`hand-back` pull request are not. It replaces the earlier notes for 0.4.0 (written at 7040dc6), which are in this
+runbook's section for 0.4.0. Pull requests 75, 79, 80 and 81 are included, and
+[sitegloss#84](https://github.com/ractive/sitegloss/pull/84) (`hand-back`, DEC-079) once
+merged: it changes no permission, the manifest or `PRIVACY.md`. The open
+[sitegloss#83](https://github.com/ractive/sitegloss/pull/83) (panel icons) is not. It replaces the earlier notes for 0.4.0 (written at 7040dc6), which are in this
 file's history.
 
 - **There is no listing yet.** AMO's public API answers 404 for `sitegloss@ractive.ch`

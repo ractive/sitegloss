@@ -211,7 +211,10 @@ user agent. What differs from Chrome and Edge:
 5. Each mark in the side panel has a status: open, fixed and to verify, verified, won't
    fix or can't reproduce. Resolve… sets it (Fixed, to verify; Fixed and verified; Won't
    fix; Can't reproduce; with an optional note). The tester, where the fix is deployed, then
-   clicks Verify on a fix that holds, or Reopen… with a note on what is still wrong;
+   clicks Verify on a fix that holds, or Reopen… with a note on what is still wrong
+   (Verify is offered for the marks of the page in front; a mark to verify of another
+   page names that page and opens it, or, checked elsewhere, takes "Verify anyway" in its
+   open row; after a Verify the next mark to verify opens);
    the claimed fix and its note stay in the mark's history. The status chips under the
    case's bar (Open, To verify, Verified, Dismissed) count the marks and filter the list:
    the developer works through Open, the tester through To verify. On a loaded page a

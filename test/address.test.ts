@@ -41,6 +41,7 @@ import {
 	pendingAfterDraw,
 	shortAddress,
 	tryShow,
+	verifiesHere,
 } from "../src/sidepanel/mark-link.ts";
 import { pageView } from "../src/worker/tools.ts";
 import caseFile from "./case-file.json" with { type: "json" };
@@ -631,6 +632,26 @@ describe("a mark's Show while the marks are not drawn", () => {
 		expect(mayLoadAndShow(c, a, undefined, true)).toBe(false);
 		// The case was closed meanwhile.
 		expect(mayLoadAndShow(c, a, page, false)).toBe(false);
+	});
+
+	test("Verify is offered only where the tab in front shows the mark's page (DEC-079)", () => {
+		// The mark's page on its own host, or on another (localhost): yes.
+		expect(verifiesHere(c, a, page)).toBe(true);
+		expect(
+			verifiesHere(
+				c,
+				a,
+				page.replace("https://www.example.com", "http://localhost:3000"),
+			),
+		).toBe(true);
+		// Another page, a browser page, a tab whose address is hidden, none.
+		expect(verifiesHere(c, a, "https://www.example.com/other")).toBe(false);
+		expect(verifiesHere(c, a, "chrome://newtab/")).toBe(false);
+		expect(verifiesHere(c, a, "")).toBe(false);
+		expect(verifiesHere(c, a, undefined)).toBe(false);
+		// A mark of no web page has no page to open: it keeps Verify.
+		const file: Case = { ...c, page: { ...c.page, url: "file:///tmp/a.html" } };
+		expect(verifiesHere(file, a, undefined)).toBe(true);
 	});
 
 	test("a draw that drew nothing leaves nothing pending; a newer wait stays", () => {

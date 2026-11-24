@@ -380,11 +380,18 @@ function untold(c: Case, where: Where, mayClose: boolean): NextStep {
 	};
 }
 
-/** The mark "Start verifying" goes to: the lowest-numbered of those to verify. */
-export function firstToVerify(c: Case): Mark | undefined {
-	return [...c.marks]
+/**
+ * The mark "Start verifying" goes to: the lowest-numbered of those to verify,
+ * one that can be verified on the tab in front first (`here`, DEC-079).
+ */
+export function firstToVerify(
+	c: Case,
+	here: (a: Mark) => boolean = () => true,
+): Mark | undefined {
+	const waiting = [...c.marks]
 		.sort((x, y) => x.number - y.number)
-		.find((a) => markStatus(a) === "fixed");
+		.filter((a) => markStatus(a) === "fixed");
+	return waiting.find(here) ?? waiting[0];
 }
 
 /** What a copy did, said in the block while the step still offers that copy. */

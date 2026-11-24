@@ -107,6 +107,26 @@ export function mayLoadAndShow(
 	);
 }
 
+/**
+ * Whether a mark to verify is offered Verify in its row (DEC-079): only where
+ * the tester can have checked it, the tab in front showing the mark's page as
+ * the panel knows "this page" (`onPageInFront`, the rule of the row's Show).
+ * A mark of another page, or with the page in front unknown (a browser page,
+ * a tab Sitegloss may not read yet), names its page and opens it instead. A
+ * mark of no web page (an imported file's) has no page to open: it keeps
+ * Verify, as there is nowhere else to check it.
+ */
+export function verifiesHere(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+): boolean {
+	if (!isWebPage(markAddress(c, a))) return true;
+	return (
+		tabUrl !== undefined && isWebPage(tabUrl) && onPageInFront(c, a, tabUrl)
+	);
+}
+
 /** What is pending once a draw is over: a press's own goes if nothing was drawn. */
 export function pendingAfterDraw(
 	mine: PendingShow,

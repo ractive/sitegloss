@@ -14,7 +14,7 @@ import { type Case, type Mark, markUrl } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
 import { closedSaid } from "../src/sidepanel/closed.ts";
-import { serverChooser } from "../src/sidepanel/cloud-view.ts";
+import { HAND_OVER_NOTE, serverChooser } from "../src/sidepanel/cloud-view.ts";
 import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
@@ -1379,11 +1379,264 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 	});
 });
 
+/**
+ * `caseState` with the tab in front on the case's own page: where its marks
+ * are offered Verify (DEC-079).
+ */
+function onItsPage(c: Case, change?: (s: PanelState) => void): PanelState {
+	return caseState(c, (s) => {
+		s.tab = { id: 1, url: c.page.url, title: "", size: undefined };
+		change?.(s);
+	});
+}
+
 describe("Verify closes its mark (DEC-061)", () => {
 	// The collapse and the held opening run on the clock.
 	beforeEach(() => void jest.useFakeTimers());
 	afterEach(() => void jest.useRealTimers());
 	const COLLAPSED = 320;
+
+	describe("a case of two pages, verified from one of them (DEC-079)", () => {
+		const V1 = "http://127.0.0.1:5/v1";
+		const DEMO = "http://127.0.0.1:5/demo";
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const shot = (id: string, url: string) => ({
+			id,
+			image: `shots/${id}.webp`,
+			scrollX: 0,
+			scrollY: 0,
+			viewport: { width: 1280, height: 800, dpr: 2 },
+			capturedAt: fixed.at,
+			url,
+		});
+		/** Marks 1 to 3 on /v1, 4 and 5 on /demo; 1, 2, 4 fixed, 3 dismissed, 5 open; `done` verified. */
+		const flow = (id: string, done: number[], updatedAt = fixed.at): Case => ({
+			...sampleCase(id),
+			updatedAt,
+			page: { ...sampleCase(id).page, url: V1, title: "Premiums" },
+			pages: [
+				{ url: V1, title: "Premiums", lang: "en" },
+				{ url: DEMO, title: "Bikes", lang: "en" },
+			],
+			shots: [shot("s1", V1), shot("s2", DEMO)],
+			marks: [1, 2, 3, 4, 5].map(
+				(n): Mark => ({
+					id: `m${n}`,
+					number: n,
+					shot: n <= 3 ? "s1" : "s2",
+					comment: `Comment ${n}`,
+					author: "user",
+					shape: { kind: "note", at: { x: 1, y: 1 } },
+					crop: `crops/m${n}.webp`,
+					element: null,
+					...(n === 3
+						? { resolution: { kind: "wontfix" as const, at: fixed.at } }
+						: n === 5
+							? {}
+							: {
+									resolution: done.includes(n)
+										? { ...fixed, verified: { at: updatedAt } }
+										: fixed,
+								}),
+				}),
+			),
+		});
+		const on = (c: Case, url: string | undefined, filtered: boolean) =>
+			caseState(c, (s) => {
+				if (url !== undefined)
+					s.tab = { id: 1, url, title: "", size: undefined };
+				// As Start verifying leaves the list: the marks to verify only.
+				if (filtered)
+					s.markFilter = { caseId: c.id, group: "toVerify", upTo: 5 };
+			});
+		const row = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"]`,
+			) as unknown as HTMLElement;
+		const opened = () =>
+			[...window.document.querySelectorAll("li.mark[data-open]")].map(
+				(li) => (li as unknown as HTMLElement).dataset["mark"],
+			);
+		const verifies = (id: string) =>
+			row(id).querySelector(".head-verify") !== null ||
+			row(id).querySelector('[data-mark-action="verify"]') !== null;
+
+		test("only the marks of the page in front offer Verify; one of another page names its page and opens it", () => {
+			const calls: unknown[] = [];
+			const actions = actionsWith({
+				openMarkPage: (_c, a, where) => void calls.push([a.id, where]),
+				verifyMark: (_c, a) => void calls.push([a.id, "verified"]),
+			});
+			render(on(flow("c_two_pages", []), V1, false), actions);
+			expect(["m1", "m2", "m4"].map(verifies)).toEqual([true, true, false]);
+			expect(
+				row("m1").querySelector(".head-verify")?.getAttribute("title"),
+			).toBe("The fix holds on the page you checked");
+			// Mark 4: its page as the link in its second line, and opened, the
+			// page is its one strong action.
+			const link = row("m4").querySelector<HTMLElement>(".mark-sub .elsewhere");
+			expect(link?.textContent).toBe("On Bikes");
+			(
+				row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+			).click();
+			const strong = [
+				...row("m4").querySelectorAll(".mark-actions .strong"),
+			] as unknown as HTMLElement[];
+			expect(strong.map((b) => b.textContent)).toEqual([
+				"Open its page to verify",
+			]);
+			// The tab is on this case's site: the link and the button go there.
+			expect(strong[0]?.title).toContain(DEMO);
+			// What it offers, said: no promise that Verify will come.
+			expect(row("m4").querySelector(".away-hint")?.textContent).toBe(
+				"Open its page to verify it there, or verify anyway if you checked it elsewhere.",
+			);
+			// Checked somewhere the panel cannot tell: Verify anyway, quiet,
+			// in the open row only, through the same Verify.
+			const anyway = row("m4").querySelector<HTMLElement>(
+				'.mark-actions [data-mark-action="verify-anyway"]',
+			);
+			expect(anyway?.textContent).toBe("Verify anyway");
+			expect(anyway?.classList.contains("strong")).toBe(false);
+			expect(anyway?.title).toBe(
+				"You checked it somewhere else: set mark 4 verified",
+			);
+			expect(row("m4").querySelector(".head-verify")).toBeNull();
+			strong[0]?.click();
+			link?.click();
+			anyway?.click();
+			expect(calls).toEqual([
+				["m4", "made"],
+				["m4", "made"],
+				["m4", "verified"],
+			]);
+			// On /demo it is the other way round.
+			render(on(flow("c_two_pages", []), DEMO, false), actions);
+			expect(["m1", "m2", "m4"].map(verifies)).toEqual([false, false, true]);
+		});
+
+		test.each([
+			["the hand-back mail", "https://mail.google.com/mail/u/0/#inbox"],
+			["the case on the web app", "https://app.sitegloss.dev/cases/c_1"],
+		])(
+			"from %s in the tab, a mark's page opens where it was made, never on that host",
+			(_, url) => {
+				const calls: unknown[] = [];
+				const actions = actionsWith({
+					openMarkPage: (_c, a, where) => void calls.push([a.id, where]),
+				});
+				render(on(flow(`c_from_${url}`, []), url, false), actions);
+				(
+					row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+				).click();
+				const open = row("m4").querySelector<HTMLElement>(
+					'[data-mark-action="open-page"]',
+				);
+				// The tooltip names the whole address it opens, host and all.
+				expect(open?.title).toContain(DEMO);
+				expect(open?.title).not.toContain(new URL(url).host);
+				open?.click();
+				row("m4").querySelector<HTMLElement>(".mark-sub .elsewhere")?.click();
+				expect(calls).toEqual([
+					["m4", "made"],
+					["m4", "made"],
+				]);
+			},
+		);
+
+		test("with the tab's address unknown, the open row says how to let Sitegloss see it, and Verify anyway", () => {
+			render(on(flow("c_unread", []), "", false), noActions);
+			(
+				row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+			).click();
+			expect(
+				row("m4").querySelector('[data-mark-action="open-page"]'),
+			).toBeNull();
+			expect(row("m4").querySelector(".away-hint")?.textContent).toMatch(
+				/^Sitegloss cannot see which page this tab shows yet\. To verify here, click .+ Or verify anyway if you checked it elsewhere\.$/,
+			);
+			expect(
+				row("m4").querySelector('[data-mark-action="verify-anyway"]'),
+			).not.toBeNull();
+		});
+
+		test("This page's Start verifying: the row it opens has the focus", () => {
+			const c = flow("c_focus", []);
+			render(on(c, V1, true), noActions);
+			const state = on(c, V1, true);
+			state.picked = { caseId: c.id, markId: "m2", at: 1, focus: true };
+			render(state, noActions);
+			expect(row("m2").hasAttribute("data-open")).toBe(true);
+			expect(
+				window.document.activeElement ===
+					(row("m2").querySelector(".mark-toggle") as unknown),
+			).toBe(true);
+		});
+
+		test.each([
+			["a browser page", "chrome://newtab/"],
+			["a tab whose address Sitegloss may not read", ""],
+			["no tab", undefined],
+		])(
+			"with %s in front no mark offers Verify; each names its page",
+			(_, url) => {
+				render(on(flow(`c_nowhere_${url}`, []), url, false), noActions);
+				expect(["m1", "m2", "m4"].map(verifies)).toEqual([false, false, false]);
+				expect(
+					["m1", "m2", "m4"].map(
+						(id) => row(id).querySelector(".mark-sub .elsewhere")?.textContent,
+					),
+				).toEqual(["On Premiums", "On Premiums", "On Bikes"]);
+				// Marks not to verify are as before: no page link added.
+				expect(row("m5").querySelector(".mark-sub .elsewhere")).toBeNull();
+			},
+		);
+
+		test.each([
+			["the whole list", false],
+			["the marks to verify only (Start verifying)", true],
+		])(
+			"in %s, a Verify opens the next mark of this page, then the one of the other page",
+			(_, filtered) => {
+				const id = `c_next_${filtered}`;
+				render(on(flow(id, []), V1, filtered), noActions);
+				// From the collapsed row's head, the focus on the pressed button.
+				const head = row("m1").querySelector(
+					".head-verify",
+				) as unknown as HTMLButtonElement;
+				head.focus();
+				head.click();
+				render(
+					on(flow(id, [1], "2026-11-15T09:00:00Z"), V1, filtered),
+					noActions,
+				);
+				jest.advanceTimersByTime(COLLAPSED);
+				expect(opened()).toEqual(["m2"]);
+				expect(
+					window.document.activeElement ===
+						(row("m2").querySelector(".mark-toggle") as unknown),
+				).toBe(true);
+				// From the open row: mark 4 is next, on /demo; it opens, its page the action.
+				const body = row("m2").querySelector(
+					'.body [data-mark-action="verify"]',
+				) as unknown as HTMLButtonElement;
+				body.focus();
+				body.click();
+				render(
+					on(flow(id, [1, 2], "2026-11-16T09:00:00Z"), V1, filtered),
+					noActions,
+				);
+				jest.advanceTimersByTime(COLLAPSED);
+				expect(opened()).toEqual(["m4"]);
+				expect(
+					row("m4").querySelector(".mark-actions .strong")?.textContent,
+				).toBe("Open its page to verify");
+				expect(window.document.getElementById("case-hint")?.textContent).toBe(
+					"Mark 4 opened: it is on another page; open its page to verify it.",
+				);
+			},
+		);
+	});
 
 	test("a Verify takes no focus the person has moved to another row meanwhile", () => {
 		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
@@ -1402,7 +1655,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			...sampleCase("c_verify_elsewhere"),
 			marks: [m(1, fixed), m(2), m(3, fixed)],
 		};
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		const part = (id: string, selector: string) =>
 			window.document.querySelector(
 				`[data-mark="${id}"] ${selector}`,
@@ -1412,7 +1665,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 		// The save is on its way; the person goes to mark 2.
 		part("m2", ".mark-toggle").focus();
 		render(
-			caseState({
+			onItsPage({
 				...c,
 				updatedAt: "2026-11-15T09:00:00Z",
 				marks: [
@@ -1454,7 +1707,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 		const actions = actionsWith({
 			verifyMark: (_c, a) => void verified.push(a.id),
 		});
-		render(caseState(c), actions);
+		render(onItsPage(c), actions);
 		const row = (id: string) =>
 			window.document.querySelector(
 				`[data-mark="${id}"]`,
@@ -1480,7 +1733,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 				m(3, fixed),
 			],
 		};
-		render(caseState(done), actions);
+		render(onItsPage(done), actions);
 		jest.advanceTimersByTime(COLLAPSED);
 		expect(row("m1").hasAttribute("data-open")).toBe(false);
 		expect(row("m3").hasAttribute("data-open")).toBe(true);
@@ -1505,7 +1758,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 				m(3, { ...fixed, verified: { at: "2026-11-16T09:00:00Z" } }),
 			],
 		};
-		render(caseState(all), actions);
+		render(onItsPage(all), actions);
 		jest.advanceTimersByTime(COLLAPSED);
 		expect(row("m3").hasAttribute("data-open")).toBe(false);
 		expect(row("m2").hasAttribute("data-open")).toBe(false);
@@ -1541,7 +1794,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
 		const cued = () => doc.querySelectorAll("[data-arrived]").length;
 		const line = () => doc.getElementById("case-hint")?.textContent;
-		render(caseState(c), actions);
+		render(onItsPage(c), actions);
 		// Not saved: the row is as it was.
 		answer = Promise.resolve("Not saved: no.");
 		(
@@ -1568,7 +1821,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			updatedAt: "2026-11-15T09:00:00Z",
 			marks: [verified(1, "2026-11-15T09:00:00Z"), m(2), m(3, fixed)],
 		};
-		render(caseState(one), actions);
+		render(onItsPage(one), actions);
 		jest.advanceTimersByTime(COLLAPSED);
 		expect(cued()).toBe(1);
 		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
@@ -1580,11 +1833,11 @@ describe("Verify closes its mark (DEC-061)", () => {
 			updatedAt: at,
 			marks: one.marks.map((a) => (a.id === "m2" ? { ...a, comment } : a)),
 		});
-		render(caseState(redrawn("2026-11-15T09:30:00Z", "Edited")), actions);
+		render(onItsPage(redrawn("2026-11-15T09:30:00Z", "Edited")), actions);
 		expect(cued()).toBe(1);
 		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
 		jest.advanceTimersByTime(3000);
-		render(caseState(redrawn("2026-11-15T10:00:00Z", "Edited again")), actions);
+		render(onItsPage(redrawn("2026-11-15T10:00:00Z", "Edited again")), actions);
 		expect(cued()).toBe(0);
 		// The last one to verify, with an open mark left: said once.
 		(
@@ -1597,7 +1850,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			updatedAt: "2026-11-16T09:00:00Z",
 			marks: [one.marks[0] as Mark, m(2), verified(3, "2026-11-16T09:00:00Z")],
 		};
-		render(caseState(last), actions);
+		render(onItsPage(last), actions);
 		jest.advanceTimersByTime(COLLAPSED);
 		expect(cued()).toBe(0);
 		expect(line()).toBe("That was the last mark to verify.");
@@ -1646,20 +1899,20 @@ describe("Verify closes its mark (DEC-061)", () => {
 		test("the next row does not open before the collapse ends, whether the answer is early or late; a redraw in between continues the collapse", () => {
 			const c = base("c_order");
 			const actions = actionsWith({ verifyMark: () => undefined });
-			render(caseState(c), actions);
+			render(onItsPage(c), actions);
 			openRow("m1");
 			verify("m1");
 			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
 			// The answer lands early: the verified row keeps collapsing, nothing opens.
 			jest.advanceTimersByTime(100);
 			const k1 = "2026-11-15T09:00:00Z";
-			render(caseState(stored(c, k1)), actions);
+			render(onItsPage(stored(c, k1)), actions);
 			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
 			expect(row("m1").hasAttribute("data-open")).toBe(true);
 			expect(row("m2").hasAttribute("data-open")).toBe(false);
 			// A second redraw in between: still the same, and the held opening survives.
 			jest.advanceTimersByTime(100);
-			render(caseState(stored(c, "2026-11-15T09:00:01Z")), actions);
+			render(onItsPage(stored(c, "2026-11-15T09:00:01Z")), actions);
 			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
 			expect(row("m2").hasAttribute("data-open")).toBe(false);
 			// The collapse is done: the row is closed and the next opens, with its cue.
@@ -1673,7 +1926,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			jest.advanceTimersByTime(COLLAPSED);
 			expect(row("m2").hasAttribute("data-open")).toBe(false);
 			render(
-				caseState({
+				onItsPage({
 					...stored(c, "2026-11-15T10:00:00Z"),
 					marks: [
 						mk(1, { ...fixed, verified: { at: "x" } }),
@@ -1692,10 +1945,10 @@ describe("Verify closes its mark (DEC-061)", () => {
 			const actions = actionsWith({
 				verifyMark: (_c, a) => void verified.push(a.id),
 			});
-			render(caseState(c), actions);
+			render(onItsPage(c), actions);
 			openRow("m1");
 			verify("m1");
-			render(caseState(stored(c, "2026-11-15T09:00:00Z")), actions);
+			render(onItsPage(stored(c, "2026-11-15T09:00:00Z")), actions);
 			jest.advanceTimersByTime(COLLAPSED);
 			expect(row("m2").hasAttribute("data-arrived")).toBe(true);
 			// Held (700 ms) and fading (to 1.9 s): still marked at 1.8 s.
@@ -1706,7 +1959,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			// Again, while the highlight is still on: the press is not blocked.
 			const k = "2026-11-16T09:00:00Z";
 			render(
-				caseState({
+				onItsPage({
 					...stored(c, k),
 					marks: [
 						mk(1, { ...fixed, verified: { at: k } }),
@@ -1725,30 +1978,30 @@ describe("Verify closes its mark (DEC-061)", () => {
 		test("a filter or another case on screen during the collapse: the verified row is closed when shown again", () => {
 			const c = base("c_leak");
 			const actions = actionsWith({ verifyMark: () => undefined });
-			render(caseState(c), actions);
+			render(onItsPage(c), actions);
 			openRow("m1");
 			verify("m1");
 			jest.advanceTimersByTime(100);
 			// A filter on "to verify" takes the verified row away.
 			render(
-				caseState(stored(c, "2026-11-15T09:00:00Z"), (st) => {
+				onItsPage(stored(c, "2026-11-15T09:00:00Z"), (st) => {
 					st.markFilter = { caseId: c.id, group: "toVerify", upTo: 99 };
 				}),
 				actions,
 			);
 			expect(doc.querySelector('[data-mark="m1"]')).toBeNull();
 			jest.advanceTimersByTime(COLLAPSED);
-			render(caseState(stored(c, "2026-11-15T09:30:00Z")), actions);
+			render(onItsPage(stored(c, "2026-11-15T09:30:00Z")), actions);
 			expect(row("m1").hasAttribute("data-open")).toBe(false);
 			// Another case within the 300 ms: no key is left either.
 			const d = base("c_leak2");
-			render(caseState(d), actions);
+			render(onItsPage(d), actions);
 			openRow("m1");
 			verify("m1");
 			jest.advanceTimersByTime(100);
-			render(caseState(base("c_leak_other")), actions);
+			render(onItsPage(base("c_leak_other")), actions);
 			jest.advanceTimersByTime(COLLAPSED);
-			render(caseState(stored(d, "2026-11-15T10:00:00Z")), actions);
+			render(onItsPage(stored(d, "2026-11-15T10:00:00Z")), actions);
 			expect(row("m1").hasAttribute("data-open")).toBe(false);
 			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
 		});
@@ -1759,13 +2012,13 @@ describe("Verify closes its mark (DEC-061)", () => {
 				marks: [mk(1, fixed), mk(2, fixed), mk(3)],
 			};
 			const actions = actionsWith({ verifyMark: () => undefined });
-			render(caseState(c), actions);
+			render(onItsPage(c), actions);
 			openRow("m1");
 			verify("m1");
 			jest.advanceTimersByTime(100);
 			const k = "2026-11-15T09:00:00Z";
 			render(
-				caseState({
+				onItsPage({
 					...c,
 					updatedAt: k,
 					marks: [
@@ -1780,7 +2033,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			jest.advanceTimersByTime(100);
 			const k2 = "2026-11-15T09:00:01Z";
 			render(
-				caseState({
+				onItsPage({
 					...c,
 					updatedAt: k2,
 					marks: [
@@ -1808,7 +2061,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			let answer: Promise<string | undefined> =
 				Promise.resolve("Not saved: no.");
 			const actions = actionsWith({ verifyMark: () => answer });
-			render(caseState(c), actions);
+			render(onItsPage(c), actions);
 			openRow("m1");
 			verify("m1");
 			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
@@ -1837,12 +2090,12 @@ describe("Verify closes its mark (DEC-061)", () => {
 			const had = globalThis.matchMedia;
 			globalThis.matchMedia = (() => ({ matches: true })) as never;
 			try {
-				render(caseState(c), actions);
+				render(onItsPage(c), actions);
 				openRow("m1");
 				verify("m1");
 				expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
 				expect(row("m1").hasAttribute("data-open")).toBe(false);
-				render(caseState(stored(c, "2026-11-15T09:00:00Z")), actions);
+				render(onItsPage(stored(c, "2026-11-15T09:00:00Z")), actions);
 				expect(row("m2").hasAttribute("data-open")).toBe(true);
 				expect(row("m2").hasAttribute("data-arrived")).toBe(true);
 			} finally {
@@ -1872,7 +2125,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 		};
 		const press = (c: Case, answer: Promise<string | undefined>): Actions => {
 			const actions = actionsWith({ verifyMark: () => answer });
-			render(caseState(c), actions);
+			render(onItsPage(c), actions);
 			(
 				row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
 			).click();
@@ -1900,7 +2153,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 					fail = resolve;
 				}),
 			);
-			render(caseState(b), actions);
+			render(onItsPage(b), actions);
 			expect(row("m1").hasAttribute("data-open")).toBe(false);
 			fail("Not saved: no.");
 			await later();
@@ -1955,7 +2208,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 				}),
 			);
 			render(
-				caseState({
+				onItsPage({
 					...c,
 					updatedAt: "2026-11-15T09:00:00Z",
 					marks: [
@@ -1980,7 +2233,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			...base,
 			marks: base.marks.map((a) => ({ ...a, resolution: fixed })),
 		};
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		const row = window.document.querySelector(
 			'[data-mark="m1"]',
 		) as unknown as HTMLElement;
@@ -1995,7 +2248,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 				resolution: { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } },
 			})),
 		};
-		render(caseState(later), noActions);
+		render(onItsPage(later), noActions);
 		expect(window.document.activeElement?.id).toBe("verdict");
 	});
 
@@ -2011,6 +2264,20 @@ describe("Verify closes its mark (DEC-061)", () => {
 			markId: "m1",
 		});
 		expect(afterVerify(order, "gone")).toBeUndefined();
+		// One on the page in front before one of another page (DEC-079).
+		const pages = [
+			{ id: "m1", status: "fixed" },
+			{ id: "m2", status: "fixed", away: true },
+			{ id: "m3", status: "fixed" },
+		];
+		expect(afterVerify(pages, "m1")).toEqual({ markId: "m3" });
+		expect(afterVerify(pages, "m3")).toEqual({ markId: "m1" });
+		expect(
+			afterVerify(
+				pages.filter((m) => m.id !== "m3"),
+				"m1",
+			),
+		).toEqual({ markId: "m2" });
 	});
 
 	test("the row a Verify opens: the next that waits; in a filtered list the one known at the click; none when nothing waits", () => {
@@ -2100,7 +2367,7 @@ describe("Verify (DEC-023)", () => {
 		);
 
 	test("the status block: a bar and the chips in order, counts above zero", () => {
-		render(caseState(fourMarks()), noActions);
+		render(onItsPage(fourMarks()), noActions);
 		const bar = [
 			...window.document.querySelectorAll("#case-status .progress > span"),
 		].map((s) => s.getAttribute("data-kind"));
@@ -2115,7 +2382,7 @@ describe("Verify (DEC-023)", () => {
 
 	test("the status block and Show marks sit in the marks' section, under its heading", () => {
 		const c = fourMarks();
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		const marks = window.document.querySelector("section.marks");
 		const bar = marks?.querySelector(".marks-bar");
 		// The chips filter this list: straight under its bar, above the marks.
@@ -2131,7 +2398,7 @@ describe("Verify (DEC-023)", () => {
 		// A redraw of the list keeps both, and the focus on the button pressed.
 		el("load-case").focus();
 		render(
-			caseState({ ...c, updatedAt: "2026-11-14T10:00:00.000Z" }),
+			onItsPage({ ...c, updatedAt: "2026-11-14T10:00:00.000Z" }),
 			noActions,
 		);
 		expect(window.document.querySelectorAll("#load-case").length).toBe(1);
@@ -2145,7 +2412,7 @@ describe("Verify (DEC-023)", () => {
 			) as unknown as HTMLElement
 		).focus();
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markFilter = { caseId: c.id, group: "open", upTo: 4 };
 			}),
 			noActions,
@@ -2154,7 +2421,7 @@ describe("Verify (DEC-023)", () => {
 		expect(at?.getAttribute("data-group")).toBe("open");
 		expect(at?.getAttribute("aria-pressed")).toBe("true");
 		// A case without marks: no block, no gap for one.
-		render(caseState({ ...c, id: "c_none", marks: [] }), noActions);
+		render(onItsPage({ ...c, id: "c_none", marks: [] }), noActions);
 		expect(window.document.querySelector("#case-status")).toBeNull();
 		expect(
 			(
@@ -2171,10 +2438,10 @@ describe("Verify (DEC-023)", () => {
 			window.document
 				.querySelector(`[data-mark="${id}"]`)
 				?.hasAttribute("data-open");
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		expect(open("m3")).toBe(false);
 		const picked = (at: number) =>
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.picked = { caseId: c.id, markId: "m3", at };
 			});
 		render(picked(1), noActions);
@@ -2197,7 +2464,7 @@ describe("Verify (DEC-023)", () => {
 		render(picked(2), noActions);
 		expect(open("m3")).toBe(true);
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.picked = { caseId: "c_other", markId: "m1", at: 3 };
 			}),
 			noActions,
@@ -2211,13 +2478,13 @@ describe("Verify (DEC-023)", () => {
 		const actions = actionsWith({
 			filterMarks: (id, group) => void filters.push([id, group]),
 		});
-		render(caseState(c), actions);
+		render(onItsPage(c), actions);
 		(
 			window.document.querySelector(
 				'#case-status .chip[data-group="toVerify"]',
 			) as unknown as HTMLElement
 		).click();
-		const filtered = caseState(c, (s) => {
+		const filtered = onItsPage(c, (s) => {
 			s.markFilter = { caseId: c.id, group: "toVerify", upTo: 4 };
 		});
 		render(filtered, actions);
@@ -2247,7 +2514,7 @@ describe("Verify (DEC-023)", () => {
 		]);
 		// Another case's filter is not this one's.
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markFilter = { caseId: "c_other", group: "toVerify", upTo: 4 };
 			}),
 			actions,
@@ -2259,7 +2526,7 @@ describe("Verify (DEC-023)", () => {
 	test("the filter ends when its marks are gone, or a mark is added", () => {
 		const c = fourMarks();
 		const filtered = (k: Case) =>
-			caseState(k, (s) => {
+			onItsPage(k, (s) => {
 				s.markFilter = { caseId: c.id, group: "toVerify", upTo: 4 };
 			});
 		// The last mark to verify verified: all marks again, no empty list.
@@ -2289,14 +2556,14 @@ describe("Verify (DEC-023)", () => {
 	test("nothing open or to verify: a line says so", () => {
 		const c = fourMarks();
 		c.marks = c.marks.slice(2);
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		expect(
 			window.document.querySelector("#case-status .all-done")?.textContent,
 		).toBe("✓ All marks are verified or dismissed.");
 	});
 
 	test("each status: its pill, its strong button and the others", () => {
-		render(caseState(fourMarks()), noActions);
+		render(onItsPage(fourMarks()), noActions);
 		const pill = (id: string) =>
 			row(id).querySelector(".mark-sub .pill")?.textContent;
 		expect([pill("m1"), pill("m2"), pill("m3"), pill("m4")]).toEqual([
@@ -2358,7 +2625,7 @@ describe("Verify (DEC-023)", () => {
 		const c = fourMarks();
 		const calls: unknown[] = [];
 		render(
-			caseState(c),
+			onItsPage(c),
 			actionsWith({
 				verifyMark: (_c, a) => void calls.push(["verify", a.id]),
 				editMark: (_c, a, mode) => void calls.push(["edit", a.id, mode]),
@@ -2396,11 +2663,11 @@ describe("Verify (DEC-023)", () => {
 				},
 			],
 		};
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		expect(row("m1").querySelector(".mark-sub .reopened")?.textContent).toBe(
 			"Reopened: Still pale on hover",
 		);
-		render(caseState(verified), noActions);
+		render(onItsPage(verified), noActions);
 		const lines = [...row("m1").querySelectorAll(".history li")].map((li) => [
 			li.getAttribute("data-kind"),
 			li.textContent,
@@ -2440,7 +2707,7 @@ describe("Verify (DEC-023)", () => {
 				},
 			],
 		};
-		render(caseState(fromFile), noActions);
+		render(onItsPage(fromFile), noActions);
 		const lines = [...row("m2").querySelectorAll(".history li")].map(
 			(li) => li.textContent,
 		);
@@ -2464,7 +2731,7 @@ describe("Verify (DEC-023)", () => {
 			resolveMark: (_c, a, kind, note) => void calls.push([a.id, kind, note]),
 		});
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markEdit = {
 					markId: "m1",
 					mark: "",
@@ -2515,7 +2782,7 @@ describe("Verify (DEC-023)", () => {
 			reopenMark: (_c, a, note) => void calls.push([a.id, note]),
 		});
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markEdit = {
 					markId: "m2",
 					mark: "",
@@ -5630,6 +5897,45 @@ describe("the New case button (DEC-023, DEC-026)", () => {
 		expect(primary("new-case")).toBe(true);
 	});
 
+	test("a page whose case waits for me to verify: This page says so, and Start verifying is the action (DEC-079)", () => {
+		const calls: string[] = [];
+		const actions = actionsWith({
+			openCase: (id) => void calls.push(`open ${id}`),
+			verifyCase: (id) => void calls.push(`verify ${id}`),
+		});
+		const base = withOneMark(sampleCase("c_back"));
+		const mark = base.marks[0] as Mark;
+		const withStatus = (...fixed: boolean[]): Case => ({
+			...base,
+			marks: fixed.map((f, i) => ({
+				...mark,
+				id: `m${i + 1}`,
+				number: i + 1,
+				...(f ? { resolution: { kind: "fixed", at: base.updatedAt } } : {}),
+			})),
+		});
+		const at = (cases: Case[]) => {
+			const state = initialState();
+			state.tab = { id: 1, url: base.page.url, title: "", size: undefined };
+			state.cases = cases;
+			render(state, actions);
+		};
+		// Signed out, two marks fixed on this page.
+		at([withStatus(true, true, false)]);
+		expect(el("here-text").textContent).toBe(
+			"2 marks wait for you to verify on this page.",
+		);
+		expect(el("open-here").textContent).toBe("Start verifying");
+		expect(el("open-here").classList.contains("primary")).toBe(true);
+		el("open-here").click();
+		// Nothing fixed: the ordinary sentence and Open this case.
+		at([withStatus(false, false)]);
+		expect(el("here-text").textContent).toContain("already has a case");
+		expect(el("open-here").textContent).toBe("Open this case");
+		el("open-here").click();
+		expect(calls).toEqual(["verify c_back", "open c_back"]);
+	});
+
 	test("no hint lines for drafts: there are no drafts (DEC-026)", () => {
 		home(overlay({ visible: true, drafts: 3 }));
 		expect(el("hint").hidden).toBe(true);
@@ -7222,6 +7528,19 @@ describe("the hand-over in the panel (DEC-071)", () => {
 		s.cloud.atTeam = { c_1: "t_1" };
 		s.cloud.members = [DANA, TESS];
 	};
+
+	test("the main view says the hand-over once: under Team before signing in, in the empty list with a team", () => {
+		const said = () =>
+			(el("home").textContent ?? "").split(HAND_OVER_NOTE).length - 1;
+		render(initialState(), noActions);
+		expect(said()).toBe(1);
+		expect(el("cloud-hand-over")?.textContent).toBe(HAND_OVER_NOTE);
+		const team = initialState();
+		signedIn(team);
+		render(team, noActions);
+		expect(said()).toBe(1);
+		expect(el("cloud-hand-over")).toBeNull();
+	});
 
 	test("Assign is a menu: you first, the others, then Nobody; the one who has it is checked, and a pick assigns", () => {
 		const picked: (string | null)[] = [];
