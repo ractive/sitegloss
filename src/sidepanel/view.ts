@@ -24,7 +24,6 @@ import {
 	type FindingApp,
 	GROUP_LABEL,
 	GROUP_OF,
-	isOfferedOn,
 	MAX_COMMENT,
 	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
@@ -69,6 +68,7 @@ import {
 	tabAccess,
 	type Words,
 } from "./access.ts";
+import { pageCases } from "./closed.ts";
 import {
 	type CloudActions,
 	caseSync,
@@ -244,6 +244,7 @@ const casesHeading = byId<HTMLHeadingElement>("cases-heading");
 const here = byId<HTMLDivElement>("here");
 const hereText = byId<HTMLParagraphElement>("here-text");
 const hereCases = byId<HTMLDivElement>("here-cases");
+const hereClosed = byId<HTMLDivElement>("here-closed");
 const openHere = byId<HTMLButtonElement>("open-here");
 const allSites = byId<HTMLInputElement>("all-sites");
 const aiStatus = byId<HTMLSpanElement>("ai-status");
@@ -894,7 +895,9 @@ function renderCases(state: PanelState, actions: Actions): void {
 	const active = document.activeElement as HTMLElement | null;
 	const inLists =
 		active !== null &&
-		(casesList.contains(active) || hereCases.contains(active));
+		(casesList.contains(active) ||
+			hereCases.contains(active) ||
+			hereClosed.contains(active));
 	const focused: string[] | undefined = !inLists
 		? undefined
 		: active.id === "my-cases"
@@ -904,22 +907,19 @@ function renderCases(state: PanelState, actions: Actions): void {
 					[`[data-case="${active.dataset["case"]}"]`, "#my-cases"]
 				: active.closest("#closed-cases > summary") !== null
 					? ["#closed-cases > summary", "#my-cases"]
-					: undefined;
-	// The page's own cases stand under "This page" (the owner): going on with
-	// the case a page has is what is done most, a second case for it rarely.
-	// Only on the same page of the same site as one of its screenshots
-	// (DEC-050): elsewhere (localhost, staging) a case is opened by hand.
-	// Not closed ones first, closed ones after; nothing opens by itself.
-	const offered = state.cases.filter((c) => url && isOfferedOn(c, url));
-	const own = [
-		...offered.filter((c) => c.closed === undefined),
-		...offered.filter((c) => c.closed !== undefined),
-	];
-	// Closed cases are filed away under Closed, folded (DEC-046): they leave
-	// the list, and the page's own stand under "This page".
+					: active.closest("#closed-here > summary") !== null
+						? ["#closed-here > summary", "#my-cases"]
+						: undefined;
+	// The page's own open cases stand under "This page" (the owner): going on
+	// with the case a page has is what is done most, a second case for it
+	// rarely. Only on the same page of the same site as one of its screenshots
+	// (DEC-050): elsewhere (localhost, staging) a case is opened by hand. A
+	// closed case is not promoted there: the page's closed cases are folded
+	// under the main action, and not in the list's Closed group again.
+	const { open: own, closed: ownClosed } = pageCases(state.cases, url);
 	const open = state.cases.filter((c) => c.closed === undefined);
 	const closed = state.cases.filter(
-		(c) => c.closed !== undefined && !own.includes(c),
+		(c) => c.closed !== undefined && !ownClosed.includes(c),
 	);
 	const others = open.filter((c) => !own.includes(c));
 	// "My cases" (DEC-071): the list narrowed to them, while it is on. Its
@@ -929,6 +929,9 @@ function renderCases(state: PanelState, actions: Actions): void {
 	const mineCount = mine === undefined ? 0 : open.filter(mine).length;
 	const one = own.length === 1 ? own[0] : undefined;
 	here.hidden = own.length === 0;
+	hereClosed.replaceChildren(
+		...(ownClosed.length > 0 ? [closedGroup(ownClosed, card, "here")] : []),
+	);
 	hereText.textContent =
 		own.length === 0
 			? ""
@@ -990,7 +993,8 @@ function renderCases(state: PanelState, actions: Actions): void {
 			.map(
 				(selector) =>
 					casesList.querySelector<HTMLElement>(selector) ??
-					hereCases.querySelector<HTMLElement>(selector),
+					hereCases.querySelector<HTMLElement>(selector) ??
+					hereClosed.querySelector<HTMLElement>(selector),
 			)
 			.find((el) => el !== null);
 		if (next) next.focus();
@@ -1044,22 +1048,26 @@ function mineFilter(on: boolean, count: number, actions: Actions): HTMLElement {
 	);
 }
 
-/** Whether the Closed group was unfolded: it stays so across redraws. */
-let closedOpen = false;
+/**
+ * Whether each Closed group (the list's, and the page's under "This page")
+ * was unfolded: it stays so across redraws, each on its own.
+ */
+const closedOpen = { list: false, here: false };
 
 /** The closed cases, folded by default (DEC-046). */
 function closedGroup(
 	closed: Case[],
 	card: (c: Case) => HTMLLIElement,
+	where: "list" | "here" = "list",
 ): HTMLElement {
 	const group = h(
 		"details",
 		{
 			class: "closed-cases",
-			id: "closed-cases",
-			...(closedOpen ? { open: true } : {}),
+			id: where === "list" ? "closed-cases" : "closed-here",
+			...(closedOpen[where] ? { open: true } : {}),
 			ontoggle: (e: Event) => {
-				closedOpen = (e.target as HTMLDetailsElement).open;
+				closedOpen[where] = (e.target as HTMLDetailsElement).open;
 			},
 		},
 		h(
@@ -1152,6 +1160,34 @@ function renderImportPrompt(state: PanelState, actions: Actions): void {
 	importPrompt.hidden = false;
 }
 
+/** The last `homeFocus` the list has answered. */
+let homeFocusSeq = 0;
+
+/**
+ * After the person's own Close case the list takes the focus, once: on the
+ * closed case's card where it is on screen (the page's own case), else on
+ * the list's heading, never on the body.
+ */
+function applyHomeFocus(state: PanelState): void {
+	const { seq, caseId } = state.homeFocus;
+	// Home out of sight (Settings, a case open): it waits for it.
+	if (seq === homeFocusSeq || state.settings || state.view.kind !== "home")
+		return;
+	homeFocusSeq = seq;
+	const card =
+		caseId === undefined
+			? null
+			: document.querySelector<HTMLElement>(
+					`#here-cases [data-case="${caseId}"], #here-closed [data-case="${caseId}"], #cases [data-case="${caseId}"]`,
+				);
+	const folded = card?.closest("details:not([open])") != null;
+	if (card && !folded) card.focus();
+	else {
+		casesHeading.tabIndex = -1;
+		casesHeading.focus();
+	}
+}
+
 function renderHome(state: PanelState, actions: Actions): void {
 	const tab = state.tab;
 	// Under "This page": its address, else its title (Chrome tells the
@@ -1195,6 +1231,7 @@ function renderHome(state: PanelState, actions: Actions): void {
 		actions,
 	);
 	renderCases(state, actions);
+	applyHomeFocus(state);
 	renderImportPrompt(state, actions);
 	renderCloudSection(state, actions);
 	renderSyncSection(state, actions);
@@ -3960,7 +3997,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 		sync.kind !== "synced" ||
 		(team?.permissions.includes("case:close") ?? true);
 	p.closeButton.textContent = c.closed ? "Reopen case" : "Close case";
-	p.closeButton.disabled = !mayClose;
+	// Leaving after a Close: the button is busy, so no press reopens the case
+	// before the panel is on the list.
+	const leavingNow = state.leaving?.phase === "finishing";
+	p.closeButton.disabled = !mayClose || leavingNow;
+	if (leavingNow) p.closeButton.setAttribute("aria-busy", "true");
+	else p.closeButton.removeAttribute("aria-busy");
 	p.closeButton.title = !mayClose
 		? `Your role in “${sync.team}” does not allow closing its cases`
 		: c.closed
