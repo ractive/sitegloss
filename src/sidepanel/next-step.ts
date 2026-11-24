@@ -18,11 +18,12 @@
  * `apps/app/src/lib/next-step.ts`), kept in step by hand.
  */
 
-import { caseInstructions, contentsOf } from "../lib/agent-instructions.ts";
+import { caseInstructions } from "../lib/agent-instructions.ts";
 import {
 	assigneeOf,
 	type Case,
 	caseCounts,
+	isSafeId,
 	type Mark,
 	markStatus,
 	type UserRef,
@@ -71,8 +72,6 @@ export type Where =
 			team: string;
 			link: string | undefined;
 			mcp: string;
-			/** The team's AI app page in the web app. */
-			ai: string | undefined;
 			offline?: true;
 	  };
 
@@ -124,10 +123,6 @@ export function whereIs(cloud: Cloud, c: Case): Where {
 					? undefined
 					: caseAddress(server, team.slug, c.id),
 			mcp: mcpAddress(server),
-			ai:
-				team.slug === undefined
-					? undefined
-					: new URL(`/t/${encodeURIComponent(team.slug)}/ai`, server).href,
 			...(cloud.status?.state === "offline" ? { offline: true as const } : {}),
 		};
 	}
@@ -415,7 +410,9 @@ export const COPY_FAILED =
 /**
  * The copies: the case's address in the web app, or the instructions for
  * an AI app with it, given to `write` (the clipboard, in the click). Only
- * where the server has the case; `undefined`: nothing to copy.
+ * where the server has the case; `undefined`: nothing to copy. The
+ * instructions name the case by its id, so an id that is not one (a server
+ * could send anything) is not copied into them.
  */
 export async function copyStep(
 	c: Case,
@@ -424,16 +421,11 @@ export async function copyStep(
 	write: (text: string) => Promise<void>,
 ): Promise<Copied | undefined> {
 	if (where.kind !== "team" || where.link === undefined) return undefined;
+	if (what === "copy-ai" && !isSafeId(c.id)) return undefined;
 	const text =
 		what === "copy-link"
 			? where.link
-			: caseInstructions({
-					id: c.id,
-					title: c.title,
-					url: where.link,
-					aiUrl: where.ai ?? where.link,
-					contents: contentsOf(c),
-				});
+			: caseInstructions({ id: c.id, url: where.link });
 	try {
 		await write(text);
 	} catch {
