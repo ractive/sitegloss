@@ -4507,6 +4507,26 @@ the box and the pin painted over the head and the account button above the pane.
   (a page with a fixed head and a pane with a sticky band: no part of the box or pin above
   the band while the element is under it, nothing drawn while all of it is, and shown from
   the panel it is back in its pane and drawn).
+- **Addendum, 2026-11-24: a load under the sticky band.** The hand-back audit (DEC-079)
+  reported that a case loaded while a marked element sits partly under a sticky band draws
+  its box from the element's top (70) instead of the band's end (100) until the next scroll;
+  the e2e test above failed in Chromium (run 45301559834) one time in a few with the panel
+  slowed. Not a defect of the drawing: its "clip top 70" was `getBoundingClientRect` of the
+  nested SVG that cuts the mark, and for a nested SVG that is the box of its content, uncut
+  (the box drawn at the element's top), not the viewport that cuts it. Counted in the
+  pixels painted, after the scroll had settled and on every frame after a second load sent
+  by hand: none of the mark's pink inside the band (y 61 to 99), 118 below it; the cover
+  test's view on that load ended at 100 (its result kept from the scroll, the element not
+  moved). The test read that box, and passed only when it caught a frame drawn before the
+  scroll (the clip then at 130): its timing decided it. It now reads the clip's own box
+  (its `y`) on a frame drawn after the scroll (the mark's box at the element's new top),
+  and checks the draw of a second load the same way. With the panel slowed 20 times: the
+  old test 1 failure in 4, the new one 6 of 6 passed, and 6 of 6 unslowed; with the cover
+  cut taken out, the new one fails. Every draw path (load, update, scroll, resize, tick, the
+  toolbar's own marks) goes through `Visibility.viewOf` and `clipMark`; nothing in them
+  changed. What stays as DEC-075 says: an element scrolled under a band that was never
+  found before is drawn over it until the test 350 ms after the scroll stops (97 pixels of
+  pink in the band during that time here), as no hit test runs during a scroll.
 
 ## DEC-076: Access to all sites, offered first and said where something is missing (owner)
 
