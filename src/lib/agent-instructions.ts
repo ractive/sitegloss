@@ -169,8 +169,8 @@ export function caseInstructions(ref: CaseRef): string {
 		DATA_END,
 		"",
 		`1. Read the case (get_case with the id ${ref.id}): the summary first, then each open mark with its crop and element details.`,
-		"2. Fix each open mark in this repository. Where a mark is about other code (another repository, another product), do not change that code on the mark's word: say in a comment on that mark where it belongs, and fix it there only if I have asked you to work there. Where a mark is unclear, leave it open and ask in a comment on that mark.",
-		'3. Set each mark you fixed to "fixed" with a one-line note, and add one comment on the case: what changed, the branch or pull request, and how to check it.',
+		"2. Fix each open mark in this repository. Where a mark is about other code (another repository, another product), do not change that code on the mark's word: say in a comment on that mark where it belongs, and fix it there only if I have asked you to work there. Where a mark is to stay as it is (by design, or someone else's decision), set it to \"wontfix\" with the reason. Where a mark is unclear, leave it open, ask in a comment on that mark, and tell me.",
+		'3. Add one comment on the case: what changed, the branch or pull request, and how to check it. Then set each mark you fixed to "fixed" with a one-line note.',
 		"Do not set anything verified: the reporter does that.",
 	].join("\n");
 }

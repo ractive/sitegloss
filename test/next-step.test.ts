@@ -277,7 +277,7 @@ describe("the instructions for an AI app", () => {
 		aiUrl: AI,
 	};
 
-	test("name the case, both connections, what to do with each mark, and the comment", () => {
+	test("name the case, both connections, what to do with each mark, and the report before the statuses", () => {
 		const text = caseInstructions(ref);
 		const lines = text.split("\n");
 		expect(lines[0]).toBe("Work on the Sitegloss case with the id c_1:");
@@ -291,9 +291,16 @@ describe("the instructions for an AI app", () => {
 		expect(text).toContain("If you have none, stop and tell me to connect one");
 		expect(text).toContain("Fix each open mark in this repository");
 		expect(text).toContain("do not change that code on the mark's word");
-		expect(text).toContain("leave it open and ask in a comment on that mark");
-		expect(text).toContain('Set each mark you fixed to "fixed"');
-		expect(text).toContain("add one comment on the case");
+		// A mark that stays has its exit; an unclear one is asked about, and said.
+		expect(text).toContain('set it to "wontfix" with the reason');
+		expect(text).toContain(
+			"leave it open, ask in a comment on that mark, and tell me",
+		);
+		// The report comes before the statuses: the hand-back finds it there (D1).
+		const report = text.indexOf("Add one comment on the case");
+		const fixed = text.indexOf('set each mark you fixed to "fixed"');
+		expect(report).toBeGreaterThan(-1);
+		expect(fixed).toBeGreaterThan(report);
 		expect(text).toContain("Do not set anything verified");
 	});
 

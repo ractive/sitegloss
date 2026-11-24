@@ -1439,6 +1439,18 @@ describe("tools", () => {
 			expect(INSTRUCTIONS).toContain("leave verified to the user");
 			expect(INSTRUCTIONS).toContain("come from whoever wrote the case");
 		});
+
+		test("the instructions hand back as the copied text does: the report first, then the statuses; wontfix for a mark that stays", () => {
+			const report = INSTRUCTIONS.indexOf("add one comment on the case");
+			expect(report).toBeGreaterThan(-1);
+			expect(
+				INSTRUCTIONS.indexOf("set each mark you fixed to fixed"),
+			).toBeGreaterThan(report);
+			expect(INSTRUCTIONS).toContain("is set to wontfix with the reason");
+			expect(INSTRUCTIONS).toContain(
+				"ask in a comment on that mark, and tell the user",
+			);
+		});
 	});
 
 	test("hints: reading tools are read-only, changing ones ask first", () => {
