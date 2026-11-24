@@ -4397,6 +4397,117 @@ stays `@ractive-ch/tab-mcp` 0.13.3.
   for the version strings and the bundler's own chunk and debug ids; then type check, Biome,
   both builds and `bun run verify` again.
 
+## DEC-075: A loaded mark shows only where its element does
+
+2026-11-23. The owner, on a web app whose document does not scroll (a head, and panes under
+it that scroll on their own): "When scrolling up, the marks are over the sticky header." The
+overlay drew a loaded mark at its element's box wherever that box was, and nothing asked
+whether the element could be seen there: a pane that scrolled an element past its top left
+the box and the pin painted over the head and the account button above the pane.
+
+- **The principle.** A mark that vanishes while its element is plainly visible is worse
+  than a mark drawn over a cover. Where the page cannot be read with certainty, the mark is
+  drawn.
+- **The rule.** A loaded case's mark (its box or stroke, its pin, a highlight's strokes, a
+  note's marker) is drawn only where its element shows, and not at all while nothing of the
+  element shows. What shows is the window's visual viewport, cut by each ancestor that clips
+  the element (`overflow` other than `visible` on that axis, or `contain: paint`), less what is
+  fixed or sticky over it. Only ancestors in the element's chain of containing blocks count: a
+  fixed element escapes them all but a transformed one, an absolute one those up to its
+  positioned ancestor. An ancestor without a box of its own (`display: contents`, a table row
+  or row group) cuts nothing. The root's overflow, and the body's when it is handed on to the
+  window, are the window's. The geometry is `src/lib/clip.ts` (pure, unit tested, the
+  containing-block chain included), the page's side `src/content/visible.ts`.
+- **What is cut.** The drawing is cut exactly at the view: at a pane's edge and at a cover's
+  edge, past which lies the head it must not reach over, and at the window's, past which
+  nothing is seen. A mark whose element touches a pane's edge loses the half of its stroke
+  past that edge. The cut is a nested SVG viewport round the mark's parts, in the same
+  coordinates (no `clipPath` reference to find in the shadow root).
+- **The pin goes with what shows.** When the place it belongs to (the box's corner, an
+  arrow's start) is cut away on an axis, it goes to the nearest place on that axis of what
+  shows of the mark; and it always stays whole inside the view where the view has room for
+  it. So no pin pokes over a pane's or a cover's edge, and no element showing means no pin.
+  It is picked where it is drawn, with a tool on too (DEC-027).
+- **What is hidden.** An element of which nothing is inside the window and its panes; an
+  element under one painting cover at all five of its points; any element outside every open
+  modal dialog (any of them, not only the one in front) or outside a fullscreen element. The
+  case's found marks, drawn or not, are on the overlay's `svg.marks` as `data-found` (the
+  numbers), for a test to read.
+- **Covers, the rule** (narrowed after the second review: the band logic hid marks that were
+  plainly visible twice). A cover cuts only the top end or the bottom end of a mark, and only
+  where one and the same fixed or sticky element covers both points of that end: a head or
+  a foot bar, cut at its edge. A mark is hidden by a cover only when that one element covers
+  all five points inside it (the four corners, 2 px in, and the middle). An element counts as
+  a cover only if it paints: between the topmost hit and the covering element something has
+  a background colour with alpha above zero, a background image or a backdrop filter, or is
+  a dialog or an open popover.
+- **What a cover is, in detail.** The page is asked what is topmost (`elementFromPoint`, then
+  the shadow-aware list of `pageElementsAt` when something else is on top or a shadow host
+  is; Sitegloss's own host skipped) at those five points, and at two points just past the
+  top and two just past the bottom of what the mark reaches (the drawing, its pin, the
+  element), where a head next to the element would have the pin's half or a padded box over
+  it: the same rule, one element at both or nothing. The element, something inside it or
+  around it on top: no cover there. Something else that is, or sits in, a fixed or sticky box
+  outside the element's ancestors: the covering element is the outermost part of that box the
+  hit test saw (a `pointer-events: none` layer is not seen, its button is), its box cut to the
+  fixed or sticky box. An element the hit test does not see counts as showing.
+- **What it deliberately does not do.** No cut at a side by a cover: a fixed side rail or nav
+  next to an element leaves its mark drawn over the rail. A head made of two elements (two
+  halves that take the pointer, the bar itself not) cuts nothing: the mark is drawn over it.
+  Two widgets at an element's two corners (a chat launcher, a consent button) cut nothing.
+  Covers that are neither fixed nor sticky (an absolutely positioned menu) are no covers. A
+  transparent layer that takes the pointer (the click-catcher behind an open menu) is none.
+- **When the page is asked.** A mark is hit-tested when it first shows, when the page's DOM
+  changed, once it has stood still 350 ms after moving (`SETTLE_MS`: a head that slides away
+  or in by a transition after the scroll; the reviewer draws again 370 ms after the last
+  scroll event for it), and every 2 s while something covers it (`COVER_MS`: a cover that
+  went without a move or a DOM change would leave it wrongly hidden). A mark nothing covers
+  is not asked again while the page stands still: a cover that comes by a class change alone
+  leaves it drawn over the cover until the next move, the lesser wrong. While a mark moves
+  (a scroll), no hit test: the covers it had and those found on the page in the last 5 s
+  are taken at their boxes of the moment. A pass spends 2 ms on hit tests at most, its clock
+  starting at its first test; a mark that was due and got no time stays owed (its last test
+  and its count of DOM changes kept), and the marks are taken owed and longest untested
+  first, so none waits for ever; the reviewer draws again in the next frame while any is
+  owed.
+- **The cost, measured** (Chromium, the test build). Local web app, 8 marks in two panes,
+  199 frames of both panes scrolling 4 px a frame: the clips about 0.06 ms a frame (each
+  element's clipping ancestors read again only after a DOM change or 2 s, their boxes once a
+  pass, shared by marks). 60 marks in view under a fixed head, 199 frames of the window
+  scrolling 2 px a frame: 0.60 to 0.63 ms a frame against 0.14 to 0.17 without the clipping,
+  at most 2.8 ms in a frame. Standing still for 10 s after the scroll: the 6 marks the head
+  covers are tested again every 2 s, the rest never; 1.5 ms a redraw (twice a second, as
+  before) on average, 4.7 ms at most. All reads come before the overlay's one write.
+- **The toolbar's own marks too.** Until the side panel's copy of the case reaches the page,
+  the toolbar draws the marks it added itself (the saved ones faintly, those on their way to
+  the case). They follow the same rule: cut to where their element shows, not drawn while
+  nothing of it does. Found in CI: with the panel late, marks 1 and 2 of a page scrolled to
+  mark 3 stayed drawn by the toolbar, out of the window, and in a pane they would have stayed
+  over the head. Only the box being drawn and the mark whose comment is open stay whole.
+- **The popover** of a mark's comment (DEC-027) is placed by what is drawn of its mark (the
+  shape cut to its clip, and its pin). While its mark is not drawn (off the page, cut away,
+  covered) it stays where it is, with what is being typed in it: it is the person's open
+  work, not a mark.
+- **What stays as it is.** The panel's "found on this page" (the element is still found);
+  a mark without an element, drawn where it was; a mark being added (the box being drawn,
+  the mark whose comment dialog is open) is not clipped, so nothing is cut away from under
+  the pointer. Showing a mark from the panel or the highlight tool scrolls its
+  element into the middle of its own pane (`scrollIntoView` scrolls every scrolling ancestor),
+  so its mark shows; `load_case` scrolls nowhere, as before. Not handled: `clip-path` and
+  `mask` on an ancestor. No new permission, the manifest untouched; Chrome and Firefox alike (standard DOM
+  only).
+- Tests: `test/clip.test.ts` (the containing-block chain, the probes, the cover rule: one
+  bar at an end, two different elements, two rails, the five points, a corner that changes
+  nothing; the cut, the pin); `test/visible.test.ts` (happy-dom with given boxes and hit
+  tests: an absolute element escaping a scroller, the body's overflow, `display: contents`,
+  modal dialogs, a button in a `pointer-events: none` layer, a head bar, a two-part head, two
+  corner widgets, a transparent and a painting full-window layer, a bar in a shadow root,
+  the age limit and the settle test with a fake clock, the time of a pass held to one mark);
+  `test/overlay.test.ts` (a moved pin is picked where it is drawn); `test/e2e/marks.test.ts`
+  (a page with a fixed head and a pane with a sticky band: no part of the box or pin above
+  the band while the element is under it, nothing drawn while all of it is, and shown from
+  the panel it is back in its pane and drawn).
+
 ## DEC-076: Access to all sites, offered first and said where something is missing (owner)
 
 2026-11-23. The owner, dogfooding in Firefox: "The extension does not request 'Allowed on all
