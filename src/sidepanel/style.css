@@ -581,6 +581,10 @@ textarea + .row {
 	overflow-wrap: anywhere;
 }
 
+.notice-body p.notice-way {
+	color: var(--ink-2);
+}
+
 .notice button,
 .size button {
 	min-height: 26px;
@@ -1274,6 +1278,50 @@ main {
 
 :where(#home) > section:first-child > .wide {
 	margin-top: var(--s1);
+}
+
+/*
+ * The offer of all sites (DEC-076): first on Home until it is taken or
+ * declined. A note on a sheet, as Keep AI access on's question; no amber.
+ */
+.all-sites-offer {
+	display: grid;
+	gap: var(--s2);
+	padding: var(--s3);
+	border: 1px solid var(--edge);
+	border-radius: var(--r-card);
+	background: var(--sheet);
+}
+
+.all-sites-offer > * {
+	margin: 0;
+}
+
+/* On a tab without access, the reason comes first: the notice's look and sign. */
+.all-sites-offer[data-no-access] {
+	border-color: var(--warn-edge);
+	background: var(--warn-bg);
+}
+
+.all-sites-offer[data-no-access] > h3 {
+	display: flex;
+	gap: var(--s2);
+}
+
+.all-sites-offer[data-no-access] > h3::before {
+	content: "";
+	flex: none;
+	width: 16px;
+	height: 16px;
+	margin-top: 2px;
+	background: var(--warn);
+	-webkit-mask: var(--warning-sign) center / contain no-repeat;
+	mask: var(--warning-sign) center / contain no-repeat;
+}
+
+/* The options' notes stand under their label's text, not under the box. */
+.check-note {
+	margin: 2px 0 0 23px;
 }
 
 /* --- home: the cases ---------------------------------------------------------- */
@@ -2180,6 +2228,13 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	flex: none;
 }
 
+/* On a tab without access: why, in place of the buttons (DEC-076). */
+.case-dock > .notice {
+	flex: 1;
+	min-width: 0;
+	padding: var(--s2) 10px;
+}
+
 /*
  * What the tab in front shows of the case, in words: under the head, where
  * the marks start, so the head does not move when the tab does (DEC-061).
@@ -2200,10 +2255,6 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 /* Nothing to say about this tab: no empty row in the header. */
 .this-tab:not(:has(> :not([hidden]))) {
 	display: none;
-}
-
-.this-tab > .notice {
-	justify-self: stretch;
 }
 
 /* What the last draw came to: a line, not a box. */

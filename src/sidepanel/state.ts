@@ -42,6 +42,13 @@ export interface TabInfo {
 	size: Size | undefined;
 	/** Still loading: an address not known yet says nothing about access. */
 	loading?: boolean;
+	/**
+	 * A page no extension may run on (DEC-076): the browser's refusal said
+	 * so (`page`: a store, a page of its own, a PDF's viewer), or it is a
+	 * file and files are not allowed (`file`, Firefox, which tells the
+	 * address). No click and no all sites helps.
+	 */
+	cannotRun?: "page" | "file";
 }
 
 /** The case loaded onto a tab, and where its marks were found there. */
@@ -105,10 +112,16 @@ export interface PanelState {
 	overlay: OverlayState | undefined;
 	/** Under "This page". */
 	hint: string | undefined;
+	/**
+	 * The list takes the focus once per `seq` (a case the person's own press
+	 * closed): on the case's card if it is on screen, else on the list's
+	 * heading.
+	 */
+	homeFocus: { seq: number; caseId: string | undefined };
 	cases: Case[];
 	view: { kind: "home" } | { kind: "case"; id: string };
 	/**
-	 * The Settings view (the AI app card, the options) is drawn instead of
+	 * The Settings view (the AI app card) is drawn instead of
 	 * the view underneath, which stays as it is: an open case stays open.
 	 */
 	settings: boolean;
@@ -232,6 +245,15 @@ export interface PanelState {
 	verdictDrafts: Map<string, string>;
 	/** Sitegloss may run on every site ("Allow on all sites"). */
 	allSites: boolean;
+	/**
+	 * The person said "Not now" to the offer of all sites, or took all sites
+	 * back: the offer does not come again (DEC-076). Kept in this browser.
+	 */
+	allSitesDeclined: boolean;
+	/** The browser has answered whether Sitegloss may run on all sites. */
+	allSitesKnown: boolean;
+	/** The shortcut that clicks the icon, as the browser has it (`commands.getAll`). */
+	shortcut: string | undefined;
 	/** Sitegloss may read file:// pages ("Allow access to file URLs"); unknown at first. */
 	fileAccess: boolean | undefined;
 	/** The sync to Downloads or a folder (DEC-021, DEC-025). */
@@ -340,6 +362,7 @@ export const initialState = (): PanelState => ({
 	tab: undefined,
 	overlay: undefined,
 	hint: undefined,
+	homeFocus: { seq: 0, caseId: undefined },
 	cases: [],
 	view: { kind: "home" },
 	settings: false,
@@ -375,6 +398,9 @@ export const initialState = (): PanelState => ({
 	verdictStatus: undefined,
 	verdictDrafts: new Map(),
 	allSites: false,
+	allSitesDeclined: false,
+	allSitesKnown: false,
+	shortcut: undefined,
 	fileAccess: undefined,
 	sync: {
 		target: undefined,

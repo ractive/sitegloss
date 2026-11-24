@@ -76,10 +76,24 @@ import { IdbStore, type StoredImage } from "../lib/store.ts";
 import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { markPictures } from "../viewer/pictures.ts";
+import {
+	type AccessMemory,
+	afterAnswer,
+	asksForSite,
+	cannotRunText,
+	DECLINED,
+	noAccessHint,
+	readMemory,
+	refusalHint,
+	refusalKind,
+	unreachableText,
+	writeMemory,
+} from "./access.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
 import { linkFromField } from "./case-link.ts";
+import { closedSaid } from "./closed";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { DELETE_ARMED_MS, deleteClick } from "./delete.ts";
@@ -125,7 +139,7 @@ import {
 	type PanelState,
 } from "./state.ts";
 import { startSync, syncActions } from "./sync.ts";
-import { type Actions, lostMarksText, NO_ACCESS, render } from "./view.ts";
+import { type Actions, lostMarksText, render, wordsOf } from "./view.ts";
 import { viewerStays } from "./viewer-follow.ts";
 import { panelWindow } from "./window.ts";
 
@@ -150,7 +164,9 @@ const TEST_BUILD =
  */
 function askForSite(url: string): Promise<boolean> {
 	const pattern = sitePattern(url);
-	if (pattern === undefined || declinedSites.has(pattern))
+	// Not in Firefox, where the prompt could not be answered (`asksForSite`):
+	// the tab's notice offers all sites and the icon's click there.
+	if (!asksForSite(pattern, declinedSites, FIREFOX))
 		return Promise.resolve(false);
 	return requestPermissions({ origins: [pattern] }).then(
 		(granted) => {
@@ -171,10 +187,55 @@ const declinedSites = new Set<string>();
 const message = (error: unknown) =>
 	error instanceof Error ? error.message : String(error);
 
+/**
+ * Why an action that needed the page did nothing (DEC-076), from what is
+ * true now; nothing is remembered of it (an error page, a tab still loading
+ * is fine again once the page is).
+ */
 function describeError(error: unknown): string {
-	return error instanceof NoAccessError
-		? NO_ACCESS
-		: `Could not reach the page: ${message(error)}`;
+	if (!(error instanceof NoAccessError))
+		return `Could not reach the page: ${message(error)}`;
+	const words = wordsOf(state);
+	switch (
+		refusalHint(error.message, {
+			allSites: state.allSites,
+			addressShown: (state.tab?.url ?? "") !== "",
+		})
+	) {
+		case "cannot":
+			return cannotRunText(words);
+		case "unreachable":
+			return unreachableText(words);
+		case "no-access":
+			return noAccessHint(words);
+	}
+}
+
+/**
+ * Whether the browser refuses the tab as a page no extension may run on: a
+ * script that does nothing, tried only where the address is hidden (so
+ * Sitegloss may not run there anyway and nothing runs in the page). Its
+ * refusal says which kind (`refusalKind`).
+ */
+async function refusedAsCannot(tabId: number): Promise<"page" | undefined> {
+	try {
+		const results = await chrome.scripting.executeScript({
+			target: { tabId },
+			func: () => true,
+		});
+		// Firefox reports a refusal in the result, Chrome by rejecting; on a
+		// page of Firefox's own (about:) it runs in no frame at all (tried).
+		if (results.length === 0) return "page";
+		const failed = (results as { error?: unknown }[]).find(
+			(r) => r.error !== undefined,
+		);
+		return failed !== undefined &&
+			refusalKind(message(failed.error)) === "cannot"
+			? "page"
+			: undefined;
+	} catch (error) {
+		return refusalKind(message(error)) === "cannot" ? "page" : undefined;
+	}
 }
 
 // --- the state and its work ------------------------------------------------------
@@ -741,6 +802,16 @@ async function refreshTab(): Promise<void> {
 		// Sitegloss may not run on it: hidden here, as in Chrome.
 		const hidden =
 			files === false && (tab?.url ?? "").toLowerCase().startsWith("file:");
+		// A page no extension may run on (DEC-076), as it is now: the
+		// browser's refusal says so where the address is hidden.
+		const cannotRun: "page" | "file" | undefined =
+			tab?.id === undefined
+				? undefined
+				: hidden
+					? "file"
+					: !tab.url && tab.status !== "loading"
+						? await refusedAsCannot(tab.id)
+						: undefined;
 		if (!work.current()) return;
 		update((s) => {
 			if (files !== undefined) s.fileAccess = files;
@@ -753,6 +824,7 @@ async function refreshTab(): Promise<void> {
 							title: hidden ? "" : (tab.title ?? ""),
 							size,
 							loading: tab.status === "loading",
+							...(cannotRun ? { cannotRun } : {}),
 						};
 			// A hint is about the tab in front when it was given; the first read
 			// of that tab is no change of it.
@@ -980,6 +1052,8 @@ function openCase(id: string): void {
 			releaseImages(s);
 		}
 		s.view = { kind: "case", id };
+		// What the list said about a case just closed is not said again later.
+		s.hint = undefined;
 		s.caseHint = undefined;
 		s.deleteArmedAt = undefined;
 		s.markEdit = undefined;
@@ -1107,9 +1181,12 @@ const leavingNow = (): PanelState["leaving"] => state.leaving;
  * goes then, as with its own Done again; one drawn or tried since is tried
  * once more (DEC-014).
  */
-async function leaveCase(): Promise<void> {
+async function leaveCase(
+	keep = false,
+	save?: () => Promise<boolean>,
+): Promise<boolean> {
 	if (state.view.kind !== "case" || state.leaving?.phase === "finishing")
-		return;
+		return false;
 	const caseId = state.view.id;
 	// The first click tries the marks an earlier Done left out once more;
 	// the second is the page's Done again.
@@ -1120,24 +1197,53 @@ async function leaveCase(): Promise<void> {
 	try {
 		const { left, front, timedOut } = await endToolbars(caseId, { retry });
 		// Closed meanwhile (deleted elsewhere), or opened again.
-		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		if (left > 0) {
 			update((s) => {
 				s.leaving = { phase: "blocked", left };
 				if (front !== undefined) s.overlay = front;
 			});
-			return;
+			return false;
 		}
 		// Gone before the list shows: no empty case flashes there (DEC-026);
-		// never while a tab that did not answer may still hold a mark.
-		if (!timedOut) await forgetUntouched(caseId);
-		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return;
+		// never while a tab that did not answer may still hold a mark. Not a
+		// case the person has just closed: it is kept, under Closed.
+		if (!keep && !timedOut) await forgetUntouched(caseId);
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
+		// The toolbars are done and can leave: only now is a close saved, so a
+		// blocked leave closes nothing. A save that fails stays on the case.
+		if (save !== undefined && !(await save())) return false;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		closeCase();
+		return true;
 	} finally {
 		// Not left for good when something above failed.
 		if (leavingNow()?.phase === "finishing")
 			update((s) => (s.leaving = undefined));
 	}
+}
+
+/**
+ * The person's own press on "Close case": the panel leaves the case as
+ * "← All cases" does, and the close is saved once the toolbars are done, and the list says once where
+ * the case is and takes the focus. Failing to save, or marks the toolbar has
+ * not added yet, keep the panel on the case, which says why. Reopening, and
+ * a close from anywhere else (an AI app, the web app, the sync), never move
+ * the panel.
+ */
+async function closeFromPanel(caseId: string): Promise<void> {
+	const left = await leaveCase(true, () =>
+		changeThread(caseId, (c, now) => withClosed(c, true, now)),
+	);
+	if (!left) return;
+	// Read again: another writer may have reopened it meanwhile.
+	const saved = await store.getCase(caseId).catch(() => undefined);
+	if (saved?.closed === undefined || state.view.kind !== "home") return;
+	update((s) => {
+		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
+		s.hint = closedSaid(saved);
+		s.homeFocus = { seq: s.homeFocus.seq + 1, caseId };
+	});
 }
 
 /**
@@ -1848,6 +1954,10 @@ const actions: Actions = {
 		for (const tabId of tabs) hideOn({ tabId, caseId: c.id });
 	},
 
+	declineAllSites() {
+		remember({ ...memory, declined: true });
+	},
+
 	allowAllSites() {
 		// Chrome asks only during a click: nothing may be awaited before this.
 		void requestPermissions(ALL_SITES).then(
@@ -2093,7 +2203,9 @@ const actions: Actions = {
 			withoutCaseComment(c, commentId, now),
 		),
 	setCaseClosed: (caseId, closed) =>
-		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
+		closed
+			? void closeFromPanel(caseId)
+			: void changeThread(caseId, (c, now) => withClosed(c, false, now)),
 
 	// Through the sync, as every change of the case (DEC-071): it waits here
 	// while the server cannot be reached, and the block says so.
@@ -2553,11 +2665,68 @@ document.addEventListener("visibilitychange", () => {
 // "Blur form fields in screenshots" is the worker's (DEC-016): `ai.ts` shows
 // it and sends a change over the panel's port.
 
+/**
+ * What this browser remembers about all sites (DEC-076): "Not now", and that
+ * it was allowed, so that a take-back is a no also when it happened in the
+ * browser's settings with no panel open. The panel's own `localStorage`
+ * (the panel writes no storage of the extension's, DEC-063); Firefox may
+ * clear it with the site data, and then the offer comes once more.
+ */
+/** The panel's storage, or none where the browser refuses even to hand it out. */
+const panelStorage = ((): Storage | undefined => {
+	try {
+		return localStorage;
+	} catch {
+		return undefined;
+	}
+})();
+let memory: AccessMemory = readMemory(panelStorage);
+update((s) => (s.allSitesDeclined = memory.declined));
+
+function remember(next: AccessMemory): void {
+	memory = next;
+	writeMemory(panelStorage, next);
+	update((s) => (s.allSitesDeclined = next.declined));
+}
+
+// Answered in another panel of this browser (another window's): the same here.
+window.addEventListener("storage", (e) => {
+	if (e.key !== DECLINED && e.key !== null) return;
+	memory = readMemory(panelStorage);
+	update((s) => (s.allSitesDeclined = memory.declined));
+});
+
 async function refreshAllSites(): Promise<void> {
 	const work = sitesWork.start();
 	const granted = await chrome.permissions.contains(ALL_SITES);
-	if (work.current()) update((s) => (s.allSites = granted));
+	if (!work.current()) return;
+	// Newly allowed: the tab's address is read first, so that no render in
+	// between has all sites allowed with the address still hidden, which
+	// would say (and announce) "cannot work on this kind of page" (DEC-076).
+	if (granted && !state.allSites) {
+		await refreshTab();
+		if (!work.current()) return;
+	}
+	// Allowed once and not now: taken back, here or in the browser's
+	// settings; the offer does not come again.
+	remember(afterAnswer(readMemory(panelStorage), granted));
+	update((s) => {
+		s.allSites = granted;
+		s.allSitesKnown = true;
+	});
 }
+
+/** The icon's shortcut, as the browser has it now (the person may change it). */
+async function refreshShortcut(): Promise<void> {
+	const all = await chrome.commands.getAll().catch(() => []);
+	const shortcut = all.find((c) => c.name === "_execute_action")?.shortcut;
+	update((s) => (s.shortcut = shortcut || undefined));
+}
+void refreshShortcut();
+// Chrome 110 and later; Firefox has no such event and is read at each opening.
+(
+	chrome.commands as { onChanged?: chrome.events.Event<() => void> }
+).onChanged?.addListener(() => void refreshShortcut());
 
 allSites.addEventListener("change", () => {
 	// Chrome asks only during a click: nothing may be awaited before this.
