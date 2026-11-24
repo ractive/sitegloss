@@ -18,7 +18,7 @@ import { pagePort, runPairingPage } from "@ractive-ch/tab-mcp-client/extension";
 import { Window } from "happy-dom";
 import { type Kv, memoryKv } from "../src/lib/kv.ts";
 import type { CaseStore } from "../src/lib/store.ts";
-import { Connection } from "../src/worker/connection.ts";
+import { Connection, consentGoneEnds } from "../src/worker/connection.ts";
 import type { AiState } from "../src/worker/protocol.ts";
 import { DEFAULT_RELAY, settleFillCode } from "../src/worker/settings.ts";
 import type { Capture } from "../src/worker/tab.ts";
@@ -1106,5 +1106,15 @@ describe("filling in the code on the relay's pairing page, in the worker, with t
 		} finally {
 			start.mockRestore();
 		}
+	});
+});
+
+describe("a permission taken back (DEC-076)", () => {
+	test("ends AI access only in Firefox, only while it is on, only without the consent", () => {
+		expect(consentGoneEnds(true, true, false)).toBe(true);
+		// AI access off: taking all sites (or downloads) back says nothing.
+		expect(consentGoneEnds(true, false, false)).toBe(false);
+		expect(consentGoneEnds(true, true, true)).toBe(false);
+		expect(consentGoneEnds(false, true, false)).toBe(false);
 	});
 });

@@ -169,40 +169,59 @@ inBothSets("the store package", () => {
 		await panel.waitFor(`document.querySelector("[data-case]")`);
 
 		// The click was for that tab: the panel, still open, may not touch the
-		// other, and says so with a notice above the button it turns off.
+		// other. Not asked yet, the offer of all sites says so first on Home,
+		// in place of New case (DEC-076), and its button asks Chrome for every
+		// site, in the click.
 		await other.page.activate();
 		await panel.waitFor(
-			`!document.getElementById("access-notice").hidden && document.getElementById("new-case").disabled`,
+			`!document.getElementById("all-sites-offer").hidden && document.getElementById("new-case").hidden`,
 		);
 		expect(
 			await panel.eval<string>(
-				`document.getElementById("access-notice").textContent`,
+				`document.getElementById("all-sites-offer").textContent`,
 			),
-		).toContain("may not run on this tab");
-		await panel.click(`document.getElementById("new-case")`);
+		).toContain("Sitegloss has no access to this tab yet");
 		expect(await inject(other.tabId)).toContain("Cannot access");
 		expect(await other.page.eval<boolean>(`${HOST} === null`)).toBe(true);
-		// Its Allow on all sites asks Chrome for every site, in the click.
 		await panel.eval(`(() => {
 			globalThis.asked = [];
 			chrome.permissions.request = (p) => (globalThis.asked.push(p), Promise.resolve(false));
 		})()`);
 		await panel.click(
-			`document.querySelector('#access-notice [data-action="allow-all-sites"]')`,
+			`document.querySelector('#all-sites-offer [data-action="allow-all-sites"]')`,
 		);
 		expect(await panel.eval(`globalThis.asked`)).toEqual([
 			{ origins: ["<all_urls>"] },
 		]);
-		// A no changes nothing.
+		// A no changes nothing; Not now puts the notice in its place, with
+		// its own way to all sites and the icon's click.
 		await Bun.sleep(200);
 		expect(
 			await panel.eval<boolean>(
-				`document.getElementById("access-notice").hidden`,
+				`document.getElementById("all-sites-offer").hidden`,
 			),
 		).toBe(false);
+		await panel.click(
+			`document.querySelector('#all-sites-offer [data-action="not-now"]')`,
+		);
+		await panel.waitFor(
+			`document.getElementById("all-sites-offer").hidden && !document.getElementById("access-notice").hidden`,
+		);
+		expect(
+			await panel.eval<string>(
+				`document.getElementById("access-notice").textContent`,
+			),
+		).toContain("For this tab only: click the Sitegloss icon");
 		await panel.goto(
 			`chrome-extension://${h.extensionId}/sidepanel/index.html`,
 		);
+		// It holds over the panel's next opening.
+		await panel.waitFor(`!document.getElementById("access-notice").hidden`);
+		expect(
+			await panel.eval<boolean>(
+				`document.getElementById("all-sites-offer").hidden`,
+			),
+		).toBe(true);
 	}, 60_000);
 
 	fullTest(
@@ -282,7 +301,7 @@ inBothSets("the store package", () => {
 			);
 			// Nothing went in, and the panel asks for the click on this tab.
 			await panel.waitFor(
-				`!document.getElementById("case-access").hidden && document.getElementById("case-access").dataset.tab === "${tabId}" && document.getElementById("case-access").textContent.includes("Click the Sitegloss icon")`,
+				`!document.getElementById("case-access").hidden && document.getElementById("case-access").dataset.tab === "${tabId}" && document.getElementById("case-access").textContent.includes("click the Sitegloss icon")`,
 				10_000,
 			);
 			// The case's address has no query.

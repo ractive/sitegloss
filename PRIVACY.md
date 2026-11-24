@@ -188,7 +188,10 @@ creditworthiness.
 - **Single sites (optional):** asked when you open a case's page, so Sitegloss may run
   on that site.
 - **All sites (optional):** so Sitegloss works on a tab without clicking its icon
-  first.
+  first. With it and AI access on, a connected AI app can read the tab in front (its
+  address, title, screenshots and the details of its elements) on any site you bring to
+  the front, not only on a tab where you clicked the icon; it reads without asking, as
+  there, and changes are asked as described above.
 
 ## Deleting
 
