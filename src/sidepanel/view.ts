@@ -1020,6 +1020,34 @@ function renderImportPrompt(state: PanelState, actions: Actions): void {
 	importPrompt.hidden = false;
 }
 
+/** The last `homeFocus` the list has answered. */
+let homeFocusSeq = 0;
+
+/**
+ * After the person's own Close case the list takes the focus, once: on the
+ * closed case's card where it is on screen (the page's own case), else on
+ * the list's heading, never on the body.
+ */
+function applyHomeFocus(state: PanelState): void {
+	const { seq, caseId } = state.homeFocus;
+	// Home out of sight (Settings, a case open): it waits for it.
+	if (seq === homeFocusSeq || state.settings || state.view.kind !== "home")
+		return;
+	homeFocusSeq = seq;
+	const card =
+		caseId === undefined
+			? null
+			: document.querySelector<HTMLElement>(
+					`#here-cases [data-case="${caseId}"], #cases [data-case="${caseId}"]`,
+				);
+	const folded = card?.closest("details:not([open])") != null;
+	if (card && !folded) card.focus();
+	else {
+		casesHeading.tabIndex = -1;
+		casesHeading.focus();
+	}
+}
+
 function renderHome(state: PanelState, actions: Actions): void {
 	const tab = state.tab;
 	// Under "This page": its address, else its title (Chrome tells the
@@ -1053,6 +1081,7 @@ function renderHome(state: PanelState, actions: Actions): void {
 		actions,
 	);
 	renderCases(state, actions);
+	applyHomeFocus(state);
 	renderImportPrompt(state, actions);
 	renderCloudSection(state, actions);
 	renderSyncSection(state, actions);

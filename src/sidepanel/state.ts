@@ -105,6 +105,12 @@ export interface PanelState {
 	overlay: OverlayState | undefined;
 	/** Under "This page". */
 	hint: string | undefined;
+	/**
+	 * The list takes the focus once per `seq` (a case the person's own press
+	 * closed): on the case's card if it is on screen, else on the list's
+	 * heading.
+	 */
+	homeFocus: { seq: number; caseId: string | undefined };
 	cases: Case[];
 	view: { kind: "home" } | { kind: "case"; id: string };
 	/**
@@ -340,6 +346,7 @@ export const initialState = (): PanelState => ({
 	tab: undefined,
 	overlay: undefined,
 	hint: undefined,
+	homeFocus: { seq: 0, caseId: undefined },
 	cases: [],
 	view: { kind: "home" },
 	settings: false,

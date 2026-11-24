@@ -13,6 +13,7 @@ import { Window } from "happy-dom";
 import { type Case, type Mark, markUrl } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
+import { closedSaid } from "../src/sidepanel/closed.ts";
 import { serverChooser } from "../src/sidepanel/cloud-view.ts";
 import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
@@ -4524,6 +4525,47 @@ describe("the thread and closing (DEC-046)", () => {
 				'#cases > ul[data-group="other"] [data-case]',
 			),
 		).toHaveLength(1);
+	});
+});
+
+describe("after Close case", () => {
+	test("the list says once where the case is and takes the focus once: on the card where it is on screen, else on the heading", () => {
+		const c = sampleCase("c_gone");
+		const shut: Case = { ...c, closed: { at: "2026-11-20T12:00:00.000Z" } };
+		const home = (n: number, text: string | undefined) => {
+			const state = initialState();
+			state.cases = [sampleCase("c_open"), shut];
+			state.hint = text;
+			state.homeFocus = { seq: n, caseId: "c_gone" };
+			render(state, noActions);
+			return state;
+		};
+		const said = closedSaid(shut, undefined);
+		expect(said).toBe(
+			`\u201c${shut.title}\u201d is closed. It is under Closed.`,
+		);
+		home(1, said);
+		expect(el("hint").textContent).toBe(said);
+		expect(el("hint").hidden).toBe(false);
+		// Under Closed, folded: the heading of the list, never the body.
+		const heading = el("cases-heading");
+		expect((window.document.activeElement as unknown) === heading).toBe(true);
+		// The same request drawn again takes no focus back.
+		const other = el("cases").querySelector(
+			'[data-case="c_open"]',
+		) as unknown as HTMLElement;
+		other.focus();
+		home(1, said);
+		expect((window.document.activeElement as unknown) === other).toBe(true);
+	});
+
+	test("a page's own case stays under This page and says so", () => {
+		const c = sampleCase("c_own");
+		const shut: Case = { ...c, closed: { at: "2026-11-20T12:00:00.000Z" } };
+		const url = c.page.url;
+		expect(closedSaid(shut, url)).toBe(
+			`\u201c${shut.title}\u201d is closed. It is under This page.`,
+		);
 	});
 });
 

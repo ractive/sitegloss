@@ -2415,6 +2415,27 @@ stays `sitegloss/1`, and a 0.3.0 browser on the same team keeps working.
   of a synced case; the 0.3.0 file test goes through `exportCase`, `readExport` and
   `storeImport`.
 
+**Note, 2026-11-24: Close case leads back to the list.** The owner: "When clicking 'Close
+case' in the extension I'd say you can get back to 'all cases'." Rules:
+
+- The person's own press on "Close case" (the footer's button or the next step's) saves the
+  close, then leaves the case by the path "← All cases" takes (`leaveCase`: the toolbars
+  end, the case's marks leave the tab, pending things and the loaded state clear), except
+  that the untouched-case clean-up is skipped: a case just closed is kept.
+- The list says once, under "This page", "“<title>” is closed. It is under Closed." (the
+  page's own case stays under "This page" and the sentence says that). The panel has no
+  undo or button inside a hint, so there is no Reopen there: the sentence alone; the case
+  is one press away. The hint is cleared when any case is opened.
+- The focus goes once to the closed case's card when it is on screen (the page's own case),
+  else to the list's heading, never the body (`homeFocus` in the state).
+- A close that fails (not saved, refused for a team case) leaves the panel on the case,
+  with "Not saved: ..." as before; so do marks the toolbar has not added yet ("← All
+  cases" says so).
+- "Reopen case" stays on the case. A close from an AI app (`set_case_status`), the web app
+  or a teammate through the sync never moves the panel: only the press does.
+- "This page" on Home shows the case just closed as it does any closed case of the page
+  (after its open ones, with "Open"): nothing contradicts the sentence.
+
 ## DEC-047: Crops for marks made at the server, and what a mark records of the page
 
 2026-11-20. Items D and E of the 0.3.1 hand-over. Each capture defect was reproduced
