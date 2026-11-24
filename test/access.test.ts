@@ -5,16 +5,18 @@ import {
 	asksForSite,
 	browserLabel,
 	cannotRunText,
-	isStorePage,
+	isRestrictedUrl,
 	noAccessHint,
 	offerText,
 	oneTabWay,
 	optionNote,
 	readMemory,
+	refusalHint,
 	refusalKind,
 	shortcutText,
 	type TabAccess,
 	tabAccess,
+	unreachableText,
 	type Words,
 	writeMemory,
 } from "../src/sidepanel/access.ts";
@@ -32,39 +34,124 @@ const tab = (
 
 describe("which tab Sitegloss may run on (DEC-022, DEC-076)", () => {
 	test("an address: yes; none: not yet, or never where all sites is allowed already", () => {
-		expect(tabAccess(tab("https://a.example/"), false)).toBe("yes");
-		expect(tabAccess(tab(""), false)).toBe("ask");
-		expect(tabAccess(tab(""), true)).toBe("never");
+		expect(tabAccess(tab("https://a.example/"), false, "chrome")).toBe("yes");
+		expect(tabAccess(tab(""), false, "chrome")).toBe("ask");
+		expect(tabAccess(tab(""), true, "chrome")).toBe("never");
 	});
 
 	test("no tab, or one still loading: nothing is said", () => {
-		expect(tabAccess(undefined, false)).toBe("yes");
-		expect(tabAccess(tab("", { loading: true }), false)).toBe("yes");
+		expect(tabAccess(undefined, false, "chrome")).toBe("yes");
+		expect(tabAccess(tab("", { loading: true }), false, "chrome")).toBe("yes");
 	});
 
-	test("the stores' pages are never, whatever is allowed", () => {
-		for (const url of [
-			"https://chromewebstore.google.com/detail/sitegloss/abc",
-			"https://chrome.google.com/webstore/detail/x",
-			"https://microsoftedge.microsoft.com/addons/detail/x",
-			"https://addons.mozilla.org/en-US/firefox/addon/sitegloss/",
-		]) {
-			expect(isStorePage(url)).toBe(true);
-			expect(tabAccess(tab(url), true)).toBe("never");
-		}
-		// Only those: a page that merely mentions a store is a page.
+	test("each browser's restricted hosts are never there, and ordinary sites in the others", () => {
+		const cws = "https://chromewebstore.google.com/detail/sitegloss/abc";
+		const edgeStore = "https://microsoftedge.microsoft.com/addons/detail/x";
+		const amo = "https://addons.mozilla.org/en-US/firefox/addon/sitegloss/";
+		const sumo = "https://support.mozilla.org/en-US/kb/x";
+		const never = (url: string, b: "chrome" | "edge" | "firefox") =>
+			tabAccess(tab(url), true, b) === "never";
+		expect([cws, edgeStore, amo, sumo].map((u) => never(u, "chrome"))).toEqual([
+			true,
+			false,
+			false,
+			false,
+		]);
+		expect([cws, edgeStore, amo, sumo].map((u) => never(u, "edge"))).toEqual([
+			true,
+			true,
+			false,
+			false,
+		]);
+		expect([cws, edgeStore, amo, sumo].map((u) => never(u, "firefox"))).toEqual(
+			[false, false, true, true],
+		);
+		// By the address's start only.
 		expect(
-			isStorePage("https://example.com/?u=https://addons.mozilla.org/"),
+			isRestrictedUrl(
+				"https://example.com/?u=https://addons.mozilla.org/",
+				"firefox",
+			),
 		).toBe(false);
-		expect(isStorePage("https://addons.mozilla.org.evil.example/")).toBe(false);
+		expect(
+			isRestrictedUrl("https://addons.mozilla.org.evil.example/", "firefox"),
+		).toBe(false);
 	});
 
-	test("a page the browser's refusal named (or a file without the switch) is never, with or without all sites", () => {
-		expect(tabAccess(tab("", { cannotRun: "page" }), false)).toBe("never");
-		expect(tabAccess(tab("", { cannotRun: "file" }), false)).toBe("never");
+	test("the browsers' own pages and views, where their address shows", () => {
+		for (const url of [
+			"about:preferences",
+			"chrome://extensions/",
+			"edge://settings",
+			"view-source:https://a.example/",
+		])
+			expect(isRestrictedUrl(url, "chrome")).toBe(true);
+	});
+
+	test("the probe's answer of this moment (or a file without the switch) is never; nothing else is remembered", () => {
+		expect(tabAccess(tab("", { cannotRun: "page" }), false, "firefox")).toBe(
+			"never",
+		);
+		expect(tabAccess(tab("", { cannotRun: "file" }), false, "firefox")).toBe(
+			"never",
+		);
+	});
+
+	test("refused once, then the same tab and address answer: yes, and the hint said only to reload", () => {
+		// An error page (the dev server down) refuses with the no-access words.
 		expect(
-			tabAccess(tab("https://a.example/t.pdf", { cannotRun: "page" }), true),
-		).toBe("never");
+			refusalHint("Missing host permission for the tab", {
+				allSites: true,
+				addressShown: true,
+			}),
+		).toBe("unreachable");
+		// Nothing of it stays: the tab as read now decides.
+		expect(tabAccess(tab("http://localhost:3000/"), true, "firefox")).toBe(
+			"yes",
+		);
+		expect(
+			accessPlan({ tab: "yes", allSites: true, declined: false, known: true })
+				.pageControls,
+		).toBe(true);
+	});
+});
+
+describe("what a refused action says (DEC-076)", () => {
+	const hint = (message: string, allSites: boolean, addressShown: boolean) =>
+		refusalHint(message, { allSites, addressShown });
+
+	test("the browser's own cannot words: cannot", () => {
+		expect(hint("Cannot access a chrome:// URL", false, false)).toBe("cannot");
+	});
+
+	test("no access, address hidden, all sites not allowed: the ways", () => {
+		expect(hint("Missing host permission for the tab", false, false)).toBe(
+			"no-access",
+		);
+	});
+
+	test("where the ways cannot help, no way is offered: all sites allowed (any refusal), or the address shows (a click is in)", () => {
+		expect(hint("Missing host permission for the tab", true, true)).toBe(
+			"unreachable",
+		);
+		expect(hint("No tab with id: 4", true, true)).toBe("unreachable");
+		// Firefox, a PDF in its viewer after the icon's click, all sites off.
+		expect(hint("Missing host permission for the tab", false, true)).toBe(
+			"unreachable",
+		);
+	});
+
+	test("the unreachable text says to reload, and nothing about all sites or the icon", () => {
+		for (const firefox of [false, true]) {
+			const t = unreachableText({
+				firefox,
+				browser: undefined,
+				shortcut: "⌥⇧O",
+			});
+			expect(t).toContain("Reload");
+			expect(t).not.toContain("all sites");
+			expect(t).not.toContain("click");
+		}
 	});
 });
 
@@ -305,23 +392,28 @@ describe("what this browser remembers (DEC-076)", () => {
 	});
 });
 
-describe("the browser's prompt is asked for in the click (DEC-076)", () => {
+describe("the all-sites prompt is asked for in the click (DEC-076)", () => {
 	// The browsers show `permissions.request` only during the person's click:
-	// an `await` before it makes it fail (Firefox) or do nothing. Automation
-	// cannot click a real prompt in Chrome, so the source is checked: each
-	// handler that asks calls it before any `await`.
-	const main = Bun.file(new URL("../src/sidepanel/main.ts", import.meta.url));
+	// anything that defers it (an `await`, a `.then`, a timer) makes it fail
+	// (Firefox) or do nothing. Automation cannot click Chrome's real prompt,
+	// so the source of the handlers this change made or moved is checked:
+	// from where each starts to its request, nothing defers. It checks these
+	// handlers only, not every request in the panel.
+	const source = (file: string) =>
+		Bun.file(new URL(`../src/sidepanel/${file}`, import.meta.url)).text();
 
-	const beforeAsk = (source: string, start: string, ask: string) => {
-		const from = source.indexOf(start);
+	const beforeAsk = (text: string, start: string, ask: string) => {
+		const from = text.indexOf(start);
 		expect(from).toBeGreaterThan(-1);
-		const at = source.indexOf(ask, from);
+		const at = text.indexOf(ask, from + start.length);
 		expect(at).toBeGreaterThan(from);
-		return source.slice(from, at);
+		return text.slice(from + start.length, at);
 	};
+	const DEFERS =
+		/\bawait\b|\.then\(|setTimeout|queueMicrotask|requestAnimationFrame/;
 
-	test("Allow on all sites, the option's box and a page's site", async () => {
-		const source = await main.text();
+	test("Allow on all sites, the option's box, and a case's page in Chrome", async () => {
+		const main = await source("main.ts");
 		for (const [start, ask] of [
 			["allowAllSites() {", "requestPermissions(ALL_SITES)"],
 			['allSites.addEventListener("change"', "requestPermissions(ALL_SITES)"],
@@ -329,6 +421,22 @@ describe("the browser's prompt is asked for in the click (DEC-076)", () => {
 			["openPage(c, url", "askForSite(url)"],
 			["openMarkPage(c, a, where)", "askForSite(url)"],
 		] as const)
-			expect(beforeAsk(source, start, ask)).not.toMatch(/\bawait\b/);
+			expect(beforeAsk(main, start, ask)).not.toMatch(DEFERS);
+	});
+
+	test("the offer's and the notices' buttons call it straight from their click", async () => {
+		const view = await source("view.ts");
+		for (const start of [
+			'"data-action": "allow-all-sites",',
+			"else actions().allowAllSites()",
+		]) {
+			expect(view.indexOf(start)).toBeGreaterThan(-1);
+		}
+		expect(
+			beforeAsk(view, "onclick: (e) => {", "actions().allowAllSites()"),
+		).not.toMatch(DEFERS);
+		expect(
+			beforeAsk(view, '"data-action": "allow-all-sites",', "allowAllSites()"),
+		).not.toMatch(DEFERS);
 	});
 });

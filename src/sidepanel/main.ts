@@ -84,7 +84,9 @@ import {
 	DECLINED,
 	noAccessHint,
 	readMemory,
+	refusalHint,
 	refusalKind,
+	unreachableText,
 	writeMemory,
 } from "./access.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
@@ -185,30 +187,28 @@ const message = (error: unknown) =>
 	error instanceof Error ? error.message : String(error);
 
 /**
- * Why an action that needed the page did nothing (DEC-076): a page no
- * extension may run on says so, and the tab is taken for one from then on;
- * else the ways on, all sites and the icon's click.
+ * Why an action that needed the page did nothing (DEC-076), from what is
+ * true now; nothing is remembered of it (an error page, a tab still loading
+ * is fine again once the page is).
  */
 function describeError(error: unknown): string {
 	if (!(error instanceof NoAccessError))
 		return `Could not reach the page: ${message(error)}`;
-	// With all sites allowed, "no access" is a page that refuses everyone
-	// (Firefox says it so for a PDF in its viewer, tried).
-	const kind = refusalKind(error.message);
-	const cannot = kind === "cannot" || (kind === "no-access" && state.allSites);
-	if (!cannot) return noAccessHint(wordsOf(state));
-	const tab = state.tab;
-	if (tab !== undefined) {
-		cannotRunOn.set(tab.id, tab.url);
-		update((s) => {
-			if (s.tab?.id === tab.id) s.tab.cannotRun = "page";
-		});
+	const words = wordsOf(state);
+	switch (
+		refusalHint(error.message, {
+			allSites: state.allSites,
+			addressShown: (state.tab?.url ?? "") !== "",
+		})
+	) {
+		case "cannot":
+			return cannotRunText(words);
+		case "unreachable":
+			return unreachableText(words);
+		case "no-access":
+			return noAccessHint(words);
 	}
-	return cannotRunText(wordsOf(state));
 }
-
-/** Tabs whose page the browser said no extension may run on, by the address then. */
-const cannotRunOn = new Map<number, string>();
 
 /**
  * Whether the browser refuses the tab as a page no extension may run on: a
@@ -801,9 +801,8 @@ async function refreshTab(): Promise<void> {
 		// Sitegloss may not run on it: hidden here, as in Chrome.
 		const hidden =
 			files === false && (tab?.url ?? "").toLowerCase().startsWith("file:");
-		// A page no extension may run on (DEC-076): the browser's refusal
-		// says so where the address is hidden; a refusal an action met says
-		// so for that address.
+		// A page no extension may run on (DEC-076), as it is now: the
+		// browser's refusal says so where the address is hidden.
 		const cannotRun: "page" | "file" | undefined =
 			tab?.id === undefined
 				? undefined
@@ -811,9 +810,7 @@ async function refreshTab(): Promise<void> {
 					? "file"
 					: !tab.url && tab.status !== "loading"
 						? await refusedAsCannot(tab.id)
-						: tab.url !== undefined && cannotRunOn.get(tab.id) === tab.url
-							? "page"
-							: undefined;
+						: undefined;
 		if (!work.current()) return;
 		update((s) => {
 			if (files !== undefined) s.fileAccess = files;
@@ -2638,19 +2635,27 @@ document.addEventListener("visibilitychange", () => {
  * (the panel writes no storage of the extension's, DEC-063); Firefox may
  * clear it with the site data, and then the offer comes once more.
  */
-let memory: AccessMemory = readMemory(localStorage);
+/** The panel's storage, or none where the browser refuses even to hand it out. */
+const panelStorage = ((): Storage | undefined => {
+	try {
+		return localStorage;
+	} catch {
+		return undefined;
+	}
+})();
+let memory: AccessMemory = readMemory(panelStorage);
 update((s) => (s.allSitesDeclined = memory.declined));
 
 function remember(next: AccessMemory): void {
 	memory = next;
-	writeMemory(localStorage, next);
+	writeMemory(panelStorage, next);
 	update((s) => (s.allSitesDeclined = next.declined));
 }
 
 // Answered in another panel of this browser (another window's): the same here.
 window.addEventListener("storage", (e) => {
 	if (e.key !== DECLINED && e.key !== null) return;
-	memory = readMemory(localStorage);
+	memory = readMemory(panelStorage);
 	update((s) => (s.allSitesDeclined = memory.declined));
 });
 
@@ -2658,9 +2663,16 @@ async function refreshAllSites(): Promise<void> {
 	const work = sitesWork.start();
 	const granted = await chrome.permissions.contains(ALL_SITES);
 	if (!work.current()) return;
+	// Newly allowed: the tab's address is read first, so that no render in
+	// between has all sites allowed with the address still hidden, which
+	// would say (and announce) "cannot work on this kind of page" (DEC-076).
+	if (granted && !state.allSites) {
+		await refreshTab();
+		if (!work.current()) return;
+	}
 	// Allowed once and not now: taken back, here or in the browser's
 	// settings; the offer does not come again.
-	remember(afterAnswer(readMemory(localStorage), granted));
+	remember(afterAnswer(readMemory(panelStorage), granted));
 	update((s) => {
 		s.allSites = granted;
 		s.allSitesKnown = true;
@@ -3471,7 +3483,6 @@ chrome.tabs.onUpdated.addListener((id, info) => {
 	}
 });
 chrome.tabs.onRemoved.addListener((id) => {
-	cannotRunOn.delete(id);
 	if (id === state.loaded?.tabId) void forgetLoaded();
 	if (id === pendingLoad?.tabId) pendingLoad = undefined;
 	if (id === drawn?.tabId) drawn = undefined;

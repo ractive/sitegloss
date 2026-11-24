@@ -23,32 +23,73 @@ import type { PanelState } from "./state.ts";
  */
 export type TabAccess = "yes" | "ask" | "never";
 
+/** Which browser's rules apply: the build says Firefox, the brands Edge (DEC-076). */
+export type BrowserKind = "chrome" | "edge" | "firefox";
+
 /**
- * The extension stores' pages, which no extension may run on in their own
- * browser (and which nobody marks in another). Matched on the address's
- * start; the address shows only where Sitegloss may see the tab.
+ * Addresses no extension may run on in that browser (its restricted hosts),
+ * matched on the address's start; the address shows only where Sitegloss may
+ * see the tab. Only that browser's: in another, these are ordinary sites.
  */
-const STORE_PAGES = [
-	"https://chromewebstore.google.com/",
-	"https://chrome.google.com/webstore",
-	"https://microsoftedge.microsoft.com/addons",
-	// Firefox's `extensions.webextensions.restrictedDomains`, the parts people meet.
-	"https://addons.mozilla.org/",
-	"https://accounts.firefox.com/",
-	"https://support.mozilla.org/",
+const RESTRICTED_HOSTS: Record<BrowserKind, readonly string[]> = {
+	chrome: [
+		"https://chromewebstore.google.com/",
+		"https://chrome.google.com/webstore",
+	],
+	edge: [
+		"https://chromewebstore.google.com/",
+		"https://chrome.google.com/webstore",
+		"https://microsoftedge.microsoft.com/addons",
+	],
+	// Firefox's `extensions.webextensions.restrictedDomains`.
+	firefox: [
+		"https://accounts-static.cdn.mozilla.net/",
+		"https://accounts.firefox.com/",
+		"https://addons.cdn.mozilla.net/",
+		"https://addons.mozilla.org/",
+		"https://api.accounts.firefox.com/",
+		"https://content.cdn.mozilla.net/",
+		"https://discovery.addons.mozilla.org/",
+		"https://install.mozilla.org/",
+		"https://oauth.accounts.firefox.com/",
+		"https://profile.accounts.firefox.com/",
+		"https://support.mozilla.org/",
+		"https://sync.services.mozilla.com/",
+	],
+};
+
+/** The browsers' own pages and views, where an address shows at all. */
+const RESTRICTED_SCHEMES = [
+	"about:",
+	"chrome:",
+	"edge:",
+	"view-source:",
+	"devtools:",
 ];
 
-export function isStorePage(url: string): boolean {
-	return STORE_PAGES.some((start) => url.startsWith(start));
+/** Whether a visible address is one no extension may run on in this browser. */
+export function isRestrictedUrl(url: string, browser: BrowserKind): boolean {
+	return (
+		RESTRICTED_SCHEMES.some((scheme) => url.startsWith(scheme)) ||
+		RESTRICTED_HOSTS[browser].some((start) => url.startsWith(start))
+	);
 }
 
+/**
+ * From what is true now only (DEC-076): the address, the probe's answer of
+ * this moment (`tab.cannotRun`), all sites. A refused action is no memory:
+ * an error page, a tab still loading or a discarded one is back to normal
+ * once the page is.
+ */
 export function tabAccess(
 	tab: PanelState["tab"],
 	allSites: boolean,
+	browser: BrowserKind,
 ): TabAccess {
 	if (tab === undefined) return "yes";
 	if (tab.cannotRun !== undefined) return "never";
-	if (tab.url !== "") return isStorePage(tab.url) ? "never" : "yes";
+	if (tab.url !== "")
+		return isRestrictedUrl(tab.url, browser) ? "never" : "yes";
 	if (tab.loading) return "yes";
 	return allSites ? "never" : "ask";
 }
@@ -221,6 +262,27 @@ export function noAccessHint(w: Words): string {
 	return `Sitegloss has no access to this tab yet. Allow it on all sites (under Options), or ${clickTheIcon(w)}`;
 }
 
+/**
+ * What a refused action says (DEC-076), from what is true now and nothing
+ * remembered: the browser's own "cannot" words; else, where the ways cannot
+ * help (all sites is allowed, or the browser let Sitegloss see the tab, so a
+ * click is in already), that the page could not be reached and to reload
+ * it; else no access yet, with the ways.
+ */
+export function refusalHint(
+	message: string,
+	now: { allSites: boolean; addressShown: boolean },
+): "cannot" | "unreachable" | "no-access" {
+	if (refusalKind(message) === "cannot") return "cannot";
+	if (now.allSites || now.addressShown) return "unreachable";
+	return "no-access";
+}
+
+/** Sitegloss could not reach a page the ways cannot help with: reload, nothing more. */
+export function unreachableText(w: Words): string {
+	return `Sitegloss could not reach this page. Reload it and try again.${w.firefox ? " (A PDF in Firefox's viewer refuses every extension.)" : ""}`;
+}
+
 /** The page is one no extension may run on: no way helps. */
 export function cannotRunText(w: Words): string {
 	return w.firefox
@@ -258,7 +320,10 @@ export interface AccessMemory {
 	wasAllowed: boolean;
 }
 
-export function readMemory(storage: Pick<Storage, "getItem">): AccessMemory {
+export function readMemory(
+	storage: Pick<Storage, "getItem"> | undefined,
+): AccessMemory {
+	if (storage === undefined) return { declined: false, wasAllowed: false };
 	try {
 		return {
 			declined: storage.getItem(DECLINED) !== null,
@@ -271,9 +336,10 @@ export function readMemory(storage: Pick<Storage, "getItem">): AccessMemory {
 }
 
 export function writeMemory(
-	storage: Pick<Storage, "setItem" | "removeItem">,
+	storage: Pick<Storage, "setItem" | "removeItem"> | undefined,
 	memory: AccessMemory,
 ): void {
+	if (storage === undefined) return;
 	try {
 		if (memory.declined) storage.setItem(DECLINED, "1");
 		else storage.removeItem(DECLINED);

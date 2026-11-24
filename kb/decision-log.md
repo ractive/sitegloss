@@ -4463,18 +4463,29 @@ intransparent, why suddenly no marks are there and why you can't show/hide marks
 - **Pages no extension may run on** (after review). Never "no access yet" with ways that
   cannot help: the panel says "Sitegloss cannot work on this kind of page: …" with no button
   (Chrome: "the browser's own pages, other extensions' pages and its extension store"; Firefox:
-  "its own pages (about:), addons.mozilla.org and PDFs in its viewer"). Recognised by: the
-  stores' addresses where the address shows (Chrome Web Store, Edge Add-ons, addons.mozilla.org
-  and Firefox's other restricted Mozilla sites); where it is hidden, the refusal of a script
-  that does nothing (it runs nowhere, as Sitegloss may not run there): Chrome says "Cannot
-  access a chrome:// URL" for its pages, Firefox runs it in no frame on about: pages (both
-  tried); an action's own refusal, which marks that tab and address from then on (with all
-  sites allowed Firefox refuses a PDF in its viewer with "Missing host permission", tried); and
-  in Firefox a file while "Access local files" is off (its own text with the way there). On
-  such a page the first-use offer, if still up, has the neutral head. Not recognisable: the
-  Chrome Web Store and addons.mozilla.org with no access, where the browsers refuse them in the
-  same words as any page without access (tried); there the notice says "no access yet" until
-  the icon's click shows the address.
+  "its own pages (about:), addons.mozilla.org and PDFs in its viewer"). Only by what is true
+  now (second review: "cannot work on this kind of page" on an ordinary page is worse than "no
+  access yet" where nothing helps): the address where it shows, by scheme (the browsers' own
+  pages, view-source:) and by that browser's restricted hosts only (Chrome: the Chrome Web
+  Store; Edge: that and Edge Add-ons, Edge told by its brands, the one choice a brand makes;
+  Firefox: `extensions.webextensions.restrictedDomains`, addons.mozilla.org, support and
+  accounts among them; in another browser these are ordinary sites); where it is hidden, the
+  refusal of a script that does nothing, asked at each look at the tab (it runs nowhere, as
+  Sitegloss may not run there): Chrome says "Cannot access a chrome:// URL" for its pages,
+  Firefox runs it in no frame on about: pages (both tried); and in Firefox a file while
+  "Access local files" is off. The file text ("Allow access to file URLs") only where the
+  address is hidden: a store page in Chrome, whose file access is off by default, is a store
+  page. On such a page the first-use offer, if still up, has the neutral head. A refused
+  action is remembered nowhere (the first round marked the tab and address, which an error
+  page of a dev server that was down turned into a lasting "cannot"); its hint says, from
+  what is true now: the browser's own cannot words, "cannot work on this kind of page"; where
+  the ways cannot help (all sites allowed, or the address shows, so the click is in: an error
+  page, a PDF in Firefox's viewer, which Firefox refuses with "Missing host permission",
+  tried), only "Sitegloss could not reach this page. Reload it and try again." (in Firefox
+  with "A PDF in Firefox's viewer refuses every extension."); else no access yet, with the
+  ways. Not recognisable: the Chrome Web Store and addons.mozilla.org with no access, where the
+  browsers refuse them in the same words as any page without access (tried); there the notice
+  says "no access yet" until the icon's click shows the address.
 - **Focus** (after review). It never falls to the page's body when access changes what is shown:
   after Not now to what comes next (the notice that takes the offer's place, else New case
   for this page, else the heading "This page"); after Allow on all sites to the control the
@@ -4483,7 +4494,10 @@ intransparent, why suddenly no marks are there and why you can't show/hide marks
   button. The notice writes its text only when it changes (a live region speaks each write);
   the tool bar's name goes with its role while the notice fills it; a reader meets, under the
   case's head, that the bar at the end of the case says why (the bar is last in the page, as
-  on screen).
+  on screen). The focus moves only while the panel's document has it: someone working in the
+  page keeps their keys there. After a grant the tab's address is read before all sites is
+  shown as allowed, so no render in between has all sites with a hidden address (which would
+  say, and announce, "cannot work on this kind of page").
 - **Firefox.** The checkbox and the offer's button ask in the click, as before; both tested
   in the real sidebar. Opening a case's page or a mark's link does not ask for the site in
   Firefox any more (it could not be answered); the tab's notice offers all sites and the click.
@@ -4493,7 +4507,8 @@ intransparent, why suddenly no marks are there and why you can't show/hide marks
   it: the panel remembers that all sites was allowed, so a take-back in the browser's settings
   with no panel open is a no too, decided when a panel next opens. "Not now" and that memory
   live in the panel's own `localStorage` (the panel writes no storage of the extension's,
-  DEC-063); two open panels (two windows) agree through its `storage` event.
+  DEC-063; read inside a `try`: where the browser refuses it, the panel works on and offers
+  again); two open panels (two windows) agree through its `storage` event.
 - **Unchanged.** The manifest: `<all_urls>` optional, nothing new at install, no new warning.
   "Blur form fields in screenshots" apart from its place. Every other rule of the panel.
 - **What remains.** Firefox's sidebar strip shows a Sitegloss icon too; whether its click gives
@@ -4501,13 +4516,16 @@ intransparent, why suddenly no marks are there and why you can't show/hide marks
   sidebar switches), so the texts name the puzzle piece and the shortcut. A person who says
   "Not now" in one browser profile is offered it again in another; Firefox clears the panel's
   storage with the site data (and a temporary add-on gets a new origin at each load), and then
-  the offer comes once more. The gesture rule (`permissions.request` in the click, before any
-  `await`) is held by a check of the source; automation cannot click Chrome's real prompt.
+  the offer comes once more. The gesture rule (`permissions.request` in the click) is held, for
+  the handlers this change made (Allow on all sites, the option's box, the offer's and the
+  notices' buttons, a case's page in Chrome), by a check of the source that nothing defers
+  the request (`await`, `.then`, a timer); the panel's other requests (downloads, Fill in the
+  code, the data consent) are not in it. Automation cannot click Chrome's real prompt.
   Edge was not run.
 - Tests: `test/access.test.ts` (each state, a store page and a refused page, the refusals'
   kinds, the words that differ by browser, the shortcut and the browser's name, Firefox's
-  skipped site prompt, the memory and a take-back with no panel open, the source check of the
-  gesture rule), `test/connection.test.ts` (`consentGoneEnds`), `test/view.test.ts` (the offer,
+  skipped site prompt, the memory and a take-back with no panel open, the source check of the all-sites
+  handlers' gesture), `test/connection.test.ts` (`consentGoneEnds`), `test/view.test.ts` (the offer,
   Not now, the notice on Home and in the tool bar, no Show, no next-step Add marks, all gone
   once allowed, Options on Home, a store page, the focus after Not now, after a grant and when
   the notice replaces a focused control, the tool bar's name), `test/e2e/shipped.test.ts`

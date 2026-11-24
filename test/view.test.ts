@@ -257,10 +257,11 @@ describe("the offer of all sites (DEC-076)", () => {
 		expect(el<HTMLInputElement>("all-sites").checked).toBe(true);
 	});
 
-	test("a store's page: that Sitegloss cannot work there, no way that cannot help; the offer stays neutral", () => {
+	test("a store's page: that Sitegloss cannot work there, no way that cannot help (not the file toggle either); the offer stays neutral", () => {
+		// File access off, as Chrome has it by default.
 		home(
 			"https://chromewebstore.google.com/detail/sitegloss/x",
-			() => undefined,
+			(s) => (s.fileAccess = false),
 		);
 		expect(offer().hidden).toBe(false);
 		expect(offer().hasAttribute("data-no-access")).toBe(false);
@@ -268,10 +269,42 @@ describe("the offer of all sites (DEC-076)", () => {
 		const notice = el("access-notice");
 		expect(notice.hidden).toBe(false);
 		expect(notice.textContent).toContain("cannot work on this kind of page");
+		expect(notice.textContent).not.toContain("file URLs");
 		expect(
 			(notice.querySelector("button") as unknown as HTMLElement).hidden,
 		).toBe(true);
 		expect(el("new-case").hidden).toBe(true);
+		// All sites allowed too: the same.
+		home("https://chromewebstore.google.com/detail/sitegloss/x", (s) => {
+			s.fileAccess = false;
+			s.allSites = true;
+		});
+		expect(el("access-notice").textContent).not.toContain("file URLs");
+	});
+
+	test("a refused action leaves nothing behind: the same tab and address, New case is there", () => {
+		home("http://localhost:3000/", (s) => {
+			s.allSites = true;
+			s.hint = "Sitegloss could not reach this page. Reload it and try again.";
+		});
+		expect(el("new-case").hidden).toBe(false);
+		expect(el("access-notice").hidden).toBe(true);
+	});
+
+	test("the focus moves only while the panel has it: someone working in the page keeps their keys there", () => {
+		home("https://www.example.com/kk", () => undefined);
+		button("not-now").focus();
+		const doc = window.document as unknown as { hasFocus: () => boolean };
+		const had = doc.hasFocus;
+		doc.hasFocus = () => false;
+		try {
+			home("https://www.example.com/kk", (s) => (s.allSitesDeclined = true));
+			expect(
+				(window.document.activeElement as unknown) === el("new-case"),
+			).toBe(false);
+		} finally {
+			doc.hasFocus = had;
+		}
 	});
 
 	test("a page the browser's refusal named: the same, also with the address hidden", () => {

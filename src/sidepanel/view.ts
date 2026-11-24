@@ -56,6 +56,7 @@ import {
 	ALLOW_ALL_SITES,
 	ALLOW_ALL_SITES_RECOMMENDED,
 	accessPlan,
+	type BrowserKind,
 	browserLabel,
 	cannotRunText,
 	NO_ACCESS_CASE,
@@ -343,6 +344,17 @@ const BROWSER_LABEL = browserLabel(
 		.userAgentData?.brands,
 );
 
+/**
+ * Whose restricted hosts apply: Firefox by the build; Edge, whose add-ons
+ * site only Edge restricts, by its brands (the one choice a brand makes,
+ * DEC-076: an ordinary site taken for an impossible one would be worse).
+ */
+const BROWSER_KIND: BrowserKind = FIREFOX
+	? "firefox"
+	: BROWSER_LABEL === "Edge"
+		? "edge"
+		: "chrome";
+
 /** How the access texts name the browser and its shortcut now (DEC-076). */
 export function wordsOf(state: PanelState): Words {
 	return {
@@ -354,7 +366,7 @@ export function wordsOf(state: PanelState): Words {
 
 /** Whether Sitegloss may run on the tab in front (`access.ts`). */
 export function access(state: PanelState): TabAccess {
-	return tabAccess(state.tab, state.allSites);
+	return tabAccess(state.tab, state.allSites, BROWSER_KIND);
 }
 
 /** What the panel shows about access now (DEC-076). */
@@ -513,12 +525,14 @@ function renderAccess(
 	// Which tab it is about: the address and title are hidden too.
 	n.el.dataset["tab"] = state.tab === undefined ? "" : String(state.tab.id);
 	// A file only where the address is hidden and files are not allowed: a
-	// page the browser's refusal named is no file.
+	// page whose address shows (a store) or the probe named is no file.
 	const cannotRun = state.tab?.cannotRun;
 	const files =
 		kind === "cannot" &&
 		(cannotRun === "file" ||
-			(cannotRun === undefined && state.fileAccess === false));
+			(cannotRun === undefined &&
+				state.tab?.url === "" &&
+				state.fileAccess === false));
 	const w = wordsOf(state);
 	// Written only when they change: the notice is a live region, and a
 	// render for something else must not make it speak again.
@@ -5180,6 +5194,10 @@ function focusable(el: HTMLElement | null): boolean {
  */
 function keepAccessFocus(had: HTMLElement | null): void {
 	if (had === null || had === document.body || focusable(had)) return;
+	// Only where the person is: a panel whose document has no focus (they
+	// work in the page) takes none, or keys meant for the page would land
+	// on a button here.
+	if (!document.hasFocus()) return;
 	// Only what access shows or hides: other focus has its own rules.
 	const accessBound =
 		had.closest("#all-sites-offer, #access-notice, #case-access") !== null ||

@@ -101,9 +101,14 @@ user agent. What differs from Chrome and Edge:
    again, nor after you take all sites back, here or in the browser's settings (the panel
    follows that, and remembers that it was allowed, so a take-back while no panel was
    open counts too). The panel keeps this in its own storage in this browser: Firefox
-   may clear it with the site data, and then the offer comes once more. On a page no
-   extension may run on (the stores, the browser's own pages, in Firefox a PDF in its
-   viewer) the panel says that Sitegloss cannot work there, and offers no way.
+   may clear it with the site data, and then the offer comes once more. On a page the
+   panel can tell no extension may run on (the browser's own pages, and its store's and
+   restricted sites where the address shows: the Chrome Web Store in Chrome and Edge,
+   Edge Add-ons in Edge, addons.mozilla.org and Mozilla's account and support sites in
+   Firefox) it says that Sitegloss cannot work there, and offers no way. Where an action is
+   refused although the ways cannot help (all sites is allowed, or the icon's click is in:
+   an error page, a PDF in Firefox's viewer), the hint says only that Sitegloss could not
+   reach the page and to reload it; nothing of it is remembered.
 2. "New case for this page" creates a case at once, named after the page's title, opens it
    in the side panel and shows the toolbar on the page: Element (click one), Box, Arrow,
    Pen, Note and Highlight (select text on the page, or choose it with text selected; it
