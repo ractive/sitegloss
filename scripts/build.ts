@@ -109,7 +109,22 @@ export function mitText(name: string, file: string): string {
 	throw new Error(`no MIT licence text for ${name}`);
 }
 
-/** Sitegloss's licence and those of `packages`; a package without one stops the build. */
+/**
+ * The web app's typefaces, bundled for the extension's own pages
+ * (`src/fonts/fonts.css`): the files the build copies to `fonts/`, and each
+ * family's licence (SIL OFL 1.1), from @fontsource-variable 5.3.0. Data, not
+ * code: copied as they are.
+ */
+export const FONTS: readonly (readonly [
+	family: string,
+	file: string,
+	licence: string,
+])[] = [
+	["Inter", "inter-latin-wght-normal.woff2", "OFL-Inter.txt"],
+	["Manrope", "manrope-latin-wght-normal.woff2", "OFL-Manrope.txt"],
+];
+
+/** Sitegloss's licence, those of `packages` (a package without one stops the build) and the fonts'. */
 export async function notices(packages: Iterable<string>): Promise<string> {
 	const text = (path: string) => Bun.file(join(ROOT, path)).text();
 	const parts = [
@@ -121,6 +136,10 @@ export async function notices(packages: Iterable<string>): Promise<string> {
 			throw new Error(`no licence known for the bundled package ${name}`);
 		parts.push(`${name}\n\n${mitText(name, await text(path))}`);
 	}
+	for (const [family, , licence] of FONTS)
+		parts.push(
+			`The ${family} typeface (fonts/, @fontsource-variable 5.3.0)\n\n${await text(`src/fonts/${licence}`)}`,
+		);
 	return parts.join(`\n${"-".repeat(78)}\n\n`);
 }
 
@@ -306,6 +325,8 @@ async function bundle(
 			SITEGLOSS_DEV_SERVER: String(options.devServer),
 		},
 		minify: options.minify,
+		// The fonts: one copy at the extension's root, not one per page.
+		external: ["/fonts/*"],
 		splitting: format === "esm" && entrypoint.endsWith(".html"),
 		sourcemap: options.sourcemap,
 		metafile: true,
@@ -424,6 +445,11 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 				)),
 	]);
 	await Bun.write(join(outdir, NOTICES_FILE), await notices(packages));
+	for (const [, file] of FONTS)
+		await Bun.write(
+			join(outdir, "fonts", file),
+			Bun.file(join(ROOT, "src/fonts", file)),
+		);
 	for (const size of ICON_SIZES) {
 		const name = `icon-${size}.png`;
 		await Bun.write(
