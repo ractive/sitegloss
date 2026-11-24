@@ -284,13 +284,20 @@ same pictures as Firefox's at half the size).
 
 ## For version 0.4.0, to enter by hand before it is published
 
-Written at `main` 7a1c6bc (24 November 2026, after pull requests 79, 80 and 81). It
-assumes that the open [sitegloss#75](https://github.com/ractive/sitegloss/pull/75)
-(marks clipped by scrolling panes) and the icon pass on the panel's buttons (no pull
-request yet when this was written) merge before the tag. Neither touches `scripts/build.ts`,
-`PRIVACY.md` or anything that leaves the browser (75's files: `src/content/`,
-`src/lib/clip.ts`, tests, the decision log); if either does when it merges, this section is
-behind. It replaces the earlier notes for the team sync, for 0.3.1 and for 0.4.0 (written
+Written at `main` 363d126 (24 November 2026). Pull requests 75 (marks clipped by
+scrolling panes, DEC-075), 79, 80 and 81 are on `main` and included. **Not** assumed, still
+open when this was written:
+- [sitegloss#83](https://github.com/ractive/sitegloss/pull/83), icons on the panel's
+  buttons. It waits for the owner's eye. If it merges before the tag, add to the reviewer
+  notes: the side panel's icons are paths copied from heroicons 2.2.0 (MIT), with that
+  licence in `LICENSES.txt` (its only change to `scripts/build.ts`).
+- The pull request `hand-back`, being built: Verify only for marks of the page in front;
+  "This page" telling a returning tester what waits; a new order of the copied AI text. Not
+  included. If it merges before the tag, check whether the description's verify sentence
+  and the clipboard note still hold.
+
+Neither touches the manifest, `PRIVACY.md` or what leaves the browser as far as known; if
+one does when it merges, this section is behind. It replaces the earlier notes for the team sync, for 0.3.1 and for 0.4.0 (written
 at 7040dc6), which are in the history of this file.
 
 **What the dashboards hold now.** The Chrome Web Store and Edge Add-ons have 0.2.0
@@ -340,9 +347,12 @@ dashboard first: everything below is the full text to paste, not a change to 0.3
    `publish-edge` job, whose text this pull request brings up to date):
    - **How to try it:** open any web page, click the Sitegloss icon (under the puzzle
      piece until pinned) or press Alt+Shift+O: the side panel opens. "New case for this
-     page" shows the toolbar on the page (Element, Box, Arrow, Pen, Highlight, Note). The
-     team features need an account at sitegloss.dev (free during the
-     beta; app.sitegloss.dev/sign-up) and "Sign in" under Team on the panel's Home.
+     page" shows the toolbar on the page (Element, Box, Arrow, Pen, Highlight, Note).
+     Everything but the team works without an account. The team features need a free
+     account at app.sitegloss.dev/sign-up with a confirmed e-mail address (free during the
+     beta), then "Sign in" in the Team section on the panel's Home. If the dashboard asks
+     for test credentials, give a test account made for the reviewer; do not invent one
+     in the notes.
    - **All sites is optional and asked in the click.** The panel's first view offers it
      ("Let Sitegloss work on every tab (recommended)", Allow on all sites, Not now);
      Options on Home has "Allow on all sites (highly recommended)". Under the option the
@@ -354,7 +364,8 @@ dashboard first: everything below is the full text to paste, not a change to 0.3
      tools (the address and title of the tab in front, a screenshot, an element's details,
      the HTML and CSS of a mark's element) act on whatever tab is in front without a
      question, on any site, as they do without all sites on a tab where the icon was
-     clicked. Every change to a case is asked first. `PRIVACY.md`, "All sites".
+     clicked. Every change to a case is asked first, unless the user chose Always allow
+     (for that tool) or Allow all changes (for that AI app). `PRIVACY.md`, "All sites".
    - **Bundled libraries:** `@ractive-ch/tab-mcp-client` 0.24.0 (MIT, the relay's client;
      data only; its WebMCP mirror is switched off with `webmcp: false`, DEC-068/074, so
      nothing is registered with the browser's WebMCP and no code is loaded with
@@ -395,12 +406,15 @@ dashboard first: everything below is the full text to paste, not a change to 0.3
    `odheabckckkaclenpbbdkpkjjfmbnalo`, so its sign-in window ends on
    `https://odheabckckkaclenpbbdkpkjjfmbnalo.chromiumapp.org/`. Production does not accept
    that address: on 24 November `GET /api/auth/oauth2/authorize` with it answered
-   `invalid_redirect` (the Chrome and Firefox addresses pass). Before 0.4.0 reaches Edge
-   users, add it to `EXTENSION_REDIRECT_URIS` of production (and dev) and restart the app
+   `invalid_redirect` (the Chrome and Firefox addresses pass). **A precondition of the
+   tag**, checked before it is pushed: `publish-edge` submits right after the owner's
+   approval, and the certification notes invite the certifier to sign in. Add it to
+   `EXTENSION_REDIRECT_URIS` of production (and dev) and restart the app
    (sitegloss.dev's `kb/runbooks/go-live.md`, step 5.2: `put EXTENSION_REDIRECT_URIS
-   '<the two>,https://odheabckckkaclenpbbdkpkjjfmbnalo.chromiumapp.org/'`). Without it an
-   Edge user of the store build sees an error at Sign in; everything without an account
-   works.
+   '<the two>,https://odheabckckkaclenpbbdkpkjjfmbnalo.chromiumapp.org/'`). Check: the same
+   request answers with a redirect to `/sign-in?…`. Without it an Edge user of the store
+   build, or Microsoft's certifier, sees an error at Sign in; everything without an
+   account works.
 8. **The service:** production runs sitegloss.dev 7e06b47, which has the highlight
    (sitegloss.dev DEC-040) and the hand-over (its DEC-042, the members endpoint) that
    0.4.0 relies on. Nothing to promote first.

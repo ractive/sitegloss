@@ -21,11 +21,14 @@ everything else works without one.
 
 ## Install
 
-- **Chrome:** [Chrome Web Store](https://chromewebstore.google.com/detail/sitegloss/ldmcfigcnobhnbaigehcaodheklibeon)
-  (Chrome 130 or later). **Edge:** [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/odheabckckkaclenpbbdkpkjjfmbnalo).
-  A store has a release only once its review is over: the version on the
+- **Chrome:** [Chrome Web Store](https://chromewebstore.google.com/detail/sitegloss/ldmcfigcnobhnbaigehcaodheklibeon).
+  **Edge:** [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/odheabckckkaclenpbbdkpkjjfmbnalo).
+  A store has a release only once its review is over, so the version on the
   [latest release](https://github.com/ractive/sitegloss/releases/latest) may be newer.
-- **The latest release, unpacked:** download `sitegloss-<version>.zip` from
+  Signing in to a team needs 0.3.0 or later: until the store has it, take the release
+  below.
+- **The latest release, unpacked** (0.4.0 and later need Chrome or Edge 130 or later):
+  download `sitegloss-<version>.zip` from
   [Releases](https://github.com/ractive/sitegloss/releases/latest) and unzip it; in
   `chrome://extensions` (or `edge://extensions`) turn on Developer mode, click "Load
   unpacked" and choose the folder. It does not update itself.

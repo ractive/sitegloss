@@ -125,11 +125,10 @@ To enter or check by hand before that version is published:
 
 ## For version 0.4.0, the first version on AMO
 
-Written at `main` 7a1c6bc (24 November 2026), on the same assumptions as the Chrome Web
-Store runbook's section for 0.4.0 (the open
-[sitegloss#75](https://github.com/ractive/sitegloss/pull/75) and the icon pass merge
-before the tag and change nothing of the manifest, `PRIVACY.md` or what leaves the
-browser). It replaces the earlier notes for 0.4.0 (written at 7040dc6), which are in this
+Written at `main` 363d126 (24 November 2026), on the same footing as the Chrome Web Store
+runbook's section for 0.4.0. Pull requests 75, 79, 80 and 81 are included. The open
+[sitegloss#83](https://github.com/ractive/sitegloss/pull/83) (panel icons) and the
+`hand-back` pull request are not. It replaces the earlier notes for 0.4.0 (written at 7040dc6), which are in this
 file's history.
 
 - **There is no listing yet.** AMO's public API answers 404 for `sitegloss@ractive.ch`
