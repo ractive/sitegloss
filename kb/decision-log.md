@@ -4834,13 +4834,22 @@ nobody) and D7 (thin status answers). The service's part is its own.
   neither: its second line names its page as the link that opens it in this tab and
   shows the mark there (the existing "On <page>" link, now also while the marks are not
   drawn), and its open row has "Open its page to verify" as its strong action, the same
-  `openMarkPage`. Verify comes once the tab is on that page. With no page of the case
-  in front (a browser page, a tab whose address Sitegloss may not read yet, no tab) no
-  row offers Verify and each mark to verify names its page: the access notice of that
-  tab (DEC-076) says why the panel cannot tell, the page link is a way on that needs no
-  access to the tab in front (in Chrome `openMarkPage` asks for the site's access, as
-  the row's Show does). A mark of no web page (an imported file's) has nowhere to open,
-  so it keeps Verify. Rows of other states are as they were.
+  `openMarkPage`. That link takes the tab's host only where the tab shows a page of
+  this case (another environment: `pageInFront`) or the case is drawn on it; from any
+  other site (the hand-back mail in a webmail, the case on the web app) it opens the
+  address where the mark was made, and its tooltip names that whole address (review).
+  **Verify is never impossible (review):** paths differ between environments (ids in a
+  path), a fix moves a route, a page redirects. So the open row of such a mark has a
+  quiet "Verify anyway" beside it ("You checked it somewhere else: set mark N
+  verified"), the same Verify with its cue and the next mark; the row's head has none.
+  The row says what is true: "Open its page to verify it there, or verify anyway if you
+  checked it elsewhere." With no page of the case in front (a browser page, no tab) no
+  row offers Verify and each mark to verify names its page. Where the tab's address is
+  not known (no access yet: Firefox after the tab went to another page, any tab not
+  let in) the open row offers no page to open again but the access notice's way: "To
+  verify here, click the Sitegloss icon …", and Verify anyway. A mark of no web page
+  (an imported file's) has nowhere to open, so it keeps Verify. Rows of other states
+  are as they were.
 - **After a Verify** the next mark to verify of the page in front opens first, then one
   of another page; that row opens with "Open its page to verify" as its one obvious
   action, and the status line says "Mark 4 opened: it is on another page; open its page
@@ -4851,11 +4860,13 @@ nobody) and D7 (thin status answers). The service's part is its own.
   to verify it, it says so instead of "This page already has a case …": "3 marks wait
   for you to verify on this page." (or "…, on other pages of this case." when none of
   them is on this page), and its main button is Start verifying: the case opens, its
-  marks are drawn, the first mark to verify of this page opens (`verifyCase`: Open this
-  case, then the next step's Start verifying on the case as read). Waits for this
-  person: the team's case (a server that assigns cases) is "to verify" and they started
-  it; signed out, a case of this browser only, or a server that assigns none: fixed
-  marks on this page (`waitsToVerify` in `my-cases.ts`). Every other state, and several
+  marks are drawn, the first mark to verify of this page opens with the focus on its
+  head (`verifyCase`: Open this case; the step waits in the panel's state,
+  `verifyOnOpen`, until a read of the case makes it current, whichever read that is).
+  Waits for this person: the team's case (a server that assigns cases) is "to verify"
+  and among their cases by the rule of My cases (`mineFor`: they started it and the
+  server told its hand-over); signed out, a case of this browser only, or a server that
+  assigns none: fixed marks on this page (`waitsToVerify` in `my-cases.ts`). Every other state, and several
   cases on the page, keep the sentence and Open this case.
 - **The copied text (D1, D2, D3)** in the service's words, step 2: "… Where a mark is to
   stay as it is (by design, or someone else's decision), set it to "wontfix" with the

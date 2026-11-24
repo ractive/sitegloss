@@ -1017,6 +1017,11 @@ async function refreshCase(): Promise<void> {
 		s.imageDeleteArmed = heldAfter(s.imageDeleteArmed, c);
 		if (lost) s.caseHint = MARK_CHANGED;
 	});
+	// This page's Start verifying waited for the case (DEC-079).
+	if (state.verifyOnOpen === c.id) {
+		update((s) => (s.verifyOnOpen = undefined));
+		startVerifying(c, true);
+	}
 	// Just opened, or its first mark is in: its marks go to the tab in front
 	// (DEC-022, DEC-026).
 	if (opened || first) void follow();
@@ -1040,8 +1045,39 @@ async function refreshCase(): Promise<void> {
 	});
 }
 
-/** Open a case, and draw its marks on the tab in front (DEC-022); done once it is read. */
-function openCase(id: string): Promise<void> {
+/**
+ * The next step's Start verifying, and This page's once its case is read
+ * (`focus`: the button that asked went with Home, its row's head takes it):
+ * the marks to verify, on every page, the first one of the page in front open.
+ */
+function startVerifying(c: Case, focus: boolean): void {
+	// The case as it is now, and only while it is the one open.
+	const now = state.current;
+	if (now?.id !== c.id) return;
+	const first = firstToVerify(now, (a) => verifiesHere(now, a, state.tab?.url));
+	if (first === undefined) {
+		// Verified meanwhile (by the team, an AI app): say so, filter nothing.
+		if (state.markFilter?.group === "toVerify")
+			actions.filterMarks(c.id, undefined);
+		caseHintWriter()("No mark waits to be checked any more.");
+		return;
+	}
+	// As a status chip and a picked pin: those marks, on every page, the first open.
+	actions.filterMarks(c.id, "toVerify");
+	actions.filterPage(c.id, undefined);
+	update(
+		(s) =>
+			(s.picked = {
+				caseId: c.id,
+				markId: first.id,
+				at: Date.now(),
+				...(focus ? { focus: true as const } : {}),
+			}),
+	);
+}
+
+/** Open a case, and draw its marks on the tab in front (DEC-022). */
+function openCase(id: string): void {
 	caseHints.cancel();
 	const other = state.view.kind !== "case" || state.view.id !== id;
 	// Opened again: a Hide on a tab holds no longer.
@@ -1066,9 +1102,10 @@ function openCase(id: string): Promise<void> {
 		s.findingDeleteArmed = undefined;
 		s.imageDeleteArmed = undefined;
 		s.leaving = undefined;
+		s.verifyOnOpen = undefined;
 	});
 	followed = undefined;
-	return refreshCase();
+	void refreshCase();
 }
 
 /**
@@ -2225,35 +2262,13 @@ const actions: Actions = {
 	copyCaseLink: (c) => void copyFromStep(c, "copy-link"),
 	copyForAiApp: (c) => void copyFromStep(c, "copy-ai"),
 
-	startVerifying(c) {
-		// The case as it is now, and only while it is the one open.
-		const now = state.current;
-		if (now?.id !== c.id) return;
-		const first = firstToVerify(now, (a) =>
-			verifiesHere(now, a, state.tab?.url),
-		);
-		if (first === undefined) {
-			// Verified meanwhile (by the team, an AI app): say so, filter nothing.
-			if (state.markFilter?.group === "toVerify")
-				actions.filterMarks(c.id, undefined);
-			caseHintWriter()("No mark waits to be checked any more.");
-			return;
-		}
-		// As a status chip and a picked pin: those marks, on every page, the first open.
-		actions.filterMarks(c.id, "toVerify");
-		actions.filterPage(c.id, undefined);
-		update(
-			(s) => (s.picked = { caseId: c.id, markId: first.id, at: Date.now() }),
-		);
-	},
+	startVerifying: (c) => startVerifying(c, false),
 
 	verifyCase(id) {
-		// As "Open this case", then the next step's Start verifying on the
-		// case as read, while it is still the one shown.
-		void openCase(id).then(() => {
-			const c = state.current;
-			if (c?.id === id && showing(id)) actions.startVerifying(c);
-		});
+		// As "Open this case"; once the case is read (`refreshCase`, whichever
+		// read that is), the next step's Start verifying, its row focused.
+		openCase(id);
+		update((s) => (s.verifyOnOpen = id));
 	},
 
 	cancelLink: () => update((s) => (s.linking = undefined)),

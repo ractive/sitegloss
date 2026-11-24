@@ -212,7 +212,20 @@ export interface PanelState {
 	 * The mark whose pin was clicked on the page (DEC-027): the list opens it
 	 * and brings it into view, once per click (`at`).
 	 */
-	picked: { caseId: string; markId: string; at: number } | undefined;
+	picked:
+		| {
+				caseId: string;
+				markId: string;
+				at: number;
+				/** Its head takes the focus: the button that asked went (This page's Start verifying). */
+				focus?: true;
+		  }
+		| undefined;
+	/**
+	 * "Start verifying" pressed on This page (DEC-079): the case it opens,
+	 * until that case is read; then the next step's Start verifying runs.
+	 */
+	verifyOnOpen: string | undefined;
 	/**
 	 * What the next step's last copy did (DEC-069), said in its block for
 	 * a few seconds (`COPIED_MS` in main.ts), or until the next copy.
@@ -390,6 +403,7 @@ export const initialState = (): PanelState => ({
 	markFilter: undefined,
 	markPage: undefined,
 	picked: undefined,
+	verifyOnOpen: undefined,
 	copied: undefined,
 	mine: false,
 	markDeleteArmed: undefined,

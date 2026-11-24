@@ -101,8 +101,8 @@ export const NONE_MINE =
 /**
  * What "This page" says of a case that waits for this person to verify it
  * (DEC-079); `undefined`: it does not, and the ordinary sentence stays. The
- * team's case: it is "to verify" and they started it (the reporter's turn is
- * theirs). A case of this browser only, or anyone's while signed out or with
+ * team's case: it is "to verify" and among their cases (`mineFor`, as My
+ * cases asks: they started it and the server told its hand-over). A case of this browser only, or anyone's while signed out or with
  * a server that assigns nothing: fixed marks on the page in front. `here`
  * counts the marks to verify on the page at `url`, `elsewhere` the rest.
  */
@@ -115,10 +115,13 @@ export function waitsToVerify(
 	const here = fixed.filter((a) => onPageInFront(c, a, url)).length;
 	const counts = { here, elsewhere: fixed.length - here };
 	const me = cloud.account?.userId;
-	if (teamAssigns(cloud) && caseSync(cloud, c.id).kind === "synced")
-		return stateOf(c) === "to verify" &&
-			me !== undefined &&
-			c.createdBy?.id === me
+	// The team's case: the rule of My cases (`mineFor`), in its "to verify".
+	if (
+		me !== undefined &&
+		teamAssigns(cloud) &&
+		caseSync(cloud, c.id).kind === "synced"
+	)
+		return mineFor(c, me, true) && stateOf(c) === "to verify"
 			? counts
 			: undefined;
 	return c.closed === undefined && here > 0 ? counts : undefined;

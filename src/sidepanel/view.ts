@@ -66,6 +66,7 @@ import {
 	shortcutText,
 	type TabAccess,
 	tabAccess,
+	verifyHereWay,
 	type Words,
 } from "./access.ts";
 import { pageCases } from "./closed.ts";
@@ -2771,11 +2772,17 @@ let verifiedNow:
 /** How long a Verify waits for its row to be drawn as verified. */
 export const VERIFIED_WAIT_MS = 5000;
 
-const verifyButton = (c: Case, a: Mark, actions: Actions) =>
+/**
+ * Verify, and the same press as "Verify anyway" on a mark of another page
+ * (DEC-079): quiet, for a mark checked somewhere the panel cannot tell.
+ */
+const verifyButton = (c: Case, a: Mark, actions: Actions, anyway = false) =>
 	markButton(
-		"Verify",
-		"verify",
-		VERIFIED_TITLE,
+		anyway ? "Verify anyway" : "Verify",
+		anyway ? "verify-anyway" : "verify",
+		anyway
+			? `You checked it somewhere else: set mark ${a.number} verified`
+			: VERIFIED_TITLE,
 		() => {
 			const undo = verifying(c.id, a.id);
 			const order = rowOrder(document, "section.marks li.mark");
@@ -2796,8 +2803,12 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 				() => undo(),
 			);
 		},
-		true,
+		!anyway,
 	);
+
+/** What a mark to verify of another page offers, said in its open row (DEC-079). */
+export const AWAY_HINT =
+	"Open its page to verify it there, or verify anyway if you checked it elsewhere.";
 
 /**
  * In place of Verify on a mark of another page (DEC-079): its page, opened
@@ -2818,7 +2829,7 @@ function verifyThere(
 			class: "small strong",
 			"data-mark-action": "open-page",
 			"aria-label": `Open ${to.name} to verify mark ${a.number} there`,
-			title: `Mark ${a.number} is on another page: open ${to.name} in this tab and show the mark there, then verify it\n${to.address}`,
+			title: `Open ${to.address} in this tab and show mark ${a.number} there\n${AWAY_HINT}`,
 			onclick: () => actions.openMarkPage(c, a, to.where),
 		},
 		"Open its page to verify",
@@ -3222,8 +3233,14 @@ function markActions(
 	a: Mark,
 	armed: boolean,
 	actions: Actions,
-	/** A mark to verify not on the page in front, with the tab's address (DEC-079). */
-	away: { tabUrl: string | undefined } | null = null,
+	/**
+	 * A mark to verify not on the page in front (DEC-079): the address its
+	 * page link goes to, and the way onto a tab whose address is not known.
+	 */
+	away: {
+		linkTab: string | undefined;
+		unread: string | undefined;
+	} | null = null,
 ): HTMLElement {
 	const status = markStatus(a);
 	return h(
@@ -3242,7 +3259,12 @@ function markActions(
 			? null
 			: away === null
 				? verifyButton(c, a, actions)
-				: verifyThere(c, a, away.tabUrl, actions),
+				: away.unread === undefined
+					? verifyThere(c, a, away.linkTab, actions)
+					: null,
+		status === "fixed" && away !== null
+			? verifyButton(c, a, actions, true)
+			: null,
 		status === "open" ? null : reopenButton(c, a, actions),
 		status === "open"
 			? null
@@ -4202,6 +4224,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 			actions.filterMarks(c.id, undefined);
 			actions.filterPage(c.id, undefined);
 		};
+		// The tab shows a page of this case, on whatever host.
+		const caseTab =
+			state.tab?.url !== undefined &&
+			isWebPage(state.tab.url) &&
+			pageInFront(c, state.tab.url) !== undefined;
 		// A mark of another page than the one drawn on is not looked for
 		// there: "on another page", whatever the page (DEC-057).
 		const items = sorted.map((a) => {
@@ -4214,6 +4241,9 @@ function renderCase(state: PanelState, actions: Actions): void {
 				match: elsewhere ? undefined : match,
 				tabUrl: state.tab?.url,
 				elsewhere,
+				linkTab: elsewhere || caseTab ? state.tab?.url : undefined,
+				unread:
+					state.tab?.url === "" ? verifyHereWay(wordsOf(state)) : undefined,
 				edit: edit?.markId === a.id ? edit : undefined,
 				armed: markArmed === a.id,
 				findingArmed:
@@ -4414,6 +4444,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 			// The panel's own scroll: a row held after a click lets go.
 			releaseHeld();
 			row?.scrollIntoView?.({ block: "nearest" });
+			if (picked.focus)
+				row
+					?.querySelector<HTMLElement>(".mark-toggle")
+					?.focus({ preventScroll: true });
 		}
 		p.marksKey = marksKey;
 	}
@@ -4640,6 +4674,14 @@ interface MarkContext {
 	tabUrl: string | undefined;
 	/** It is of another page of the case than the tab in front shows. */
 	elsewhere: boolean;
+	/**
+	 * The tab's address for a mark's page link to take its host from: only a
+	 * tab on a page of the case (another environment) or where the case is
+	 * drawn; else none, and the link goes where the mark was made (DEC-079).
+	 */
+	linkTab: string | undefined;
+	/** The tab's address is not known (no access): the way onto it, in words. */
+	unread: string | undefined;
 	edit: PanelState["markEdit"];
 	armed: boolean;
 	/** The finding of this mark whose Delete was clicked once. */
@@ -4769,17 +4811,27 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			: null,
 		a.element ? h("p", { class: "meta" }, summarize(a.element)) : null,
 		m ? matchView(c.id, a, m, actions) : null,
+		// What a mark to verify of another page offers, and why no Verify.
+		away && edit === undefined
+			? h("p", { class: "meta away-hint" }, x.unread ?? AWAY_HINT)
+			: null,
 		edit
 			? edit.mode === "resolve"
 				? resolveForm(c, a, edit.kind, edit.text, actions)
 				: edit.mode === "reopen"
 					? reopenForm(c, a, edit.text, actions)
 					: commentForm(c, a, edit.text, actions)
-			: markActions(c, a, x.armed, actions, away ? { tabUrl: x.tabUrl } : null),
+			: markActions(
+					c,
+					a,
+					x.armed,
+					actions,
+					away ? { linkTab: x.linkTab, unread: x.unread } : null,
+				),
 		// Its comments, at the mark, after what can be done with it (DEC-061).
 		markThreadView(c, a, x.thread, actions),
 	);
-	const sub = markSubline(c, a, m, actions, x.elsewhere || away, x.tabUrl);
+	const sub = markSubline(c, a, m, actions, x.elsewhere || away, x.linkTab);
 	// A mark to verify: Verify in its title line, small, so a closed row is
 	// two lines like every other (DEC-064); Reopen… and the rest when open.
 	const headVerify =

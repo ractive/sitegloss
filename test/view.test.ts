@@ -1395,6 +1395,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			const calls: unknown[] = [];
 			const actions = actionsWith({
 				openMarkPage: (_c, a, where) => void calls.push([a.id, where]),
+				verifyMark: (_c, a) => void calls.push([a.id, "verified"]),
 			});
 			render(on(flow("c_two_pages", []), V1, false), actions);
 			expect(["m1", "m2", "m4"].map(verifies)).toEqual([true, true, false]);
@@ -1414,15 +1415,92 @@ describe("Verify closes its mark (DEC-061)", () => {
 			expect(strong.map((b) => b.textContent)).toEqual([
 				"Open its page to verify",
 			]);
+			// The tab is on this case's site: the link and the button go there.
+			expect(strong[0]?.title).toContain(DEMO);
+			// What it offers, said: no promise that Verify will come.
+			expect(row("m4").querySelector(".away-hint")?.textContent).toBe(
+				"Open its page to verify it there, or verify anyway if you checked it elsewhere.",
+			);
+			// Checked somewhere the panel cannot tell: Verify anyway, quiet,
+			// in the open row only, through the same Verify.
+			const anyway = row("m4").querySelector<HTMLElement>(
+				'.mark-actions [data-mark-action="verify-anyway"]',
+			);
+			expect(anyway?.textContent).toBe("Verify anyway");
+			expect(anyway?.classList.contains("strong")).toBe(false);
+			expect(anyway?.title).toBe(
+				"You checked it somewhere else: set mark 4 verified",
+			);
+			expect(row("m4").querySelector(".head-verify")).toBeNull();
 			strong[0]?.click();
 			link?.click();
+			anyway?.click();
 			expect(calls).toEqual([
 				["m4", "made"],
 				["m4", "made"],
+				["m4", "verified"],
 			]);
 			// On /demo it is the other way round.
 			render(on(flow("c_two_pages", []), DEMO, false), actions);
 			expect(["m1", "m2", "m4"].map(verifies)).toEqual([false, false, true]);
+		});
+
+		test.each([
+			["the hand-back mail", "https://mail.google.com/mail/u/0/#inbox"],
+			["the case on the web app", "https://app.sitegloss.dev/cases/c_1"],
+		])(
+			"from %s in the tab, a mark's page opens where it was made, never on that host",
+			(_, url) => {
+				const calls: unknown[] = [];
+				const actions = actionsWith({
+					openMarkPage: (_c, a, where) => void calls.push([a.id, where]),
+				});
+				render(on(flow(`c_from_${url}`, []), url, false), actions);
+				(
+					row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+				).click();
+				const open = row("m4").querySelector<HTMLElement>(
+					'[data-mark-action="open-page"]',
+				);
+				// The tooltip names the whole address it opens, host and all.
+				expect(open?.title).toContain(DEMO);
+				expect(open?.title).not.toContain(new URL(url).host);
+				open?.click();
+				row("m4").querySelector<HTMLElement>(".mark-sub .elsewhere")?.click();
+				expect(calls).toEqual([
+					["m4", "made"],
+					["m4", "made"],
+				]);
+			},
+		);
+
+		test("with the tab's address unknown, the open row says how to let Sitegloss see it, and Verify anyway", () => {
+			render(on(flow("c_unread", []), "", false), noActions);
+			(
+				row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+			).click();
+			expect(
+				row("m4").querySelector('[data-mark-action="open-page"]'),
+			).toBeNull();
+			expect(row("m4").querySelector(".away-hint")?.textContent).toMatch(
+				/^Sitegloss cannot see which page this tab shows yet\. To verify here, click .+ Or verify anyway if you checked it elsewhere\.$/,
+			);
+			expect(
+				row("m4").querySelector('[data-mark-action="verify-anyway"]'),
+			).not.toBeNull();
+		});
+
+		test("This page's Start verifying: the row it opens has the focus", () => {
+			const c = flow("c_focus", []);
+			render(on(c, V1, true), noActions);
+			const state = on(c, V1, true);
+			state.picked = { caseId: c.id, markId: "m2", at: 1, focus: true };
+			render(state, noActions);
+			expect(row("m2").hasAttribute("data-open")).toBe(true);
+			expect(
+				window.document.activeElement ===
+					(row("m2").querySelector(".mark-toggle") as unknown),
+			).toBe(true);
 		});
 
 		test.each([

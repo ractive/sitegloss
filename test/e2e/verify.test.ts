@@ -166,7 +166,9 @@ inFullSet("Verify", () => {
 		await panel.waitFor(`${row("m1")}?.querySelector('.head-verify')`);
 
 		// Verify, from the collapsed head: the bar and the chips move.
-		await panel.eval(`${row("m1")}.querySelector('.head-verify').click()`);
+		// A real click, though the panel's tab is behind /v1: the focus moves
+		// to the pressed button, as a person's click moves it.
+		await panel.click(`${row("m1")}.querySelector('.head-verify')`);
 		await panel.waitFor(`${row("m1")}?.dataset.status === "verified"`);
 		expect(await panel.eval<string[]>(chips)).toEqual([
 			"● Open 1",
@@ -253,10 +255,10 @@ inFullSet("Verify", () => {
 		const v1 = await h.open("v1");
 		await v1.page.activate();
 		await panel.waitFor(`${row("m1")}?.querySelector('.head-verify')`);
-		await panel.eval(`${row("m1")}.querySelector(".mark-toggle").click()`);
+		await panel.click(`${row("m1")}.querySelector(".mark-toggle")`);
 		await panel.waitFor(`${row("m1")}.hasAttribute("data-open")`);
-		await panel.eval(
-			`${row("m1")}.querySelector('.body [data-mark-action="verify"]').click()`,
+		await panel.click(
+			`${row("m1")}.querySelector('.body [data-mark-action="verify"]')`,
 		);
 		// The state, not the time: stored as verified, then the next row is open.
 		await until(

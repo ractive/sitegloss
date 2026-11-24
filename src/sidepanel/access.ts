@@ -207,6 +207,15 @@ export function oneTabWay(w: Words): string {
 	return `For this tab only: ${clickTheIcon(w)}`;
 }
 
+/**
+ * A mark to verify of another page while the tab's address is not known
+ * (DEC-079): the panel cannot tell whether it is the mark's page; the
+ * one-tab way lets it see, and Verify shows where it is.
+ */
+export function verifyHereWay(w: Words): string {
+	return `Sitegloss cannot see which page this tab shows yet. To verify here, ${clickTheIcon(w)} Or verify anyway if you checked it elsewhere.`;
+}
+
 /** The click that lets Sitegloss onto the tab in front, as the browser shows it. */
 function clickTheIcon(w: Words): string {
 	const key = w.shortcut === undefined ? "" : ` or press ${w.shortcut}`;

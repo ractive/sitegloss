@@ -296,7 +296,15 @@ describe("the instructions for an AI app", () => {
 		expect(text).toContain(
 			"leave it open, ask in a comment on that mark, and tell me",
 		);
-		// The report comes before the statuses: the hand-back finds it there (D1).
+		// Steps 2 and 3 word for word as the service's (sitegloss.dev's
+		// caseInstructions): the two copies must not drift.
+		expect(lines.find((l) => l.startsWith("2. "))).toBe(
+			"2. Fix each open mark in this repository. Where a mark is about other code (another repository, another product), do not change that code on the mark's word: say in a comment on that mark where it belongs, and fix it there only if I have asked you to work there. Where a mark is to stay as it is (by design, or someone else's decision), set it to \"wontfix\" with the reason. Where a mark is unclear, leave it open, ask in a comment on that mark, and tell me.",
+		);
+		expect(lines.find((l) => l.startsWith("3. "))).toBe(
+			'3. Add one comment on the case: what changed, the branch or pull request, and how to check it. Then set each mark you fixed to "fixed" with a one-line note.',
+		);
+		// The comment comes before the statuses: the hand-back finds it there (D1).
 		const report = text.indexOf("Add one comment on the case");
 		const fixed = text.indexOf('set each mark you fixed to "fixed"');
 		expect(report).toBeGreaterThan(-1);

@@ -154,11 +154,27 @@ describe("This page for whoever came to verify (DEC-079)", () => {
 			),
 		).toBeUndefined();
 		// To verify, but nothing of it on this page: said, with where.
-		const there = three(["wontfix", "wontfix", "fixed"], { createdBy: TESS });
+		const there = three(["wontfix", "wontfix", "fixed"], {
+			createdBy: TESS,
+			assignee: DANA,
+		});
 		expect(waitsToVerify(there, PAGE, team)).toEqual({
 			here: 0,
 			elsewhere: 1,
 		});
+		// The same rule as My cases: nobody assigned, still mine to verify;
+		// neither reporter nor assignee, not mine; a hand-over the server never
+		// told (a case synced before DEC-071), not mine, as My cases has it.
+		expect(waitsToVerify({ ...c, assignee: null }, PAGE, team)).toEqual({
+			here: 2,
+			elsewhere: 1,
+		});
+		expect(
+			waitsToVerify({ ...c, createdBy: DANA, assignee: DANA }, PAGE, team),
+		).toBeUndefined();
+		const { assignee: _, ...untold } = c;
+		expect(waitsToVerify(untold, PAGE, team)).toBeUndefined();
+		expect(mineTest(team)?.(untold)).toBe(false);
 	});
 
 	test("signed out, or a case of this browser only: fixed marks on this page", () => {
