@@ -216,13 +216,19 @@ inFullSet("marks and their screenshots", () => {
 		const pin = `${mark}?.querySelector("circle")`;
 		await page.waitFor(`!!${pin}`);
 		// 30 px of it under the band, which ends at 100 (the head's 60 and
-		// its own 40): nothing of the box or the pin above that.
+		// its own 40): nothing of the box or the pin above that. The cut is the
+		// clip's own box (its y), not getBoundingClientRect, which for a nested
+		// SVG is its content's box, uncut; and on a frame drawn after the
+		// scroll (its box where the element is now, at 70).
 		await page.eval(
 			`document.getElementById("pane").scrollTop += document.getElementById("first").getBoundingClientRect().top - 70`,
 		);
-		await page.waitFor(
-			`(() => { const clip = ${mark}?.querySelector("[data-clip]"); return !!clip && clip.getBoundingClientRect().top >= 99.5 && ${pin}.getBoundingClientRect().top >= 99.5; })()`,
-		);
+		const cutAtBand = `(() => { const clip = ${mark}?.querySelector("[data-clip]"); const box = clip?.querySelector("rect:not([data-casing])"); return !!box && Math.abs(box.getBoundingClientRect().top - 70) < 1 && Number(clip.getAttribute("y")) >= 99.5 && ${pin}.getBoundingClientRect().top >= 99.5; })()`;
+		await page.waitFor(cutAtBand);
+		// Loaded again there (a sync, the panel opening, Show): its own draw,
+		// done when the load answers, has the same cut.
+		await sendToTab(tabId, { type: "case:load", case: c });
+		expect(await page.eval<boolean>(cutAtBand)).toBe(true);
 		// All of it under them: nothing drawn.
 		await page.eval(`document.getElementById("pane").scrollTop += 400`);
 		await page.waitFor(`${mark} === null`);
