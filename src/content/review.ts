@@ -1404,6 +1404,7 @@ export class Reviewer {
 		this.#focused = undefined;
 		this.#hidden = false;
 		this.overlay.renderReview([]);
+		this.#sayFound();
 		this.overlay.setMarksHidden(false);
 		this.overlay.setReviewing(false);
 	}
@@ -1534,9 +1535,27 @@ export class Reviewer {
 		this.overlay.renderReview(items);
 		// Hit tests this pass had no time for: in the next frames (DEC-075).
 		if (this.#visibility.pending) this.#schedule();
-		// Which of the case's marks are found on this page, drawn or not: a
-		// mark out of sight is not drawn (DEC-075), and a test asks this.
-		this.overlay.marks?.setAttribute(
+		this.#sayFound();
+		// The popover follows what is drawn of its mark. A mark not drawn (off
+		// the page, cut away, covered) leaves it where it is, with what is
+		// being typed in it (DEC-075).
+		if (open !== undefined)
+			this.overlay.placePopover(drawnBounds(open as ReviewItem));
+	}
+
+	/**
+	 * Which of the case's marks are found on this page, drawn or not (a mark
+	 * out of sight is not drawn, DEC-075), on `svg.marks` as `data-found`; a
+	 * test reads it. Gone with the case.
+	 */
+	#sayFound(): void {
+		const marks = this.overlay.marks;
+		if (marks === undefined) return;
+		if (this.#case === undefined) {
+			marks.removeAttribute("data-found");
+			return;
+		}
+		marks.setAttribute(
 			"data-found",
 			this.#entries
 				.filter(
@@ -1549,11 +1568,6 @@ export class Reviewer {
 				.sort((a, b) => a - b)
 				.join(","),
 		);
-		// The popover follows what is drawn of its mark. A mark not drawn (off
-		// the page, cut away, covered) leaves it where it is, with what is
-		// being typed in it (DEC-075).
-		if (open !== undefined)
-			this.overlay.placePopover(drawnBounds(open as ReviewItem));
 	}
 
 	#renderBar(): void {

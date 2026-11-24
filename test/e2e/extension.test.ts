@@ -176,9 +176,12 @@ inBothSets("marking and saving", () => {
 			`${shadow('[data-role="status"]')}?.textContent === "Mark 3 added to “Krankenkasse vergleichen (v1)”"`,
 			20_000,
 		);
-		// The loaded case finds all three; of them only what is in the
-		// window is drawn (DEC-075): 1 and 2 are scrolled away above.
-		await page.waitFor(`${shadow("svg.marks")}.dataset.found === "1,2,3"`);
+		// Each is the loaded case's (found, drawn only in the window: DEC-075)
+		// or still the toolbar's own drawing: the panel's copy with mark 3 may
+		// reach the page after this, as it did before. Together 1, 2 and 3.
+		await page.waitFor(
+			`(() => { const svg = ${shadow("svg.marks")}; const found = (svg.dataset.found ?? "").split(",").filter(Boolean); const own = [...svg.querySelectorAll("g[data-number]")].map((g) => g.dataset.number); return [...new Set([...found, ...own])].sort().join() === "1,2,3"; })()`,
+		);
 		expect(
 			await page.eval<string[]>(
 				`[...new Set([...${shadow("svg.marks")}.querySelectorAll("g[data-number], [data-review]")].map((g) => g.dataset.number ?? g.dataset.review))].sort()`,
