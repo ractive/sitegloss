@@ -15,7 +15,21 @@ own environment. After the rollout the PO loads it onto the dev and prod sites a
 fix. An AI app such as Claude reads and extends cases through a
 [tab-mcp](https://github.com/ractive/tab-mcp) relay, or a case travels as a zip file.
 
-Status: in development. The plan is in [kb/](kb/index.md).
+Status: early, and changing quickly. Decisions and plans are in [kb/](kb/index.md).
+Sharing cases with a team needs an account at [sitegloss.dev](https://sitegloss.dev);
+everything else works without one.
+
+## Install
+
+- **Chrome:** [Chrome Web Store](https://chromewebstore.google.com/detail/sitegloss/ldmcfigcnobhnbaigehcaodheklibeon)
+  (Chrome 130 or later). **Edge:** [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/odheabckckkaclenpbbdkpkjjfmbnalo).
+  A store has a release only once its review is over: the version on the
+  [latest release](https://github.com/ractive/sitegloss/releases/latest) may be newer.
+- **The latest release, unpacked:** download `sitegloss-<version>.zip` from
+  [Releases](https://github.com/ractive/sitegloss/releases/latest) and unzip it; in
+  `chrome://extensions` (or `edge://extensions`) turn on Developer mode, click "Load
+  unpacked" and choose the folder. It does not update itself.
+- **Firefox:** not on addons.mozilla.org yet; see [In Firefox](#in-firefox).
 
 ## Install for development
 
@@ -441,7 +455,7 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
   number, and each card says where its case stands and who has its open marks. An
   assignment made offline waits and is sent, as every change. The website mails the
   assignee, and the reporter when the case is ready to check. All of this shows only
-  where the team's server assigns cases. Sitegloss 0.4.0 and older show no assignee and
+  where the team's server assigns cases. Sitegloss 0.3.1 and older show no assignee and
   leave it as it is.
 - Deleting a case the team has deletes it for the team; the button says so. A case
   deleted for the team goes here too. What you delete while signed out is not deleted

@@ -43,7 +43,9 @@ Sitegloss stores in your browser, on your computer:
   other programs on your computer can read; Sitegloss sends it nowhere;
 - its settings, and where it syncs to;
 - if you sign in to sitegloss.dev: your name and e-mail address there, your teams, the
-  tokens that keep you signed in, and what the service last had of each case.
+  names of your team's members (so that a case can be assigned to one of them), the
+  tokens that keep you signed in, and what the service last had of each case, with who
+  started it and to whom it is assigned.
 
 The exact fields are defined in the source code ([`src/lib/`](src/lib/)).
 
@@ -61,7 +63,9 @@ Only in four cases, all started by you:
    and their screenshots and added images, and the address (cut as above), title, element details and
    screenshots of the tab in front. For a mark, it can also read the HTML and CSS of
    the marked element, or of another element it names on that page, without form field
-   values.
+   values. In a team's case it also reads who started the case and to whom it is
+   assigned, and, when it asks to assign a case to someone who is not a member, the
+   names of the team's members to choose from.
 
    This travels through a tab-mcp relay to the AI app. Unless you enter another relay,
    that is `tab-mcp.ractive.ch`, run by Sitegloss's developer, which forwards the data
@@ -98,14 +102,15 @@ Only in four cases, all started by you:
    colour behind it and its neighbours' boxes; for a mark made with the Highlight tool,
    the text you selected, the words right around it and the boxes of its lines) and AI
    findings, the case's thread of
-   comments and whether it is closed, and the screenshots, crops and images added to
-   marks. The members of the
+   comments, whether it is closed and to whom it is assigned, and the screenshots, crops
+   and images added to marks. To offer "Assign", Sitegloss also fetches the names of
+   your team's members, at most every ten minutes. The members of the
    team you choose can see and change them, in the extension and on the website; the
    service keeps them until they are deleted, with who made or changed what, and under
    [its own privacy policy](https://sitegloss.dev/privacy/).
 
    When a connected AI app changes a case through Sitegloss (a comment, a mark, a
-   status, a finding, the summary, closing), Sitegloss also sends the app's name, the
+   status, a finding, the summary, an assignment, closing), Sitegloss also sends the app's name, the
    address it gave for itself and its host (for example "Claude", `claude.ai`), so that
    your team sees "Dana via Claude". What you do by hand is sent without one.
 
@@ -127,7 +132,8 @@ Only in four cases, all started by you:
 
    You sign in on the service's own page, in a window of the browser: Sitegloss never
    sees your password. Under "Server" you can choose another server than the service
-   (its development server, or an address you type) before you sign in; all of this
+   (an address you type; a build made for development also offers the developer's
+   development server) before you sign in; all of this
    then goes to that server instead, the Account section says which, and what synced
    with one server is not sent to another unless you share that case there.
 
@@ -173,7 +179,8 @@ creditworthiness.
 - **scripting:** to add its toolbar and outlines to that tab.
 - **sidePanel:** for its side panel (Chrome and Edge; Firefox has a sidebar instead).
 - **storage:** session storage, forgotten when the browser closes: what Undo can take
-  back, and whether AI access is on.
+  back, whether AI access is on, and which window shows a mark's pictures; and, kept,
+  where you moved the toolbar on the page and the size of the picture window's frame.
 - **alarms:** so the AI app's connection comes back after the computer slept, and, if
   you are signed in to sitegloss.dev, to look for your team's changes every few minutes.
 - **identity:** for the browser's own sign-in window when you sign in to sitegloss.dev.
@@ -185,8 +192,9 @@ creditworthiness.
   background page makes them itself).
 - **Downloads (optional):** to save exports and synced files. It does not read, change
   or open your other downloads.
-- **Single sites (optional):** asked when you open a case's page, so Sitegloss may run
-  on that site.
+- **Single sites (optional):** in Chrome and Edge, asked when you open a case's page, so
+  Sitegloss may run on that site (Firefox does not ask for it there); in every browser,
+  `tab-mcp.ractive.ch` for "Fill in the code for me", as described above.
 - **All sites (optional):** so Sitegloss works on a tab without clicking its icon
   first. With it and AI access on, a connected AI app can read the tab in front (its
   address, title, screenshots and the details of its elements) on any site you bring to
@@ -209,4 +217,4 @@ at most 30 days.
 Jean-Pierre Bergamin, <https://ractive.ch>, james@ractive.ch.
 Source code: <https://github.com/ractive/sitegloss>.
 
-Last changed: 23 November 2026.
+Last changed: 24 November 2026.
