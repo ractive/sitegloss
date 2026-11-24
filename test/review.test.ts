@@ -45,6 +45,8 @@ function textField(popover: HTMLElement) {
 }
 
 let doc: Document;
+/** The page's Element prototype, whose box a test may give. */
+let protoOf: () => { getBoundingClientRect: () => DOMRect };
 /** Puts happy-dom's own `getBoundingClientRect` back. */
 let restoreLayout: () => void = () => undefined;
 let overlay: ReturnType<typeof stubOverlay>;
@@ -127,6 +129,7 @@ beforeEach(() => {
 	// what is put on the prototype here is taken off again after each test:
 	// left there, every element of a test file that runs later has a size.
 	const proto = window.Element.prototype;
+	protoOf = () => proto as never;
 	const layout = proto.getBoundingClientRect;
 	restoreLayout = () => {
 		proto.getBoundingClientRect = layout;
@@ -327,6 +330,20 @@ describe("elements replaced after loading", () => {
 			() =>
 				(bar() ?? "").includes("0 of 1 found") && overlay.items.length === 0,
 		);
+	});
+
+	test("the marks found are said on the overlay, drawn or out of sight, and go with the case (DEC-075)", async () => {
+		const marks = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+		Object.assign(overlay, { marks });
+		doc.body.innerHTML = PAGE;
+		// Its element far below the window: found, not drawn.
+		protoOf().getBoundingClientRect = () =>
+			({ x: 0, y: 5000, width: 100, height: 20 }) as never;
+		await reviewer.load(caseOf($("button")));
+		expect(marks.getAttribute("data-found")).toBe("1");
+		expect(overlay.items).toHaveLength(0);
+		reviewer.clear();
+		expect(marks.hasAttribute("data-found")).toBe(false);
 	});
 
 	test("an element still on the page is not searched for again", async () => {

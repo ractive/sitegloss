@@ -40,6 +40,7 @@ import {
 	shapeBounds,
 	translateShape,
 } from "../lib/case.ts";
+import { clipMark, union } from "../lib/clip.ts";
 import {
 	createContext,
 	describeElement,
@@ -48,7 +49,12 @@ import {
 } from "../lib/element.ts";
 import { boundsOfRects } from "../lib/highlight.ts";
 import { atShot, siblingsOf, withLook } from "../lib/look.ts";
-import { isDarkGround, type RenderedMark } from "../lib/marks.ts";
+import {
+	badgeRadius,
+	isDarkGround,
+	pinPosition,
+	type RenderedMark,
+} from "../lib/marks.ts";
 import type {
 	CaptureResult,
 	MarkTarget,
@@ -79,6 +85,7 @@ import {
 } from "./anchor.ts";
 import type { PageBlur } from "./blur.ts";
 import {
+	type ClippedRendered,
 	type IconName,
 	icon,
 	type Overlay,
@@ -87,6 +94,7 @@ import {
 } from "./overlay.ts";
 import { PageField } from "./page-field.ts";
 import { ELEMENT, type NoText, selectedText } from "./text-range.ts";
+import { Visibility } from "./visible.ts";
 
 export type Tool = "element" | "box" | "arrow" | "pen" | "note" | "highlight";
 
@@ -347,6 +355,9 @@ export class MarkAdder {
 
 	readonly #pageBlur: PageBlur;
 	readonly #activity: PageActivity;
+	/** Where the toolbar's finished marks show (DEC-075), and the page's DOM changes it counts. */
+	readonly #visibility: Visibility;
+	#changes = 0;
 	/** `STILL_MS` and `SHOT_GAP_MS`, unless a unit test gives its own. */
 	readonly #stillMs: number;
 	readonly #shotGapMs: number;
@@ -358,6 +369,7 @@ export class MarkAdder {
 		timing: { stillMs?: number; shotGapMs?: number } = {},
 	) {
 		this.overlay = overlay;
+		this.#visibility = new Visibility(overlay.doc, overlay.host);
 		this.#stillMs = timing.stillMs ?? STILL_MS;
 		this.#shotGapMs = timing.shotGapMs ?? SHOT_GAP_MS;
 		this.#pageBlur = blur;
@@ -442,6 +454,7 @@ export class MarkAdder {
 		if (win !== null && typeof win.MutationObserver === "function")
 			this.#observer = new win.MutationObserver(() => {
 				this.#mutated = true;
+				this.#changes++;
 			});
 		this.#renderToolbar();
 	}
@@ -1218,8 +1231,14 @@ export class MarkAdder {
 			this.#tool === "element" && this.#hover !== null
 				? this.#hover.getBoundingClientRect()
 				: null;
+		this.#visibility.begin();
 		const rendered = (marks: Draft[]) =>
-			marks.filter((d) => this.#onPage(d)).map((d) => this.#drawnNow(d));
+			marks
+				.filter((d) => this.#onPage(d))
+				.flatMap((d) => {
+					const shown = this.#inView(d);
+					return shown === null ? [] : [shown];
+				});
 		this.overlay.render(
 			rendered(this.#drafts),
 			this.#preview === null ? null : toWindow(this.#preview),
@@ -1229,6 +1248,34 @@ export class MarkAdder {
 			rendered(this.#savedMarks),
 		);
 		if (this.#editing !== null) this.#placePopover(this.#editing);
+		if (this.#visibility.pending) this.#schedule();
+	}
+
+	/**
+	 * A mark as drawn now, cut to where its element shows (DEC-075), `null`
+	 * when nothing of it does: a finished mark of the toolbar's is drawn as
+	 * the loaded case's would be. The one whose comment is open stays whole
+	 * under the pointer, and so does a mark without an element.
+	 */
+	#inView(draft: Draft): ClippedRendered | null {
+		const drawn = this.#drawnNow(draft);
+		const el = draft.element;
+		if (draft === this.#editing || el === null || !el.isConnected) return drawn;
+		const r = el.getBoundingClientRect();
+		if (r.width === 0 && r.height === 0) return drawn;
+		const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
+		const bounds = shapeBounds(drawn.shape);
+		const pin = pinPosition(drawn);
+		const radius = badgeRadius(drawn.shape);
+		const reach = union(union(rect, bounds), {
+			x: pin.x - radius,
+			y: pin.y - radius,
+			width: 2 * radius,
+			height: 2 * radius,
+		});
+		const view = this.#visibility.viewOf(el, rect, reach, this.#changes);
+		const clipped = clipMark({ element: rect, bounds, pin, radius, view });
+		return clipped === null ? null : { ...drawn, ...clipped };
 	}
 
 	#button(
