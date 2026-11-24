@@ -1272,6 +1272,52 @@ inBothSets("the side panel's page", () => {
 		);
 	});
 
+	fullDescribe("closing a case from the panel", () => {
+		slowTest(
+			"Close case leads back to the list, says where the case is and takes the focus there; Reopen case stays on the case",
+			async () => {
+				await fresh();
+				const saved = await markedCase("Close and back");
+				await openCase(saved.caseId);
+				await saved.page.activate();
+				await until(
+					async () => (await pageCase(saved.tabId)) === saved.caseId,
+					"the case's marks on the page",
+				);
+				await h.control.eval(`${id("close-case")}.click()`);
+				await h.control.waitFor(`!${id("home")}.hidden`);
+				expect(
+					await h.control.eval<string>(`${id("hint")}.textContent`),
+				).toMatch(
+					/^\u201cClose and back\u201d is closed\. It is under (Closed|This page)\.$/,
+				);
+				// The marks left the tab, as with "All cases"; the focus is not on the body.
+				await until(
+					async () => (await pageCase(saved.tabId)) === null,
+					"the case's marks to go",
+				);
+				expect(
+					await h.control.eval<boolean>(
+						`document.activeElement !== document.body`,
+					),
+				).toBe(true);
+				// Reopened on the case itself: the person goes on there.
+				await openCase(saved.caseId);
+				await h.control.waitFor(
+					`${id("close-case")}.textContent === "Reopen case"`,
+				);
+				await h.control.eval(`${id("close-case")}.click()`);
+				await h.control.waitFor(
+					`${id("close-case")}.textContent === "Close case"`,
+				);
+				expect(await h.control.eval<boolean>(`${id("case-view")}.hidden`)).toBe(
+					false,
+				);
+				await saved.page.send("Page.close");
+			},
+		);
+	});
+
 	fullDescribe("with a relay", () => {
 		const status = `${id("ai-status")}.textContent`;
 		let side: Page | undefined;

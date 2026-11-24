@@ -49,7 +49,7 @@
 			<section aria-labelledby="page-heading">
 				<h2 id="page-heading" tabindex="-1">This page</h2>
 				<p id="page" class="page">…</p>
-				<p id="hint" class="hint" hidden></p>
+				<p id="hint" class="hint" role="status" hidden></p>
 				<!-- The tab in front is the signed-in server's own web app (DEC-045). -->
 				<!-- The page has a case already: that is said, and opening it is the first thing offered (view.ts). -->
 				<div id="here" class="here" hidden>
@@ -58,6 +58,8 @@
 					<button id="open-here" type="button" class="primary wide" hidden>Open this case</button>
 				</div>
 				<button id="new-case" type="button" class="primary wide">New case for this page</button>
+				<!-- The page's closed cases, folded, under the main action (view.ts). -->
+				<div id="here-closed"></div>
 			</section>
 			<section aria-labelledby="cases-heading">
 				<h2 id="cases-heading">Cases</h2>
