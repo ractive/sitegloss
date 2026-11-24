@@ -1040,8 +1040,7 @@ async function refreshCase(): Promise<void> {
 	});
 }
 
-/** Open a case, and draw its marks on the tab in front (DEC-022). */
-/** Open a case; done once it is read (`refreshCase`). */
+/** Open a case, and draw its marks on the tab in front (DEC-022); done once it is read. */
 function openCase(id: string): Promise<void> {
 	caseHints.cancel();
 	const other = state.view.kind !== "case" || state.view.id !== id;
