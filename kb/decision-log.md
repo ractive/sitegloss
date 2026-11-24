@@ -1265,6 +1265,12 @@ asked for the Edge upload to be automated as well (tab-mcp's DEC-194 is the same
   in the environment `edge-add-ons` (required reviewer, tags `v*` only), with the Publish
   API's `EDGE_CLIENT_ID` and `EDGE_API_KEY`. `publish.yml` runs it by hand (store `edge` or
   `both`).
+- **Addendum, 24 November 2026 (the release of 0.4.0):** the first real run failed right
+  after the upload (run 45341403491): "the upload's status answered HTTP 202". v0.7.0 took
+  every status answer but 200 for an error, and Microsoft answers 202 with an empty body
+  while an operation runs. v0.8.2 takes 202 as still in progress; both workflows pin it
+  now. The tag v0.4.0 keeps the old pin, and "Publish to the stores" runs from the
+  release's tag, so 0.4.0 itself has to go to Edge by hand in Partner Center.
 - Beside the Chrome Web Store job, not after it: one store's failure or rejection does not
   hold back the other, and each waits for its own approval.
 - The same verified zip: its build provenance is checked before the upload, so the
