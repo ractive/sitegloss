@@ -4873,6 +4873,14 @@ nobody) and D7 (thin status answers). The service's part is its own.
   sends those (D7).
 - **Not changed:** no permission, the manifest, settings, the version; the marks'
   drawing on the page; the web app.
+- **Found on the way, not this change's:** the full Chromium run on this branch once
+  failed "a loaded mark shows only where its element does …" (`marks.test.ts`, DEC-075).
+  The content script is the same as on `main`. With the side panel's page slowed (CPU
+  throttled 20×) that test fails on `main` too (2 of 4 runs; this branch 2 of 6): the
+  panel's own `case:load` of the case arrives after the test scrolled the pane, and a
+  load while the element is under the sticky band draws its box from the element's top
+  (70) instead of the band's end (100) until the next scroll. A real defect of the
+  content script, left to its owner (DEC-075's area).
 - **Known, left for later:** a batch status tool (`set_marks_status`) for the
   extension's AI tools (D7: five marks, five questions unless "Always allow"); "open on
   the page" from the web through a hint in the address (the audit's C10); following the
