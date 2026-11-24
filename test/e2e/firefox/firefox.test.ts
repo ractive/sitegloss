@@ -605,5 +605,32 @@ describe.skipIf(!firefoxReady || !E2E_FULL)(
 				),
 			).toBe("closed");
 		}, 60_000);
+
+		test("no host access at install: the offer of all sites first, the option on Home in Firefox's words (DEC-076)", async () => {
+			expect(
+				await h.rdp.eval<boolean>(
+					h.panel,
+					"chrome.permissions.contains({ origins: ['<all_urls>'] })",
+				),
+			).toBe(false);
+			await h.rdp.waitFor(
+				h.panel,
+				"!document.getElementById('all-sites-offer').hidden",
+				"the offer of all sites",
+			);
+			expect(
+				await h.rdp.eval<unknown>(
+					h.panel,
+					`(() => {
+						const box = document.getElementById("all-sites");
+						return {
+							home: box.closest("main").id,
+							checked: box.checked,
+							note: document.getElementById("all-sites-note").textContent.includes("“Access your data for all websites”"),
+						};
+					})()`,
+				),
+			).toEqual({ home: "home", checked: false, note: true });
+		}, 60_000);
 	},
 );

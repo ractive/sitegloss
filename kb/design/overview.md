@@ -86,7 +86,7 @@ is what a case is about, and finding the element again is a best-effort extra:
 | Content script (`src/content/`) | Toolbar and drawing overlay in a shadow DOM, element picker, element details, a screenshot per mark as it is drawn, highlighting a loaded case |
 | Service worker (`src/background.ts`, `src/worker/`) | Opens the side panel and injects the content script on the icon click; `captureVisibleTab`; WebP conversion, drawing the marks and crops at saving; writes cases; `TabMcp` with the tools and their questions (DEC-015); the one writer of the sync, to Downloads or a folder, also with the panel closed, and the icon's badge ("?" a question, "!" the sync paused or failed, "…" connecting; DEC-021, DEC-025) |
 | Offscreen document (`src/offscreen/`) | Opened by the worker for a sync run to Downloads: exports a case and makes the blob URL the worker downloads (a service worker has none, DEC-025) |
-| Side panel (`src/sidepanel/`) | Three views under one top bar (back button, AI pill): Home (this page, the case list, files and the sync's choice), a case (its marks follow the tab in front, `follow.ts`; summary for the developer, AI findings, export) and Settings (the AI connection's card: status, pairing; the options). The questions show in a modal dialog over the panel (DEC-037); each connected AI app's "Allow all changes" shows under the top bar on Home and in a case (DEC-036), and the sync's banner while it is paused or failed above every view |
+| Side panel (`src/sidepanel/`) | Three views under one top bar (back button, AI pill): Home (this page, the case list, files and the sync's choice), a case (its marks follow the tab in front, `follow.ts`; summary for the developer, AI findings, export) and Settings (the AI connection's card: status, pairing). The options (all sites, blurring form fields) are the last section of Home (DEC-076). The questions show in a modal dialog over the panel (DEC-037); each connected AI app's "Allow all changes" shows under the top bar on Home and in a case (DEC-036), and the sync's banner while it is paused or failed above every view |
 | Library (`src/lib/`) | Case format, element details, matching, zip, export, IndexedDB store, images |
 
 The look (DEC-024): the side panel is paper with ink on it, in light and dark, from one
@@ -123,9 +123,9 @@ the page's origin and never touches it directly.
 - Optional `downloads`, asked in the click of Export (to show where the file went,
   DEC-020) or of "Sync to Downloads" (DEC-025), which writes every case to
   `Sitegloss/` in Chrome's downloads folder through it. The test build has it at install.
-- Optional `<all_urls>`, asked for in the side panel ("Allow on all sites", in the options
-  in Settings and in the notice the panel shows on a tab Sitegloss may not run on yet, DEC-022) only
-  when the user wants Sitegloss without clicking the icon on each tab. `captureVisibleTab` accepts
+- Optional `<all_urls>`, asked for in the side panel ("Allow on all sites": Home's first-use
+  offer, its Options, and the notice wherever a tab without access leaves something missing,
+  DEC-022, DEC-076) only when the user wants Sitegloss without clicking the icon on each tab. `captureVisibleTab` accepts
   `activeTab` or `<all_urls>`, not a single site's permission. One site of it is asked for
   by itself: `https://tab-mcp.ractive.ch/*`, with the click on "Fill in the code for me"
   under the pairing code (a setting of its own, off by default, also with all sites), to

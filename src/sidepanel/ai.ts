@@ -245,6 +245,17 @@ export async function startAi(
 	const relayInput = byId<HTMLInputElement>("relay");
 	const keepOn = byId<HTMLInputElement>("keep-on");
 	const blurForms = byId<HTMLInputElement>("blur-forms");
+	const blurNote = byId<HTMLParagraphElement>("blur-forms-note");
+	/**
+	 * The worker keeps the setting (DEC-016): without it the box is off, and
+	 * says why under it, on Home, where the AI card that said it is not
+	 * (DEC-076).
+	 */
+	const blurOff = (why: string | undefined) => {
+		blurForms.disabled = why !== undefined;
+		blurNote.hidden = why === undefined;
+		if (blurNote.textContent !== (why ?? "")) blurNote.textContent = why ?? "";
+	};
 	const aiSwitch = byId<HTMLInputElement>("ai-switch");
 	const buttons = [
 		byId<HTMLButtonElement>("ai-button"),
@@ -275,7 +286,9 @@ export async function startAi(
 		for (const b of buttons) b.disabled = true;
 		keepOn.disabled = true;
 		relayInput.disabled = true;
-		blurForms.disabled = true;
+		blurOff(
+			`Kept by Sitegloss's ${PANEL}: open the ${PANEL} from the Sitegloss icon to change it.`,
+		);
 		aiSwitch.disabled = true;
 		blurSettled();
 		return;
@@ -405,7 +418,9 @@ export async function startAi(
 		for (const b of buttons) b.disabled = true;
 		keepOn.disabled = true;
 		relayInput.disabled = true;
-		blurForms.disabled = true;
+		blurOff(
+			"Cannot be changed now: Sitegloss's background did not start (the AI pill at the top says more).",
+		);
 		aiSwitch.disabled = true;
 		update(
 			(s) =>
@@ -440,8 +455,9 @@ export async function startAi(
 			};
 		});
 		// A worker that failed before may have started since.
-		for (const control of [...buttons, keepOn, relayInput, blurForms, aiSwitch])
+		for (const control of [...buttons, keepOn, relayInput, aiSwitch])
 			control.disabled = false;
+		blurOff(undefined);
 		blurForms.checked = a.blurForms;
 		blurValue = a.blurForms;
 		blurSettled();

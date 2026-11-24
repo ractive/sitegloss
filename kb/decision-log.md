@@ -690,7 +690,7 @@ access again" with a button, never failing silently. The rest was worked out her
   export, an AI app's `set_summary` writes it again (the worker), a case deleted in the
   panel keeps its file, and after Stop syncing nothing more is written.
 
-## DEC-022: Opening a case shows its marks on the tab in front, and they follow it (owner)
+## DEC-022: Opening a case shows its marks on the tab in front, and they follow it (owner; the notice and the options amended by DEC-076)
 
 The owner, 2026-11-12: "you never want to load a case without showing the marks … When a
 tab becomes active and the case is loaded, just try to show the marks. If none of them
@@ -3792,7 +3792,7 @@ front, per state:
 | Marks drawn on this tab, mark found or a note or box | "Show mark n on the page": scrolls and outlines (unchanged) |
 | Marks not drawn, tab can take them (the "Show marks" button is there) | "Show the marks on this page and go to mark n": draws the case's marks as "Show marks" does, then shows this mark, once |
 | Mark of another page of the case | unchanged: the page's link and, while the marks are drawn, "Show" that opens its page |
-| Tab Sitegloss may not run on yet, a browser page, no tab, the panel as a page | none while not drawn (as "Show marks"); disabled with the notice's words while drawn (unchanged) |
+| Tab Sitegloss may not run on yet, a browser page, no tab, the panel as a page | none while not drawn (as "Show marks"); while drawn, on a tab without access or a browser page none since DEC-076 (the tool bar says why) |
 | No mark of this page, a mark of a newer kind with no element | none |
 | Drawn, mark lost or unsure | none, as before; the row says it was not found |
 | Closed case | as an open one: "Show marks" works there |
@@ -4396,6 +4396,172 @@ stays `@ractive-ch/tab-mcp` 0.13.3.
   tests fail the same way on main). On 0.24.0: the published package equals the candidate except
   for the version strings and the bundler's own chunk and debug ids; then type check, Biome,
   both builds and `bun run verify` again.
+
+## DEC-076: Access to all sites, offered first and said where something is missing (owner)
+
+2026-11-23. The owner, dogfooding in Firefox: "The extension does not request 'Allowed on all
+sites' or so? In firefox I need to click on the icon for each page I open from the extension."
+Told where the setting was: "I don't find it in the Firefox sitegloss ext." Then: "yes, move the
+options to the main view. And really make it clear to the user that this exists and in this case
+I really would add a '(highly recommended)' or so. If it's not turned on it's completely
+intransparent, why suddenly no marks are there and why you can't show/hide marks anymore."
+
+- **What the panel showed before**, the same in both browsers (DEC-022): on a tab without access,
+  Home had a notice above a disabled "New case for this page": "Sitegloss may not run on this
+  tab yet. Click the Sitegloss icon in the toolbar (or press Alt+Shift+O) while this tab is in
+  front." with "Allow on all sites". An open case had that notice at the top of the case, under
+  its head, where it scrolls away; the tool bar at the bottom, where the eye goes, lost "Show
+  marks"/"Hide marks" without a word and kept a disabled "Add marks"; a mark's Show was disabled.
+  The setting itself was a checkbox under Options at the very end of Settings, which only the AI
+  pill opens, and that pill also turns AI access on (in Firefox it asks for the data collection
+  consent first). In Firefox 160, measured with real clicks through Marionette in the sidebar:
+  Sitegloss's button sits in the Extensions menu (the puzzle piece), not in the toolbar, so
+  "the Sitegloss icon in the toolbar" is not there to click; and Firefox drops `activeTab` when
+  the tab goes to the next page, even of the same site. So a case open while browsing a site
+  loses its marks at every link, and the tool bar's Show/Hide goes with them: the owner's
+  "suddenly no marks". Chrome keeps the grant while the tab stays on the same origin and drops it
+  at another (tested with the store package in Chromium).
+- **What happened in Firefox when the box was ticked** (a build without the host permission,
+  `bun scripts/build.ts --firefox`, installed as a temporary add-on through Marionette, the
+  sidebar opened by `SidebarController`, the click a real one): Firefox's own prompt came ("…
+  Access your data for all websites"), Allow granted `<all_urls>`, the box showed it, and a
+  removal or grant made outside the panel (what about:addons' toggle calls) moved the box. It
+  worked; it was not found. Two things did not work: (1) opening a case's page (its address,
+  a mark's link) asks for that site in the click and opens or navigates the tab at once;
+  Firefox's prompt belongs to the tab in front and is taken away by that before anyone sees it,
+  answering no, so every page opened from the panel needed the icon's click: the owner's first
+  sentence. (2) Taking any permission back with AI access off set the AI problem "Firefox has not
+  been allowed to let Sitegloss send the pages' content…" (`consentChanged` ran on every
+  removal).
+- **Rule now, per state.** The panel knows three things: the tab in front (`yes`, `ask`: no
+  access yet, `never`: no extension may run there), all sites allowed or not, and whether the
+  person said "Not now" (or took all sites back) in this browser (`localStorage`, as Keep AI
+  access on's question, DEC-059). `src/sidepanel/access.ts` decides; `view.ts` draws it.
+
+  | All sites | Said no | Tab | Home, top of "This page" | Open case, tool bar |
+  |---|---|---|---|---|
+  | allowed | either | yes | nothing; Options' box ticked | Add marks, Show/Hide marks |
+  | allowed | either | never | "cannot run on this tab" (unchanged) | the same text, in the tool bar |
+  | not | no | yes | the offer: "Let Sitegloss work on every tab (recommended)", Allow on all sites, Not now | Add marks, Show/Hide marks |
+  | not | no | ask | the offer, headed "Sitegloss has no access to this tab yet" with the warning sign, and the one-tab way | the notice |
+  | not | yes | yes | nothing; Options' box unticked, its note says what that means | Add marks, Show/Hide marks |
+  | not | yes | ask | the notice | the notice |
+
+  Before the browser has answered whether all sites is allowed, no offer (it would flash for
+  someone who has it). The notice: the warning sign, the sentence ("Sitegloss has no access to
+  this tab yet, so it cannot start a case or show marks here." on Home; "…, so this case's marks
+  are not drawn here and cannot be shown or added." in a case), "Allow on all sites
+  (recommended)", and the one-tab way under it.
+- **Rule now, per control** (one rule, all of them): what needs the page is absent on a tab
+  without access, and the sentence stands where it was; never a disabled control, never one that
+  goes without a word. "New case for this page": absent, the notice in its place. Add marks and
+  Show/Hide marks: absent, the notice fills the tool bar (which stays sticky at the bottom, so
+  the reason is in view however far the case is scrolled; it is no toolbar for assistive
+  technology then). A mark's Show: absent, the tool bar says why. The next step's Add marks
+  (DEC-069): absent as the tool bar's is. A request for all sites from "Show marks" was not
+  chosen: a broad prompt from a button that says something else is a surprise.
+- **Options** leave Settings and are Home's last section, after Files: they are set once and
+  are not what Home is for; what makes access findable is the offer at the top and the notice
+  where something is missing, so Options only has to be where a setting is looked for. Access
+  first, "Allow on all sites (highly recommended)" (the owner's words), then "Blur form fields
+  in screenshots" (while the worker cannot keep it, it says why under it: the AI card that
+  said so is not beside it any more). Under the access box, always (after review): "Without
+  it, Sitegloss works on a tab only after you click its icon there[, until the tab goes to
+  another page]; on other tabs your marks are not drawn and cannot be shown. With it,
+  Sitegloss can read the page in front whenever you use it and, while AI access is on,
+  whenever a connected AI app asks (a screenshot, an element's details), on any site. It
+  sends nothing anywhere by itself. Chrome asks first (“Read and change all your data on all
+  websites”)." (Firefox: its prompt's “Access your data for all websites”.) Each clause
+  checked: no script goes into a page by itself; the panel draws the open case on the tab in
+  front and marking acts there; an AI app's read tools act on whatever tab is in front
+  without a question (`src/worker/tab.ts`), which without all sites is only a clicked tab;
+  "the tab in front only" was dropped, as "Fill in the code for me", when on, reads the
+  relay's pairing page in whichever tab an AI app opened it. PRIVACY.md now says the AI-app
+  consequence under "All sites". Settings keeps only the AI connection.
+- **Wording.** The one-tab way says where the icon really is: Chrome "For this tab only: click
+  the Sitegloss icon in the toolbar (under the puzzle piece until you pin it) or press ⌥⇧O.";
+  Firefox "For this tab only: click Sitegloss under the puzzle piece in the toolbar (or its
+  icon, if pinned) or press ⌥⇧O. Firefox lets it in until the tab goes to another page." The
+  shortcut is the browser's own (`commands.getAll()`, so a changed one is named, an unset one
+  is left out), on a Mac in symbols as the panel writes keys elsewhere (Alt+Shift+O on other
+  systems). The browser is named as it is: Firefox by the build, Chrome or Edge by its brands,
+  any other "your browser" (it only names; nothing is decided by it). "Allow on all sites"
+  stays the button's name everywhere (the worker's refusal text for an AI app names it);
+  "(recommended)" goes with it where something is missing, "(highly recommended)" on the
+  option.
+- **Pages no extension may run on** (after review). Never "no access yet" with ways that
+  cannot help: the panel says "Sitegloss cannot work on this kind of page: …" with no button
+  (Chrome: "the browser's own pages, other extensions' pages and its extension store"; Firefox:
+  "its own pages (about:), addons.mozilla.org and PDFs in its viewer"). Only by what is true
+  now (second review: "cannot work on this kind of page" on an ordinary page is worse than "no
+  access yet" where nothing helps): the address where it shows, by scheme (the browsers' own
+  pages, view-source:) and by that browser's restricted hosts only (Chrome: the Chrome Web
+  Store; Edge: that and Edge Add-ons, Edge told by its brands, the one choice a brand makes;
+  Firefox: `extensions.webextensions.restrictedDomains`, addons.mozilla.org, support and
+  accounts among them; in another browser these are ordinary sites); where it is hidden, the
+  refusal of a script that does nothing, asked at each look at the tab (it runs nowhere, as
+  Sitegloss may not run there): Chrome says "Cannot access a chrome:// URL" for its pages,
+  Firefox runs it in no frame on about: pages (both tried); and in Firefox a file while
+  "Access local files" is off. The file text ("Allow access to file URLs") only where the
+  address is hidden: a store page in Chrome, whose file access is off by default, is a store
+  page. On such a page the first-use offer, if still up, has the neutral head. A refused
+  action is remembered nowhere (the first round marked the tab and address, which an error
+  page of a dev server that was down turned into a lasting "cannot"); its hint says, from
+  what is true now: the browser's own cannot words, "cannot work on this kind of page"; where
+  the ways cannot help (all sites allowed, or the address shows, so the click is in: an error
+  page, a PDF in Firefox's viewer, which Firefox refuses with "Missing host permission",
+  tried), only "Sitegloss could not reach this page. Reload it and try again." (in Firefox
+  with "A PDF in Firefox's viewer refuses every extension."); else no access yet, with the
+  ways. Not recognisable: the Chrome Web Store and addons.mozilla.org with no access, where the
+  browsers refuse them in the same words as any page without access (tried); there the notice
+  says "no access yet" until the icon's click shows the address.
+- **Focus** (after review). It never falls to the page's body when access changes what is shown:
+  after Not now to what comes next (the notice that takes the offer's place, else New case
+  for this page, else the heading "This page"); after Allow on all sites to the control the
+  offer or the notice stood for (New case, Add marks) once it is back; a focused New case, Add
+  marks, Show/Hide marks or mark's Show that the notice replaces hands it to the notice's
+  button. The notice writes its text only when it changes (a live region speaks each write);
+  the tool bar's name goes with its role while the notice fills it; a reader meets, under the
+  case's head, that the bar at the end of the case says why (the bar is last in the page, as
+  on screen). The focus moves only while the panel's document has it: someone working in the
+  page keeps their keys there. After a grant the tab's address is read before all sites is
+  shown as allowed, so no render in between has all sites with a hidden address (which would
+  say, and announce, "cannot work on this kind of page").
+- **Firefox.** The checkbox and the offer's button ask in the click, as before; both tested
+  in the real sidebar. Opening a case's page or a mark's link does not ask for the site in
+  Firefox any more (it could not be answered); the tab's notice offers all sites and the click.
+  `consentChanged` ends AI access only when it is on or retrying (`consentGoneEnds`). Unchanged:
+  `permissions.onAdded` and `onRemoved` already moved the box, the notice and the drawing in
+  both browsers; now a removal also counts as "said no", so the offer does not come back after
+  it: the panel remembers that all sites was allowed, so a take-back in the browser's settings
+  with no panel open is a no too, decided when a panel next opens. "Not now" and that memory
+  live in the panel's own `localStorage` (the panel writes no storage of the extension's,
+  DEC-063; read inside a `try`: where the browser refuses it, the panel works on and offers
+  again); two open panels (two windows) agree through its `storage` event.
+- **Unchanged.** The manifest: `<all_urls>` optional, nothing new at install, no new warning.
+  "Blur form fields in screenshots" apart from its place. Every other rule of the panel.
+- **What remains.** Firefox's sidebar strip shows a Sitegloss icon too; whether its click gives
+  access was not tested (Firefox's code grants `activeTab` for the action and commands, not for
+  sidebar switches), so the texts name the puzzle piece and the shortcut. A person who says
+  "Not now" in one browser profile is offered it again in another; Firefox clears the panel's
+  storage with the site data (and a temporary add-on gets a new origin at each load), and then
+  the offer comes once more. The gesture rule (`permissions.request` in the click) is held, for
+  the handlers this change made (Allow on all sites, the option's box, the offer's and the
+  notices' buttons, a case's page in Chrome), by a check of the source that nothing defers
+  the request (`await`, `.then`, a timer); the panel's other requests (downloads, Fill in the
+  code, the data consent) are not in it. Automation cannot click Chrome's real prompt.
+  Edge was not run.
+- Tests: `test/access.test.ts` (each state, a store page and a refused page, the refusals'
+  kinds, the words that differ by browser, the shortcut and the browser's name, Firefox's
+  skipped site prompt, the memory and a take-back with no panel open, the source check of the all-sites
+  handlers' gesture), `test/connection.test.ts` (`consentGoneEnds`), `test/view.test.ts` (the offer,
+  Not now, the notice on Home and in the tool bar, no Show, no next-step Add marks, all gone
+  once allowed, Options on Home, a store page, the focus after Not now, after a grant and when
+  the notice replaces a focused control, the tool bar's name), `test/e2e/shipped.test.ts`
+  (the store package in Chromium: the offer on a tab without access asks for `<all_urls>` in
+  the click, Not now puts the notice in its place and holds over a reopening),
+  `test/e2e/firefox/firefox.test.ts` (the Firefox store package: no host access, the offer
+  first, the option on Home in Firefox's words).
 
 ## DEC-077: The extension in the web app's look: cream, the forest green, Inter and Manrope (owner)
 

@@ -702,8 +702,11 @@ inBothSets("the side panel's page", () => {
 			chrome.scripting.executeScript = no;
 		})()`);
 		await h.control.eval(`${id("new-case")}.click()`);
+		// The test build may run on all sites: a refusal there is a page that
+		// could not be reached, and the hint offers no way that cannot help
+		// (DEC-076).
 		await h.control.waitFor(
-			`${id("hint")}.textContent.includes("Click the Sitegloss icon")`,
+			`(() => { const t = ${id("hint")}.textContent; return !${id("hint")}.hidden && /reload/i.test(t) && !/all sites|click/i.test(t); })()`,
 		);
 		await a.page.goto(`${h.base}/v1`);
 		await Bun.sleep(300);

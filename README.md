@@ -88,7 +88,27 @@ user agent. What differs from Chrome and Edge:
 
 ## Use
 
-1. Click the Sitegloss icon on a tab. The side panel opens there.
+1. Click the Sitegloss icon on a tab (in the toolbar's Extensions menu, the puzzle piece,
+   until you pin it). The side panel opens there. Sitegloss installs without access to
+   any site: until you allow it on all sites, it may run only on a tab where you clicked
+   its icon (Chrome keeps that while the tab stays on the same origin; Firefox only until the
+   tab goes to another page). So the side panel's main view first offers "Allow on all sites",
+   with "Not now"; the same setting is under Options, last on the main view, as "Allow on
+   all sites (highly recommended)", with what it means under it: Sitegloss can then read
+   the page in front whenever you use it and, while AI access is on, whenever a connected
+   AI app asks (a screenshot, an element's details), on any site; it sends nothing
+   anywhere by itself; the browser asks first. After "Not now" the offer does not come
+   again, nor after you take all sites back, here or in the browser's settings (the panel
+   follows that, and remembers that it was allowed, so a take-back while no panel was
+   open counts too). The panel keeps this in its own storage in this browser: Firefox
+   may clear it with the site data, and then the offer comes once more. On a page the
+   panel can tell no extension may run on (the browser's own pages, and its store's and
+   restricted sites where the address shows: the Chrome Web Store in Chrome and Edge,
+   Edge Add-ons in Edge, addons.mozilla.org and Mozilla's account and support sites in
+   Firefox) it says that Sitegloss cannot work there, and offers no way. Where an action is
+   refused although the ways cannot help (all sites is allowed, or the icon's click is in:
+   an error page, a PDF in Firefox's viewer), the hint says only that Sitegloss could not
+   reach the page and to reload it; nothing of it is remembered.
 2. "New case for this page" creates a case at once, named after the page's title, opens it
    in the side panel and shows the toolbar on the page: Element (click one), Box, Arrow,
    Pen, Note and Highlight (select text on the page, or choose it with text selected; it
@@ -147,12 +167,19 @@ user agent. What differs from Chrome and Edge:
    until "Show marks" or the case is opened again. When the case has no mark of the page
    in front, the case says where its marks are and offers to open the case's page; when
    none of the page's own marks is found, it says so. Home lists a case of several
-   pages under "This page" on each of its pages on the site they were marked on. On a tab Sitegloss may not run on yet (after reloading the extension, say),
-   Chrome hides the address, and the side panel says so with a warning: click the
-   Sitegloss icon there (or press Alt+Shift+O) and the marks are drawn, or press "Allow
-   on all sites" in that notice; until then what needs the page is off. The case's
+   pages under "This page" on each of its pages on the site they were marked on. On a
+   tab Sitegloss may not run on yet (another tab, the site's next page in Firefox, after
+   reloading the extension), the browser hides the address, and the side panel says so
+   with a warning where something is missing: "Sitegloss has no access to this tab yet",
+   with "Allow on all sites (recommended)" and the way for this tab only (click the
+   Sitegloss icon there, or press its shortcut, as the browser has it: Alt+Shift+O, ⌥⇧O
+   on a Mac, unless you changed it). On Home it stands in place of "New case
+   for this page"; in an open case it is in the tool bar at the bottom, in place of Add
+   marks and Show/Hide marks, and no mark has Show. With a click or all sites allowed,
+   the marks are drawn and the buttons are back. The case's
    address opens its page in a new tab (Chrome asks whether Sitegloss may run on that
-   site from then on) and draws the marks there (marks a script draws late are looked
+   site from then on; Firefox would take that prompt away as the tab opens, so it is not
+   asked there) and draws the marks there (marks a script draws late are looked
    for again for a few seconds), and when the
    tab's size is not the one the marks were made at, Match size resizes the window to it
    (as far as the screen allows; page zoom is counted). Sitegloss looks for each mark's element and draws the mark on it again,
