@@ -9,6 +9,7 @@
 import {
 	GROUP_OF,
 	type MarkStatus,
+	type Point,
 	type Rect,
 	type Shape,
 	type StatusGroup,
@@ -393,7 +394,17 @@ export interface ReviewItem {
 	lines?: Rect[];
 	/** Its text is on a dark ground (`HIGHLIGHT_LOOK`). */
 	dark?: boolean;
+	/**
+	 * Where its element shows (DEC-075): the mark's drawing, strokes and pin
+	 * are cut to this box of the window. None: drawn whole.
+	 */
+	clip?: Rect;
+	/** Where its pin goes, when not where its shape puts it (DEC-075). */
+	pin?: Point;
 }
+
+/** A mark the toolbar draws, cut to where its element shows (DEC-075), when `clip` is set. */
+export type ClippedRendered = RenderedMark & { clip?: Rect; pin?: Point };
 
 /** Drawn faded: nothing more to do about it. */
 export const isSettled = (status: MarkStatus): boolean =>
@@ -998,12 +1009,17 @@ export class Overlay {
 		this.ink.classList.toggle("capturing", on);
 	}
 
-	/** Draw the marks (saved ones fainter), the one being drawn and the hovered element's outline. */
+	/**
+	 * Draw the marks (saved ones fainter), the one being drawn and the hovered
+	 * element's outline. A mark with a clip is cut to it, its pin where `pin`
+	 * says (DEC-075): the toolbar's finished marks show only where their
+	 * element does, as the loaded case's.
+	 */
 	render(
-		marks: readonly RenderedMark[],
+		marks: readonly ClippedRendered[],
 		preview: Shape | null,
 		hover: Rect | null,
-		saved: readonly RenderedMark[] = [],
+		saved: readonly ClippedRendered[] = [],
 	): void {
 		const doc = this.doc;
 		const children: SVGElement[] = [];
@@ -1033,24 +1049,36 @@ export class Overlay {
 			);
 		}
 		const ink: SVGElement[] = [];
+		/** One mark's parts into `plain` and `strokes`, cut to its clip. */
+		const draw = (
+			mark: ClippedRendered,
+			strokes: SVGElement[],
+			plain: SVGElement[],
+		) => {
+			const s: SVGElement[] = [];
+			const p: SVGElement[] = [];
+			this.#drawn(mark, MARK_COLOUR, {}, s, p);
+			p.push(this.#badge(mark, MARK_COLOUR, mark.pin));
+			if (mark.clip === undefined) {
+				strokes.push(...s);
+				plain.push(...p);
+				return;
+			}
+			if (s.length > 0) strokes.push(this.#clipped(mark.clip, s));
+			plain.push(this.#clipped(mark.clip, p));
+		};
 		if (saved.length > 0) {
 			const group = svg(doc, "g", { class: "saved", opacity: 0.5 });
 			const inkGroup = svg(doc, "g", { class: "saved-strokes", opacity: 0.5 });
 			const strokes: SVGElement[] = [];
 			const parts: SVGElement[] = [];
-			for (const mark of saved) {
-				this.#drawn(mark, MARK_COLOUR, {}, strokes, parts);
-				parts.push(this.#badge(mark));
-			}
+			for (const mark of saved) draw(mark, strokes, parts);
 			group.append(...parts);
 			inkGroup.append(...strokes);
 			children.push(group);
 			ink.push(inkGroup);
 		}
-		for (const mark of marks) {
-			this.#drawn(mark, MARK_COLOUR, {}, ink, children);
-			children.push(this.#badge(mark));
-		}
+		for (const mark of marks) draw(mark, ink, children);
 		if (preview !== null) children.push(...this.#shape(preview));
 		this.#drafts.replaceChildren(...children);
 		this.#inkDrafts.replaceChildren(...ink);
@@ -1113,7 +1141,8 @@ export class Overlay {
 			.filter((item) => item.shape.kind !== "unknown")
 			.map((item) => ({
 				number: item.number,
-				...pinPosition(item),
+				// Where it is drawn: moved into what shows of its element (DEC-075).
+				...(item.pin ?? pinPosition(item)),
 				r: badgeRadius(item.shape),
 			}));
 		const inkGroups: SVGElement[] = [];
@@ -1169,11 +1198,17 @@ export class Overlay {
 					"data-review": item.number,
 					...(fade ? { "data-faded": "", opacity: RESOLVED_OPACITY } : {}),
 				});
-				inkGroup.append(...strokes);
+				inkGroup.append(
+					...(item.clip === undefined
+						? strokes
+						: [this.#clipped(item.clip, strokes)]),
+				);
 				inkGroups.push(inkGroup);
 			}
 			if (item.shape.kind !== "unknown")
-				group.append(this.#badge(item, colour));
+				group.append(this.#badge(item, colour, item.pin));
+			if (item.clip !== undefined)
+				group.replaceChildren(this.#clipped(item.clip, [...group.childNodes]));
 			return group;
 		});
 		this.#review.replaceChildren(...groups);
@@ -1251,9 +1286,32 @@ export class Overlay {
 		}
 	}
 
-	#badge(mark: RenderedMark, colour: string = MARK_COLOUR): SVGElement {
+	/**
+	 * `parts` cut to `clip` (DEC-075): a nested SVG viewport, whose view box
+	 * keeps the window's coordinates. A viewport rather than a `clipPath`,
+	 * which an `url(#…)` would have to find in the shadow root.
+	 */
+	#clipped(clip: Rect, parts: readonly Node[]): SVGElement {
+		const box = svg(this.doc, "svg", {
+			"data-clip": "",
+			x: clip.x,
+			y: clip.y,
+			width: clip.width,
+			height: clip.height,
+			viewBox: `${clip.x} ${clip.y} ${clip.width} ${clip.height}`,
+			preserveAspectRatio: "none",
+			overflow: "hidden",
+		});
+		box.append(...parts);
+		return box;
+	}
+
+	#badge(
+		mark: RenderedMark,
+		colour: string = MARK_COLOUR,
+		at: Point = pinPosition(mark),
+	): SVGElement {
 		const doc = this.doc;
-		const at = pinPosition(mark);
 		const g = svg(doc, "g", { "data-number": mark.number });
 		g.append(
 			svg(doc, "circle", {
