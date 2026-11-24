@@ -124,7 +124,16 @@ export const FONTS: readonly (readonly [
 	["Manrope", "manrope-latin-wght-normal.woff2", "OFL-Manrope.txt"],
 ];
 
-/** Sitegloss's licence, those of `packages` (a package without one stops the build) and the fonts'. */
+/**
+ * The side panel's icons (`src/sidepanel/icons.ts`, DEC-078): paths copied
+ * from heroicons 2.2.0, the web app's icons, under their MIT licence.
+ */
+export const ICONS_NOTICE = [
+	"Heroicons (the side panel's icons, heroicons 2.2.0)",
+	"src/sidepanel/LICENSE-heroicons.txt",
+] as const;
+
+/** Sitegloss's licence, those of `packages` (a package without one stops the build), the fonts' and the icons'. */
 export async function notices(packages: Iterable<string>): Promise<string> {
 	const text = (path: string) => Bun.file(join(ROOT, path)).text();
 	const parts = [
@@ -140,6 +149,8 @@ export async function notices(packages: Iterable<string>): Promise<string> {
 		parts.push(
 			`The ${family} typeface (fonts/, @fontsource-variable 5.3.0)\n\n${await text(`src/fonts/${licence}`)}`,
 		);
+	const [what, path] = ICONS_NOTICE;
+	parts.push(`${what}\n\n${mitText(what, await text(path))}`);
 	return parts.join(`\n${"-".repeat(78)}\n\n`);
 }
 

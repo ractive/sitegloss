@@ -62,6 +62,9 @@ const EDGE = 3;
  * Its boundary as a control rests on its label (WCAG 1.4.11's text
  * exception), which carries the 4.5:1; where the fill is weaker than this, on
  * a warning's or an error's tint, the button takes the edge (DEC-077).
+ * A button's icon is drawn in its text's colour (`currentColor`, DEC-078):
+ * the text's rows on each fill cover it, at 4.5:1 where 3:1 is asked of a
+ * graphic; the icon-only Show is told by its icon, the ink on the control.
  */
 const FILL = 1.3;
 const FILL_ON_QUIET = 1.15;

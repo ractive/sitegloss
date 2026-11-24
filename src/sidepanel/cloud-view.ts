@@ -15,6 +15,7 @@ import {
 	serverNote,
 } from "../lib/cloud/servers.ts";
 import { byId, formatDate, h } from "./dom.ts";
+import { type IconName, icon } from "./icons.ts";
 import type { PanelState } from "./state.ts";
 
 /** What the user can do about the account; `cloud.ts` carries it out. */
@@ -187,7 +188,7 @@ function button(
 	label: string,
 	title: string,
 	onclick: () => void,
-	options: { strong?: boolean; disabled?: boolean } = {},
+	options: { strong?: boolean; disabled?: boolean; icon?: IconName } = {},
 ): HTMLButtonElement {
 	return h(
 		"button",
@@ -199,6 +200,7 @@ function button(
 			...(options.strong ? { class: "strong" } : {}),
 			...(options.disabled ? { disabled: true } : {}),
 		},
+		options.icon === undefined ? null : icon(options.icon),
 		label,
 	);
 }
@@ -304,7 +306,7 @@ function signedOut(cloud: Cloud): HTMLElement[] {
 				cloud.signingIn ? "Signing in…" : "Sign in",
 				SIGN_IN_TITLE,
 				act((a) => a.cloudSignIn()),
-				{ strong: true, disabled: cloud.signingIn },
+				{ strong: true, disabled: cloud.signingIn, icon: "sign-in" },
 			),
 		),
 		serverChooser(cloud),
@@ -406,7 +408,7 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 							cloud.signingIn ? "Signing in…" : "Sign in again",
 							SIGN_IN_TITLE,
 							act((a) => a.cloudSignIn()),
-							{ strong: true, disabled: cloud.signingIn },
+							{ strong: true, disabled: cloud.signingIn, icon: "sign-in" },
 						),
 					]
 				: syncNowHelps(cloud)
@@ -416,6 +418,7 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 								"Sync now",
 								SYNC_NOW_TITLE,
 								act((a) => a.cloudSyncNow()),
+								{ icon: "sync" },
 							),
 						]
 					: []),
@@ -424,6 +427,7 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 				"Sign out",
 				SIGN_OUT_TITLE,
 				act((a) => a.cloudSignOut()),
+				{ icon: "sign-out" },
 			),
 		),
 	);
@@ -561,7 +565,7 @@ export function renderCloudBanner(
 							cloud.signingIn ? "Signing in…" : "Sign in again",
 							SIGN_IN_TITLE,
 							act((a) => a.cloudSignIn()),
-							{ strong: true, disabled: cloud.signingIn },
+							{ strong: true, disabled: cloud.signingIn, icon: "sign-in" },
 						),
 					]
 				: [

@@ -12,6 +12,7 @@
 
 import type { UserRef } from "../lib/case.ts";
 import { h } from "./dom.ts";
+import { type IconName, icon } from "./icons.ts";
 import type { NextStep, StepAction } from "./next-step.ts";
 
 export interface StepParts {
@@ -38,43 +39,61 @@ export interface AssignChoices {
 	pick: (to: UserRef | null) => void;
 }
 
-const LABEL: Record<StepAction, { label: string; title: string }> = {
+/**
+ * Each action's words, tooltip and icon (DEC-078: the same as its other
+ * place). Copy link is its icon alone, its words in its name and tooltip:
+ * with the icons, three or four buttons in a row took a line more, and it
+ * is the least of them (it never stands alone).
+ */
+const LABEL: Record<
+	StepAction,
+	{ label: string; title: string; icon: IconName; iconOnly?: true }
+> = {
 	"add-marks": {
+		icon: "add",
 		label: "Add marks",
 		title:
 			"Each mark you draw on the page goes into this case when its comment is done",
 	},
 	share: {
+		icon: "share",
 		label: "Share with team",
 		title:
 			"Send this case to your team: its members see it, with its screenshots, and what anyone changes syncs",
 	},
 	export: {
+		icon: "export",
 		label: "Export…",
 		title:
 			"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
 	},
 	"copy-link": {
+		icon: "link",
+		iconOnly: true,
 		label: "Copy link",
 		title:
 			"Copy the case's address in the web app: it opens the case for the members of the team",
 	},
 	"copy-ai": {
+		icon: "copy",
 		label: "Copy for your AI app",
 		title:
 			"Instructions for your AI app to work on this case: its address, how to reach it, and what to do with each mark",
 	},
 	verify: {
+		icon: "check",
 		label: "Start verifying",
 		title:
 			"Show only the marks to verify, and go to the first one: open its page with the fix and check it",
 	},
 	close: {
+		icon: "close",
 		label: "Close case",
 		title:
 			"Close the case: it is filed away under Closed, and stays readable and changeable. A new open mark opens it again.",
 	},
 	assign: {
+		icon: "assign",
 		label: "Assign",
 		title:
 			"Choose who fixes the open marks: a member of the team. They see it under My cases; when every open mark is fixed, it comes back to whoever started the case to verify",
@@ -169,17 +188,20 @@ export function renderNextStep(
 			const why = off[action];
 			if (action === "assign" && assign !== undefined)
 				return assignMenu(p, assign, why);
+			const { label, title, iconOnly } = LABEL[action];
 			return h(
 				"button",
 				{
 					type: "button",
-					class: "small",
+					class: iconOnly ? "small icon-only" : "small",
 					"data-step": action,
-					title: why ?? LABEL[action].title,
+					...(iconOnly ? { "aria-label": label } : {}),
+					title: iconOnly ? `${label}: ${why ?? title}` : (why ?? title),
 					disabled: why !== undefined,
 					onclick: () => p.act(action),
 				},
-				LABEL[action].label,
+				icon(LABEL[action].icon),
+				iconOnly ? null : label,
 			);
 		}),
 	);
@@ -291,6 +313,7 @@ function assignMenu(
 				}
 			},
 		},
+		icon(LABEL.assign.icon),
 		label,
 		h("span", { class: "chevron", "aria-hidden": "true" }),
 	);

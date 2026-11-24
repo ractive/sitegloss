@@ -82,6 +82,13 @@ import {
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
 import {
+	type IconName,
+	icon,
+	setCopyLabel,
+	setLabel,
+	withIcon,
+} from "./icons.ts";
+import {
 	markTargets,
 	mayLoadAndShow,
 	shortAddress,
@@ -327,6 +334,10 @@ const importError = byId<HTMLDivElement>("import-error");
 const importDone = byId<HTMLParagraphElement>("import-done");
 const exportAll = byId<HTMLButtonElement>("export-all");
 const importButton = byId<HTMLButtonElement>("import");
+// The main view's buttons in index.html, each with its icon (DEC-078).
+newCaseButton.prepend(icon("add"));
+importButton.prepend(icon("import"));
+exportAll.prepend(icon("export"));
 /** Their titles in index.html, for when no import is at work. */
 const importTitle = importButton.title;
 const exportAllTitle = exportAll.title;
@@ -554,8 +565,9 @@ function renderAccess(
 	// Firefox lets no extension open its add-ons page: the text says the way.
 	n.button.hidden = kind === "cannot" && (!files || FIREFOX);
 	n.button.dataset["action"] = files ? "file-access" : "allow-all-sites";
-	setText(
+	setLabel(
 		n.button,
+		files ? undefined : "all-sites",
 		files ? "Open Sitegloss's details" : ALLOW_ALL_SITES_RECOMMENDED,
 	);
 	const title = files ? DETAILS_TITLE : ALLOW_ALL_SITES_TITLE;
@@ -602,7 +614,7 @@ const homeOffer = h(
 				title: ALLOW_ALL_SITES_TITLE,
 				onclick: () => lastActions?.allowAllSites(),
 			},
-			ALLOW_ALL_SITES,
+			...withIcon("all-sites", ALLOW_ALL_SITES),
 		),
 		h(
 			"button",
@@ -673,23 +685,20 @@ function renderSaved(
 		el.replaceChildren();
 		return;
 	}
-	const copy: HTMLButtonElement = h(
-		"button",
-		{
-			type: "button",
-			"data-action": "copy-path",
-			title: "Copy the file's full path",
-			onclick: () =>
-				void actions.copyPath(exported.path).then((ok) => {
-					if (!ok) return;
-					copy.textContent = "Copied";
-					setTimeout(() => {
-						copy.textContent = "Copy";
-					}, 1500);
-				}),
-		},
-		"Copy",
-	);
+	const copy: HTMLButtonElement = h("button", {
+		type: "button",
+		"data-action": "copy-path",
+		title: "Copy the file's full path",
+		onclick: () =>
+			void actions.copyPath(exported.path).then((ok) => {
+				if (!ok) return;
+				setCopyLabel(copy, "Copied");
+				setTimeout(() => {
+					setCopyLabel(copy, "Copy");
+				}, 1500);
+			}),
+	});
+	setCopyLabel(copy, "Copy");
 	el.replaceChildren(
 		h("p", {}, "Saved as"),
 		h("code", { class: "path" }, exported.path),
@@ -962,7 +971,12 @@ function renderCases(state: PanelState, actions: Actions): void {
 		unit.classList.add("with-action");
 		unit.append(openHere);
 	} else hereCases.after(openHere);
-	openHere.textContent = waits ? "Start verifying" : "Open this case";
+	// Start verifying has the Verify tick wherever it is; Open this case none (DEC-078).
+	setLabel(
+		openHere,
+		waits ? "check" : undefined,
+		waits ? "Start verifying" : "Open this case",
+	);
 	openHere.onclick = !one
 		? null
 		: waits
@@ -1481,8 +1495,7 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 							"Add a picture of what the screenshot does not show, for example a menu that closes",
 						onclick: () => x.actions.addImages(c, a),
 					},
-					h("span", { class: "plus", "aria-hidden": "true" }, "+ "),
-					"Add another image…",
+					...withIcon("add", "Add another image…"),
 				)
 			: null,
 	);
@@ -1841,6 +1854,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		title: string,
 		onclick: () => void,
 		keepOpen = false,
+		glyph?: IconName,
 	) =>
 		h(
 			"button",
@@ -1854,6 +1868,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 					if (!keepOpen) closeMenu();
 				},
 			},
+			glyph === undefined ? null : icon(glyph),
 			label,
 		);
 	const renameButton = item(
@@ -1861,6 +1876,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		"Rename…",
 		"Change this case's title; it is saved at once",
 		() => actions.startRename(created.current),
+		false,
+		"edit",
 	);
 	const linkMenu = item(
 		"case-link-menu",
@@ -1873,6 +1890,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		"Export…",
 		"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
 		() => actions.exportCase(created.current),
+		false,
+		"export",
 	);
 	const more: HTMLButtonElement = h(
 		"button",
@@ -2186,7 +2205,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 						? actions.doneAdding(created.current)
 						: actions.addMarks(created.current),
 			},
-			"Add marks",
+			...withIcon("add", "Add marks"),
 		),
 		adding: false,
 		leaving: h("p", {
@@ -2735,6 +2754,7 @@ function markButton(
 	title: string | undefined,
 	onclick: () => void,
 	strong = false,
+	glyph?: IconName,
 ): HTMLButtonElement {
 	return h(
 		"button",
@@ -2745,6 +2765,7 @@ function markButton(
 			title,
 			onclick,
 		},
+		glyph === undefined ? null : icon(glyph),
 		label,
 	);
 }
@@ -2804,6 +2825,7 @@ const verifyButton = (c: Case, a: Mark, actions: Actions, anyway = false) =>
 			);
 		},
 		!anyway,
+		"check",
 	);
 
 /** What a mark to verify of another page offers, said in its open row (DEC-079). */
@@ -2813,6 +2835,7 @@ export const AWAY_HINT =
 /**
  * In place of Verify on a mark of another page (DEC-079): its page, opened
  * in this tab with the mark shown there; Verify comes once the tab is there.
+ * No icon (DEC-078): with Show's viewfinder its row took a line more at 340 px.
  */
 function verifyThere(
 	c: Case,
@@ -3217,8 +3240,13 @@ export function opensAfterVerify(
 }
 
 const reopenButton = (c: Case, a: Mark, actions: Actions) =>
-	markButton("Reopen…", "reopen", REOPEN_TITLE, () =>
-		actions.editMark(c, a, "reopen"),
+	markButton(
+		"Reopen…",
+		"reopen",
+		REOPEN_TITLE,
+		() => actions.editMark(c, a, "reopen"),
+		false,
+		"reopen",
 	);
 
 /** `, and its 2 added images`; nothing for none. */
@@ -3274,8 +3302,13 @@ function markActions(
 					"Change how it was settled, or its note",
 					() => actions.editMark(c, a, "resolve"),
 				),
-		markButton("Edit comment", "comment", undefined, () =>
-			actions.editMark(c, a, "comment"),
+		markButton(
+			"Edit comment",
+			"comment",
+			undefined,
+			() => actions.editMark(c, a, "comment"),
+			false,
+			"edit",
 		),
 		h(
 			"button",
@@ -3289,7 +3322,7 @@ function markActions(
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
-			armed ? "Really delete?" : "Delete mark",
+			...withIcon("delete", armed ? "Really delete?" : "Delete mark"),
 		),
 	);
 }
@@ -3984,7 +4017,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.addMarks.disabled = state.leaving?.phase === "finishing";
 	// Calm at rest, always in reach; primary only while adding is on, and it
 	// says so (DEC-064).
-	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
+	setLabel(
+		p.addMarks,
+		p.adding ? undefined : "add",
+		p.adding ? "Adding marks: Done" : "Add marks",
+	);
 	p.addMarks.classList.toggle("primary", p.adding);
 	// Its words say what it does; no pressed state beside them (DEC-064's review).
 	p.addMarks.title = p.adding
@@ -4006,7 +4043,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 		here === undefined;
 	// A case without marks has nothing to show or hide.
 	p.loadButton.hidden = !ok || none || looking || c.marks.length === 0;
-	p.loadButton.textContent = p.loadedHere ? "Hide marks" : "Show marks";
+	setLabel(
+		p.loadButton,
+		p.loadedHere ? "hide-marks" : "show-marks",
+		p.loadedHere ? "Hide marks" : "Show marks",
+	);
 	p.loadButton.title = p.loadedHere
 		? "Take this case's marks off the page in this tab; they stay off on this tab until you show them again"
 		: "Look for each mark's element on the page in this tab and draw the marks there";
@@ -4034,7 +4075,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const mayClose =
 		sync.kind !== "synced" ||
 		(team?.permissions.includes("case:close") ?? true);
-	p.closeButton.textContent = c.closed ? "Reopen case" : "Close case";
+	setLabel(
+		p.closeButton,
+		c.closed ? "reopen" : "close",
+		c.closed ? "Reopen case" : "Close case",
+	);
 	// Leaving after a Close: the button is busy, so no press reopens the case
 	// before the panel is on the list.
 	const leavingNow = state.leaving?.phase === "finishing";
@@ -4064,11 +4109,15 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.deleteButton.toggleAttribute("data-armed", armed);
 	holdDelete(armed && sync.mayDelete ? p.deleteButton : undefined);
 	p.deleteButton.disabled = !sync.mayDelete;
-	p.deleteButton.textContent = !armed
-		? "Delete case"
-		: sync.kind === "synced"
-			? "Really delete for the team?"
-			: "Really delete?";
+	setLabel(
+		p.deleteButton,
+		"delete",
+		!armed
+			? "Delete case"
+			: sync.kind === "synced"
+				? "Really delete for the team?"
+				: "Really delete?",
+	);
 	p.deleteButton.title = !sync.mayDelete
 		? `Your role in “${sync.team}” does not allow deleting its cases`
 		: sync.kind === "synced"
@@ -4758,16 +4807,15 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				"button",
 				{
 					type: "button",
-					class: "small show",
+					class: "show icon-only",
 					"data-action": "show",
 					"data-loads": "",
 					"aria-busy": x.busy ? "true" : "false",
 					"aria-label": `Show the marks on this page and go to mark ${a.number}`,
-					title:
-						"Show this case's marks on this page, scroll to this one and outline it",
+					title: `Show this case's marks on this page, scroll to mark ${a.number} and outline it`,
 					onclick: () => actions.loadAndShow(c, a),
 				},
-				"Show",
+				icon("show-mark"),
 			)
 		: canShow(m) &&
 				x.canReach &&
@@ -4776,13 +4824,13 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					"button",
 					{
 						type: "button",
-						class: "small show",
+						class: "show icon-only",
 						"data-action": "show",
 						"aria-label": `Show mark ${a.number} on the page`,
-						title: "Scroll the page to this mark and outline it",
+						title: `Show mark ${a.number} on the page: scroll to it and outline it`,
 						onclick: () => actions.showMatch(c.id, a, m.current),
 					},
-					"Show",
+					icon("show-mark"),
 				)
 			: showElsewhere(c, a, x, actions);
 	const body = h(
@@ -4994,13 +5042,13 @@ function showElsewhere(
 		"button",
 		{
 			type: "button",
-			class: "small show",
+			class: "show icon-only",
 			"data-action": "show-elsewhere",
 			"aria-label": `Show mark ${a.number}: open ${to.name} in this tab`,
-			title: `Open ${to.name} in this tab and show the mark there\n${to.address}`,
+			title: `Show mark ${a.number}: open ${to.name} in this tab and show the mark there\n${to.address}`,
 			onclick: () => actions.openMarkPage(c, a, to.where),
 		},
-		"Show",
+		icon("show-mark"),
 	);
 }
 
