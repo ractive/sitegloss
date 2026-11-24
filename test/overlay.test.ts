@@ -263,7 +263,7 @@ describe("the overlay's style", () => {
 		expect(source).toContain("color-scheme: light;");
 		expect(source).toContain("@media (forced-colors: active)");
 		expect(source).toContain("background: Highlight;");
-		// In forced colours no state of an amber button brings amber back: its
+		// In forced colours no state of a green button brings the green back: its
 		// hover and focus rules outside the block are more specific than a
 		// plain selector inside it, so the block names them too.
 		const forced = source.slice(
@@ -278,14 +278,17 @@ describe("the overlay's style", () => {
 			".popover button.primary:hover",
 		])
 			expect(rule).toContain(selector);
-		const amber = [
-			...source.matchAll(/^(.*)\{[^}]*background: \$\{L\.amber(Hover)?\}/gm),
+		// Every rule filled with the action's green gives way to Highlight.
+		const green = [
+			...source.matchAll(
+				/^(.*)\{[^}]*background: \$\{L\.(popoverA|a)ction(Hover)?\}/gm,
+			),
 		]
 			.flatMap((m) => (m[1] as string).split(","))
 			.map((selector) => selector.trim())
 			.filter((selector) => selector !== "");
-		expect(amber.length).toBeGreaterThanOrEqual(5);
-		for (const selector of amber) expect(rule).toContain(selector);
+		expect(green.length).toBeGreaterThanOrEqual(5);
+		for (const selector of green) expect(rule).toContain(selector);
 		// No page width decides the toolbar's layout: it is measured.
 		expect(source).not.toMatch(/@media \((max|min)-width/);
 	});

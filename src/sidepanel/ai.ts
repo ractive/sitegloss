@@ -117,7 +117,7 @@ export function rememberKeepOnAnswer(
 /**
  * The question in `box` while `asking`, nothing otherwise. Drawn once: the
  * box is a status region, which would say it again on every redraw. It
- * takes no focus and scrolls nothing; neither button is the amber one.
+ * takes no focus and scrolls nothing; neither button is the primary one.
  * Taken away while one of its buttons has the focus, the focus goes to
  * `focusAfter` (the switch it was about), not to the page's start.
  */

@@ -309,6 +309,58 @@ describe("build", () => {
 		}
 	});
 
+	test("the fonts: one copy at the root for the extension's own pages, none for a web page, their licences in every build", async () => {
+		for (const options of [
+			{},
+			{ store: true },
+			{ test: true },
+			{ firefox: true },
+			{ firefox: true, store: true },
+		]) {
+			const outdir = tempDir();
+			await build({ outdir, ...options });
+			const names = [...new Bun.Glob("**/*").scanSync({ cwd: outdir })];
+			expect(names.filter((n) => n.endsWith(".woff2")).sort()).toEqual([
+				"fonts/inter-latin-wght-normal.woff2",
+				"fonts/manrope-latin-wght-normal.woff2",
+			]);
+			// Copied as they are: the files the source holds.
+			for (const file of [
+				"inter-latin-wght-normal.woff2",
+				"manrope-latin-wght-normal.woff2",
+			])
+				expect(
+					Bun.hash(await Bun.file(join(outdir, "fonts", file)).arrayBuffer()),
+				).toBe(
+					Bun.hash(
+						await Bun.file(
+							join(import.meta.dir, "..", "src/fonts", file),
+						).arrayBuffer(),
+					),
+				);
+			const css = async (dir: string) =>
+				(
+					await Promise.all(
+						names
+							.filter((n) => n.startsWith(`${dir}/`) && n.endsWith(".css"))
+							.map((n) => Bun.file(join(outdir, n)).text()),
+					)
+				).join("");
+			for (const page of ["sidepanel", "viewer"])
+				expect(await css(page)).toMatch(
+					/url\("?\/fonts\/inter-latin-wght-normal\.woff2"?\)/,
+				);
+			// The comment field sits in a page's dialog, in the page's face.
+			expect(await css("field")).not.toContain("woff2");
+			const content = await Bun.file(join(outdir, "content.js")).text();
+			expect(content).not.toContain("woff2");
+			const licences = await Bun.file(join(outdir, NOTICES_FILE)).text();
+			expect(licences).toContain("Copyright 2016 The Inter Project Authors");
+			expect(licences).toContain("Copyright 2019 The Manrope Project Authors");
+			expect(licences).toContain("SIL Open Font License, Version 1.1");
+		}
+	});
+
 	test("only the development build's panel offers the development server (DEC-041)", async () => {
 		const panelText = async (options: Parameters<typeof build>[0]) => {
 			const outdir = mkdtempSync(join(tmpdir(), "sitegloss-devserver-"));

@@ -4472,3 +4472,127 @@ the box and the pin painted over the head and the account button above the pane.
   (a page with a fixed head and a pane with a sticky band: no part of the box or pin above
   the band while the element is under it, nothing drawn while all of it is, and shown from
   the panel it is back in its pane and drawn).
+
+## DEC-077: The extension in the web app's look: cream, the forest green, Inter and Manrope (owner)
+
+2026-11-23 and 24. The owner, after the redesign of sitegloss.dev (its DEC-033 to DEC-039):
+"How much effort is it to bring the look and feel of the redesigned sitegloss.dev page to
+the extension? Colors etc." and "You don't need to replicate the Astryx component library
+1:1, just 'roughly'." Shown a draft build: "I like the design preview. Go for it."
+
+- **Roughly, not a port.** The panel keeps its layout, its density (340 px, its spacing
+  scale) and its own components; what changes is the ground, the ink, the action colour,
+  the type and the shape of buttons, chips and cards. Every colour is a role of the web
+  theme's palette (sitegloss.dev's `packages/ui/src/palette.ts`, its DEC-034), named in
+  the token's comment, so a change there can be followed here by name.
+
+| Panel token | Before (light / dark) | After (light / dark) | Web theme's role |
+|---|---|---|---|
+| `--paper` | #f6f4ee / #11141a | #fcf9ed / #181712 | page (cream 1) |
+| `--sheet` | #ffffff / #1a1e27 | #fefdf7 / #201e18 | card (cream 2); cards also take a rule edge and `--shadow-card` (the web's shadow-low) |
+| `--card-edge` (new) | (cards had `--edge`) | #dbd8cb / #4b4940 | rule (cream 5); in dark cream 7, as the shadow does not show there |
+| `--field` (new) | (was `--sheet`) | #ffffff / #27251f | field, menu (cream 3) |
+| `--wash` | #ebe8e0 / #242a37 | #f1efe3 / #2d2b24 | quiet fill (cream 4) |
+| `--control`, `--control-hover`, `--control-press` (new) | (the default button was the sheet with an edge) | #dbd8cb #cfccbf #c4c1b4 / #39372f #424038 #4b4940 | secondary button: control fill, hovered, pressed (cream 5, 6, 7), no edge |
+| `--ink` | #1b2130 / #eceef3 | #211e13 / #f2f0e9 | text (cream 12) |
+| `--ink-2` | #535c6e / #a6aebd | #565346 / #c0beb4 | secondary text (cream 11) |
+| `--placeholder` | #6e7583 / #7f8797 | #797564 / #928f83 | disabled text (cream 9; cream 10 in dark, for 4.5:1 on a field, DEC-060) |
+| `--rule` | #dedad0 / #2b313d | #dbd8cb / #39372f | rule (cream 5) |
+| `--edge` | #7b8291 / #737c8e | #8b8672 / #7e7c71 | control edge (cream 8) |
+| `--strong`, `--strong-hover` (new), `--on-strong` | #1b2130, mixed, #ffffff / #eceef3, mixed, #11141a | #00362a #002c22 #fcf9ed / #53ba9e #5dc4a7 #181712 | primary, hovered, primary text (green 9, 10; cream 1) |
+| `--accent`, `--accent-edge` | #ffb000 #a06c00 / #ffb000 | unchanged | the logo's amber (below); `--accent-hover`, `--accent-ink` removed |
+| `--link` | #1a55c2 / #8fb8ff | #00614e / #74d3b7 | link (green 11) |
+| `--focus` | #1a55c2 / #8fb8ff | #00362a / #53ba9e | focus ring (green 9) |
+| `--st-open`, `--st-verify`, `--st-verified`, `--st-dismissed` | #c20f4c #4347c9 #166d2d #535c6e / #ff7aa5 #a9adff #72d18c #a6aebd | #c20f4c #4f53e0 #006425 #565346 / #f6a3af #abb9fe #91d099 #c0beb4 | chip text (step 11; open keeps #c20f4c in light, pink 11 is maroon; to verify is the pin's indigo, which reads as text) |
+| `--st-*-bg` | #fce4ec #e8e9fd #dff2e3 #e9ebef / #3a1524 #22244d #13301d #272c38 | #fee8eb #eaeeff #e4f3e6 #f1efe3 / #402025 #242944 #19321d #2d2b24 | chip fill (step 4) |
+| `--pin-open`, `-verify`, `-verified`, `-dismissed` (new), `--on-pin` | (pins were `--st-*`, pale in dark with a dark number) | #e0185c #4f53e0 #1a7f37 #797564, #ffffff, both schemes | pin fill and text (fixed: the page's pins) |
+| `--danger`, `--danger-bg`, `--on-danger` | #b3261e #fbe6e3 #ffffff / #ff8f85 #3a1714 #11141a | #9e0016 #ffe9e6 #fcf9ed / #ffa098 #41211e #181712 | destructive text (red 11), error tint (red 4), confirm text |
+| `--warn`, `--warn-bg`, `--warn-edge` | #7d4500 #fff0cc #a86400 / #ffc861 #33270d #c98a1a | #625200 #f7efcd #907900 / #d5bd5d #332b0a #907900 | warning text (amber 11), tint (amber 4); the edge is one step darker than the web's amber 8, to keep 3:1 on the paper |
+| `--scrim` | #1b213066 / #000000a3 | #211e1380 / #181712cc | overlay |
+| `--r-card` | 8px | 10px | container radius (controls stay 6 px) |
+
+- **Buttons in the web app's grammar** (its control grammar, DEC-034): the default button
+  is the darker cream with no edge (its border stays, transparent, for its size and for
+  forced colours); a destructive one is that button with red words (its hover no longer
+  turns red); armed, it is the solid red. The view's main action (`.strong`) and the one
+  that starts drawing (`.primary`, larger) are the forest green. Fields stay white with
+  the edge; menus are the field's white with the card's shadow.
+- **A button without an edge is told by its label.** The darker cream is 1.35:1 from the
+  paper in light (1.51:1 in dark), not the 3:1 of WCAG 1.4.11's non-text contrast; the
+  button's boundary rests on its label, which is text at 4.5:1 or more (the exception
+  1.4.11 makes for a control identified by its text), as in the web app. The fill is held
+  to the web palette's own minimums for it, the pairs in sitegloss.dev's
+  `packages/ui/src/palette.ts` (`PAIRS`): control fill on the page and on a card 1.3:1, on
+  the selected fill and the segmented track 1.15:1. **On a warning's or an error's tint**
+  (a notice, `#import-prompt`, `#pair-problem`, `#pair-replaced`, an error hint, the sync
+  and AI banners, the server note) the cream is only 1.18 to 1.24:1 from the tint, so a
+  button there has the field's edge (3.14:1 or more); the table holds the cream on those
+  tints, so a later change to one of them shows. A disabled button (the quiet fill) is
+  about 1.2:1 from an enabled one: its words, in the secondary text, say it.
+- **Cards** keep the approved soft look in light: the lighter cream, a rule-coloured edge
+  (1.35:1 on the paper) and the shadow. In dark the shadow does not show on the dark paper,
+  so a card's edge there is one step stronger (`--card-edge`, cream 7 in dark, 1.99:1 on
+  the paper), which tells a clickable case card from the ground. Beyond that a card's
+  boundary is decorative: a card is identified by its text (its title and its lines).
+- **Amber is the logo's, and no button's.** The web app's main action is the forest green,
+  and one product cannot have an amber main button in its panel and a green one on its
+  site. Amber keeps what it is as the logo's colour: the loop in the page's bars, the AI
+  pill's dot while it waits, the edge of a highlight's quote, the Highlight tool's marker
+  stroke, and the toolbar icon's badge while the sync is paused (the web app's amber is its
+  warning colour too). The Verify cue's highlight of the next mark (DEC-061) stays as the
+  owner approved it: the amber at 30 % with its amber edge. Seen on the new cream in both
+  schemes it is as plain as on the old paper (the tint against the paper 1.19:1 in light,
+  1.98:1 in dark, before 1.18:1 and 1.96:1), so its share is unchanged; the row's words
+  read on it (ink 13.27:1 and 7.93:1).
+- **The dark scheme's main button** is the web app's own (green 9 in dark, #53ba9e with the
+  page's colour as text); it is loud at the panel's full width, and stays as the web has it.
+- **Pins are the page's colours in both schemes**, as the web app's: a screenshot does not
+  change with the scheme, and the pin beside it should not either. The words of a status
+  keep the text tones above. The progress bar of a case takes the pins' colours.
+- **Fonts.** Inter for text and Manrope for headings, as the web app: the variable Latin
+  files of @fontsource-variable 5.3.0, byte for byte those the app serves
+  (`inter-latin-wght-normal.woff2`, 48,256 bytes; `manrope-latin-wght-normal.woff2`,
+  24,836 bytes), with their SIL OFL 1.1 texts, in `src/fonts/`. `src/fonts/fonts.css`
+  (`font-display: swap`, the system stack after them) is imported by the side panel's and
+  the viewer's style sheets; the build copies the two files once to `fonts/` (external to
+  the bundler, which would otherwise inline a copy into each page) and adds both licences
+  to `LICENSES.txt`. Nothing is fetched from the network. The package grows by about
+  85 KB unpacked; the Chrome store zip from about 400 KB to 476 KB. **Limits, accepted:**
+  the files cover Latin (the web app's `unicode-range`: Basic Latin, Latin-1 and a few
+  marks): a character outside it (an arrow, a Polish or Czech letter such as "ł" or "č" in
+  a page title, Cyrillic, Greek) is drawn in the system's face, mid-word if need be, as
+  the web app serves only these two files too. No metrics-matched fallback: a local file
+  is there within the first frames, so the swap from the system face is brief, but a line
+  cut with an ellipsis may cut at another place once Inter is in. Numbers in pins, counts
+  and chips stay in rounded digits where the system has them (`ui-rounded`, macOS), else
+  in Inter, not in the system's face.
+- **The comment field's frame keeps the system font.** It sits inside the dialog Sitegloss
+  draws on the marked page, which never loads a font into the page and so uses the
+  system's face; the field in the web app's face beside the dialog's words would look like
+  a different thing. So the fonts are loaded only by the side panel and the viewer. (The
+  relay's pairing page is the relay's, not an extension page: nothing there to style.)
+- **On the marked page, deliberately little** (`src/lib/page-look.ts`): the bars' ink is the
+  web's text colour with cream words and a warm hover; the pressed tool, the toolbar's main
+  action and the review bar's Add marks are the dark scheme's green (#53ba9e, the bar's ink
+  on it), the bars being dark; the dialog's text, edges and placeholder are the panel's
+  light values, its main button the forest green, its other buttons the darker cream
+  with the field's edge (3.65:1 on the dialog's white): the dialog sits on any page, and
+  its Cancel and Delete must be found as buttons.
+  **Left as they were on purpose:** the marks' colours (they are data, a status, and the
+  same on every page; the dismissed grey #667085 stays, though the web's is #797564), the
+  white casing under every stroke, the blue hover outline #1f6feb (also the field frame's
+  focus ring) that has to read on any page, the system font, the bars' shadows, the
+  logo's amber.
+- **Tests:** `test/contrast.test.ts` holds every pair above to its minimum, as before; the
+  edgeless button's fill is held to the web palette's 1.3:1 on the paper and the card and
+  1.15:1 on the quiet fill and the tints (its words carry the 4.5:1), the edged buttons
+  on the tints are checked to be there, the card's edge on the paper (1.3:1 in light,
+  1.8:1 in dark), red words on the pressed button, the focus ring on every surface it is
+  drawn on, the dialog's button fill and edge; the bars are checked to be the panel's dark
+  values and the dialog its light ones. `test/build.test.ts`: every build
+  (development, store, test, Firefox, Firefox store) has the two font files once and both
+  licences, the panel's and the viewer's style sheets name them, the field's and the
+  content script do not.
+- **Remains:** icons on the panel's buttons (a pass of its own; until then the cream buttons
+  of a long list of marks read heavier than the old outlined ones); the store screenshots
+  of both stores, which show the old look.

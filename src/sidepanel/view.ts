@@ -809,7 +809,7 @@ function renderCases(state: PanelState, actions: Actions): void {
 			? [h("ul", { class: "cases", "data-group": "here" }, ...own.map(card))]
 			: []),
 	);
-	// One case: opening it is the view's one amber button, a new case steps
+	// One case: opening it is the view's one primary button, a new case steps
 	// back. Several: each row opens its case, and none is the one.
 	openHere.hidden = one === undefined;
 	// One case: its Open button is part of its card; several: none.
@@ -3664,7 +3664,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.adding =
 		state.overlay?.visible === true && state.overlay.target?.caseId === c.id;
 	p.addMarks.disabled = !ok || state.leaving?.phase === "finishing";
-	// Calm at rest, always in reach; amber only while adding is on, and it
+	// Calm at rest, always in reach; primary only while adding is on, and it
 	// says so (DEC-064).
 	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
 	p.addMarks.classList.toggle("primary", p.adding);
@@ -3674,7 +3674,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		: p.adding
 			? "Stop adding marks: the toolbar goes once each mark is in the case"
 			: "Each mark you draw on the page goes into this case when its comment is done";
-	// The same button at the end of a long list of marks; not amber, which
+	// The same button at the end of a long list of marks; not primary, which
 	// is the view's one button that starts drawing (DEC-024).
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
