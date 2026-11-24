@@ -125,6 +125,20 @@ export function withIcon(
 }
 
 /**
+ * A Copy button's content in either state: its icon, and its words in a box
+ * as wide as "Copied", so the button keeps its width when it says so and
+ * nothing beside it moves (style.css, `.copy-words`).
+ */
+export function setCopyLabel(el: HTMLElement, what: "Copy" | "Copied"): void {
+	const doc = el.ownerDocument;
+	const words = doc.createElement("span");
+	words.className = "copy-words";
+	words.setAttribute("data-wide", "Copied");
+	words.textContent = what;
+	el.replaceChildren(icon(what === "Copied" ? "check" : "copy", doc), words);
+}
+
+/**
  * Set a button's icon and words, where `textContent` set them before; left as
  * it is when it says that already.
  */

@@ -51,7 +51,7 @@ import {
 	wentOffSentence,
 } from "./card.ts";
 import { byId, h } from "./dom.ts";
-import { icon, setLabel, withIcon } from "./icons.ts";
+import { setCopyLabel, setLabel, withIcon } from "./icons.ts";
 import { copyText, startSetup } from "./setup.ts";
 import type { PanelState } from "./state.ts";
 import { panelWindow } from "./window.ts";
@@ -696,7 +696,7 @@ export async function startAi(
 	const copyAddress = byId<HTMLButtonElement>("pair-copy");
 	// The Copy buttons of index.html, with their icon (DEC-078).
 	for (const id of ["pair-copy", "pair-copy-code"])
-		byId<HTMLButtonElement>(id).prepend(icon("copy"));
+		setCopyLabel(byId<HTMLButtonElement>(id), "Copy");
 	copyAddress.addEventListener("click", () =>
 		copy(copyAddress, current?.address, "address", byId("pair-address")),
 	);

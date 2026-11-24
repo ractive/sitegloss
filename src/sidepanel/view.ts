@@ -80,7 +80,13 @@ import {
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
-import { type IconName, icon, setLabel, withIcon } from "./icons.ts";
+import {
+	type IconName,
+	icon,
+	setCopyLabel,
+	setLabel,
+	withIcon,
+} from "./icons.ts";
 import { markTargets, mayLoadAndShow, shortAddress } from "./mark-link.ts";
 import {
 	type CardHandOver,
@@ -669,23 +675,20 @@ function renderSaved(
 		el.replaceChildren();
 		return;
 	}
-	const copy: HTMLButtonElement = h(
-		"button",
-		{
-			type: "button",
-			"data-action": "copy-path",
-			title: "Copy the file's full path",
-			onclick: () =>
-				void actions.copyPath(exported.path).then((ok) => {
-					if (!ok) return;
-					setLabel(copy, "check", "Copied");
-					setTimeout(() => {
-						setLabel(copy, "copy", "Copy");
-					}, 1500);
-				}),
-		},
-		...withIcon("copy", "Copy"),
-	);
+	const copy: HTMLButtonElement = h("button", {
+		type: "button",
+		"data-action": "copy-path",
+		title: "Copy the file's full path",
+		onclick: () =>
+			void actions.copyPath(exported.path).then((ok) => {
+				if (!ok) return;
+				setCopyLabel(copy, "Copied");
+				setTimeout(() => {
+					setCopyLabel(copy, "Copy");
+				}, 1500);
+			}),
+	});
+	setCopyLabel(copy, "Copy");
 	el.replaceChildren(
 		h("p", {}, "Saved as"),
 		h("code", { class: "path" }, exported.path),

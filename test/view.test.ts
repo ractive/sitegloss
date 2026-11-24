@@ -864,6 +864,19 @@ describe("a mark's status and actions", () => {
 			"Show the marks on this page and go to mark 1",
 		);
 		expect(show().title).toContain("scroll to mark 1");
+		// While it draws the marks: busy, its name and icon kept.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.showingMark = { caseId: c.id, markId: "m1" };
+			}),
+			noActions,
+		);
+		iconOnly(show());
+		expect(show().getAttribute("aria-busy")).toBe("true");
+		expect(show().getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
 		// The labelled buttons beside it: their words, and an icon before them.
 		const load = el<HTMLButtonElement>("load-case");
 		expect(load.textContent).toBe("Show marks");
@@ -3769,6 +3782,12 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(showOf(3)?.getAttribute("aria-label")).toBe(
 			"Show mark 3: open Payment in this tab",
 		);
+		// Its icon alone, named, its tooltip starting with its name (DEC-078).
+		expect(showOf(3)?.textContent).toBe("");
+		expect(showOf(3)?.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
+			"true",
+		);
+		expect(showOf(3)?.title.startsWith("Show mark 3: open Payment")).toBe(true);
 		showOf(3)?.click();
 		el("case-view")
 			.querySelector<HTMLButtonElement>(

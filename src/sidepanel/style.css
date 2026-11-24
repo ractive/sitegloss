@@ -3499,9 +3499,19 @@ button.copy {
 	flex: none;
 }
 
-/* With its icon (DEC-078): as wide as "Copied" with its tick. */
-button.copy:has(> .icon) {
-	min-width: 7.5em;
+/* A Copy's words (icons.ts, `setCopyLabel`): as wide as "Copied", the
+   wider of its two, under them a line of no height; centred. */
+.copy-words {
+	display: inline-block;
+	text-align: center;
+}
+
+.copy-words::after {
+	content: attr(data-wide);
+	display: block;
+	height: 0;
+	overflow: hidden;
+	visibility: hidden;
 }
 
 /* "How do I add it?": per AI app its steps, each command with its own Copy. */
