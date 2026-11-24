@@ -1708,7 +1708,8 @@ export function createTools(deps: ToolDeps): Tool[] {
 				const now = new Date().toISOString();
 				const was = markStatus(a);
 				const set = (value: Case, said: string) => {
-					result = said;
+					// A change says where the case stands now (D7).
+					result = value === c ? said : `${said} ${caseAfter(value)}`;
 					return {
 						value: value === c ? value : byApp(value, client, a.id),
 					};
@@ -2430,6 +2431,22 @@ export function statusOutcome(
 }
 
 /**
+ * Where a case stands after a mark's status changed, as far as this browser
+ * knows it: its open marks by number, else whether marks wait to be verified.
+ * Who is told is the server's (it sends the mails), so nothing is said of it.
+ */
+export function caseAfter(c: Case): string {
+	const open = c.marks
+		.filter((a) => markStatus(a) === "open")
+		.map((a) => a.number)
+		.sort((x, y) => x - y);
+	if (open.length > 0) return `Still open: ${open.join(", ")}.`;
+	return c.marks.some((a) => markStatus(a) === "fixed")
+		? "No mark is open now: the case is ready to verify."
+		: "No mark is open now, and none waits to be verified.";
+}
+
+/**
  * What a question about `request` says besides the tool and its arguments:
  * the case it is about (title, page, marks), the mark for set_mark_status and
  * the findings' tools, the finding an edit or a delete is about, and for
@@ -2484,6 +2501,8 @@ export async function confirmLines(
 			);
 	}
 	const mark = request.arguments["mark"];
+	/** A set_mark_status that will change its mark: only that is said to sync. */
+	let statusChanges = false;
 	if (MARK_TOOLS.has(request.tool.name) && typeof caseId === "string") {
 		const c = await store.getCase(caseId).catch(() => undefined);
 		const a = c?.marks.find((x) => x.number === mark);
@@ -2505,6 +2524,7 @@ export async function confirmLines(
 			(note === undefined || typeof note === "string")
 		) {
 			const outcome = statusOutcome(a, status as MarkStatus, note);
+			statusChanges = outcome.kind !== "nothing" && outcome.kind !== "refused";
 			if (outcome.kind === "nothing")
 				lines.push(`This will change nothing: ${outcome.said}`);
 			if (outcome.kind === "refused")
@@ -2536,15 +2556,17 @@ export async function confirmLines(
 				`Comment${byline(k.user, k.app) ? ` by ${byline(k.user, k.app)}` : ""}: “${cut(k.text, 200)}”.${self !== undefined && isOwnComment(k, me, self) ? "" : " It is not this AI app's own, so Sitegloss will refuse the change whatever you answer."}`,
 			);
 	}
-	// A comment, closing and reopening sync with the team: said before the answer.
+	// A comment, closing and reopening, a mark's new status sync with the
+	// team: said before the answer.
 	if (
-		[
+		([
 			"add_comment",
 			"edit_comment",
 			"set_case_status",
 			"delete_comment",
 			"assign_case",
-		].includes(request.tool.name) &&
+		].includes(request.tool.name) ||
+			(request.tool.name === "set_mark_status" && statusChanges)) &&
 		typeof caseId === "string"
 	) {
 		const team = await cloud.team?.(caseId).catch(() => undefined);

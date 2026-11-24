@@ -13,7 +13,7 @@ import { Window } from "happy-dom";
 import { type Case, type Mark, markUrl } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
-import { serverChooser } from "../src/sidepanel/cloud-view.ts";
+import { HAND_OVER_NOTE, serverChooser } from "../src/sidepanel/cloud-view.ts";
 import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
@@ -7247,6 +7247,19 @@ describe("the hand-over in the panel (DEC-071)", () => {
 		s.cloud.atTeam = { c_1: "t_1" };
 		s.cloud.members = [DANA, TESS];
 	};
+
+	test("the main view says the hand-over once: under Team before signing in, in the empty list with a team", () => {
+		const said = () =>
+			(el("home").textContent ?? "").split(HAND_OVER_NOTE).length - 1;
+		render(initialState(), noActions);
+		expect(said()).toBe(1);
+		expect(el("cloud-hand-over")?.textContent).toBe(HAND_OVER_NOTE);
+		const team = initialState();
+		signedIn(team);
+		render(team, noActions);
+		expect(said()).toBe(1);
+		expect(el("cloud-hand-over")).toBeNull();
+	});
 
 	test("Assign is a menu: you first, the others, then Nobody; the one who has it is checked, and a pick assigns", () => {
 		const picked: (string | null)[] = [];

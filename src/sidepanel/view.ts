@@ -1010,11 +1010,12 @@ export const EMPTY_LIST = [
 	HAND_OVER_NOTE,
 ];
 
-/** The empty list's words: the hand-over only where it can happen, or before signing in. */
+/**
+ * The empty list's words: the hand-over only where it can happen. Before
+ * signing in the Team section says it, under Sign in: once on the page.
+ */
 const emptyList = (cloud: PanelState["cloud"]): string[] =>
-	cloud.account === undefined || teamAssigns(cloud)
-		? EMPTY_LIST
-		: EMPTY_LIST.slice(0, 1);
+	teamAssigns(cloud) ? EMPTY_LIST : EMPTY_LIST.slice(0, 1);
 
 /** "My cases" and how many (DEC-071): a chip to press, as the open case's status chips are. */
 function mineFilter(on: boolean, count: number, actions: Actions): HTMLElement {
