@@ -6090,24 +6090,36 @@ describe("a loaded mark", () => {
 			expect(from).toBeGreaterThanOrEqual(0);
 			return css.slice(from, css.indexOf("}", from)).replace(/\s+/g, " ");
 		};
-		for (const [selector, tone] of [
-			['[data-status="open"],\n[data-group="open"]', "--st-open"],
-			['[data-status="fixed"],\n[data-group="toVerify"]', "--st-verify"],
-			['[data-status="verified"],\n[data-group="verified"]', "--st-verified"],
+		for (const [selector, tone, pin] of [
+			['[data-status="open"],\n[data-group="open"]', "--st-open", "--pin-open"],
+			[
+				'[data-status="fixed"],\n[data-group="toVerify"]',
+				"--st-verify",
+				"--pin-verify",
+			],
+			[
+				'[data-status="verified"],\n[data-group="verified"]',
+				"--st-verified",
+				"--pin-verified",
+			],
 			[
 				'[data-status="wontfix"],\n[data-status="cantreproduce"],\n[data-group="dismissed"]',
 				"--st-dismissed",
+				"--pin-dismissed",
 			],
-		] as const)
+		] as const) {
 			expect(rule(selector)).toContain(`--tone: var(${tone});`);
-		// Found, or not looked for: filled, with a ring of paper on the rail.
+			expect(rule(selector)).toContain(`--pin: var(${pin});`);
+		}
+		// Found, or not looked for: filled in the page's pin colour, with a
+		// ring of paper on the rail.
 		expect(rule(".number")).toContain(
-			"background: var(--tone, var(--st-open));",
+			"background: var(--pin, var(--pin-open));",
 		);
 		expect(rule(".number")).toContain("box-shadow: 0 0 0 2px var(--paper);");
 		// Unsure: a dashed ring outside it. Not found: hollow.
 		expect(rule('.mark[data-colour="unsure"] .number')).toContain(
-			"outline: 1.5px dashed var(--tone, var(--st-open));",
+			"outline: 1.5px dashed var(--pin, var(--pin-open));",
 		);
 		const hollow = rule('.mark[data-colour="lost"] .number');
 		expect(hollow).toContain("background: var(--paper);");

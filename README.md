@@ -485,6 +485,14 @@ The end-to-end tests load the extension into Chrome for Testing or Chromium
 `--load-extension`, so without one of them the tests are skipped locally; CI runs them.
 The Firefox ones need Firefox and `ff-rdp` (`FIREFOX_PATH`, `FF_RDP_PATH`).
 
+The look follows the web app's at sitegloss.dev (DEC-077): the side panel's colours are
+custom properties in `src/sidepanel/style.css` (light and dark), each a role of the web
+theme's palette, and `test/contrast.test.ts` holds every pair that must read to its
+contrast; what Sitegloss draws on a web page has its own fixed colours in
+`src/lib/page-look.ts`. The panel and the picture viewer use the web app's typefaces,
+Inter and Manrope (`src/fonts/`, SIL OFL 1.1), bundled once at `fonts/` in the package;
+nothing is loaded from the network, and no font goes into a web page.
+
 ### Building the Firefox package from source
 
 For addons.mozilla.org's reviewers, and anyone who wants to check the package: the
@@ -507,7 +515,10 @@ This makes `dist-firefox-store/` (the unpacked package) and
 `sitegloss-firefox-<version>-store.zip` beside it. The zip is reproducible: the same source
 and Bun give the same file, with the same SHA-256, wherever and whenever it is built.
 Sitegloss's own code is in `src/`, the build is `scripts/build.ts`, and the bundled
-packages are listed with their licences in the package's `LICENSES.txt`.
+packages are listed with their licences in the package's `LICENSES.txt`. The two font
+files in `fonts/` are data, not code: copied unchanged from `src/fonts/` (Inter and
+Manrope, the variable Latin files of @fontsource-variable 5.3.0, SIL OFL 1.1, their
+licences also in `LICENSES.txt`).
 
 ## Licence
 
