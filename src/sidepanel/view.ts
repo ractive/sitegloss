@@ -80,7 +80,12 @@ import {
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
-import { markTargets, mayLoadAndShow, shortAddress } from "./mark-link.ts";
+import {
+	markTargets,
+	mayLoadAndShow,
+	shortAddress,
+	verifiesHere,
+} from "./mark-link.ts";
 import {
 	type CardHandOver,
 	cardHandOver,
@@ -2719,12 +2724,7 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		VERIFIED_TITLE,
 		() => {
 			const undo = verifying(c.id, a.id);
-			const order = [
-				...document.querySelectorAll<HTMLElement>("section.marks li.mark"),
-			].map((li) => ({
-				id: li.dataset["mark"] ?? "",
-				status: li.dataset["status"] ?? "",
-			}));
+			const order = rowOrder(document, "section.marks li.mark");
 			const next = afterVerify(order, a.id)?.markId;
 			verifiedNow = {
 				caseId: c.id,
@@ -2745,6 +2745,32 @@ const verifyButton = (c: Case, a: Mark, actions: Actions) =>
 		true,
 	);
 
+/**
+ * In place of Verify on a mark of another page (DEC-079): its page, opened
+ * in this tab with the mark shown there; Verify comes once the tab is there.
+ */
+function verifyThere(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement | null {
+	const to = elsewhereTarget(c, a, tabUrl);
+	if (to === undefined) return null;
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "small strong",
+			"data-mark-action": "open-page",
+			"aria-label": `Open ${to.name} to verify mark ${a.number} there`,
+			title: `Mark ${a.number} is on another page: open ${to.name} in this tab and show the mark there, then verify it\n${to.address}`,
+			onclick: () => actions.openMarkPage(c, a, to.where),
+		},
+		"Open its page to verify",
+	);
+}
+
 /** The motion of a Verify, in order: the row collapses, then the next opens (expands), its highlight holds, then fades. */
 export const COLLAPSE_MS = 300;
 const EXPAND_MS = 300;
@@ -2764,6 +2790,8 @@ let pending:
 	| {
 			caseId: string;
 			verified: string;
+			/** The row whose head the redraw gave the focus when the verified row left the list. */
+			movedTo: string | undefined;
 			to: string | undefined;
 			number: number | undefined;
 			say: boolean;
@@ -2888,12 +2916,13 @@ function runPending(): void {
 	const p = parts;
 	if (!p || p.current.id !== k.caseId) return;
 	const marks = p.marks;
-	// Only a focus the Verify left behind is moved: nowhere or in its row.
-	const at = document.activeElement;
+	// Only a focus the Verify left behind is moved: nowhere, in its row, or
+	// on the head the redraw gave it when the row left a filtered list.
 	const mine =
-		at === null ||
-		at === document.body ||
-		at.closest<HTMLElement>("li.mark")?.dataset["mark"] === k.verified;
+		focusLeftBy(marks, k.verified) === true ||
+		(k.movedTo !== undefined &&
+			document.activeElement?.classList.contains("mark-toggle") === true &&
+			focusLeftBy(marks, undefined) === k.movedTo);
 	if (!mine) return;
 	const head = (id: string) =>
 		marks.querySelector<HTMLElement>(
@@ -2929,7 +2958,9 @@ function runPending(): void {
 		sayAfterVerify(
 			p.hint,
 			k.caseId,
-			`Mark ${k.number ?? ""} opened, to verify.`,
+			row.hasAttribute("data-away")
+				? `Mark ${k.number ?? ""} opened: it is on another page; open its page to verify it.`
+				: `Mark ${k.number ?? ""} opened, to verify.`,
 		);
 	} else {
 		// Nothing waits: the verified row's head; where a filter has taken that
@@ -2941,6 +2972,24 @@ function runPending(): void {
 		if (k.say)
 			sayAfterVerify(p.hint, k.caseId, "That was the last mark to verify.");
 	}
+}
+
+/**
+ * Where the focus is, for a Verify of `markId` in `list`: `true` when it is
+ * nowhere or in that mark's row (left there by the Verify); else the mark id
+ * of the row of `list` it is in; else `false` (a field or button elsewhere).
+ */
+function focusLeftBy(
+	list: HTMLElement,
+	markId: string | undefined,
+): true | string | false {
+	const at = document.activeElement;
+	if (at === null || at === document.body) return true;
+	const row = at.closest<HTMLElement>("li.mark");
+	const id =
+		row !== null && list.contains(row) ? row.dataset["mark"] : undefined;
+	if (id === undefined) return false;
+	return id === markId ? true : id;
 }
 
 /** A line for the status region after a Verify, said once (see the render of the hint). */
@@ -3058,18 +3107,32 @@ function scrollToOpened(row: HTMLElement): void {
 	});
 }
 
-/** Where the focus goes after a Verify: the next mark to verify, else the row's head. */
+/**
+ * Where the focus goes after a Verify: the next mark to verify, else the
+ * row's head. One that can be verified on the page in front comes first (the
+ * page being checked is done before another is opened, DEC-079); then one
+ * of another page (`away`), whose row offers to open its page.
+ */
 export function afterVerify(
-	order: readonly { id: string; status: string }[],
+	order: readonly { id: string; status: string; away?: boolean }[],
 	verified: string,
 ): { markId: string } | undefined {
 	const at = order.findIndex((m) => m.id === verified);
 	if (at < 0) return undefined;
+	const round = [...order.slice(at + 1), ...order.slice(0, at)];
 	const next =
-		order.slice(at + 1).find((m) => m.status === "fixed") ??
-		order.slice(0, at).find((m) => m.status === "fixed");
+		round.find((m) => m.status === "fixed" && m.away !== true) ??
+		round.find((m) => m.status === "fixed");
 	return { markId: next?.id ?? verified };
 }
+
+/** A drawn list's rows as `afterVerify` reads them. */
+const rowOrder = (list: ParentNode, rows = "li.mark") =>
+	[...list.querySelectorAll<HTMLElement>(rows)].map((li) => ({
+		id: li.dataset["mark"] ?? "",
+		status: li.dataset["status"] ?? "",
+		away: li.hasAttribute("data-away"),
+	}));
 
 /**
  * The row a Verify opens next, in the list as it is drawn now: the one known at
@@ -3079,7 +3142,7 @@ export function afterVerify(
  * ones before it, since going through them all is what a Verify after a Verify is.
  */
 export function opensAfterVerify(
-	order: readonly { id: string; status: string }[],
+	order: readonly { id: string; status: string; away?: boolean }[],
 	verified: string,
 	known: string | undefined,
 ): string | undefined {
@@ -3105,6 +3168,8 @@ function markActions(
 	a: Mark,
 	armed: boolean,
 	actions: Actions,
+	/** A mark to verify not on the page in front, with the tab's address (DEC-079). */
+	away: { tabUrl: string | undefined } | null = null,
 ): HTMLElement {
 	const status = markStatus(a);
 	return h(
@@ -3119,7 +3184,11 @@ function markActions(
 					true,
 				)
 			: null,
-		status === "fixed" ? verifyButton(c, a, actions) : null,
+		status !== "fixed"
+			? null
+			: away === null
+				? verifyButton(c, a, actions)
+				: verifyThere(c, a, away.tabUrl, actions),
 		status === "open" ? null : reopenButton(c, a, actions),
 		status === "open"
 			? null
@@ -4200,26 +4269,27 @@ function renderCase(state: PanelState, actions: Actions): void {
 							)
 						: null,
 		);
+		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
+			verifiedNow = undefined;
+		const v = verifiedNow;
+		// Where the focus was before this redraw: a verified row that leaves a
+		// filtered list (Start verifying filters it) hands its focus to the
+		// next row's head (`focusInMarks`); that focus is still the Verify's.
+		const leftBefore =
+			v?.caseId === c.id && focusLeftBy(p.marks, v.markId) === true;
 		const refocus = focusInMarks(p.marks);
 		p.marks.replaceWith(marks);
 		p.marks = marks;
 		if (kept !== undefined && !kept.hidden) kept.focus();
 		refocus?.(marks);
 		// Verified and drawn so: the next mark to verify has the focus.
-		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
-			verifiedNow = undefined;
-		const v = verifiedNow;
 		// Only a focus that the Verify left behind is moved: nowhere (its button
-		// went with the redraw) or still in its row. A field or a button of
-		// another row, which the person went to meanwhile, is theirs.
-		const focusHere = (() => {
-			const at = document.activeElement;
-			if (at === null || at === document.body) return true;
-			const row = at.closest<HTMLElement>("li.mark");
-			return (
-				row !== null && marks.contains(row) && row.dataset["mark"] === v?.markId
-			);
-		})();
+		// went with the redraw), still in its row, or where this redraw put it
+		// when the row left the list. A field or a button of another row,
+		// which the person went to meanwhile, is theirs.
+		const movedTo = leftBefore ? focusLeftBy(marks, undefined) : false;
+		const focusHere =
+			focusLeftBy(marks, v?.markId) === true || typeof movedTo === "string";
 		if (
 			v?.caseId === c.id &&
 			focusHere &&
@@ -4228,12 +4298,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const done = c.marks.find((m) => m.id === v.markId);
 			if (done && markStatus(done) !== "fixed") {
 				verifiedNow = undefined;
-				const order = [...marks.querySelectorAll<HTMLElement>("li.mark")].map(
-					(li) => ({
-						id: li.dataset["mark"] ?? "",
-						status: li.dataset["status"] ?? "",
-					}),
-				);
+				const order = rowOrder(marks);
 				// The next mark to verify opens by itself, in view, so that
 				// verifying a row of them is one press each (the owner). The
 				// one known at the click, which a filtered list still has
@@ -4243,6 +4308,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 				pending = {
 					caseId: c.id,
 					verified: v.markId,
+					movedTo: typeof movedTo === "string" ? movedTo : undefined,
 					to,
 					number: c.marks.find((m) => m.id === to)?.number,
 					// The next step already says it when nothing is open either.
@@ -4547,10 +4613,14 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const { match: m, edit, actions } = x;
 	const bodyId = `mark-body-${a.id}`;
 	const status = markStatus(a);
+	// A mark to verify that is not on the page in front: no Verify, its page
+	// named and offered instead (DEC-079).
+	const away = status === "fixed" && !verifiesHere(c, a, x.tabUrl);
 	const li: HTMLElement = h("li", {
 		class: "mark",
 		"data-mark": a.id,
 		"data-status": status,
+		...(away ? { "data-away": "" } : {}),
 		...(m ? { "data-colour": colourOf(m) } : {}),
 		// Verified and dismissed step back; a mark to verify is to be looked at.
 		...(a.resolution && status !== "fixed"
@@ -4646,15 +4716,15 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				: edit.mode === "reopen"
 					? reopenForm(c, a, edit.text, actions)
 					: commentForm(c, a, edit.text, actions)
-			: markActions(c, a, x.armed, actions),
+			: markActions(c, a, x.armed, actions, away ? { tabUrl: x.tabUrl } : null),
 		// Its comments, at the mark, after what can be done with it (DEC-061).
 		markThreadView(c, a, x.thread, actions),
 	);
-	const sub = markSubline(c, a, m, actions, x.elsewhere, x.tabUrl);
+	const sub = markSubline(c, a, m, actions, x.elsewhere || away, x.tabUrl);
 	// A mark to verify: Verify in its title line, small, so a closed row is
 	// two lines like every other (DEC-064); Reopen… and the rest when open.
 	const headVerify =
-		markStatus(a) === "fixed" && edit === undefined
+		status === "fixed" && !away && edit === undefined
 			? (() => {
 					const b = verifyButton(c, a, actions);
 					b.className = "small head-verify";

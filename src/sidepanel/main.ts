@@ -120,6 +120,7 @@ import {
 	type PendingShow,
 	pendingAfterDraw,
 	tryShow,
+	verifiesHere,
 } from "./mark-link.ts";
 import { type Copied, copyStep, firstToVerify, whereIs } from "./next-step.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
@@ -2191,7 +2192,9 @@ const actions: Actions = {
 		// The case as it is now, and only while it is the one open.
 		const now = state.current;
 		if (now?.id !== c.id) return;
-		const first = firstToVerify(now);
+		const first = firstToVerify(now, (a) =>
+			verifiesHere(now, a, state.tab?.url),
+		);
 		if (first === undefined) {
 			// Verified meanwhile (by the team, an AI app): say so, filter nothing.
 			if (state.markFilter?.group === "toVerify")

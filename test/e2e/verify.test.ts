@@ -154,8 +154,19 @@ inFullSet("Verify", () => {
 		await panel.click(`document.querySelector('[data-action="show-all"]')`);
 		await panel.waitFor(`document.querySelectorAll("li.mark").length === 3`);
 
+		// Verify only where the page was checked (DEC-079): with no page of the
+		// case in front (here the panel's own tab) none; the tab on /v1, Verify.
+		expect(
+			await panel.eval<boolean>(
+				`${row("m1")}.querySelector('.head-verify') === null`,
+			),
+		).toBe(true);
+		const v1 = await h.open("v1");
+		await v1.page.activate();
+		await panel.waitFor(`${row("m1")}?.querySelector('.head-verify')`);
+
 		// Verify, from the collapsed head: the bar and the chips move.
-		await panel.click(`${row("m1")}.querySelector('.head-verify')`);
+		await panel.eval(`${row("m1")}.querySelector('.head-verify').click()`);
 		await panel.waitFor(`${row("m1")}?.dataset.status === "verified"`);
 		expect(await panel.eval<string[]>(chips)).toEqual([
 			"● Open 1",
@@ -193,6 +204,7 @@ inFullSet("Verify", () => {
 		expect(stored?.marks[0]?.resolution?.verified).toEqual({
 			at: expect.any(String),
 		});
+		await v1.page.send("Page.close");
 	}, 90_000);
 
 	test("Verify pressed on an open row: the row collapses, the stored state follows, the next row opens", async () => {
@@ -237,10 +249,14 @@ inFullSet("Verify", () => {
 		const panel = await panelHome(h);
 		await openCase(panel, "Collapse first");
 		await panel.waitFor(`${row("m1")}?.dataset.status === "fixed"`);
-		await panel.click(`${row("m1")}.querySelector(".mark-toggle")`);
+		// The tester's tab on the case's page: its marks offer Verify (DEC-079).
+		const v1 = await h.open("v1");
+		await v1.page.activate();
+		await panel.waitFor(`${row("m1")}?.querySelector('.head-verify')`);
+		await panel.eval(`${row("m1")}.querySelector(".mark-toggle").click()`);
 		await panel.waitFor(`${row("m1")}.hasAttribute("data-open")`);
-		await panel.click(
-			`${row("m1")}.querySelector('.body [data-mark-action="verify"]')`,
+		await panel.eval(
+			`${row("m1")}.querySelector('.body [data-mark-action="verify"]').click()`,
 		);
 		// The state, not the time: stored as verified, then the next row is open.
 		await until(
@@ -256,5 +272,6 @@ inFullSet("Verify", () => {
 		expect(await panel.eval<string>(`${row("m1")}.dataset.status`)).toBe(
 			"verified",
 		);
+		await v1.page.send("Page.close");
 	}, 60_000);
 });

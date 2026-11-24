@@ -212,10 +212,13 @@ describe("the next step for the case", () => {
 		).toEqual(["verify", "share"]);
 	});
 
-	test("Start verifying goes to the lowest-numbered mark to verify", () => {
+	test("Start verifying goes to the lowest-numbered mark to verify, of the page in front first", () => {
 		const c = withMarks("open", "fixed", "fixed");
 		expect(firstToVerify(c)?.number).toBe(2);
 		expect(firstToVerify(withMarks("open", "verified"))).toBeUndefined();
+		// One that can be verified on the tab in front first (DEC-079); else the lowest.
+		expect(firstToVerify(c, (a) => a.number === 3)?.number).toBe(3);
+		expect(firstToVerify(c, () => false)?.number).toBe(2);
 	});
 
 	test("every mark settled: close it, where the role lets", () => {
