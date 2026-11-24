@@ -4449,14 +4449,20 @@ the box and the pin painted over the head and the account button above the pane.
   at most 2.8 ms in a frame. Standing still for 10 s after the scroll: the 6 marks the head
   covers are tested again every 2 s, the rest never; 1.5 ms a redraw (twice a second, as
   before) on average, 4.7 ms at most. All reads come before the overlay's one write.
+- **The toolbar's own marks too.** Until the side panel's copy of the case reaches the page,
+  the toolbar draws the marks it added itself (the saved ones faintly, those on their way to
+  the case). They follow the same rule: cut to where their element shows, not drawn while
+  nothing of it does. Found in CI: with the panel late, marks 1 and 2 of a page scrolled to
+  mark 3 stayed drawn by the toolbar, out of the window, and in a pane they would have stayed
+  over the head. Only the box being drawn and the mark whose comment is open stay whole.
 - **The popover** of a mark's comment (DEC-027) is placed by what is drawn of its mark (the
   shape cut to its clip, and its pin). While its mark is not drawn (off the page, cut away,
   covered) it stays where it is, with what is being typed in it: it is the person's open
   work, not a mark.
 - **What stays as it is.** The panel's "found on this page" (the element is still found);
-  a mark without an element, drawn where it was; marks being added (a box being drawn, the
-  comment dialog of a new mark, the toolbar's drafts) are not clipped, so nothing is cut away
-  from under the pointer. Showing a mark from the panel or the highlight tool scrolls its
+  a mark without an element, drawn where it was; a mark being added (the box being drawn,
+  the mark whose comment dialog is open) is not clipped, so nothing is cut away from under
+  the pointer. Showing a mark from the panel or the highlight tool scrolls its
   element into the middle of its own pane (`scrollIntoView` scrolls every scrolling ancestor),
   so its mark shows; `load_case` scrolls nowhere, as before. Not handled: `clip-path` and
   `mask` on an ancestor. No new permission, the manifest untouched; Chrome and Firefox alike (standard DOM
