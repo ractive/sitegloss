@@ -1261,7 +1261,7 @@ decision).
 asked for the Edge upload to be automated as well (tab-mcp's DEC-194 is the same decision).
 
 - `release.yml` runs the job `publish-edge` after it creates the release:
-  `edge-extension-publish.yml` of ractive/release-workflows (v0.7.0, pinned to a commit),
+  `edge-extension-publish.yml` of ractive/release-workflows (v0.7.0 when decided, v0.8.2 since 24 November 2026: the addendum below; pinned to a commit),
   in the environment `edge-add-ons` (required reviewer, tags `v*` only), with the Publish
   API's `EDGE_CLIENT_ID` and `EDGE_API_KEY`. `publish.yml` runs it by hand (store `edge` or
   `both`).
