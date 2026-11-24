@@ -1161,7 +1161,7 @@ async function closeFromPanel(caseId: string): Promise<void> {
 	if (!(await leaveCase(true))) return;
 	update((s) => {
 		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
-		s.hint = closedSaid(saved, s.tab?.url);
+		s.hint = closedSaid(saved);
 		s.homeFocus = { seq: s.homeFocus.seq + 1, caseId };
 	});
 }

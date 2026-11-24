@@ -2423,7 +2423,8 @@ case' in the extension I'd say you can get back to 'all cases'." Rules:
   end, the case's marks leave the tab, pending things and the loaded state clear), except
   that the untouched-case clean-up is skipped: a case just closed is kept.
 - The list says once, under "This page", "“<title>” is closed. It is under Closed." (the
-  page's own case stays under "This page" and the sentence says that). The panel has no
+  page's closed case is under the "Closed" section below the main action; both places
+  are headed "Closed"). The panel has no
   undo or button inside a hint, so there is no Reopen there: the sentence alone; the case
   is one press away. The hint is cleared when any case is opened.
 - The focus goes once to the closed case's card when it is on screen (the page's own case),
@@ -2433,8 +2434,15 @@ case' in the extension I'd say you can get back to 'all cases'." Rules:
   cases" says so).
 - "Reopen case" stays on the case. A close from an AI app (`set_case_status`), the web app
   or a teammate through the sync never moves the panel: only the press does.
-- "This page" on Home shows the case just closed as it does any closed case of the page
-  (after its open ones, with "Open"): nothing contradicts the sentence.
+- The owner, same day: "A closed case should not be promoted under 'This page'." "I think
+  you can pack the closed cases for 'This page' also in a collapsible section like for the
+  'Other cases'." So (amending DEC-050's offer): only the page's open cases get the
+  sentence, their cards and the primary "Open this case"; with none open, "New case for
+  this page" is the main action; the page's closed cases fold in a "Closed n" section (the
+  list's own `closedGroup`, closed by default, each section's open state kept apart) under
+  that button, and are not in the list's Closed group again. Nothing else hangs on the
+  page's case: following the tab draws only the case open in the panel, and the AI tools
+  and the page's bar do not name a case for the page.
 
 ## DEC-047: Crops for marks made at the server, and what a mark records of the page
 

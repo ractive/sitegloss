@@ -4540,7 +4540,7 @@ describe("after Close case", () => {
 			render(state, noActions);
 			return state;
 		};
-		const said = closedSaid(shut, undefined);
+		const said = closedSaid(shut);
 		expect(said).toBe(
 			`\u201c${shut.title}\u201d is closed. It is under Closed.`,
 		);
@@ -4559,13 +4559,38 @@ describe("after Close case", () => {
 		expect((window.document.activeElement as unknown) === other).toBe(true);
 	});
 
-	test("a page's own case stays under This page and says so", () => {
-		const c = sampleCase("c_own");
-		const shut: Case = { ...c, closed: { at: "2026-11-20T12:00:00.000Z" } };
-		const url = c.page.url;
-		expect(closedSaid(shut, url)).toBe(
-			`\u201c${shut.title}\u201d is closed. It is under This page.`,
-		);
+	test("under This page only open cases are promoted: closed ones fold in their own Closed section under the main action", () => {
+		const url = "https://www.example.com/kk";
+		const shut = (id: string): Case => ({
+			...sampleCase(id),
+			closed: { at: "2026-11-20T12:00:00.000Z" },
+		});
+		const home = (cases: Case[]) => {
+			const state = initialState();
+			state.tab = { id: 1, url, title: "KK", status: "complete" } as never;
+			state.cases = cases;
+			render(state, noActions);
+		};
+		// Closed only: as for a page without a case.
+		home([shut("c_a")]);
+		expect(el("here").hidden).toBe(true);
+		expect(el("open-here").hidden).toBe(true);
+		expect(el("new-case").classList.contains("primary")).toBe(true);
+		const group = el<HTMLDetailsElement>("closed-here");
+		expect(group.open).toBe(false);
+		expect(group.querySelector("summary")?.textContent).toBe("Closed 1");
+		expect(el("closed-cases")).toBeNull();
+		// Open and closed: the open one is promoted, the closed one counted.
+		home([sampleCase("c_o"), shut("c_a")]);
+		expect(el("here").hidden).toBe(false);
+		expect(el("open-here").hidden).toBe(false);
+		expect(el("new-case").classList.contains("primary")).toBe(false);
+		expect(el("here-cases").querySelectorAll("[data-case]")).toHaveLength(1);
+		expect(el("closed-here").querySelectorAll("[data-case]")).toHaveLength(1);
+		// None: nothing under This page.
+		home([]);
+		expect(el("here").hidden).toBe(true);
+		expect(el("closed-here")).toBeNull();
 	});
 });
 
@@ -6555,7 +6580,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 			`[data-mark-link="${which}"]`,
 		) as unknown as HTMLButtonElement | null;
 
-	test("Home: on the same page of the same site, open cases first and closed ones after; another host offers none", () => {
+	test("Home: on the same page of the same site, only open cases are promoted, closed ones fold under the main action; another host offers none", () => {
 		const state = initialState();
 		state.tab = tab("https://shop.example/search?q=boots");
 		state.cases = [
@@ -6568,18 +6593,17 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 		const rows = [...el("here-cases").querySelectorAll("[data-case]")].map(
 			(b) => b.getAttribute("data-case"),
 		);
-		expect(rows).toEqual(["c_open", "c_closed"]);
+		expect(rows).toEqual(["c_open"]);
 		expect(
-			el("here-cases").querySelector('[data-case="c_closed"] .closed-tag')
+			el("closed-here").querySelector('[data-case="c_closed"] .closed-tag')
 				?.textContent,
 		).toBe("Closed");
-		expect(el("here-text").textContent).toContain("already has 2 cases");
+		expect(el("here-text").textContent).toContain("already has a case");
 		// Not under Closed as well.
 		expect(
-			window.document.querySelector(
-				'ul.cases[data-group="closed"] [data-case="c_closed"]',
-			),
-		).toBeNull();
+			window.document.querySelector('#closed-cases [data-case="c_closed"]') ===
+				null,
+		).toBe(true);
 		// The same path on localhost: nothing offered, nothing about other sites.
 		state.tab = tab("http://localhost:3000/search?q=shoes");
 		render(state, noActions);
