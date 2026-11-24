@@ -23,6 +23,7 @@ import {
 	assigneeOf,
 	type Case,
 	caseCounts,
+	isSafeId,
 	type Mark,
 	markStatus,
 	type UserRef,
@@ -409,7 +410,9 @@ export const COPY_FAILED =
 /**
  * The copies: the case's address in the web app, or the instructions for
  * an AI app with it, given to `write` (the clipboard, in the click). Only
- * where the server has the case; `undefined`: nothing to copy.
+ * where the server has the case; `undefined`: nothing to copy. The
+ * instructions name the case by its id, so an id that is not one (a server
+ * could send anything) is not copied into them.
  */
 export async function copyStep(
 	c: Case,
@@ -418,6 +421,7 @@ export async function copyStep(
 	write: (text: string) => Promise<void>,
 ): Promise<Copied | undefined> {
 	if (where.kind !== "team" || where.link === undefined) return undefined;
+	if (what === "copy-ai" && !isSafeId(c.id)) return undefined;
 	const text =
 		what === "copy-link"
 			? where.link
