@@ -56,9 +56,12 @@ const TEXT = 4.5;
 const EDGE = 3;
 /**
  * A filled control without an edge (the default button, the web app's
- * secondary): its fill apart from what it stands on, as the web theme holds
- * it (sitegloss.dev's palette: 1.3:1 on the page and a card, 1.15:1 on the
- * quiet fill). Its words carry the 4.5:1.
+ * secondary): its fill apart from what it stands on. The figures are the web
+ * palette's own pairs (sitegloss.dev, `packages/ui/src/palette.ts`, `PAIRS`:
+ * controlFill on page and card 1.3, on selectedFill and segmentTrack 1.15).
+ * Its boundary as a control rests on its label (WCAG 1.4.11's text
+ * exception), which carries the 4.5:1; where the fill is weaker than this, on
+ * a warning's or an error's tint, the button takes the edge (DEC-077).
  */
 const FILL = 1.3;
 const FILL_ON_QUIET = 1.15;
@@ -69,7 +72,8 @@ type Row = [
 	under: string[],
 	light: number[],
 	dark: number[],
-	needs: number,
+	/** One minimum, or the light and the dark one. */
+	needs: number | readonly [number, number],
 ];
 
 const SURFACES = ["--paper", "--sheet", "--wash"];
@@ -108,6 +112,34 @@ const PANEL: Row[] = [
 	],
 	["--control", ["--paper", "--sheet"], [1.35, 1.4], [1.51, 1.4], FILL],
 	["--control", ["--wash"], [1.24], [1.19], FILL_ON_QUIET],
+	// On a tint and a field: weaker than on the paper; on a warning's or an
+	// error's tint the button has the edge (below), so a later change of a tint
+	// is seen here before the button disappears into it.
+	[
+		"--control",
+		["--warn-bg", "--danger-bg", "--field"],
+		[1.24, 1.23, 1.43],
+		[1.18, 1.21, 1.29],
+		FILL_ON_QUIET,
+	],
+	[
+		"--control-hover",
+		["--warn-bg", "--danger-bg", "--field"],
+		[1.39, 1.38, 1.61],
+		[1.36, 1.38, 1.48],
+		FILL_ON_QUIET,
+	],
+	// A card: its edge on the paper. Decorative in light, where the card is
+	// told by its text and its shadow; in dark, where the shadow does not
+	// show, one step stronger, about 2:1. The fill itself is barely apart.
+	[
+		"--card-edge",
+		["--paper", "--sheet"],
+		[1.35, 1.4],
+		[1.99, 1.85],
+		[FILL, 1.8],
+	],
+	["--sheet", ["--paper"], [1.03], [1.08], 1],
 	// The main action: the green with its text, and as a control on the panel.
 	[
 		"--on-strong",
@@ -123,6 +155,14 @@ const PANEL: Row[] = [
 	["--on-strong", ["--st-verified"], [6.99], [9.99], EDGE],
 	["--link", ["--paper", "--sheet"], [7.06, 7.31], [10.04, 9.32], TEXT],
 	["--focus", ["--paper", "--sheet"], [12.76, 13.2], [7.59, 7.05], TEXT],
+	// The focus ring on the other surfaces it is drawn on.
+	[
+		"--focus",
+		["--wash", "--control", "--field", "--warn-bg"],
+		[11.66, 9.41, 13.45, 11.65],
+		[5.99, 5.04, 6.48, 5.96],
+		EDGE,
+	],
 	[
 		"--st-open",
 		["--paper", "--sheet", "--st-open-bg"],
@@ -174,12 +214,13 @@ const PANEL: Row[] = [
 		[9.17, 8.52, 7.35],
 		TEXT,
 	],
-	// A destructive button: red words on the default button's fill.
+	// A destructive button: red words on the default button's fill, hovered
+	// and pressed.
 	[
 		"--danger",
-		["--control", "--control-hover"],
-		[5.96, 5.29],
-		[6.09, 5.31],
+		["--control", "--control-hover", "--control-press"],
+		[5.96, 5.29, 4.72],
+		[6.09, 5.31, 4.61],
 		TEXT,
 	],
 	["--on-danger", ["--danger"], [8.08], [9.17], TEXT],
@@ -224,18 +265,28 @@ describe("the panel's tokens", () => {
 		expect(dark["--paper"]).toBe("#181712");
 		// The ink band and its colours are gone (DEC-024).
 		expect(css).not.toMatch(/--band|--on-ink|--mark\b|--amber/);
+		// A button on a warning's or an error's tint has the edge: its fill
+		// alone is about 1.2:1 there (the rows of --control on the tints).
+		expect(css).toMatch(
+			/:is\([^)]*\.notice[^)]*\.sync-banner[^)]*\)\s*button:not\([^)]*\)\s*\{\s*border-color: var\(--edge\);/,
+		);
 	});
 
 	for (const [on, under, inLight, inDark, needs] of [...PANEL, ...USED])
 		for (const [i, below] of under.entries())
-			for (const [scheme, t, want] of [
-				["light", light, inLight[i]],
-				["dark", dark, inDark[i]],
+			for (const [scheme, t, want, need] of [
+				[
+					"light",
+					light,
+					inLight[i],
+					typeof needs === "number" ? needs : needs[0],
+				],
+				["dark", dark, inDark[i], typeof needs === "number" ? needs : needs[1]],
 			] as const)
-				test(`${on} on ${below}, ${scheme}: ${want}:1 (needs ${needs})`, () => {
+				test(`${on} on ${below}, ${scheme}: ${want}:1 (needs ${need})`, () => {
 					const got = ratio(t[on] as string, t[below] as string);
 					expect(got).toBe(want as number);
-					expect(got).toBeGreaterThanOrEqual(needs);
+					expect(got).toBeGreaterThanOrEqual(need);
 				});
 });
 
@@ -314,7 +365,21 @@ describe("the page's fixed colours", () => {
 		["popover text", L.popoverText, L.popover, 16.67, TEXT],
 		["popover muted text", L.popoverMuted, L.popover, 7.72, TEXT],
 		["popover placeholder", L.popoverPlaceholder, L.popover, 4.62, TEXT],
-		["popover field edge", L.popoverEdge, L.popover, 3.65, EDGE],
+		["popover field's and button's edge", L.popoverEdge, L.popover, 3.65, EDGE],
+		[
+			"popover button's fill on the popover",
+			L.popoverControl,
+			L.popover,
+			1.43,
+			FILL,
+		],
+		[
+			"popover button's fill, hovered",
+			L.popoverControlHover,
+			L.popover,
+			1.61,
+			FILL,
+		],
 		[
 			"popover main button on the popover",
 			L.popoverAction,

@@ -63,7 +63,9 @@
 	--warn-edge: #907900;
 	/* Behind the questions' dialog: dims the panel (the web's overlay) */
 	--scrim: #211e1380;
-	/* A card's soft shadow, no edge (the web's --shadow-low) */
+	/* A card's edge (the rule) and soft shadow (the web's --shadow-low); in dark the edge
+	   is one step stronger, as the shadow does not show on the dark paper */
+	--card-edge: #dbd8cb;
 	--shadow-card: 0 1px 2px #211e130f, 0 6px 20px #211e1314;
 	/* Type: the web app's faces (src/fonts/fonts.css), the system's as the fallback */
 	--font:
@@ -71,7 +73,9 @@
 	--font-head:
 		"Manrope Variable", "Inter Variable", system-ui, -apple-system, "Segoe UI",
 		Roboto, sans-serif;
-	--font-num: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+	/* Rounded digits where the system has them, else the text's face (not the system's) */
+	--font-num:
+		ui-rounded, "SF Pro Rounded", "Inter Variable", system-ui, sans-serif;
 	--font-mono:
 		ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 	/* Space and shape */
@@ -126,6 +130,7 @@
 		--warn-bg: #332b0a;
 		--warn-edge: #907900;
 		--scrim: #181712cc;
+		--card-edge: #4b4940;
 		--shadow-card: 0 1px 2px #18171259, 0 6px 20px #18171266;
 	}
 }
@@ -1174,6 +1179,25 @@ body:has(#settings:not([hidden])) .ai-allow {
 	background: var(--danger-bg);
 }
 
+/*
+ * A button on a warning's or an error's tint: the darker cream is only about
+ * 1.2:1 from the tint, so there it takes a field's edge (3:1, DEC-077).
+ */
+:is(
+		.notice,
+		#import-prompt,
+		#pair-problem,
+		#pair-replaced,
+		.hint[role="alert"],
+		#import-error,
+		.sync-banner,
+		.ai-problem,
+		.cloud-server-note
+	)
+	button:not(.link, .quiet, .strong, .primary, [data-armed]) {
+	border-color: var(--edge);
+}
+
 .sync-banner[data-sync="failed"]::before,
 .ai-problem::before {
 	background: var(--danger);
@@ -1291,7 +1315,7 @@ ul.cases [data-case] {
 	min-width: 0;
 	padding: calc(var(--s3) + 5px) var(--s3) var(--s3);
 	/* A card: the lighter cream, a rule-coloured edge and a soft shadow (the web app's). */
-	border: 1px solid var(--rule);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
 	box-shadow: var(--shadow-card);
@@ -1459,7 +1483,7 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	display: grid;
 	gap: var(--s3);
 	padding-bottom: var(--s3);
-	border: 1px solid var(--rule);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
 	box-shadow: var(--shadow-card);
@@ -2783,7 +2807,7 @@ ol.marks {
 	min-width: 0;
 	margin: 0 var(--s4) var(--s3);
 	padding: var(--s3);
-	border: 1px solid var(--rule);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
 	box-shadow: var(--shadow-card);
@@ -3332,7 +3356,7 @@ ul.always button.link {
 .pairing {
 	margin: 0 0 var(--s4);
 	padding: var(--s3);
-	border: 1px solid var(--rule);
+	border: 1px solid var(--card-edge);
 	border-radius: var(--r-card);
 	background: var(--sheet);
 	box-shadow: var(--shadow-card);

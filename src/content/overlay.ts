@@ -179,7 +179,7 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 .popover button {
 	box-sizing: border-box; min-height: 28px; font: inherit; font-weight: 600;
 	padding: 3px 12px; border-radius: 6px; cursor: pointer;
-	border: 1px solid transparent; background: ${L.popoverControl}; color: ${L.popoverText};
+	border: 1px solid ${L.popoverEdge}; background: ${L.popoverControl}; color: ${L.popoverText};
 }
 .popover button:hover { background: ${L.popoverControlHover}; }
 .popover button.primary { background: ${L.popoverAction}; border-color: ${L.popoverAction}; color: ${L.popoverActionText}; }

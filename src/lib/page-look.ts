@@ -11,7 +11,7 @@ export const HOVER_COLOUR = "#1f6feb";
  * test holds every pair of these to its contrast. Its colours are the web
  * app's roles (sitegloss.dev's palette, as the side panel's): the bars are
  * its dark scheme (the ink, its green for the action), the popover its light
- * one (white field, the forest green, the darker cream). No font: the page's
+ * one (white field, the forest green, the darker cream with an edge). No font: the page's
  * system face.
  */
 export const PAGE_LOOK = {
@@ -38,7 +38,7 @@ export const PAGE_LOOK = {
 	popoverAction: "#00362a",
 	popoverActionHover: "#002c22",
 	popoverActionText: "#fcf9ed",
-	/** Its other buttons: the darker cream, no edge. */
+	/** Its other buttons: the darker cream, with the field's edge (the dialog sits on any page, DEC-077). */
 	popoverControl: "#dbd8cb",
 	popoverControlHover: "#cfccbf",
 } as const;
