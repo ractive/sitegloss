@@ -93,6 +93,7 @@ import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
 import { linkFromField } from "./case-link.ts";
+import { closedSaid } from "./closed";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { DELETE_ARMED_MS, deleteClick } from "./delete.ts";
@@ -1051,6 +1052,8 @@ function openCase(id: string): void {
 			releaseImages(s);
 		}
 		s.view = { kind: "case", id };
+		// What the list said about a case just closed is not said again later.
+		s.hint = undefined;
 		s.caseHint = undefined;
 		s.deleteArmedAt = undefined;
 		s.markEdit = undefined;
@@ -1178,9 +1181,12 @@ const leavingNow = (): PanelState["leaving"] => state.leaving;
  * goes then, as with its own Done again; one drawn or tried since is tried
  * once more (DEC-014).
  */
-async function leaveCase(): Promise<void> {
+async function leaveCase(
+	keep = false,
+	save?: () => Promise<boolean>,
+): Promise<boolean> {
 	if (state.view.kind !== "case" || state.leaving?.phase === "finishing")
-		return;
+		return false;
 	const caseId = state.view.id;
 	// The first click tries the marks an earlier Done left out once more;
 	// the second is the page's Done again.
@@ -1191,24 +1197,53 @@ async function leaveCase(): Promise<void> {
 	try {
 		const { left, front, timedOut } = await endToolbars(caseId, { retry });
 		// Closed meanwhile (deleted elsewhere), or opened again.
-		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		if (left > 0) {
 			update((s) => {
 				s.leaving = { phase: "blocked", left };
 				if (front !== undefined) s.overlay = front;
 			});
-			return;
+			return false;
 		}
 		// Gone before the list shows: no empty case flashes there (DEC-026);
-		// never while a tab that did not answer may still hold a mark.
-		if (!timedOut) await forgetUntouched(caseId);
-		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return;
+		// never while a tab that did not answer may still hold a mark. Not a
+		// case the person has just closed: it is kept, under Closed.
+		if (!keep && !timedOut) await forgetUntouched(caseId);
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
+		// The toolbars are done and can leave: only now is a close saved, so a
+		// blocked leave closes nothing. A save that fails stays on the case.
+		if (save !== undefined && !(await save())) return false;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		closeCase();
+		return true;
 	} finally {
 		// Not left for good when something above failed.
 		if (leavingNow()?.phase === "finishing")
 			update((s) => (s.leaving = undefined));
 	}
+}
+
+/**
+ * The person's own press on "Close case": the panel leaves the case as
+ * "← All cases" does, and the close is saved once the toolbars are done, and the list says once where
+ * the case is and takes the focus. Failing to save, or marks the toolbar has
+ * not added yet, keep the panel on the case, which says why. Reopening, and
+ * a close from anywhere else (an AI app, the web app, the sync), never move
+ * the panel.
+ */
+async function closeFromPanel(caseId: string): Promise<void> {
+	const left = await leaveCase(true, () =>
+		changeThread(caseId, (c, now) => withClosed(c, true, now)),
+	);
+	if (!left) return;
+	// Read again: another writer may have reopened it meanwhile.
+	const saved = await store.getCase(caseId).catch(() => undefined);
+	if (saved?.closed === undefined || state.view.kind !== "home") return;
+	update((s) => {
+		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
+		s.hint = closedSaid(saved);
+		s.homeFocus = { seq: s.homeFocus.seq + 1, caseId };
+	});
 }
 
 /**
@@ -2168,7 +2203,9 @@ const actions: Actions = {
 			withoutCaseComment(c, commentId, now),
 		),
 	setCaseClosed: (caseId, closed) =>
-		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
+		closed
+			? void closeFromPanel(caseId)
+			: void changeThread(caseId, (c, now) => withClosed(c, false, now)),
 
 	// Through the sync, as every change of the case (DEC-071): it waits here
 	// while the server cannot be reached, and the block says so.
