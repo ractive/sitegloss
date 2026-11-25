@@ -41,17 +41,12 @@ export const MAX_VERDICT = 50_000;
 /** The longest comment on a mark, in characters. */
 export const MAX_COMMENT = 20_000;
 
-/** The longest finding an AI app may write on a mark, in characters. */
-export const MAX_FINDING = 5000;
-
 /**
- * The most finding text a case may hold, all marks' findings together, in
- * characters: get_case stays readable (DEC-019).
+ * The longest finding and the most a mark had (DEC-019), for reading the
+ * findings of a stored case or a file: they become comments (DEC-081).
  */
-export const MAX_FINDINGS_TEXT = 200_000;
-
-/** The most findings a mark may have. */
-export const MAX_FINDINGS = 20;
+const MAX_FINDING = 5000;
+const MAX_FINDINGS = 20;
 
 /**
  * The most images a mark holds (DEC-058): here, in a file and at the team's
@@ -517,8 +512,6 @@ export interface Mark {
 	 * with the resolution it ended; none: never reopened (DEC-023).
 	 */
 	reopens?: Reopen[];
-	/** What AI apps found about the mark, oldest first; none: no findings. */
-	findings?: Finding[];
 	/**
 	 * Pictures a person added to the mark (pasted, chosen or dropped), oldest
 	 * first, at most `MAX_MARK_IMAGES`; none: no images (DEC-058).
@@ -656,11 +649,11 @@ export interface FindingApp {
 }
 
 /**
- * A finding of an AI app on a mark (DEC-019): apart from the user's comment,
- * which no AI app changes. Only the app that wrote it may edit or delete it;
- * the user may delete any.
+ * A finding of an AI app on a mark, as a stored case or a file from before
+ * DEC-081 holds it (DEC-019): it is read only to become a comment on the
+ * mark (`findingsAsComments`).
  */
-export interface Finding {
+interface OldFinding {
 	id: string;
 	text: string;
 	app: FindingApp;
@@ -676,24 +669,6 @@ export interface Finding {
 /** An AI app as the panel and the questions name it: its name beside its host. */
 export function appLabel(app: FindingApp): string {
 	return app.name ? `${app.name} (${app.host})` : app.host;
-}
-
-/**
- * A finding the AI app `clientId` wrote here, not one from a file. In a case
- * synced with a team a finding says whose app wrote it: the same app
- * connected to a teammate's browser is another one's, so only a finding of
- * the person signed in here (`me`) is this app's own.
- */
-export function isOwnFinding(
-	f: Finding,
-	clientId: string,
-	me?: string,
-): boolean {
-	return (
-		f.imported !== true &&
-		f.app.id === clientId &&
-		(f.user === undefined || f.user.id === me)
-	);
 }
 
 /** What became of a mark: fixed, or left as it is and why. */
@@ -1794,7 +1769,8 @@ function extrasOf(
 
 /** Check that `value` is a case in format `sitegloss/2` and return it typed. */
 export function validateCase(value: unknown): Case {
-	const o = obj(value, "case");
+	// Findings from before DEC-081 are comments on their marks.
+	const o = obj(findingsAsComments(value), "case");
 	const extras = { left: MAX_EXTRAS };
 	const format = o["format"];
 	if (format === OLD_CASE_FORMAT)
@@ -1896,7 +1872,6 @@ export function validateCase(value: unknown): Case {
 				? {}
 				: { resolution: resolution(a["resolution"], `${p}.resolution`) }),
 			...reopensOf(a["reopens"], `${p}.reopens`),
-			...findingsOf(a["findings"], `${p}.findings`),
 			...imagesOf(a["images"], `${p}.images`, imageIds),
 			// This browser's images held back (DEC-058); a file never has them
 			// (the import leaves them out), the store does.
@@ -2234,10 +2209,10 @@ function reopensOf(value: unknown, path: string): { reopens?: Reopen[] } {
 }
 
 /** A mark's findings; none, or an empty list: no `findings` at all. */
-function findingsOf(value: unknown, path: string): { findings?: Finding[] } {
+function findingsOf(value: unknown, path: string): { findings?: OldFinding[] } {
 	if (value === undefined) return {};
 	const ids = new Set<string>();
-	const findings = arr(value, path, MAX_FINDINGS).map((v, i): Finding => {
+	const findings = arr(value, path, MAX_FINDINGS).map((v, i): OldFinding => {
 		const p = `${path}[${i}]`;
 		const f = obj(v, p);
 		const findingId = id(f["id"], `${p}.id`);
@@ -2770,112 +2745,120 @@ export function withoutImage(
 	return { value, images: gone === undefined ? [] : [gone.image] };
 }
 
-// --- findings of AI apps on a mark (DEC-019) ---------------------------------
-
-const withFindings = (a: Mark, findings: Finding[]): Mark => {
-	const { findings: _, ...rest } = a;
-	return findings.length > 0 ? { ...rest, findings } : rest;
-};
-
-/** The finding text of all the case's marks, in characters. */
-export const findingsTextOf = (c: Case): number =>
-	c.marks.reduce(
-		(n, a) => (a.findings ?? []).reduce((m, f) => m + textLength(f.text), n),
-		0,
-	);
+// --- findings, once kept apart, become comments (DEC-081) ----------------------
 
 /**
- * `next`, unless it holds more finding text than `MAX_FINDINGS_TEXT` and more
- * than `before` did: a case from a file over the limit may still shrink.
+ * The id of the comment a finding becomes: made from the case's id, its
+ * mark's and the finding's own, so the same finding gives the same comment
+ * each time (the store's upgrade, a file read again) and never a second one.
+ * FNV-1a twice over, as 16 hex digits: `f_` and those (`FINDING_COMMENT`).
  */
-function withinFindingsText(before: Case, next: Case): Case {
-	const total = findingsTextOf(next);
-	if (total > MAX_FINDINGS_TEXT && total > findingsTextOf(before))
-		throw new CaseError(
-			`The case holds too much finding text: at most ${MAX_FINDINGS_TEXT} characters on all marks together. Shorten or delete findings of your own first.`,
+export function findingCommentId(
+	caseId: string,
+	markId: string,
+	findingId: string,
+): string {
+	const text = `${caseId}\n${markId}\n${findingId}`;
+	let h1 = 0x811c9dc5;
+	let h2 = 0x01000193;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text.charCodeAt(i);
+		h1 = Math.imul(h1 ^ ch, 0x01000193) >>> 0;
+		h2 = Math.imul(h2 ^ ch, 0x811c9dc5) >>> 0;
+	}
+	return `f_${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
+}
+
+/** A comment that was a finding here (`findingCommentId`); the server's own ids are longer. */
+export const FINDING_COMMENT = /^f_[0-9a-f]{16}$/;
+
+/**
+ * A case with its marks' findings as comments on those marks (DEC-081): a
+ * finding was what an AI app found out about a mark, and that is a comment
+ * on the mark now. Each keeps its text, its time, its app, the person it was
+ * written for (in a case of a team) and whether it came from a file; an
+ * edited one says when. The comments go into the thread by their time; a
+ * finding whose comment is there already (the same id) adds nothing, so the
+ * function can run on a case any number of times. A finding without words,
+ * or one past the thread's `MAX_CASE_COMMENTS`, makes none (the server's
+ * rule too). A finding that is not one (a file made by hand) fails as it
+ * did before. Anything else of `value` is left as it is: `validateCase`
+ * checks it afterwards, and the store's upgrade keeps a case it cannot read
+ * as it was.
+ */
+export function findingsAsComments(value: unknown): unknown {
+	if (value === null || typeof value !== "object" || Array.isArray(value))
+		return value;
+	const o = value as Obj;
+	const marks = o["marks"];
+	if (!Array.isArray(marks)) return value;
+	const caseId = typeof o["id"] === "string" ? o["id"] : "";
+	if (
+		!marks.some(
+			(m) =>
+				m !== null &&
+				typeof m === "object" &&
+				(m as Obj)["findings"] !== undefined,
+		)
+	)
+		return value;
+	const thread: Obj[] = Array.isArray(o["comments"])
+		? [...(o["comments"] as Obj[])]
+		: [];
+	const taken = new Set(
+		thread.map((k) => (k !== null && typeof k === "object" ? k["id"] : "")),
+	);
+	const added: CaseComment[] = [];
+	const plain = marks.map((m, i) => {
+		if (m === null || typeof m !== "object") return m;
+		const { findings: given, ...mark } = m as Obj;
+		if (given === undefined) return m;
+		const markId = typeof mark["id"] === "string" ? mark["id"] : "";
+		const { findings = [] } = findingsOf(given, `case.marks[${i}].findings`);
+		for (const f of findings) {
+			const id = findingCommentId(caseId, markId, f.id);
+			if (taken.has(id) || f.text.trim() === "") continue;
+			taken.add(id);
+			added.push({
+				id,
+				mark: markId,
+				text: f.text.trim(),
+				at: f.at,
+				...(f.user === undefined ? {} : { user: f.user }),
+				app: f.app,
+				...(f.editedAt === undefined
+					? {}
+					: {
+							edited: {
+								at: f.editedAt,
+								...(f.user === undefined ? {} : { user: f.user }),
+								app: f.app,
+							},
+						}),
+				...(f.imported ? { imported: true as const } : {}),
+			});
+		}
+		return mark;
+	});
+	// By time, each after the comments written before it; the thread's own order stays.
+	added.sort((x, y) => x.at.localeCompare(y.at));
+	for (const k of added) {
+		if (thread.length >= MAX_CASE_COMMENTS) break;
+		const at = thread.findIndex(
+			(other) =>
+				other !== null &&
+				typeof other === "object" &&
+				typeof other["at"] === "string" &&
+				other["at"].localeCompare(k.at) > 0,
 		);
-	return next;
-}
-
-function findingOf(a: Mark, findingId: string): Finding {
-	const f = a.findings?.find((x) => x.id === findingId);
-	if (f === undefined)
-		throw new CaseError(`Mark ${a.number} has no finding ${findingId}.`);
-	return f;
-}
-
-/** The case with `finding` added to the mark, after its others. */
-export function withFinding(
-	c: Case,
-	markId: string,
-	finding: Finding,
-	now: string,
-): Case {
-	const next = changed(
-		c,
-		markId,
-		(a) => {
-			const findings = a.findings ?? [];
-			if (findings.length >= MAX_FINDINGS)
-				throw new CaseError(
-					`Mark ${a.number} has ${MAX_FINDINGS} findings, the most a mark may have. Edit or delete one of your own instead.`,
-				);
-			return withFindings(a, [
-				...findings,
-				{ ...finding, text: cutText(finding.text.trim(), MAX_FINDING) },
-			]);
-		},
-		now,
-	);
-	return withinFindingsText(c, next);
-}
-
-/** The case with the finding's text replaced; `editedAt` is `now`. */
-export function withFindingText(
-	c: Case,
-	markId: string,
-	findingId: string,
-	text: string,
-	now: string,
-): Case {
-	const next = changed(
-		c,
-		markId,
-		(a) => {
-			findingOf(a, findingId);
-			return withFindings(
-				a,
-				(a.findings ?? []).map((f) =>
-					f.id === findingId
-						? { ...f, text: cutText(text.trim(), MAX_FINDING), editedAt: now }
-						: f,
-				),
-			);
-		},
-		now,
-	);
-	return withinFindingsText(c, next);
-}
-
-/** The case without the finding. */
-export function withoutFinding(
-	c: Case,
-	markId: string,
-	findingId: string,
-	now: string,
-): Case {
-	return changed(
-		c,
-		markId,
-		(a) => {
-			findingOf(a, findingId);
-			return withFindings(
-				a,
-				(a.findings ?? []).filter((f) => f.id !== findingId),
-			);
-		},
-		now,
-	);
+		if (at < 0) thread.push(k as unknown as Obj);
+		else thread.splice(at, 0, k as unknown as Obj);
+	}
+	return {
+		...o,
+		marks: plain,
+		...(thread.length > 0 ? { comments: thread } : {}),
+	};
 }
 
 // --- the case's thread and its closing (DEC-046) ---------------------------------
@@ -2896,7 +2879,7 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
- * What can change of a mark (its comment, author, status, reopens, findings
+ * What can change of a mark (its comment, author, status, reopens
  * and added images), as a short text: equal while the mark is unchanged
  * (DEC-046). An image added by hand ends an AI app's note, so it is never
  * sent as the app's doing; the images' ids count only where there are any,
@@ -2908,7 +2891,8 @@ export function markSignature(a: Mark): string {
 		a.author,
 		a.resolution ?? null,
 		a.reopens ?? [],
-		a.findings ?? [],
+		// Where the findings were (DEC-081): a mark keeps the signature it had.
+		[],
 		...(a.images ? [a.images.map((x) => x.id)] : []),
 	]);
 	// FNV-1a, twice over, as 16 hex digits.

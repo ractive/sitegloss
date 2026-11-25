@@ -2747,7 +2747,7 @@ ol.marks {
 	display: block;
 }
 
-/* Who wrote it, how many findings: a word on a wash. */
+/* Who wrote it, how many images or comments: a word on a wash. */
 .tag {
 	flex: none;
 	padding: 2px var(--s2);
@@ -2772,7 +2772,8 @@ ol.marks {
 
 /*
  * A mark's second row (DEC-023), under its comment: the status pill, why a
- * reopened mark came back, where it is on the tab in front, its findings.
+ * reopened mark came back, where it is on the tab in front, its added
+ * images and comments.
  */
 .mark-sub {
 	display: flex;
@@ -3139,41 +3140,6 @@ button.tile-add:hover:not(:disabled) {
 
 .history [data-kind="reopened"] .note {
 	color: var(--ink);
-}
-
-/* An AI app's findings: apart from the user's comment, with a rule beside them. */
-.findings {
-	display: grid;
-	gap: var(--s1);
-	padding-left: 10px;
-	border-left: 2px solid var(--st-verify);
-}
-
-.findings h3 {
-	margin: 0;
-}
-
-.findings ul {
-	display: grid;
-	gap: var(--s2);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.finding-text {
-	margin: 0;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
-}
-
-.finding-meta {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--s1) var(--s2);
-	align-items: center;
-	justify-content: space-between;
-	overflow-wrap: anywhere;
 }
 
 /* Where the mark's element is on the tab in front. */

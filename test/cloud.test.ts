@@ -10,14 +10,12 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
 	addedImage,
 	type Case,
-	isOwnFinding,
 	type Mark,
 	markFor,
 	markKey,
 	validateCase,
 	withChoice,
 	withComment,
-	withFinding,
 	withImages,
 	withLink,
 	withoutImage,
@@ -242,38 +240,10 @@ describe("two devices and one team", () => {
 		expect(dana.changed).toContain("c_flow");
 	});
 
-	test("a case that came from the server is no import, and its findings keep whose they are", async () => {
+	test("a case that came from the server is no import", async () => {
 		await shared();
-		const app = {
-			id: "https://claude.ai/oauth",
-			name: "Claude",
-			host: "claude.ai",
-		};
-		await change(tess, "c_flow", (c, now) =>
-			withFinding(
-				c,
-				"m1",
-				{ id: "f_1", text: "The total wraps", app, at: now },
-				now,
-			),
-		);
 		await sync(tess, dana);
-		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.importedAt).toBeUndefined();
-		const finding = there.marks[0]?.findings?.[0];
-		expect(finding?.imported).toBeUndefined();
-		expect(finding?.text).toBe("The total wraps");
-		// Written for Tess: Tess's app's own on her device, nobody's on Dana's.
-		expect(finding?.user).toEqual(TESS);
-		expect(finding && isOwnFinding(finding, app.id, TESS.id)).toBe(true);
-		expect(finding && isOwnFinding(finding, app.id, DANA.id)).toBe(false);
-		expect(finding && isOwnFinding(finding, app.id, undefined)).toBe(false);
-		const mine = (await tess.store.getCase("c_flow"))?.marks[0]?.findings?.[0];
-		expect(mine?.user).toEqual(TESS);
-		// A finding that never left this device is its app's, as before.
-		expect(
-			isOwnFinding({ id: "f", text: "x", app, at: "now" }, app.id, undefined),
-		).toBe(true);
+		expect((await dana.store.getCase("c_flow"))?.importedAt).toBeUndefined();
 	});
 
 	test("what each changes reaches the other, with who did it", async () => {
@@ -2366,7 +2336,7 @@ describe("what the server does not take", () => {
 		server.refuseWith = {
 			type: "mark.patch",
 			code: "limit",
-			message: "A mark holds at most 20 findings.",
+			message: "A mark holds at most 6 images.",
 		};
 		await change(tess, "c_flow", (c, now) =>
 			withComment(c, "m1", "Refused", now),
@@ -2377,7 +2347,7 @@ describe("what the server does not take", () => {
 			{
 				caseId: "c_flow",
 				title: "Your cart",
-				text: expect.stringContaining("A mark holds at most 20 findings"),
+				text: expect.stringContaining("A mark holds at most 6 images"),
 			},
 		]);
 		// The change stays here, and is not sent again as it is.

@@ -19,7 +19,6 @@ import type {
 	Member,
 	Op,
 	Team,
-	WireFinding,
 	WireReopen,
 	WireResolution,
 } from "./api.ts";
@@ -188,7 +187,6 @@ export interface MarkContent {
 	author: "user" | "ai";
 	resolution: WireResolution | null;
 	reopens: WireReopen[];
-	findings: WireFinding[];
 	/**
 	 * The images added to the mark, in order (DEC-058). Absent: not told (a
 	 * server from before images, or a shadow written before them), which

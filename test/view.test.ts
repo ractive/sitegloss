@@ -491,156 +491,6 @@ describe("a mark's status and actions", () => {
 		expect(window.document.activeElement).toBe(el("verdict") as never);
 	});
 
-	test("AI findings show under the comment with their app; Delete asks once more", () => {
-		const c: Case = {
-			...twoMarks(),
-			marks: [
-				{
-					...mark(1),
-					findings: [
-						{
-							id: "f_1",
-							text: "Padding in Card.tsx",
-							app: {
-								id: "https://claude.ai/oauth",
-								name: "Claude",
-								host: "claude.ai",
-							},
-							at: "2026-11-10T10:00:00Z",
-						},
-						{
-							id: "f_2",
-							text: "From a file",
-							app: { id: "x", host: "other.example" },
-							at: "2026-11-10T10:00:00Z",
-							imported: true,
-						},
-					],
-				},
-				mark(2),
-			],
-		};
-		const deleted: string[] = [];
-		const actions = actionsWith({
-			deleteFinding: (_c, a, id) => void deleted.push(`${a.id}:${id}`),
-		});
-		render(
-			caseState(c, (s) => {
-				s.findingDeleteArmed = {
-					markId: "m1",
-					mark: "",
-					findingId: "f_2",
-					at: 1,
-				};
-			}),
-			actions,
-		);
-		const finding = (id: string) =>
-			row("m1").querySelector(
-				`[data-finding="${id}"]`,
-			) as unknown as HTMLElement;
-		expect(row("m1").querySelector(".findings-count")?.textContent).toBe(
-			"2 AI findings",
-		);
-		expect(row("m2").querySelector(".findings")).toBeNull();
-		expect(finding("f_1").querySelector(".finding-text")?.textContent).toBe(
-			"Padding in Card.tsx",
-		);
-		expect(finding("f_1").textContent).toContain("Claude (claude.ai), ");
-		expect(finding("f_2").textContent).toContain(
-			"other.example, as the file says",
-		);
-		const button = (id: string) =>
-			finding(id).querySelector(
-				'[data-finding-action="delete"]',
-			) as unknown as HTMLButtonElement;
-		expect(button("f_1").textContent).toBe("Delete finding");
-		expect(button("f_2").textContent).toBe("Really delete?");
-		button("f_1").click();
-		expect(deleted).toEqual(["m1:f_1"]);
-	});
-
-	test("a finding gone from a mark whose comment form is open: the form stays, with its draft", () => {
-		const c: Case = {
-			...twoMarks(),
-			marks: [
-				{
-					...mark(1),
-					findings: [
-						{
-							id: "f_1",
-							text: "Padding in Card.tsx",
-							app: { id: "x", host: "other.example" },
-							at: "2026-11-10T10:00:00Z",
-						},
-					],
-				},
-				mark(2),
-			],
-		};
-		const editing = (value: Case) =>
-			caseState(value, (s) => {
-				s.markEdit = {
-					markId: "m1",
-					mark: "",
-					mode: "comment",
-					kind: "fixed",
-					text: "A draft not saved yet",
-				};
-			});
-		render(editing(c), noActions);
-		const { findings: _gone, ...bare } = c.marks[0] as Mark;
-		render(
-			editing({
-				...c,
-				updatedAt: "2026-11-10T11:00:00Z",
-				marks: [bare, mark(2)],
-			}),
-			noActions,
-		);
-		expect(row("m1").querySelector("[data-finding]")).toBeNull();
-		expect(row("m1").querySelector('[data-form="comment"]')).not.toBeNull();
-		expect(
-			(row("m1").querySelector("textarea") as unknown as HTMLTextAreaElement)
-				.value,
-		).toBe("A draft not saved yet");
-	});
-
-	test("a finding's Delete, clicked once, asks on its own mark only: ids repeat on other marks", () => {
-		const finding = (id: string) => ({
-			id,
-			text: "Same id elsewhere",
-			app: { id: "x", host: "other.example" },
-			at: "2026-11-10T10:00:00Z",
-		});
-		const c: Case = {
-			...twoMarks(),
-			marks: [
-				{ ...mark(1), findings: [finding("f_1")] },
-				{ ...mark(2), findings: [finding("f_1")] },
-			],
-		};
-		render(
-			caseState(c, (s) => {
-				s.findingDeleteArmed = {
-					markId: "m2",
-					mark: "",
-					findingId: "f_1",
-					at: 1,
-				};
-			}),
-			noActions,
-		);
-		const button = (markId: string) =>
-			row(markId).querySelector(
-				'[data-finding="f_1"] [data-finding-action="delete"]',
-			) as unknown as HTMLButtonElement;
-		expect(button("m1").textContent).toBe("Delete finding");
-		expect(button("m1").hasAttribute("data-armed")).toBe(false);
-		expect(button("m2").textContent).toBe("Really delete?");
-		expect(button("m2").hasAttribute("data-armed")).toBe(true);
-	});
-
 	test("Delete asks once more", () => {
 		const c = twoMarks();
 		render(
@@ -1142,19 +992,6 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 	test("a Delete or Remove pressed from the keyboard keeps the focus on its armed control, and on the next one when its image goes", () => {
 		const c = marked("c_pictures5");
 		const a = c.marks[0] as Mark;
-		c.marks = [
-			{
-				...a,
-				findings: [
-					{
-						id: "f_1",
-						text: "Padding",
-						app: { id: "x", name: "Claude", host: "claude.ai" },
-						at: "2026-11-10T10:00:00Z",
-					},
-				],
-			},
-		];
 		const urls = new Map([
 			[a.crop, "blob:crop"],
 			["images/i_a.webp", "blob:a"],
@@ -1202,17 +1039,6 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			s.markDeleteArmed = { markId: a.id, mark: "", at: 1 };
 		}, without);
 		expect(focused().textContent).toBe("Really delete?");
-		at('[data-finding="f_1"] [data-finding-action="delete"]').focus();
-		draw((s) => {
-			s.findingDeleteArmed = {
-				markId: a.id,
-				mark: "",
-				findingId: "f_1",
-				at: 1,
-			};
-		}, without);
-		expect(focused().getAttribute("data-finding-action")).toBe("delete");
-		expect(focused().hasAttribute("data-armed")).toBe(true);
 	});
 
 	test("a mark deleted from the keyboard leaves the focus on the next mark's head, else the one before", () => {
@@ -4368,13 +4194,13 @@ describe("the account and the sync with a team (DEC-039)", () => {
 				{
 					caseId: "c_1",
 					title: "Checkout",
-					text: "A change to a mark was not taken: A mark holds at most 20 findings.",
+					text: "A change to a mark was not taken: A mark holds at most 6 images.",
 				},
 			],
 			undecided: 0,
 		});
 		expect(el("cloud-problems").textContent).toBe(
-			"“Checkout”: A change to a mark was not taken: A mark holds at most 20 findings.",
+			"“Checkout”: A change to a mark was not taken: A mark holds at most 6 images.",
 		);
 	});
 
@@ -4785,15 +4611,6 @@ describe("the account and the sync with a team (DEC-039)", () => {
 							user: { id: "u_tess", name: "Tess Tester" },
 						},
 					},
-					findings: [
-						{
-							id: "f_1",
-							text: "The token is overridden",
-							app,
-							at: "2026-11-19T09:30:00.000Z",
-							user: { id: "u_dana", name: "Dana Developer" },
-						},
-					],
 				},
 			],
 		};
@@ -4804,9 +4621,6 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		);
 		expect(history[0]).toContain("by Dana Developer via Claude");
 		expect(history[1]).toContain("by Tess Tester");
-		expect(mark?.querySelector(".finding-meta")?.textContent).toContain(
-			"Dana Developer via Claude",
-		);
 		expect(mark?.querySelector(".mark-by")?.textContent).toBe(
 			"Added by Tess Tester",
 		);
@@ -5394,7 +5208,7 @@ describe("an imported case", () => {
 		expect(el("case-origin").textContent).toContain("Imported from a file");
 		// What came in with it is the file's: statuses and reopen notes too.
 		expect(el("case-origin").textContent).toContain(
-			"statuses and reopen notes, summary and findings are as the file says",
+			"statuses and reopen notes and summary are as the file says",
 		);
 		render(caseState(sampleCase("c_j")), noActions);
 		expect(el("case-origin").hidden).toBe(true);

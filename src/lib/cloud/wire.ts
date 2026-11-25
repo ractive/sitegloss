@@ -16,7 +16,7 @@ import {
 	cutText,
 	ELEMENT_ATTRIBUTES,
 	type ElementDetails,
-	type Finding,
+	FINDING_COMMENT,
 	type FindingApp,
 	type Highlight,
 	highlightWithin,
@@ -28,8 +28,6 @@ import {
 	MAX_CASE_COMMENT,
 	MAX_CASE_COMMENTS,
 	MAX_COMMENT,
-	MAX_FINDING,
-	MAX_FINDINGS,
 	MAX_LINK,
 	MAX_MARK_IMAGES,
 	MAX_PAGE_TITLE,
@@ -73,7 +71,6 @@ import type {
 	WireCase,
 	WireComment,
 	WireElement,
-	WireFinding,
 	WireMark,
 	WirePage,
 	WireReopen,
@@ -187,7 +184,6 @@ export function markContent(a: Mark): MarkContent {
 		author: a.author,
 		resolution: a.resolution ?? null,
 		reopens: a.reopens ?? [],
-		findings: a.findings ?? [],
 		images: (a.images ?? []).map((x) => ({ id: x.id, added: x.added })),
 	};
 }
@@ -362,7 +358,6 @@ export function newMarkOf(
 		element: elementOut(a.element),
 		resolution: content.resolution,
 		reopens: content.reopens,
-		findings: content.findings,
 		...(images.length > 0 ? { images } : {}),
 		...(created ? { createdAt: created } : {}),
 		// An arrow's or an open stroke's ends (DEC-047; the server's DEC-020):
@@ -450,17 +445,6 @@ export function markPatch(
 		)
 	)
 		patch.state = { resolution: local.resolution, reopens: local.reopens };
-	const known = new Map(before.findings.map((f) => [f.id, f]));
-	const upsert = local.findings.filter((f) => !same(f, known.get(f.id)));
-	const kept = new Set(local.findings.map((f) => f.id));
-	const remove = before.findings
-		.filter((f) => !kept.has(f.id))
-		.map((f) => f.id);
-	if (upsert.length > 0 || remove.length > 0)
-		patch.findings = {
-			...(upsert.length > 0 ? { upsert } : {}),
-			...(remove.length > 0 ? { remove } : {}),
-		};
 	const images = imagesPatch(local, before, image, missing);
 	if (images !== undefined) patch.images = images;
 	return Object.keys(patch).length > 0 ? patch : undefined;
@@ -814,6 +798,8 @@ function commentOps(
 	for (const k of c.comments ?? []) {
 		const before = known[k.id];
 		if (before === undefined) {
+			// The server's finding, made a comment here: the server makes its own.
+			if (serversFinding(k, book)) continue;
 			const markId = k.mark === undefined ? undefined : book.marks[k.mark];
 			if (k.mark !== undefined && markId === undefined) continue;
 			ops.push({
@@ -843,6 +829,20 @@ function commentOps(
 	}
 	return ops;
 }
+
+/**
+ * A comment the store's upgrade made of a finding the team's server has
+ * (DEC-081): it names the person the server wrote it down for, on a mark the
+ * server has. The server turns its findings into comments itself, with ids of
+ * its own, so this one is never sent and goes at the next merge, where the
+ * server's comes in. A finding written here and never sent names nobody: its
+ * comment is sent as any new one.
+ */
+export const serversFinding = (k: CaseComment, book: CaseBook): boolean =>
+	FINDING_COMMENT.test(k.id) &&
+	k.user !== undefined &&
+	k.mark !== undefined &&
+	book.marks[k.mark] !== undefined;
 
 /** A comment the server has is one's own: written by the person signed in (or not known). */
 const ownAtServer = (before: ShadowComment, me: string | undefined) =>
@@ -900,7 +900,6 @@ export function applyOp(book: CaseBook, op: Op, number?: number): void {
 					author: op.mark.author ?? "user",
 					resolution: op.mark.resolution ?? null,
 					reopens: op.mark.reopens ?? [],
-					findings: op.mark.findings ?? [],
 					images: (op.mark.images ?? []).map(sentImage),
 				},
 				fixed: fixedOf({
@@ -920,16 +919,6 @@ export function applyOp(book: CaseBook, op: Op, number?: number): void {
 			if (op.state !== undefined) {
 				c.resolution = op.state.resolution;
 				c.reopens = op.state.reopens;
-			}
-			if (op.findings !== undefined) {
-				const gone = new Set(op.findings.remove ?? []);
-				const kept = c.findings.filter((f) => !gone.has(f.id));
-				for (const f of op.findings.upsert ?? []) {
-					const at = kept.findIndex((k) => k.id === f.id);
-					if (at >= 0) kept[at] = f;
-					else kept.push(f);
-				}
-				c.findings = kept;
 			}
 			// Removed first, then added; an id the mark has stays (the server's rule).
 			if (op.images !== undefined) {
@@ -1103,16 +1092,6 @@ const reopenIn = (r: WireReopen): Reopen => ({
 	...userIn(r.user),
 });
 
-const findingIn = (f: WireFinding): Finding => ({
-	id: f.id,
-	text: text(f.text, MAX_FINDING),
-	app: appIn(f.app).app as Finding["app"],
-	at: text(f.at, 64),
-	...(f.editedAt ? { editedAt: text(f.editedAt, 64) } : {}),
-	...(f.imported ? { imported: true } : {}),
-	...userIn(f.user),
-});
-
 /** A mark's content as the server has it, within what a case here holds. */
 export function contentIn(m: WireMark): MarkContent {
 	return {
@@ -1120,7 +1099,7 @@ export function contentIn(m: WireMark): MarkContent {
 		author: m.author === "ai" ? "ai" : "user",
 		resolution: m.resolution ? resolutionIn(m.resolution) : null,
 		reopens: (m.reopens ?? []).slice(-MAX_REOPENS).map(reopenIn),
-		findings: (m.findings ?? []).slice(0, MAX_FINDINGS).map(findingIn),
+		// Its findings are not read (DEC-081): the server's are comments on the mark.
 		// Absent: a server that does not keep images says nothing of them.
 		...(m.images === undefined ? {} : { images: imagesIn(m.images) }),
 	};
@@ -1279,14 +1258,15 @@ export function caseContentIn(w: WireCase): CaseContent {
 	};
 }
 
-/** A number of what a mark says: its comment, how it was settled, its findings. */
+/** A number of what a mark says: its comment, how it was settled. */
 export const saidOf = (m: MarkContent): string =>
 	hashText(
 		canonical([
 			m.comment,
 			m.resolution?.kind ?? null,
 			m.resolution?.note ?? "",
-			m.findings.map((f) => f.text),
+			// Where the findings' texts were (DEC-081): the number stays what it was.
+			[],
 			m.reopens.length,
 		]),
 	);
@@ -1426,7 +1406,6 @@ const withContent = (a: Mark, content: MarkContent): Mark => {
 	const {
 		resolution: _r,
 		reopens: _o,
-		findings: _f,
 		images: _i,
 		heldImages: _h,
 		...rest
@@ -1457,9 +1436,6 @@ const withContent = (a: Mark, content: MarkContent): Mark => {
 		...(content.reopens.length > 0
 			? { reopens: content.reopens as Reopen[] }
 			: {}),
-		...(content.findings.length > 0
-			? { findings: content.findings as Finding[] }
-			: {}),
 	};
 };
 
@@ -1483,27 +1459,12 @@ export function mergeContent(
 		[local.resolution, local.reopens],
 		[before.resolution, before.reopens],
 	);
-	const was = new Map(before.findings.map((f) => [f.id, f]));
-	const now = new Map(incoming.findings.map((f) => [f.id, f]));
-	const here = new Map(local.findings.map((f) => [f.id, f]));
-	const findings: WireFinding[] = [];
-	// The server's order; a finding changed or added here keeps its place or follows.
-	for (const f of incoming.findings) {
-		const mine = here.get(f.id);
-		const old = was.get(f.id);
-		// Deleted here since: it stays away, and the delete is sent.
-		if (mine === undefined && old !== undefined) continue;
-		findings.push(mine !== undefined && !same(mine, old) ? mine : f);
-	}
-	for (const f of local.findings)
-		if (!now.has(f.id) && !was.has(f.id)) findings.push(f);
 	return withImagesOf(
 		{
 			comment: text ? incoming.comment : local.comment,
 			author: text ? incoming.author : local.author,
 			resolution: state ? incoming.resolution : local.resolution,
 			reopens: state ? incoming.reopens : local.reopens,
-			findings: findings.slice(0, MAX_FINDINGS),
 		},
 		mergeImages(local, before, incoming),
 	);
@@ -1519,7 +1480,7 @@ const withImagesOf = (
 };
 
 /**
- * A mark's images merged as findings are (DEC-058), by id: the server's in
+ * A mark's images merged (DEC-058), by id: the server's in
  * its order, but one removed here since stays away (the remove is sent); one
  * added here and unknown there stays (it is sent); one the server had and
  * no longer has goes. Not told by the server: what is here stays.
@@ -2112,7 +2073,12 @@ function mergeComments(
 				else removed.add(id);
 			}
 	}
-	let list = (c.comments ?? []).filter((k) => !removed.has(k.id));
+	let list = (c.comments ?? []).filter(
+		(k) =>
+			!removed.has(k.id) &&
+			// The server's own comment of that finding comes instead (DEC-081).
+			!(known[k.id] === undefined && serversFinding(k, book)),
+	);
 	for (const id of removed) delete known[id];
 	const marks = reverse(book.marks);
 	for (const w of came) {

@@ -19,7 +19,6 @@ export type WireMark = Schemas["Mark"];
 export type WirePage = Schemas["Page"];
 export type WireResolution = Schemas["Resolution"];
 export type WireReopen = Schemas["Reopen"];
-export type WireFinding = Schemas["Finding"];
 export type WireElement = Schemas["ElementDetails"];
 export type ImageRef = Schemas["ImageRef"];
 export type UserRef = Schemas["UserRef"];

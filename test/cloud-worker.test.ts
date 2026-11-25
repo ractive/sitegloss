@@ -24,7 +24,7 @@ import {
 } from "../src/lib/cloud/book.ts";
 import { scopeOf } from "../src/lib/cloud/servers.ts";
 import { memoryKv } from "../src/lib/kv.ts";
-import { MemoryStore } from "../src/lib/store.ts";
+import { DB_VERSION, MemoryStore } from "../src/lib/store.ts";
 import {
 	CLOUD_ALARM,
 	CLOUD_RETRY_ALARM,
@@ -391,8 +391,8 @@ describe("syncing from the worker", () => {
 	});
 });
 
-describe("the update to the store's version 2 (DEC-051)", () => {
-	test("while the case store is not at version 2, nothing is forgotten and nothing is sent; then the books of before go in one step and nothing but reads follows", async () => {
+describe("the update from the store's version 1 (DEC-051)", () => {
+	test("while the case store is not at its version, nothing is forgotten and nothing is sent; then the books of before go in one step and nothing but reads follows", async () => {
 		await signIn();
 		const d = here();
 		await startCase(d, "c_1");
@@ -413,8 +413,8 @@ describe("the update to the store's version 2 (DEC-051)", () => {
 		expect(http.state.requests).toEqual([]);
 		expect(data.has("case:c_1")).toBe(true);
 		expect(kv.data.has(CASES_KEY)).toBe(false);
-		// The store opened at version 2: its upgrade emptied it.
-		version = 2;
+		// The store opened at its version: the upgrade from 1 emptied it.
+		version = DB_VERSION;
 		store.cases.clear();
 		store.images.clear();
 		cloud.request();

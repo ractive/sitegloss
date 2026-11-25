@@ -71,7 +71,6 @@ import {
 	type UserRef,
 	type WireCase,
 	type WireComment,
-	type WireFinding,
 	type WireMark,
 	type WireReopen,
 	type WireResolution,
@@ -346,32 +345,6 @@ export class FakeServer {
 				}) as WireReopen;
 			});
 		return [...previous, ...added].slice(-20);
-	}
-
-	#stampFinding(
-		user: UserRef,
-		previous: WireFinding | undefined,
-		next: WireFinding,
-		imports: boolean,
-	): WireFinding {
-		if (previous) {
-			if (next.text === previous.text) return previous;
-			return compact({
-				...previous,
-				text: next.text,
-				editedAt: next.editedAt ?? this.now.toISOString(),
-			}) as WireFinding;
-		}
-		const imported = imports && next.imported ? true : undefined;
-		return compact({
-			id: next.id,
-			text: next.text,
-			app: next.app,
-			at: next.at,
-			editedAt: next.editedAt,
-			imported,
-			user: imported ? undefined : user,
-		}) as WireFinding;
 	}
 
 	#live(caseId: string): Row<WireCase> {
@@ -813,9 +786,9 @@ export class FakeServer {
 							undefined,
 							imports,
 						),
-						findings: (op.mark.findings ?? []).map((f) =>
-							this.#stampFinding(user, undefined, f, imports),
-						),
+						// Findings it is sent are none of this fake's: the
+						// extension sends none (DEC-081).
+						findings: [],
 						images,
 						status: statusOf(resolution),
 						createdBy: user,
@@ -879,18 +852,6 @@ export class FakeServer {
 						resolution,
 						status: statusOf(resolution),
 					};
-				}
-				if (op.findings !== undefined) {
-					const gone = new Set(op.findings.remove ?? []);
-					const kept = v.findings.filter((f) => !gone.has(f.id));
-					for (const f of op.findings.upsert ?? []) {
-						const i = kept.findIndex((k) => k.id === f.id);
-						if (i >= 0) kept[i] = this.#stampFinding(user, kept[i], f, imports);
-						else kept.push(this.#stampFinding(user, undefined, f, imports));
-					}
-					if (kept.length > 20)
-						throw new Refusal("limit", "A mark holds at most 20 findings.");
-					v = { ...v, findings: kept };
 				}
 				if (op.images !== undefined) {
 					const gone = new Set(op.images.remove ?? []);

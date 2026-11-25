@@ -551,7 +551,7 @@ const ready = Connection.start({
 		void sync.request();
 		cloud.request();
 	},
-	// Whose findings are this app's own, and what deleting a case means,
+	// Whose comments are this app's own, and what deleting a case means,
 	// in a case synced with a team (DEC-039).
 	me: () => cloud.me().catch(() => undefined),
 	team: (caseId) => cloud.teamOf(caseId).catch(() => undefined),

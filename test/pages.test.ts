@@ -602,15 +602,6 @@ describe("who did something, in a case synced with a team (DEC-039)", () => {
 						was: { kind: "fixed", at: "2026-11-19T09:00:00.000Z", user: dana },
 					},
 				],
-				findings: [
-					{
-						id: "f_1",
-						text: "The total wraps",
-						app,
-						at: "2026-11-19T09:10:00.000Z",
-						user: dana,
-					},
-				],
 			},
 		],
 	};
@@ -638,7 +629,6 @@ describe("who did something, in a case synced with a team (DEC-039)", () => {
 		expect(md).toContain(
 			"- Reopened 2026-11-19T09:30:00.000Z by Tess Tester, was Fixed:",
 		);
-		expect(md).toContain("By Dana \\*Developer\\* via Claude (claude.ai), ");
 	});
 });
 
