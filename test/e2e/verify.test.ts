@@ -22,6 +22,7 @@ import {
 	exportOpenCase,
 	importFile,
 	markElement,
+	marksIn,
 	openCase,
 	panelHome,
 	putCases,
@@ -284,9 +285,10 @@ inFullSet("Verify", () => {
 		await markElement(page, "[data-truth=submit]", "Too pale");
 		// Below the filler: shown means the page scrolled to it.
 		await markElement(page, "[data-truth=contact]", "Hard to find");
-		await saveAs(page, "Shown next");
+		// Named below, with the rest of the case as the test wants it.
+		const caseId = await marksIn(page);
 		await page.send("Page.close");
-		const made = (await storedCases()).find((c) => c.title === "Shown next");
+		const made = (await storedCases()).find((c) => c.id === caseId);
 		const [first, second] = made?.marks ?? [];
 		if (made === undefined || first === undefined || second === undefined)
 			throw new Error("not saved");
@@ -295,6 +297,7 @@ inFullSet("Verify", () => {
 		const fixed = { kind: "fixed", at };
 		const c = {
 			...made,
+			title: "Shown next",
 			shots: [
 				...made.shots,
 				{
