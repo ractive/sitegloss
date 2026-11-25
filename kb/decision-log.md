@@ -5139,14 +5139,22 @@ ways.
    mark's id here, so it has the server's shape, not the value the server would give the
    same finding. The same finding gives the same comment, never a second one; a finding
    without words makes none. What does not fit the thread's 1,000 comments stays on its
-   mark as it was and becomes a comment when a later read finds room, as at the server.
+   mark as it was and becomes a comment when a later write of the case through
+   `validateCase` (a change in the panel, a sync's merge) finds room; reading the case
+   (`getCase`, `listCases`) converts nothing.
 2. **The case syncs with a team, and a book of a server it syncs with (`mode` synced)
-   says that server has the finding** (its shadow has it): the finding is removed here,
-   with no comment made. The server owns it, turns it into a comment itself, and that
-   comment comes with the ordinary sync, like any other.
+   says that server has the finding** (its shadow has it), **and that server has, at the
+   moment of the migration, a signed-in account that has not run out, whose chosen team
+   is the book's team and is still among its teams:** the finding is removed here, with
+   no comment made. The server owns it, turns it into a comment itself, and that comment
+   comes with the ordinary sync, like any other. Every other book counts as "no server
+   has it" for that finding, and its comment stays (way 1 or 3): a sync that will not
+   bring the server's comment must not lose the words. On a later return to that team
+   they may show twice, which is accepted.
 3. **The case syncs with a team, and no server confirmed the finding** (no shadow has
    it): it stays the ordinary local comment of way 1, which the comment sync sends once
-   as a new comment. A finding that waited in the queue, sent and not confirmed, counts
+   as a new comment when it next looks at the case (a case left idle waits for its next
+   change, or for "Sync now"). A finding that waited in the queue, sent and not confirmed, counts
    as this: the queued operation goes without its findings (a `mark.patch` left with
    nothing else goes), and the comment instead; the service takes a comment id it has in
    the same case as a duplicate, so a lost confirmation of the comment does not double it.
@@ -5165,8 +5173,11 @@ How it runs:
   of every server, loses its findings, shadow and queue, with nothing written in their
   place. A case that two servers have (dev and production) therefore gets each server's
   own comments from that server. A case is changed before its books. One that fails is
-  passed by and its books keep their findings; the marker stays unset, so it all runs
-  again at the next start, and the sync does not wait for it meanwhile.
+  passed by and said in the console (its id and the error's name, nothing of the case);
+  its books keep their findings, and every queue loses them all the same, so nothing it
+  waited to send carries findings. The marker stays unset, so it all runs again at the
+  worker's next start, and also when another server's first `casesReady` runs in the
+  same worker; the sync does not wait for it meanwhile.
 - `validateCase` runs way 1 first, so a file with findings (an export of an older build)
   is read with them as comments on their marks, imported. These are ordinary local
   comments: they are sent like any other when their case syncs. A file put in place of a
@@ -5184,12 +5195,33 @@ How it runs:
   pushed when the extension updates is not carried over: the server's text stands, and a
   deleted one comes back as a comment.
 - A finding whose push the old server confirmed but this device has not pulled back is
-  in the shadow (0.4.0's `applyOp` put it there): way 2, not doubled.
+  in the shadow (0.4.0's `applyOp` put it there): way 2, not doubled. One exception: the
+  deployed service answers "applied" for a finding it cannot place past a case's 1,000
+  comments and keeps no comment of it, while 0.4.0 wrote it into its shadow; way 2 then
+  removes the only copy. 0.4.0's own next pull would have dropped it as well.
+- A finding that only another server's shadow has (with a valid account there) is
+  removed for the current server too; the words come back when the device syncs with
+  that other server again. In practice that is the owner's development server.
+- A membership that ended while the browser was closed still looks valid until the
+  account is next read from the server (the account record keeps when the teams were
+  last asked for, `checkedAt`, but nothing that tells a stale membership from a valid
+  one). If the first piece of work after the migration then turns the book local (no
+  member any more, a sign-out, another account or team), the server's comment does not
+  arrive and way 2 has removed the words here.
+- Before the migration's first run, the panel, the tools and an export see the
+  upgrade's comments of findings a server owns; an edit made to one in that window is
+  lost with it.
 - A queued operation whose confirmation was lost while the old server stored its
   finding: the words are there twice, the server's comment and this device's.
 - If the service's script has not run when this version meets it, the findings of
   synced cases are out of sight on every device until it runs, and nothing is lost: the
   server keeps them stored, and nothing is sent about them.
+
+Why these gaps are accepted and no more is built for them: the service is deployed and
+its script has run on dev and production. There were 8 synced findings in all (1 on
+dev, 7 in one case on production), and all of them are comments on the server now. From
+now on a finding a 0.4.0 device pushes is turned into a comment at once and dropped by
+0.4.0's own next pull, so no new finding stays in a shadow.
 
 **Releasing:** the service with its findings change (its DEC-053) is deployed and its
 script has turned every stored finding into a comment, on production and on dev, with
