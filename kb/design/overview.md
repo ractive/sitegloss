@@ -24,8 +24,8 @@ a [tab-mcp](https://github.com/ractive/tab-mcp) relay.
 
 1. A PO, designer or PM sees an issue on `https://www.example.com/…`, clicks the
    Sitegloss icon, marks the page and saves the case. They talk it through with
-   their AI app, which adds its findings to the marks and records the summary for the
-   developer in the case (DEC-019).
+   their AI app, which writes what it finds out as comments on the marks (DEC-081) and
+   records the summary for the developer in the case (DEC-019).
 2. A dev opens `http://localhost:3000/…` themselves, loads the case onto that tab
    (from the extension, or from an exported file), sees what was meant, and fixes it
    with their AI app.
@@ -86,7 +86,7 @@ is what a case is about, and finding the element again is a best-effort extra:
 | Content script (`src/content/`) | Toolbar and drawing overlay in a shadow DOM, element picker, element details, a screenshot per mark as it is drawn, highlighting a loaded case |
 | Service worker (`src/background.ts`, `src/worker/`) | Opens the side panel and injects the content script on the icon click; `captureVisibleTab`; WebP conversion, drawing the marks and crops at saving; writes cases; `TabMcp` with the tools and their questions (DEC-015); the one writer of the sync, to Downloads or a folder, also with the panel closed, and the icon's badge ("?" a question, "!" the sync paused or failed, "…" connecting; DEC-021, DEC-025) |
 | Offscreen document (`src/offscreen/`) | Opened by the worker for a sync run to Downloads: exports a case and makes the blob URL the worker downloads (a service worker has none, DEC-025) |
-| Side panel (`src/sidepanel/`) | Three views under one top bar (back button, AI pill): Home (this page, the case list, files and the sync's choice), a case (its marks follow the tab in front, `follow.ts`; summary for the developer, AI findings, export) and Settings (the AI connection's card: status, pairing). The options (all sites, blurring form fields) are the last section of Home (DEC-076). The questions show in a modal dialog over the panel (DEC-037); each connected AI app's "Allow all changes" shows under the top bar on Home and in a case (DEC-036), and the sync's banner while it is paused or failed above every view |
+| Side panel (`src/sidepanel/`) | Three views under one top bar (back button, AI pill): Home (this page, the case list, files and the sync's choice), a case (its marks follow the tab in front, `follow.ts`; summary for the developer, the thread of comments, export) and Settings (the AI connection's card: status, pairing). The options (all sites, blurring form fields) are the last section of Home (DEC-076). The questions show in a modal dialog over the panel (DEC-037); each connected AI app's "Allow all changes" shows under the top bar on Home and in a case (DEC-036), and the sync's banner while it is paused or failed above every view |
 | Library (`src/lib/`) | Case format, element details, matching, zip, export, IndexedDB store, images |
 
 The look (DEC-024): the side panel is paper with ink on it, in light and dark, from one
@@ -170,7 +170,7 @@ again (`store.ts`, `forgetCases` in `cloud/book.ts`):
 ```text
 <title>.sitegloss.zip
   case.json      the case
-  case.md        generated: summary, comments, AI findings, element details, image links
+  case.md        generated: summary, comments, the thread, element details, image links
   shots/s1.webp  screenshots with their marks
   crops/m1.webp  one crop per mark
 ```
@@ -196,17 +196,19 @@ again (`store.ts`, `forgetCases` in `cloud/book.ts`):
                     "app": { "id": "https://claude.ai/oauth", "name": "Claude", "host": "claude.ai" },
                     "verified": { "at": "…" } },
     "reopens": [{ "note": "Still pale on hover", "at": "…",
-                  "was": { "kind": "fixed", "note": "…", "at": "…" } }],
-    "findings": [{ "id": "f_…", "text": "…", "at": "…",
-                   "app": { "id": "https://claude.ai/oauth", "name": "Claude", "host": "claude.ai" } }]
+                  "was": { "kind": "fixed", "note": "…", "at": "…" } }]
   }],
+  "comments": [{ "id": "k_…", "mark": "m1", "text": "…", "at": "…",
+                 "app": { "id": "https://claude.ai/oauth", "name": "Claude", "host": "claude.ai" } }],
   "verdict": null
 }
 ```
 
 `verdict` holds the summary for the developer: the field kept its name from before
-DEC-019. `findings` is there only when a mark has some; a finding has `editedAt` once its
-app changed it, and `imported: true` once it came in from a file.
+DEC-019. `comments` is the case's thread (DEC-046); `mark` names the mark a comment is
+about. A mark of a file or a stored case from before DEC-081 may still have `findings`:
+they are read as comments on that mark (`findingsAsComments`), and no file of this
+build has any.
 
 A mark's status is derived, never stored as such (DEC-023): open (no `resolution`),
 fixed and to verify (`kind: "fixed"`), verified (`kind: "fixed"` with
@@ -217,7 +219,7 @@ is read only on a fix (dropped on another kind), `app` names the AI app that set
 status through a tool (absent: set in the panel), and `reopens` lists, oldest first and
 at most 20, each time the mark was opened again with its note (at most 2,000
 characters) and the whole resolution it ended, its note cut to the same 2,000 when the reopen is written
-and when a file is read: a mark's history stays under about 85,000 characters. Like a finding, a resolution, its
+and when a file is read: a mark's history stays under about 85,000 characters. Like a comment, a resolution, its
 verification and each reopen that came in from a file get `imported: true` on import,
 whatever the file says: who set them and when is the file's word. An older build reading a file of this one
 drops `verified`, `reopens` and `app`; `case.md` in the same zip still has them.
@@ -253,8 +255,8 @@ both directions, by the service worker:
   document. Everything below is kept per server, so nothing synced with one reaches
   another unless the user shares that case there.
 - **Sending:** each synced case is compared with what the server last had of it, and
-  the difference becomes operations (a new mark, a changed comment, a status, a finding,
-  a delete), written down with ids of their own before they are sent, images first. The
+  the difference becomes operations (a new mark, a changed comment, a status, a
+  comment of the thread, a delete), written down with ids of their own before they are sent, images first. The
   server applies an operation's id once.
 - **Fetching:** everything after the team's revision this browser has seen; what was
   not changed here becomes the server's, what was changed here stays and is sent next.
@@ -265,7 +267,7 @@ both directions, by the service worker:
   worker; without a panel an alarm looks every five minutes.
 
 The case format gains only who did something, where the server wrote it down:
-`user { id, name }` on a resolution, a verification, a reopen and a finding, and
+`user { id, name }` on a resolution, a verification, a reopen and a comment, and
 `createdBy` on a mark. The sync to a folder (DEC-021) is apart from this and unchanged.
 
 ## Finding an element again
@@ -309,19 +311,21 @@ loading is searched for again.
 
 | Tool | What it does | Asks first |
 |---|---|---|
-| `list_cases` | Cases with title, pages, their marks by status (`open`, `toVerify`, `verified`, `dismissed`: won't fix or can't reproduce), the start of the summary for the developer | no |
-| `get_case` | A case's pages and summary, its screenshots with their pages, marks with their page, status, resolution (`verified`, `by`), reopens and findings (`own` for the caller's), element details and crops | no |
-| `get_image` | One screenshot or crop, scaled to at most 1568 px | no |
+| `list_cases` | Cases, one per line as JSON, with title, pages, their marks by status (`open`, `toVerify`, `verified`, `dismissed`: won't fix or can't reproduce), the start of the summary for the developer; a page at a time, with a cursor | no |
+| `get_case` | A case in plain text: its link, state and turn, assignee, closed or not, summary, pages (`p1`, `p2`), sites, marks by status, its newest 5 comments; then the first page of the overview of its marks, one line per mark (DEC-081) | no |
+| `list_marks` | The overview of a case's marks, a page at a time: by status (`unsettled` unless asked), page and `after` a mark's number; about 20,000 characters, ending at a mark, with the next call | no |
+| `get_mark` | One mark in full: how it was settled, who made it, its comment, shape, page and address, whether the tab in front shows its page, its element's details, a stroke's ends, its last 5 comments and its reopens; its crop as a picture, the screenshot and added images named with their `get_image` call | no |
+| `get_image` | One screenshot, crop or added image, scaled to at most 1568 px | no |
 | `load_case` | Loads a case onto the tab in front and reports what was found | no |
 | `highlight` | Scrolls to and outlines one mark's element (or another candidate) | no |
 | `get_mark_element` | Reads one mark's element (or, by selector, an ancestor or an element inside it; for a mark without an element, an element of the mark's page) from the tab in front: trimmed HTML, box, computed styles, matching CSS rules, ancestors and children (DEC-013) | no |
 | `capture` | A screenshot of the tab in front | no |
 | `add_mark` | Adds a comment on an element (by CSS selector) to a case | yes |
 | `set_summary` | Writes the case's summary for the developer (stored as `verdict`, DEC-019) | yes |
-| `set_mark_status` | Sets a mark fixed (to verify), verified (only a fixed mark, and only when the user says so), won't fix or can't reproduce, or opens it again with a note, which records a reopen (DEC-023) | yes |
-| `add_finding` | Adds a finding of the calling AI app to a mark (DEC-019) | yes |
-| `edit_finding` | Changes the text of one of the calling app's own findings | yes |
-| `delete_finding` | Deletes one of the calling app's own findings | yes |
+| `set_mark_status` | Sets one or more marks (`marks`; the one `mark` of before still works) fixed (to verify), verified (only a fixed mark, and only when the user says so), won't fix or can't reproduce, or opens them again with a note, which records a reopen (DEC-023, DEC-081); each mark on its own | yes |
+| `list_comments` | The case's thread, or one mark's comments, oldest first, 50 at a time (`before` a comment's id, or `offset`) | no |
+| `add_comment`, `edit_comment`, `delete_comment` | The thread (DEC-046): what an AI app did, found out or asks, on the case or one mark; it changes only its own | yes |
+| `set_case_status`, `assign_case` | Closes or reopens a case; assigns a team's case (DEC-071) | yes |
 | `delete_case` | Deletes a case | yes |
 
 Every call that changes something asks, every time (DEC-008): in the side panel of the
@@ -338,7 +342,10 @@ with the side panel's setting), go through the service worker's capture queue, a
 refused when the tab is no longer in front.
 
 Results that carry page content are marked `untrustedContentHint`: page text can contain
-instructions aimed at the AI app. A result stays within three quarters of the relay's
-message limit (1 MiB by default), its text included: a large case is sent with element
-summaries and shortened texts, and crops that do not fit are listed for `get_image`.
-Images are WebP; crops of at most 800 px go as they are stored.
+instructions aimed at the AI app. The reading tools' text stays at about 20,000
+characters (DEC-081, the server's DEC-052): a client puts a text over 50,000 characters
+into a file. A case is read in three steps, `get_case`, `list_marks`, `get_mark`, as at
+the server; what does not fit is named with the call that gives it. A result stays
+within three quarters of the relay's message limit (1 MiB by default), its picture
+included; a crop that does not fit is named for `get_image`. Images are WebP; crops of
+at most 800 px go as they are stored.

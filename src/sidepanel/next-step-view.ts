@@ -65,7 +65,7 @@ const LABEL: Record<
 		icon: "export",
 		label: "Export…",
 		title:
-			"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
+			"Save this case as one .zip file: its marks, comments, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
 	},
 	"copy-link": {
 		icon: "link",

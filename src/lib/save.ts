@@ -252,7 +252,7 @@ export async function saveCase(
 			taken.add(draft.number);
 			const id = markIdOf(draft.number);
 			// A new mark's fields, and nothing else of the draft: it is open and
-			// has no findings, whatever the sender put in (CR-07).
+			// has no history, whatever the sender put in (CR-07).
 			marks.push({
 				id,
 				number: draft.number,

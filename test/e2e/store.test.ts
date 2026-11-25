@@ -7,8 +7,9 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
-import { StoreBlockedError } from "../../src/lib/store.ts";
-import { sampleCase } from "../fixtures.ts";
+import { type Case, findingCommentId } from "../../src/lib/case.ts";
+import { DB_VERSION, StoreBlockedError } from "../../src/lib/store.ts";
+import { sampleCase, withOneMark } from "../fixtures.ts";
 import { kvContract } from "../kv-contract.ts";
 import { storeContract } from "../store-contract.ts";
 import type { Page } from "./browser.ts";
@@ -72,7 +73,7 @@ inBothSets("IdbStore and openKv", () => {
 		});
 	});
 
-	test("a database of version 1 is emptied by the upgrade to version 2: no case, no image, no delete record; a build before cannot open it (DEC-051)", async () => {
+	test("a database of version 1 is emptied by the upgrade: no case, no image, no delete record; a build before cannot open it (DEC-051)", async () => {
 		// Cases as a build before the update stored them.
 		const old = ["c_up1", "c_up2"].map((id) => {
 			const { marks, ...rest } = JSON.parse(JSON.stringify(sampleCase(id)));
@@ -95,11 +96,74 @@ inBothSets("IdbStore and openKv", () => {
 		expect(result.before.version).toBe(1);
 		expect(result.before.cases).toHaveLength(2);
 		expect(result.before.imageKeys.length).toBeGreaterThan(0);
-		// This build's store: version 2, and nothing of before.
-		expect(result.version).toBe(2);
-		expect(result.after).toEqual({ version: 2, cases: [], imageKeys: [] });
+		// This build's store: its version, and nothing of before.
+		expect(result.version).toBe(DB_VERSION);
+		expect(result.after).toEqual({
+			version: DB_VERSION,
+			cases: [],
+			imageKeys: [],
+		});
 		expect(result.listed).toEqual([]);
 		expect(result.deleted).toEqual([]);
+		expect(result.olderOpens).toBe("VersionError");
+	});
+
+	test("a database of version 2: the upgrade makes the marks' findings comments on them, keeps each case and its images, and a case it cannot read as it was (DEC-081)", async () => {
+		const app = {
+			id: "https://claude.ai/oauth",
+			name: "Claude",
+			host: "claude.ai",
+		};
+		const withFinding = {
+			...withOneMark(sampleCase("c_two")),
+			marks: withOneMark(sampleCase("c_two")).marks.map((a) => ({
+				...a,
+				findings: [
+					{
+						id: "f_1",
+						text: "The grey is Button_primary's.",
+						app,
+						at: "2026-11-10T10:00:00Z",
+					},
+				],
+			})),
+		};
+		const unreadable = {
+			...sampleCase("c_odd"),
+			marks: [{ id: "m1", findings: [{ id: 7 }] }],
+		};
+		const fresh = await h.browser.newPage(
+			`${h.base.replace("127.0.0.1", "localhost")}/v1`,
+		);
+		await fresh.eval(bundles[0] as string);
+		const result = await fresh.eval<{
+			before: { version: number; cases: unknown[]; imageKeys: string[] };
+			after: { version: number; cases: Case[]; imageKeys: string[] };
+			listed: Case[];
+			olderOpens: string;
+		}>(
+			`__siteglossStore.upgradeFromVersion2(${JSON.stringify([withFinding, unreadable, sampleCase("c_plain")])})`,
+		);
+		expect(result.before.version).toBe(2);
+		expect(result.after.version).toBe(DB_VERSION);
+		expect(result.after.imageKeys).toEqual(result.before.imageKeys);
+		const two = result.listed.find((c) => c.id === "c_two");
+		expect(two?.marks[0]).not.toHaveProperty("findings");
+		expect(two?.comments).toEqual([
+			{
+				id: findingCommentId("m1", "f_1"),
+				mark: "m1",
+				text: "The grey is Button_primary's.",
+				at: "2026-11-10T10:00:00Z",
+				app,
+			},
+		]);
+		expect(result.listed.find((c) => c.id === "c_odd")).toEqual(
+			unreadable as unknown as Case,
+		);
+		expect(result.listed.find((c) => c.id === "c_plain")).toEqual(
+			sampleCase("c_plain"),
+		);
 		expect(result.olderOpens).toBe("VersionError");
 	});
 

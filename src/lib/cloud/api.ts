@@ -19,7 +19,6 @@ export type WireMark = Schemas["Mark"];
 export type WirePage = Schemas["Page"];
 export type WireResolution = Schemas["Resolution"];
 export type WireReopen = Schemas["Reopen"];
-export type WireFinding = Schemas["Finding"];
 export type WireElement = Schemas["ElementDetails"];
 export type ImageRef = Schemas["ImageRef"];
 export type UserRef = Schemas["UserRef"];
@@ -55,7 +54,8 @@ export const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
  * with `limit=SMALL_PAGE`: 20 things, or what one request changed when that
  * is more (the server never splits a revision, and a request holds at most
  * 200 operations in 8 MiB), which 64 MiB holds at 320 KB a thing. A mark at
- * every limit at once (comment, notes, 20 findings, 20 reopens, in four-byte
+ * every limit at once (comment, notes, 20 reopens, an older server's 20
+ * findings, which are not read, in four-byte
  * characters) is about 2.5 MB; only a request that changed 26 or more such
  * marks at once makes a page that is not read, and that is said as the
  * server's trouble.

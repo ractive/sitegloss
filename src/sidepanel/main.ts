@@ -36,7 +36,6 @@ import {
 	withImages,
 	withLink,
 	withoutCaseComment,
-	withoutFinding,
 	withoutImage,
 	withoutMark,
 	withReopen,
@@ -998,12 +997,7 @@ async function refreshCase(): Promise<void> {
 		// once a mark was added (it would not show, as if it was not saved).
 		if (pageFilterEnds(c, s.markPage)) s.markPage = undefined;
 		// What can no longer be told from another mark is let go, and said.
-		const lost = [
-			s.markEdit,
-			s.markDeleteArmed,
-			s.findingDeleteArmed,
-			s.imageDeleteArmed,
-		].some(
+		const lost = [s.markEdit, s.markDeleteArmed, s.imageDeleteArmed].some(
 			(held) =>
 				held !== undefined &&
 				markFor(c, held.markId, held.mark) === "ambiguous",
@@ -1013,7 +1007,6 @@ async function refreshCase(): Promise<void> {
 		// mark under the id).
 		s.markEdit = editAfter(s.markEdit, c);
 		s.markDeleteArmed = heldAfter(s.markDeleteArmed, c);
-		s.findingDeleteArmed = heldAfter(s.findingDeleteArmed, c);
 		s.imageDeleteArmed = heldAfter(s.imageDeleteArmed, c);
 		if (lost) s.caseHint = MARK_CHANGED;
 	});
@@ -1099,7 +1092,6 @@ function openCase(id: string): void {
 		s.markFilter = undefined;
 		s.markPage = undefined;
 		s.markDeleteArmed = undefined;
-		s.findingDeleteArmed = undefined;
 		s.imageDeleteArmed = undefined;
 		s.leaving = undefined;
 		s.verifyOnOpen = undefined;
@@ -2463,55 +2455,6 @@ const actions: Actions = {
 		).finally(() => deleting.delete(a.id));
 	},
 
-	deleteFinding(c, a, findingId) {
-		const armed = state.findingDeleteArmed;
-		const at = Date.now();
-		const click = deleteClick(
-			armed?.markId === a.id && armed.findingId === findingId
-				? armed.at
-				: undefined,
-			at,
-		);
-		if (click === "arm") {
-			update(
-				(s) =>
-					(s.findingDeleteArmed = {
-						markId: a.id,
-						mark: markKey(c, a),
-						findingId,
-						at,
-					}),
-			);
-			setTimeout(() => {
-				update((s) => {
-					if (s.findingDeleteArmed?.at === at) s.findingDeleteArmed = undefined;
-				});
-			}, DELETE_ARMED_MS);
-			return;
-		}
-		// A double click is no second thought, nor a second delete.
-		if (click === "nothing") return;
-		// A finding's id is unique on its mark only.
-		const key = `${a.id} ${findingId}`;
-		if (deleting.has(key)) return;
-		deleting.add(key);
-		const now = new Date().toISOString();
-		void changeMark(
-			c,
-			a,
-			(current, id) => ({ value: withoutFinding(current, id, findingId, now) }),
-			// The mark's comment or resolve form, unsaved, stays open.
-			{ keepEdit: true },
-		).finally(() => {
-			deleting.delete(key);
-			update((s) => {
-				const armed = s.findingDeleteArmed;
-				if (armed?.markId === a.id && armed.findingId === findingId)
-					s.findingDeleteArmed = undefined;
-			});
-		});
-	},
-
 	addImages(c, a) {
 		void showAddImages(c, a);
 	},
@@ -2928,8 +2871,8 @@ async function redrawLoaded(c: Case): Promise<void> {
 }
 
 /**
- * Marks (their id) and findings (mark id, space, finding id) being deleted
- * now: a second click waits for the first.
+ * Marks (their id) and added images being deleted now: a second click
+ * waits for the first.
  */
 const deleting = new Set<string>();
 

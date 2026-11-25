@@ -8,14 +8,8 @@ import {
 	cleanLink,
 	cleanTitle,
 	cutText,
-	type Finding,
-	findingsTextOf,
-	isOwnFinding,
 	linkProblem,
 	MAX_COMMENT,
-	MAX_FINDING,
-	MAX_FINDINGS,
-	MAX_FINDINGS_TEXT,
 	MAX_LINK,
 	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
@@ -34,11 +28,8 @@ import {
 	withCaseCommentText,
 	withChoice,
 	withComment,
-	withFinding,
-	withFindingText,
 	withImages,
 	withLink,
-	withoutFinding,
 	withoutImage,
 	withoutMark,
 	withReopen,
@@ -223,200 +214,47 @@ describe("validateCase limits", () => {
 	});
 });
 
-describe("findings on a mark", () => {
-	const claude = {
-		id: "https://claude.ai/oauth",
-		name: "Claude",
-		host: "claude.ai",
-	};
-	const finding = (id: string, extra: Partial<Finding> = {}): Finding => ({
-		id,
-		text: "Padding",
-		app: claude,
-		at: "2026-11-10T10:00:00Z",
-		...extra,
-	});
-	const withOne = (f: unknown) => {
-		const c = withMarks();
-		(c.marks[0] as unknown as Record<string, unknown>)["findings"] = f;
-		return c;
-	};
-
-	test("are kept through validation; an empty list is none", () => {
-		const c = withOne([finding("f_1", { editedAt: "2026-11-10T11:00:00Z" })]);
-		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
-		expect(validateCase(withOne([])).marks[0]).not.toHaveProperty("findings");
-		// Only a finding from a file says so.
-		expect(
-			validateCase(withOne([finding("f_1", { imported: false } as never)]))
-				.marks[0]?.findings?.[0],
-		).toEqual(finding("f_1"));
-	});
-
-	test("are refused when malformed, too long, too many or twice the same", () => {
-		const bad = (f: unknown, what: string) =>
-			expect(() => validateCase(withOne(f))).toThrow(what);
-		bad({}, "findings: must be an array");
-		bad([finding("f_1", { text: "x".repeat(MAX_FINDING + 1) })], "text");
-		bad([finding("f_1"), finding("f_1")], "is used twice");
-		bad([finding("../x")], "not a valid id");
-		bad([{ ...finding("f_1"), app: { name: "x" } }], "app.id");
-		bad([finding("f_1", { imported: "yes" } as never)], "imported");
-		bad(
-			Array.from({ length: MAX_FINDINGS + 1 }, (_, i) => finding(`f_${i}`)),
-			`more than ${MAX_FINDINGS}`,
-		);
-	});
-
-	test("are added, edited and deleted; the comment and its author stay", () => {
-		const c = withMarks();
-		const added = withFinding(c, "m1", finding("f_1", { text: " x " }), "t1");
-		expect(added.marks[0]?.findings).toEqual([finding("f_1", { text: "x" })]);
-		expect(added.marks[0]?.comment).toBe("x");
-		expect(added.marks[0]?.author).toBe("user");
-		expect(added.updatedAt).toBe("t1");
-		const edited = withFindingText(added, "m1", "f_1", "y", "t2");
-		expect(edited.marks[0]?.findings?.[0]).toMatchObject({
-			text: "y",
+describe("findings in a file from a build before DEC-081", () => {
+	// What they become is in findings-to-comments.test.ts.
+	test("a malformed one is refused as before", () => {
+		const bad = (f: unknown, what: string) => {
+			const c = JSON.parse(JSON.stringify(withMarks()));
+			c.marks[0].findings = f;
+			expect(() => validateCase(c)).toThrow(what);
+		};
+		const finding = {
+			id: "f_1",
+			text: "Padding",
+			app: { id: "https://claude.ai/oauth", host: "claude.ai" },
 			at: "2026-11-10T10:00:00Z",
-			editedAt: "t2",
-		});
-		const gone = withoutFinding(edited, "m1", "f_1", "t3");
-		expect(gone.marks[0]).not.toHaveProperty("findings");
-		expect(() => withoutFinding(gone, "m1", "f_1", "t4")).toThrow(
-			"has no finding f_1",
-		);
-		// The user's edit of the comment keeps them.
-		expect(
-			withComment(added, "m1", "new", "t5").marks[0]?.findings,
-		).toHaveLength(1);
-	});
-
-	test("a mark holds at most MAX_FINDINGS", () => {
-		let c = withMarks();
-		for (let i = 0; i < MAX_FINDINGS; i++)
-			c = withFinding(c, "m1", finding(`f_${i}`), "t");
-		expect(() => withFinding(c, "m1", finding("f_more"), "t")).toThrow(
-			`${MAX_FINDINGS} findings`,
-		);
-	});
-
-	test("a case holds at most MAX_FINDINGS_TEXT of finding text; an edit that shrinks it may pass", () => {
-		const base = withMarks();
-		const first = base.marks[0] as Mark;
-		// One mark more than the limit needs, each to hold its most.
-		const marks = MAX_FINDINGS_TEXT / (MAX_FINDING * MAX_FINDINGS) + 1;
-		let c: Case = {
-			...base,
-			marks: Array.from({ length: marks }, (_, i) => ({
-				...first,
-				id: `m${i + 1}`,
-				number: i + 1,
-			})),
 		};
-		const full = "x".repeat(MAX_FINDING);
-		let added = 0;
-		let refused: unknown;
-		try {
-			for (let m = 1; m <= marks; m++)
-				for (let i = 0; i < MAX_FINDINGS; i++) {
-					c = withFinding(c, `m${m}`, finding(`f_${i}`, { text: full }), "t");
-					added++;
-				}
-		} catch (error) {
-			refused = error;
-		}
-		expect(added).toBe(MAX_FINDINGS_TEXT / MAX_FINDING);
-		expect(findingsTextOf(c)).toBe(MAX_FINDINGS_TEXT);
-		expect(String(refused)).toContain("too much finding text");
-		// Growing one is refused too; shortening one is not.
-		expect(() => withFindingText(c, "m1", "f_0", full, "t")).not.toThrow();
-		const shorter = withFindingText(c, "m1", "f_0", "short", "t");
-		expect(findingsTextOf(shorter)).toBe(MAX_FINDINGS_TEXT - MAX_FINDING + 5);
-		expect(() =>
-			withFinding(shorter, `m${marks}`, finding("f_more", { text: full }), "t"),
-		).toThrow("too much finding text");
-		// Full again, then the short one grows: refused.
-		const refilled = withFinding(
-			shorter,
-			`m${marks}`,
-			finding("f_fill", { text: "z".repeat(MAX_FINDING - 5) }),
-			"t",
-		);
-		expect(findingsTextOf(refilled)).toBe(MAX_FINDINGS_TEXT);
-		expect(() =>
-			withFindingText(refilled, "m1", "f_0", "y".repeat(10), "t"),
-		).toThrow("too much finding text");
-		// A case over the limit, from a file, may still shrink.
-		const bigger: Case = {
-			...c,
-			marks: [
-				...c.marks,
-				{ ...first, id: "m9", number: 9, findings: [finding("f_1")] },
-			],
-		};
-		expect(findingsTextOf(bigger)).toBeGreaterThan(MAX_FINDINGS_TEXT);
-		expect(() => withFindingText(bigger, "m9", "f_1", "P", "t")).not.toThrow();
+		bad({}, "findings: must be an array");
+		bad([finding, finding], "is used twice");
+		bad([{ ...finding, id: "../x" }], "not a valid id");
+		bad([{ ...finding, app: { name: "x" } }], "app.id");
 	});
+});
 
-	test("lengths count characters as JSON Schema does: an emoji is one, and no pair is cut", () => {
-		const emoji = "\u{1F600}";
-		expect(emoji.length).toBe(2);
-		expect(textLength(`a${emoji}b`)).toBe(3);
-		expect(cutText(`a${emoji}b`, 2)).toBe(`a${emoji}`);
-		expect(cutText(`${emoji}${emoji}`, 1)).toBe(emoji);
-		expect(cutText("abc", 5)).toBe("abc");
-		// A finding of MAX_FINDING emoji is valid and kept whole.
-		const astral = emoji.repeat(MAX_FINDING);
-		const added = withFinding(
-			withMarks(),
-			"m1",
-			finding("f_1", { text: astral }),
-			"t",
-		);
-		expect(added.marks[0]?.findings?.[0]?.text).toBe(astral);
-		expect(validateCase(JSON.parse(JSON.stringify(added)))).toEqual(added);
-		// One more is cut to MAX_FINDING, between two pairs.
-		const edited = withFindingText(
-			added,
-			"m1",
-			"f_1",
-			`${astral}${emoji}`,
-			"t",
-		);
-		expect(edited.marks[0]?.findings?.[0]?.text).toBe(astral);
-		const odd = `x${astral}`;
-		const cut = withFindingText(added, "m1", "f_1", odd, "t").marks[0]
-			?.findings?.[0]?.text as string;
-		expect(cut).toBe(`x${emoji.repeat(MAX_FINDING - 1)}`);
-		expect(textLength(cut)).toBe(MAX_FINDING);
-		expect(() =>
-			validateCase(withOne([finding("f_1", { text: `${astral}${emoji}` })])),
-		).toThrow(`longer than ${MAX_FINDING} characters`);
-		// The comment and the resolution note are cut the same way.
-		const long = emoji.repeat(MAX_COMMENT + 1);
-		const commented = withComment(withMarks(), "m1", long, "t");
-		expect(commented.marks[0]?.comment).toBe(emoji.repeat(MAX_COMMENT));
-		expect(validateCase(commented)).toEqual(commented);
-		const resolved = withResolution(
-			withMarks(),
-			"m1",
-			{ kind: "fixed", note: long },
-			"t",
-		);
-		expect(resolved.marks[0]?.resolution?.note).toBe(emoji.repeat(MAX_COMMENT));
-		expect(validateCase(resolved)).toEqual(resolved);
-	});
-
-	test("are an app's own by its client id, unless they came from a file", () => {
-		expect(isOwnFinding(finding("f_1"), claude.id)).toBe(true);
-		expect(isOwnFinding(finding("f_1"), "https://chatgpt.com/cimd.json")).toBe(
-			false,
-		);
-		expect(isOwnFinding(finding("f_1", { imported: true }), claude.id)).toBe(
-			false,
-		);
-	});
+test("lengths count characters as JSON Schema does: an emoji is one, and no pair is cut", () => {
+	const emoji = "\u{1F600}";
+	expect(emoji.length).toBe(2);
+	expect(textLength(`a${emoji}b`)).toBe(3);
+	expect(cutText(`a${emoji}b`, 2)).toBe(`a${emoji}`);
+	expect(cutText(`${emoji}${emoji}`, 1)).toBe(emoji);
+	expect(cutText("abc", 5)).toBe("abc");
+	// The comment and the resolution note are cut between two pairs.
+	const long = emoji.repeat(MAX_COMMENT + 1);
+	const commented = withComment(withMarks(), "m1", long, "t");
+	expect(commented.marks[0]?.comment).toBe(emoji.repeat(MAX_COMMENT));
+	expect(validateCase(commented)).toEqual(commented);
+	const resolved = withResolution(
+		withMarks(),
+		"m1",
+		{ kind: "fixed", note: long },
+		"t",
+	);
+	expect(resolved.marks[0]?.resolution?.note).toBe(emoji.repeat(MAX_COMMENT));
+	expect(validateCase(resolved)).toEqual(resolved);
 });
 
 describe("newId", () => {
@@ -909,10 +747,10 @@ describe("Verify: statuses, reopens and their format (DEC-023)", () => {
 
 	test("a case without the new fields validates and serializes unchanged", () => {
 		// As the build before Verify wrote it (its validateCase, then
-		// JSON.stringify), in today's format: every kind, a finding,
-		// importedAt, lastNumber.
+		// JSON.stringify), in today's format: every kind, importedAt,
+		// lastNumber.
 		const OLD_BUILD =
-			'{"format":"sitegloss/2","id":"c_old","title":"From before Verify","createdAt":"2026-11-04T10:00:00Z","updatedAt":"2026-11-05T10:00:00Z","page":{"url":"https://www.example.com/kk","title":"KK","lang":"de","viewport":{"width":1280,"height":800,"dpr":2},"userAgent":"UA"},"shots":[{"id":"s1","image":"shots/s1.webp","scrollX":0,"scrollY":0,"viewport":{"width":1280,"height":800,"dpr":2},"capturedAt":"2026-11-04T10:00:00Z"}],"marks":[{"id":"m1","number":1,"shot":"s1","comment":"Comment 1","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m1.webp","element":null},{"id":"m2","number":2,"shot":"s1","comment":"Comment 2","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m2.webp","element":null,"resolution":{"kind":"fixed","note":"Darker","at":"2026-11-05T09:00:00Z"},"findings":[{"id":"f_1","text":"Padding","app":{"id":"https://claude.ai/oauth","name":"Claude","host":"claude.ai"},"at":"2026-11-05T08:00:00Z","editedAt":"2026-11-05T08:30:00Z","imported":true}]},{"id":"m3","number":3,"shot":"s1","comment":"Comment 3","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m3.webp","element":null,"resolution":{"kind":"wontfix","at":"2026-11-05T09:00:00Z"}},{"id":"m4","number":4,"shot":"s1","comment":"Comment 4","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m4.webp","element":null,"resolution":{"kind":"cantreproduce","note":"Not on dev","at":"2026-11-05T09:00:00Z"}}],"verdict":"Use the dark button.","importedAt":"2026-11-05T11:00:00Z","lastNumber":5}';
+			'{"format":"sitegloss/2","id":"c_old","title":"From before Verify","createdAt":"2026-11-04T10:00:00Z","updatedAt":"2026-11-05T10:00:00Z","page":{"url":"https://www.example.com/kk","title":"KK","lang":"de","viewport":{"width":1280,"height":800,"dpr":2},"userAgent":"UA"},"shots":[{"id":"s1","image":"shots/s1.webp","scrollX":0,"scrollY":0,"viewport":{"width":1280,"height":800,"dpr":2},"capturedAt":"2026-11-04T10:00:00Z"}],"marks":[{"id":"m1","number":1,"shot":"s1","comment":"Comment 1","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m1.webp","element":null},{"id":"m2","number":2,"shot":"s1","comment":"Comment 2","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m2.webp","element":null,"resolution":{"kind":"fixed","note":"Darker","at":"2026-11-05T09:00:00Z"}},{"id":"m3","number":3,"shot":"s1","comment":"Comment 3","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m3.webp","element":null,"resolution":{"kind":"wontfix","at":"2026-11-05T09:00:00Z"}},{"id":"m4","number":4,"shot":"s1","comment":"Comment 4","author":"user","shape":{"kind":"note","at":{"x":1,"y":2}},"crop":"crops/m4.webp","element":null,"resolution":{"kind":"cantreproduce","note":"Not on dev","at":"2026-11-05T09:00:00Z"}}],"verdict":"Use the dark button.","importedAt":"2026-11-05T11:00:00Z","lastNumber":5}';
 		expect(JSON.stringify(validateCase(JSON.parse(OLD_BUILD)))).toBe(OLD_BUILD);
 		const plain = JSON.stringify(one());
 		expect(JSON.stringify(validateCase(JSON.parse(plain)))).toBe(plain);
@@ -1130,7 +968,7 @@ describe("images added to a mark (DEC-058)", () => {
 		expect(c.updatedAt).toBe(NOW);
 		expect(validateCase(JSON.parse(JSON.stringify(c)))).toEqual(c);
 		expect(caseImages(c).has(addedImage("i_b"))).toBe(true);
-		// An empty list is none, as for findings.
+		// An empty list is none.
 		const none = twoMarks();
 		(none.marks[0] as unknown as Record<string, unknown>)["images"] = [];
 		expect(validateCase(none).marks[0]).not.toHaveProperty("images");

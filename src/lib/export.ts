@@ -5,9 +5,12 @@
 
 import {
 	type Case,
+	type CaseComment,
 	CaseError,
 	caseImages,
+	FINDING_COMMENT,
 	importedResolution,
+	MAX_CASE_COMMENTS,
 	MAX_MARK_IMAGES,
 	MAX_MARKS,
 	MAX_SHOTS,
@@ -122,9 +125,11 @@ async function caseFiles(
 	// (DEC-046), not part of the case: a file never carries it. A shape of a
 	// kind this version does not know goes out as it came (DEC-066).
 	const kept = withoutSyncNotes(c);
+	// Findings that did not fit the thread (DEC-081) stay in this browser: a
+	// file never carries findings.
 	const written = {
 		...kept,
-		marks: kept.marks.map((a) =>
+		marks: kept.marks.map(({ findings: _f, ...a }) =>
 			a.shape.kind === "unknown" ? { ...a, shape: shapeOut(a.shape) } : a,
 		),
 	};
@@ -441,9 +446,11 @@ export async function readExports(
  * Store a read export: replacing a case with the same id, or as a copy with
  * a new id. Either everything is stored or nothing changes. It is marked as
  * imported, whatever the file says, and keeps no more of the page's address
- * than a saved case does. Its findings are no AI app's own: the app a finding
- * names is whatever the file says (DEC-019), as are who set a mark's status
- * and when (DEC-023).
+ * than a saved case does. Who wrote its comments, who set a mark's status
+ * and when are whatever the file says (DEC-046, DEC-023). A file's findings,
+ * from a build before DEC-081, are comments on their marks (`validateCase`
+ * made them so); they come with the file's marks, also into a case put in
+ * place of one here, whose thread is otherwise its own.
  */
 export async function storeImport(
 	store: CaseStore,
@@ -507,9 +514,7 @@ export async function storeImport(
 			: handOverOf(existing ?? withoutSyncNotes(parsed.case))),
 		...(existing !== undefined
 			? {
-					...(existing.comments === undefined
-						? {}
-						: { comments: existing.comments }),
+					...withFileFindings(existing.comments, parsed.case.comments),
 					...(existing.assign === undefined ? {} : { assign: existing.assign }),
 					...(existing.deletedVia === undefined
 						? {}
@@ -549,9 +554,6 @@ export async function storeImport(
 		// claims (DEC-046): it would be sent as the app's doing.
 		marks: parsed.case.marks.map(({ createdVia: _cv, ...a }) => ({
 			...a,
-			...(a.findings === undefined
-				? {}
-				: { findings: a.findings.map((f) => ({ ...f, imported: true })) }),
 			// An image keeps the file's time and names nobody (DEC-058): who
 			// added it is only what the file claims.
 			...(a.images === undefined
@@ -597,3 +599,19 @@ export async function storeImport(
 }
 
 const COPY = " (copy)";
+
+/**
+ * The thread of a case put in place of one here: its own, and the comments
+ * the file's findings became (DEC-081) that it does not have yet, imported.
+ */
+function withFileFindings(
+	own: readonly CaseComment[] | undefined,
+	file: readonly CaseComment[] | undefined,
+): { comments?: CaseComment[] } {
+	const have = new Set((own ?? []).map((k) => k.id));
+	const more = (file ?? [])
+		.filter((k) => FINDING_COMMENT.test(k.id) && !have.has(k.id))
+		.map((k) => ({ ...k, imported: true as const }));
+	const all = [...(own ?? []), ...more].slice(0, MAX_CASE_COMMENTS);
+	return all.length > 0 ? { comments: all } : {};
+}

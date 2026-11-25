@@ -63,13 +63,13 @@ async function recordReads(work: () => Promise<unknown>): Promise<string[]> {
 }
 
 /**
- * Database `sitegloss` at version 1, as a build before the update left it:
- * `cases` and `images`, each case with a screenshot and a crop, and a delete
- * on record (under `!deleted/`, beside the images).
+ * Database `sitegloss` at version 1 (or `version`), as a build before the
+ * update left it: `cases` and `images`, each case with a screenshot and a
+ * crop, and a delete on record (under `!deleted/`, beside the images).
  */
-function version1(cases: { id: string }[]): Promise<void> {
+function version1(cases: { id: string }[], version = 1): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const open = indexedDB.open("sitegloss", 1);
+		const open = indexedDB.open("sitegloss", version);
 		open.onupgradeneeded = () => {
 			open.result.createObjectStore("cases", { keyPath: "id" });
 			open.result.createObjectStore("images");
@@ -232,6 +232,28 @@ globalThis.__siteglossStore = {
 			olderOpens,
 			version: DB_VERSION,
 		};
+	},
+	/**
+	 * Database `sitegloss` at version 2 with `old` (cases whose marks have
+	 * findings, DEC-081), then opened by this build's store; and whether a
+	 * build before this one can open it after.
+	 */
+	async upgradeFromVersion2(old: { id: string }[]) {
+		await settled(indexedDB.deleteDatabase("sitegloss"), 5000);
+		await version1(old, 2);
+		const before = await rawDatabase();
+		const store = new IdbStore();
+		const listed = await store.listCases();
+		const after = await rawDatabase();
+		const olderOpens = await new Promise<string>((resolve) => {
+			const open = indexedDB.open("sitegloss", 2);
+			open.onsuccess = () => {
+				open.result.close();
+				resolve("opened");
+			};
+			open.onerror = () => resolve(open.error?.name ?? "error");
+		});
+		return { before, after, listed, olderOpens };
 	},
 	async run(name: string) {
 		await storeContract[name]?.(await emptyStore());

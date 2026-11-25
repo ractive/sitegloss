@@ -183,8 +183,6 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	addImages(c: Case, a: Mark): void;
 	/** An added image's Remove: the first click asks, the second removes. */
 	deleteImage(c: Case, a: Mark, imageId: string): void;
-	/** An AI app's finding on a mark: the first click asks, the second deletes. */
-	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
 	/** A mark's picture in the viewer, a tab of the extension's own (DEC-060). */
@@ -1888,7 +1886,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const exportItem = item(
 		"export-case",
 		"Export…",
-		"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
+		"Save this case as one .zip file: its marks, comments, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
 		() => actions.exportCase(created.current),
 		false,
 		"export",
@@ -3980,7 +3978,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		p.origin,
 		c.importedAt === undefined
 			? undefined
-			: `Imported from a file on ${formatDate(c.importedAt)}. Its link, comments, statuses and reopen notes, summary and findings are as the file says: whoever wrote it, whatever author or AI app it names.`,
+			: `Imported from a file on ${formatDate(c.importedAt)}. Its link, comments, statuses and reopen notes and summary are as the file says: whoever wrote it, whatever author or AI app it names.`,
 	);
 	// Marks the panel loaded, or an AI app (the page says so).
 	const here =
@@ -4227,7 +4225,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const edit = state.markEdit;
 	if (edit === undefined) focusedForm = undefined;
 	const markArmed = state.markDeleteArmed?.markId;
-	const findingArmed = state.findingDeleteArmed;
 	const imageArmed = state.imageDeleteArmed;
 	// Images added here the team does not have, and why (DEC-058).
 	const notSent = state.cloud.status?.notSent?.[c.id];
@@ -4254,7 +4251,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 		p.loadedHere,
 		p.loadButton.hidden,
 		state.showingMark ?? null,
-		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
 		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
 		notSent ?? null,
 		ok,
@@ -4295,8 +4291,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 					state.tab?.url === "" ? verifyHereWay(wordsOf(state)) : undefined,
 				edit: edit?.markId === a.id ? edit : undefined,
 				armed: markArmed === a.id,
-				findingArmed:
-					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
 				imageArmed:
 					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
 				notSent,
@@ -4558,9 +4552,9 @@ const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
  * The button in the marks list that has the focus, as something to find
  * again once the list is drawn anew: a Delete or Remove clicked once redraws
  * the list, and the second press from the keyboard must find the armed
- * control where the first left it (mark Delete, a finding's Delete, an added
- * image's Remove). A control that went with its finding or image leaves the
- * focus on the next picture's, the way to add one, or the mark's head.
+ * control where the first left it (mark Delete, an added image's Remove, a
+ * comment's Delete). A control that went with its image leaves the focus on
+ * the next picture's, the way to add one, or the mark's head.
  */
 function focusInMarks(
 	list: HTMLElement,
@@ -4575,12 +4569,7 @@ function focusInMarks(
 	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
 	// The row's head is found again by its class (a second redraw, when
 	// the pictures come, must not drop the focus the first one put there).
-	const which = [
-		"data-mark-action",
-		"data-finding-action",
-		"data-action",
-		"class",
-	].find((name) =>
+	const which = ["data-mark-action", "data-action", "class"].find((name) =>
 		name === "class"
 			? at.classList.contains("mark-toggle")
 			: at.hasAttribute(name),
@@ -4589,7 +4578,6 @@ function focusInMarks(
 	const value =
 		which === "class" ? "mark-toggle" : (at.getAttribute(which) as string);
 	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
-	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
 	// A comment's Edit or Delete: that comment's, not the first one's.
 	const comment = at.closest("[data-comment]")?.getAttribute("data-comment");
 	// The marks around it, for when its row goes (a mark deleted).
@@ -4627,11 +4615,9 @@ function focusInMarks(
 		const within =
 			picture != null
 				? `[data-picture="${quoted(picture)}"] `
-				: finding != null
-					? `[data-finding="${quoted(finding)}"] `
-					: comment != null
-						? `[data-comment="${quoted(comment)}"] `
-						: "";
+				: comment != null
+					? `[data-comment="${quoted(comment)}"] `
+					: "";
 		const same = row.querySelector<HTMLElement>(
 			which === "class"
 				? ".mark-toggle"
@@ -4655,7 +4641,7 @@ function focusInMarks(
 			if (next !== null) return next.focus();
 		}
 		// Gone with its picture: the next picture's control, else the way to
-		// add one; gone with its finding: the mark's head.
+		// add one; else the mark's head.
 		const after =
 			picture == null ? [] : pictures.slice(pictures.indexOf(picture) + 1);
 		const fallback =
@@ -4733,8 +4719,6 @@ interface MarkContext {
 	unread: string | undefined;
 	edit: PanelState["markEdit"];
 	armed: boolean;
-	/** The finding of this mark whose Delete was clicked once. */
-	findingArmed: string | undefined;
 	/** The added image of this mark whose Remove was clicked once. */
 	imageArmed: string | undefined;
 	/** The case's added images the team does not have, and why. */
@@ -4841,7 +4825,6 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			? h("p", { class: "hint newer-kind" }, newerKindText(a.shape.given.kind))
 			: null,
 		historyList(a),
-		findingsList(c, a, x.findingArmed, actions),
 		markPlace(c, a, x.tabUrl, actions),
 		byline(a.createdBy, a.createdVia)
 			? h(
@@ -5054,7 +5037,7 @@ function showElsewhere(
 
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
- * its AI findings; why it came back, for a reopened one. A mark of another
+ * its added images and comments; why it came back, for a reopened one. A mark of another
  * page names that page as a link. (A mark to verify has Verify in its
  * title line, DEC-064.)
  */
@@ -5070,7 +5053,6 @@ function markSubline(
 	const pill = PILL[status];
 	const last = a.reopens?.at(-1);
 	const where = elsewhere ? null : matchWord(m);
-	const findings = a.findings?.length ?? 0;
 	// The thread's comments about this mark (DEC-046).
 	const talk = commentCount(c, a.id);
 	const parts = [
@@ -5103,13 +5085,6 @@ function markSubline(
 			: null,
 		elsewhere ? otherPage(c, a, tabUrl, actions) : null,
 		where ? h("span", { class: "state" }, where) : null,
-		findings > 0
-			? h(
-					"span",
-					{ class: "tag findings-count" },
-					`${findings} AI finding${findings === 1 ? "" : "s"}`,
-				)
-			: null,
 		// Only what was added: the screenshot every mark has is not counted.
 		(a.images?.length ?? 0) + (a.heldImages?.length ?? 0) > 0
 			? ((n: number) =>
@@ -5128,71 +5103,6 @@ function markSubline(
 			: null,
 	].filter((x) => x !== null);
 	return parts.length > 0 ? h("div", { class: "mark-sub" }, ...parts) : null;
-}
-
-/** When a finding was written, and last changed. */
-function findingTime(at: string, editedAt: string | undefined): string {
-	return editedAt
-		? `${formatDate(at)}, edited ${formatDate(editedAt)}`
-		: formatDate(at);
-}
-
-/**
- * The AI apps' findings on a mark, under the user's comment and apart from
- * it: each with its app and time, and a Delete that asks once more.
- */
-function findingsList(
-	c: Case,
-	a: Mark,
-	armed: string | undefined,
-	actions: Actions,
-): HTMLElement | null {
-	const findings = a.findings ?? [];
-	if (findings.length === 0) return null;
-	return h(
-		"section",
-		{ class: "findings", "aria-label": `AI findings on mark ${a.number}` },
-		h("h3", {}, "AI findings"),
-		h(
-			"ul",
-			{},
-			...findings.map((f) =>
-				h(
-					"li",
-					{ "data-finding": f.id },
-					h("p", { class: "finding-text" }, f.text),
-					h(
-						"div",
-						{ class: "finding-meta" },
-						h(
-							"span",
-							{ class: "meta" },
-							`${f.user ? byline(f.user, f.app) : appLabel(f.app)}${f.imported ? ", as the file says" : ""}, ${findingTime(f.at, f.editedAt)}`,
-						),
-						h(
-							"button",
-							{
-								type: "button",
-								class: "small danger",
-								"data-finding-action": "delete",
-								"aria-label":
-									armed === f.id
-										? `Really delete this finding on mark ${a.number}?`
-										: `Delete this finding on mark ${a.number}`,
-								title:
-									armed === f.id
-										? "Click again to delete this finding"
-										: "Delete this AI finding (click twice); the mark and your comment stay",
-								...(armed === f.id ? { "data-armed": true } : {}),
-								onclick: () => actions.deleteFinding(c, a, f.id),
-							},
-							armed === f.id ? "Really delete?" : "Delete finding",
-						),
-					),
-				),
-			),
-		),
-	);
 }
 
 // --- the AI app ------------------------------------------------------------------

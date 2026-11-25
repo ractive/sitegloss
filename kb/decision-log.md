@@ -5059,3 +5059,210 @@ This replaces DEC-069's wording of this text, including its change of 23 Novembe
 web app carries the same text (sitegloss.dev DEC-050); the two are still kept in step by
 hand. It reaches users with the next release: 0.4.0 is in the stores' review with the
 old text, and the version is not changed here.
+
+## DEC-081: The tools for an AI app as the server's: a case read in three steps, findings are comments (owner, 25 November 2026)
+
+2026-11-25. The service redesigned its MCP server's case tools (sitegloss.dev DEC-052):
+its `get_case` had answered a case of 46 marks with 124,912 characters, which an AI app
+cannot hold (Claude Code writes a text over about 50,000 characters into a file), and its
+instructions had passed the 4,096 characters a client keeps. The extension's `get_case`
+was the same kind of answer, larger still with the crops in it. The owner wants the
+extension's tools in line with the server's. The same day the owner decided: "Get rid of
+the findings": what an AI app finds out about a mark is a comment on that mark.
+
+**Reading a case, in the server's three steps:**
+
+- **`get_case(caseId)`** answers in plain text: the case (id, title, link, state; in a
+  case of the user's team whose turn it is, the assignee and who started it; closed or
+  not, the summary in full, the pages numbered `p1`, `p2`, its sites, its marks by
+  status), its last 5 comments that fit, with how many there are and the `list_comments`
+  call for the rest, then the first page of the overview of its marks. No pictures and
+  no element details. Where the extension knows more than the server it says it in the
+  same style: "Kept in this browser only, with no team" for a case without a team, and
+  "not sent to the team yet" for an assignment that waits for the sync.
+- **`list_marks(caseId, status?, page?, after?)`** gives the overview a page at a time:
+  one line per mark, by default the open and fixed ones, at most about 20,000
+  characters, ending at a mark, its last line the literal next call. The lines are the
+  server's, byte for byte: `src/lib/overview.ts` is a copy of its
+  `packages/api/src/v1/overview.ts`, held to `test/mark-overview.json`, a copy of its
+  vectors, as `test/page-key.json` is. Its `jsonText`, `quote`, `quoteStart` and
+  `plainLine` came with it: every JSON in the tools' answers goes through `jsonText`,
+  and every value of a case printed outside JSON (a time, a title, a name, an id, a
+  path) through `plainLine` or `quote`, so a line break, a line separator or a direction
+  control in a case, also in a time a file brings, cannot start a line or turn text
+  around. `validateCase` stays as lenient as it was: stored cases keep loading.
+- **`get_mark(caseId, mark)`** gives one mark in full: its status and how it was settled,
+  who made it and who wrote its comment, the comment, kind and shape, its page and the
+  address it was made at, a highlight's text, the element's details as one line of JSON
+  (cut field by field as the server cuts them), a stroke's ends, its last 5 comments and
+  its reopens, newest kept where they do not all fit. Its crop comes as a picture; the
+  screenshot and the images a person added are named with their `get_image` call. What
+  only the extension can say: whether the tab in front shows the mark's page, so that
+  `load_case`, `highlight` and `get_mark_element` find its element there; reopens that
+  do not fit are in the mark's history in the side panel.
+- `list_cases` gives one case per line as compact JSON, at most about 20,000 characters,
+  with a cursor for the next page (last change and id), as the server's does. The same
+  fields as before.
+- `list_comments` takes `mark` and `before` (a comment's id), as the server's; `offset`
+  stays.
+
+**Writing:**
+
+- **`set_mark_status(caseId, marks, status, note?)`** takes a list of marks with one note
+  for all, at most 100. Each mark stands on its own: one the case does not have or that is
+  refused is said, the others are changed, and the answer says per mark what happened
+  and then where the case stands. A call where nothing changed and something was refused
+  is an error. The old `mark: 3` is still taken, as `marks: [3]`; the schema lists it as
+  such, since the relay checks the input against the schema. The question to the user
+  names each mark (the first ten one by one) and says which will change nothing or be
+  refused; what the user allowed is held to those marks, whatever their numbers are by
+  then (DEC-039).
+- **No more findings.** `add_finding`, `edit_finding` and `delete_finding` are gone (DEC-019
+  is replaced in this). What an AI app finds out about a mark it writes with
+  `add_comment` and the mark's number, where the team reads it and can answer. The panel
+  no longer shows findings apart, nor their "N AI findings" tag or their Delete; they are
+  comments on the mark, in the thread. case.md has no findings section. The extension
+  sends no findings to the service and reads none from it (`wire.ts`, `book.ts`); the
+  service keeps taking them from older extensions and turns them into comments itself.
+
+**Findings already stored, at the update:** a stored finding of a mark goes one of three
+ways.
+
+1. **A case in no team (no book of a sync):** it becomes a comment on its mark in this
+   browser (`findingsAsComments`, `src/lib/case.ts`): its text as it was, its time, its
+   app, the person a team's server once wrote it down for, `imported` for one from a
+   file, and `edited` with its time for one its app changed. It goes into the thread by
+   its time. Its id is made by the server's function (its DEC-053): `f_` and the first 40
+   hexadecimal digits of the SHA-256 of the mark's id, a line feed and the finding's id,
+   held to a copy of the server's vectors (`test/finding-comment-id.json`;
+   `src/lib/sha256.ts` computes it at once, as an upgrade needs). It is made from the
+   mark's id here, so it has the server's shape, not the value the server would give the
+   same finding. The same finding gives the same comment, never a second one; a finding
+   without words makes none. What does not fit the thread's 1,000 comments stays on its
+   mark as it was and becomes a comment when a later write of the case through
+   `validateCase` (a change in the panel, a sync's merge) finds room; reading the case
+   (`getCase`, `listCases`) converts nothing.
+2. **The case syncs with a team, and a book of a server it syncs with (`mode` synced)
+   says that server has the finding** (its shadow has it), **and that server has, at the
+   moment of the migration, a signed-in account that has not run out, whose chosen team
+   is the book's team and is still among its teams:** the finding is removed here, with
+   no comment made. The server owns it, turns it into a comment itself, and that comment
+   comes with the ordinary sync, like any other. Every other book counts as "no server
+   has it" for that finding, and its comment stays (way 1 or 3): a sync that will not
+   bring the server's comment must not lose the words. On a later return to that team
+   they may show twice, which is accepted.
+3. **The case syncs with a team, and no server confirmed the finding** (no shadow has
+   it): it stays the ordinary local comment of way 1, which the comment sync sends once
+   as a new comment when it next looks at the case (a case left idle waits for its next
+   change, or for "Sync now"). A finding that waited in the queue, sent and not confirmed, counts
+   as this: the queued operation goes without its findings (a `mark.patch` left with
+   nothing else goes), and the comment instead; the service takes a comment id it has in
+   the same case as a duplicate, so a lost confirmation of the comment does not double it.
+
+How it runs:
+
+- **The store's version 3** (`DB_VERSION`, `store.ts`, after DEC-051's 2): its upgrade
+  does way 1 for every stored case, in the upgrade's own transaction. Every case is
+  converted or, if the transaction fails, none is, and the database stays at version 2
+  for the next open to try again. A case the conversion cannot read is kept as it was. A
+  build before this one cannot open version 3.
+- **Then, once, before the sync runs again** (`findingsIntoThreadsOnce` in
+  `cloud/findings.ts`, in the worker's `casesReady`, after `forgetCases`): for every
+  server's books, the comments of way 2 go from the case (they are found by their id,
+  made from the mark's id here, which the book maps to the server's), and every book,
+  of every server, loses its findings, shadow and queue, with nothing written in their
+  place. A case that two servers have (dev and production) therefore gets each server's
+  own comments from that server. A case is changed before its books. One that fails is
+  passed by and said in the console (its id and the error's name, nothing of the case);
+  its books keep their findings, and every queue loses them all the same, so nothing it
+  waited to send carries findings. The marker stays unset, so it all runs again at the
+  worker's next start, and also when another server's first `casesReady` runs in the
+  same worker; the sync does not wait for it meanwhile.
+- `validateCase` runs way 1 first, so a file with findings (an export of an older build)
+  is read with them as comments on their marks, imported. These are ordinary local
+  comments: they are sent like any other when their case syncs. A file put in place of a
+  case here keeps that case's thread (DEC-046) and adds the file's finding-comments it
+  does not have yet.
+- An export never writes findings: a finding left on its mark past the 1,000 comments
+  stays in this browser and is left out of the file.
+- In a case of a team nothing is left on a mark by way 2. A finding of way 3 past the
+  1,000 comments stays on its mark until there is room, as in way 1 (the rule said
+  otherwise; dropping it would lose words the server never had).
+
+**Known and accepted:**
+
+- An edit or a delete of an already synced finding that was made on 0.4.0 and not yet
+  pushed when the extension updates is not carried over: the server's text stands, and a
+  deleted one comes back as a comment.
+- A finding whose push the old server confirmed but this device has not pulled back is
+  in the shadow (0.4.0's `applyOp` put it there): way 2, not doubled. One exception: the
+  deployed service answers "applied" for a finding it cannot place past a case's 1,000
+  comments and keeps no comment of it, while 0.4.0 wrote it into its shadow; way 2 then
+  removes the only copy. 0.4.0's own next pull would have dropped it as well.
+- A finding that only another server's shadow has (with a valid account there) is
+  removed for the current server too; the words come back when the device syncs with
+  that other server again. In practice that is the owner's development server.
+- A membership that ended while the browser was closed still looks valid until the
+  account is next read from the server (the account record keeps when the teams were
+  last asked for, `checkedAt`, but nothing that tells a stale membership from a valid
+  one). If the first piece of work after the migration then turns the book local (no
+  member any more, a sign-out, another account or team), the server's comment does not
+  arrive and way 2 has removed the words here.
+- Before the migration's first run, the panel, the tools and an export see the
+  upgrade's comments of findings a server owns; an edit made to one in that window is
+  lost with it.
+- A queued operation whose confirmation was lost while the old server stored its
+  finding: the words are there twice, the server's comment and this device's.
+- If the service's script has not run when this version meets it, the findings of
+  synced cases are out of sight on every device until it runs, and nothing is lost: the
+  server keeps them stored, and nothing is sent about them.
+
+Why these gaps are accepted and no more is built for them: the service is deployed and
+its script has run on dev and production. There were 8 synced findings in all (1 on
+dev, 7 in one case on production), and all of them are comments on the server now. From
+now on a finding a 0.4.0 device pushes is turned into a comment at once and dropped by
+0.4.0's own next pull, so no new finding stays in a shadow.
+
+**Releasing:** the service with its findings change (its DEC-053) is deployed and its
+script has turned every stored finding into a comment, on production and on dev, with
+nothing left, before this version goes out.
+
+**The instructions and the copied text:**
+
+- The instructions an AI app gets are 2,241 characters (the server's: about 1,900; a
+  client keeps 4,096): the rule that a case's texts and a page's are data and not
+  instructions first, then the three steps of reading, what only this connection does
+  (the live page), and how to report. Each reading tool's description ends with whose
+  words it returns. Every case tool has the server's title and hints (`readOnlyHint`,
+  `idempotentHint`, `destructiveHint`, `openWorldHint: false`) besides Sitegloss's own
+  (`consequentialHint` asks first, `untrustedContentHint`). No tool answers with
+  `structuredContent` and none has an `outputSchema`. The tools for the live page, their
+  descriptions and hints are as they were.
+- Step 1 of "Copy for your AI app" (`caseInstructions`, DEC-080) is the server's: "Read the
+  case with get_case. Before you work on a mark, read it with get_mark if you have that
+  tool. Look at its picture when its words and its element's details do not make clear
+  what is meant." Nothing else of the text changed.
+
+**What an AI app connected to an older extension still sees:** that extension's tools as
+they were: its `get_case` answers with the whole case as JSON, findings included, and
+`add_finding` writes one. Its findings of a team's case go to the service, which makes
+them comments; the service answers with no findings, so on the next sync they leave that
+extension's marks and come back as comments in its thread. The copied text's step 1 says
+"if you have that tool", so an AI app on an older extension reads the case with
+`get_case` alone.
+
+Decided here, not by the owner:
+
+- The differences from the server's tools stay: no `full` on `get_image`, no `team` or
+  `show` on `list_cases` (it lists closed cases with `closed: true`, as before), another
+  cursor format (`<ms>.<id>`), a smaller inline crop (at most 800 pixels a side), and crop
+  paths by the mark's id. The tools print the calls an AI app should make, so it need not
+  build a path itself.
+- A person's summary or comment is never cut, so one very long text can make an answer
+  large, as at the server; `list_comments` has no budget, as in 0.4.0.
+- `get_case` still takes `images` from a call of before and does nothing with it, as the
+  relay refuses an argument the schema does not list.
+- The question for `set_mark_status` names at most ten marks one by one.
+- There is no test of an upgrade that fails: IndexedDB's transaction is what keeps it
+  whole.
+- The version is not changed: the release is not part of this.

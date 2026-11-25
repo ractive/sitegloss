@@ -23,7 +23,6 @@ import {
 	fixedOf,
 	isClean,
 	markContent,
-	markPatch,
 	mergeCase,
 	mergeContent,
 	NeedsImage,
@@ -172,14 +171,6 @@ describe("the operations a case becomes", () => {
 					...mark(1),
 					comment: "Edited",
 					resolution: { kind: "fixed", at: NOW },
-					findings: [
-						{
-							id: "f_1",
-							text: "Found",
-							app: { id: "https://claude.ai/oauth", host: "claude.ai" },
-							at: NOW,
-						},
-					],
 				},
 				mark(2),
 			],
@@ -201,48 +192,19 @@ describe("the operations a case becomes", () => {
 				comment: "Edited",
 				author: "user",
 				state: { resolution: { kind: "fixed", at: NOW }, reopens: [] },
-				findings: {
-					upsert: [
-						{
-							id: "f_1",
-							text: "Found",
-							app: { id: "https://claude.ai/oauth", host: "claude.ai" },
-							at: NOW,
-						},
-					],
-				},
 			},
 		]);
 		for (const op of ops) applyOp(book, op);
 		expect(isClean(changed, book)).toBe(true);
 	});
 
-	test("a mark deleted here is deleted there, a finding too; a screenshot the server drops itself", () => {
-		const c = local([
-			{
-				...mark(1),
-				findings: [
-					{
-						id: "f_1",
-						text: "Found",
-						app: { id: "https://claude.ai/oauth", host: "claude.ai" },
-						at: NOW,
-					},
-				],
-			},
-			mark(2),
-		]);
+	test("a mark deleted here is deleted there; a screenshot the server drops itself", () => {
+		const c = local();
 		const { book } = synced(c);
 		const wire = book.marks["m2"] as string;
 		const { ops } = deriveOps({ ...c, marks: [mark(1)] }, book, ref, newId);
 		expect(ops).toEqual([
 			{ opId: expect.any(String), type: "mark.delete", markId: wire },
-			{
-				opId: expect.any(String),
-				type: "mark.patch",
-				markId: book.marks["m1"] as string,
-				findings: { remove: ["f_1"] },
-			},
 		]);
 	});
 
@@ -309,36 +271,6 @@ describe("a mark here and the server's word on it", () => {
 		).toBe("Mine");
 		// Nothing to tell a change here by: the server's copy counts.
 		expect(mergeContent(mine, undefined, theirs)).toEqual(theirs);
-	});
-
-	test("findings are merged one by one", () => {
-		const f = (id: string, text: string) => ({
-			id,
-			text,
-			app: { id: "https://claude.ai/oauth", host: "claude.ai" },
-			at: NOW,
-		});
-		const before = { ...base, findings: [f("f_1", "one"), f("f_2", "two")] };
-		const mine = {
-			...base,
-			findings: [f("f_1", "one, edited here"), f("f_3", "new here")],
-		};
-		const theirs = {
-			...base,
-			findings: [f("f_1", "one"), f("f_2", "two"), f("f_4", "new there")],
-		};
-		expect(
-			mergeContent(mine, before, theirs).findings.map((x) => [x.id, x.text]),
-		).toEqual([
-			["f_1", "one, edited here"],
-			// f_2 was deleted here: it stays away.
-			["f_4", "new there"],
-			["f_3", "new here"],
-		]);
-		expect(markPatch(mine, before)?.findings).toEqual({
-			upsert: [f("f_1", "one, edited here"), f("f_3", "new here")],
-			remove: ["f_2"],
-		});
 	});
 
 	test("what comes in is kept as a case here keeps it, to the letter", () => {

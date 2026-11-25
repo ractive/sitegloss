@@ -238,13 +238,6 @@ export interface PanelState {
 	mine: boolean;
 	/** A mark's Delete, clicked once: the second click deletes. */
 	markDeleteArmed: { markId: string; mark: string; at: number } | undefined;
-	/**
-	 * A finding's Delete, clicked once: the second click deletes. A finding's
-	 * id is unique on its mark only (a case from a file).
-	 */
-	findingDeleteArmed:
-		| { markId: string; mark: string; findingId: string; at: number }
-		| undefined;
 	/** An added image's Remove, clicked once: the second click removes it (DEC-058). */
 	imageDeleteArmed:
 		| { markId: string; mark: string; imageId: string; at: number }
@@ -407,7 +400,6 @@ export const initialState = (): PanelState => ({
 	copied: undefined,
 	mine: false,
 	markDeleteArmed: undefined,
-	findingDeleteArmed: undefined,
 	imageDeleteArmed: undefined,
 	verdictStatus: undefined,
 	verdictDrafts: new Map(),
@@ -491,7 +483,7 @@ export function editAfter(
 }
 
 /**
- * What is held on a mark by its id (a delete asked once, a finding's) after
+ * What is held on a mark by its id (a delete asked once, an image's) after
  * the case changed: still on its mark, under the id the mark has now; gone
  * when the mark is, or cannot be told from another. A "Really delete?" must
  * not be waiting on a teammate's mark that got the id.

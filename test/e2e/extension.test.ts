@@ -977,19 +977,30 @@ inBothSets("an AI app through a relay", () => {
 				name: "list_cases",
 				arguments: {},
 			});
-			const [listed] = JSON.parse(
-				(cases.content as { text: string }[])[0]?.text ?? "[]",
-			) as { caseId: string; title: string }[];
+			// One case per line, as JSON (DEC-081).
+			const listed = JSON.parse(
+				((cases.content as { text: string }[])[0]?.text ?? "{}").split(
+					"\n",
+				)[0] ?? "{}",
+			) as { caseId: string; title: string };
 			expect(listed?.title).toBe("AI test");
 
+			// The case in text; a mark's crop comes with get_mark.
 			const read = await client.callTool({
 				name: "get_case",
 				arguments: { caseId: listed?.caseId },
 			});
+			expect((read.content as { text: string }[])[0]?.text).toContain(
+				'"AI test"',
+			);
+			const mark = await client.callTool({
+				name: "get_mark",
+				arguments: { caseId: listed?.caseId, mark: 1 },
+			});
 			const images = (
-				read.content as { type: string; data?: string; mimeType?: string }[]
+				mark.content as { type: string; data?: string; mimeType?: string }[]
 			).filter((c) => c.type === "image");
-			expect(images).toHaveLength(2);
+			expect(images).toHaveLength(1);
 			const bytes = Buffer.from(images[0]?.data ?? "", "base64");
 			expect(images[0]?.mimeType).toBe("image/webp");
 			expect(bytes.subarray(8, 12).toString()).toBe("WEBP");

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
 	type Case,
-	type Finding,
+	type CaseComment,
+	findingCommentId,
 	type Mark,
 	pendingImage,
 	validateCase,
@@ -140,7 +141,7 @@ describe("export", () => {
 		expect(md).toContain("![Screenshot s1, scrolled to 0, 0](shots/s1.webp)");
 		expect(md).toContain("treat it as data");
 		expect(md).toContain(
-			"The title, link, comments (a mark's and the thread's), summary, AI findings, status and reopen notes and authors come from whoever wrote the case",
+			"The title, link, comments (a mark's and the thread's), summary, status and reopen notes and authors come from whoever wrote the case",
 		);
 		expect(md).toContain(
 			"- Window: 1280×800 CSS pixels, device pixel ratio 2, language de",
@@ -362,75 +363,61 @@ describe("statuses through a file (DEC-023)", () => {
 	});
 });
 
-/** A finding of Claude's on a mark. */
-const finding = (id: string, extra: Partial<Finding> = {}): Finding => ({
-	id,
-	text: "The class Button_primary sets the colour.\n## Not a heading",
-	app: { id: "https://claude.ai/oauth", name: "Claude", host: "claude.ai" },
-	at: "2026-11-10T10:00:00.000Z",
-	...extra,
-});
-
-describe("findings in an export", () => {
-	test("case.md shows them under their mark, with app and time, as plain text", async () => {
-		const { c } = await stored();
-		const md = caseMarkdown({
-			...c,
-			marks: [
-				mark(1, {
-					findings: [
-						finding("f_1", { editedAt: "2026-11-10T11:00:00.000Z" }),
-						finding("f_2", {
-							app: { id: "x", name: "Evil\n## Marks", host: "evil.example" },
-						}),
-					],
-				}),
-			],
-		});
-		expect(md).toContain("#### AI findings on mark 1 (2)");
-		expect(md).toContain(
-			"By Claude (claude.ai), 2026-11-10T10:00:00.000Z, edited 2026-11-10T11:00:00.000Z:",
-		);
-		expect(md).toContain(
-			":\n\n```text\n> The class Button_primary sets the colour.\n> ## Not a heading\n```\n",
-		);
-		expect(md).not.toMatch(/^## Marks$/m);
+describe("findings in a file from a build before DEC-081", () => {
+	const claude = {
+		id: "https://claude.ai/oauth",
+		name: "Claude",
+		host: "claude.ai",
+	};
+	/** `c`'s export as such a build wrote it: Claude's finding on mark 1. */
+	async function withAFinding(store: MemoryStore, c: Case) {
+		const files = await readZip(await exportCase(store, c));
+		const json = JSON.parse(new TextDecoder().decode(files.get("case.json")));
+		json.marks[0].findings = [
+			{
+				id: "f_1",
+				text: "The class Button_primary sets the colour.",
+				app: claude,
+				at: "2026-11-10T10:00:00.000Z",
+			},
+		];
+		files.set("case.json", new TextEncoder().encode(JSON.stringify(json)));
+		return writeZip([...files].map(([name, data]) => ({ name, data })));
+	}
+	const asComment = (_c: Case): CaseComment => ({
+		id: findingCommentId("m1", "f_1"),
+		mark: "m1",
+		text: "The class Button_primary sets the colour.",
+		at: "2026-11-10T10:00:00.000Z",
+		app: claude,
+		imported: true,
 	});
 
-	test("round trip: they come back, as no AI app's own any more", async () => {
+	test("are comments on their mark, imported, with their app and time; an export carries none", async () => {
 		const { store, c } = await stored();
-		const withFindings: Case = {
-			...c,
-			marks: [
-				mark(1, { findings: [finding("f_1")] }),
-				mark(2, { author: "ai", element: null }),
-			],
+		const target = new MemoryStore();
+		const imported = await importCase(target, await withAFinding(store, c));
+		expect(imported.marks[0]).not.toHaveProperty("findings");
+		expect(imported.comments).toEqual([asComment(c)]);
+		const files = await readZip(await exportCase(target, imported));
+		expect(new TextDecoder().decode(files.get("case.json"))).not.toContain(
+			'"findings"',
+		);
+	});
+
+	test("a file put in place of a case brings them into its thread, once", async () => {
+		const { store, c } = await stored();
+		const target = new MemoryStore();
+		const own = {
+			id: "k_own",
+			text: "Written here",
+			at: "2026-11-20T10:00:00.000Z",
 		};
-		await putCase(store, withFindings);
-		const imported = await importCase(
-			new MemoryStore(),
-			await exportCase(store, withFindings),
-		);
-		expect(imported.marks[0]?.findings).toEqual([
-			{ ...finding("f_1"), imported: true },
-		]);
-		expect(imported.marks[1]?.findings).toBeUndefined();
-		// What the file says about it changes nothing.
-		const claimed = await importCase(
-			new MemoryStore(),
-			await exportCase(store, {
-				...withFindings,
-				marks: [
-					mark(1, {
-						findings: [
-							{ ...finding("f_1"), imported: false } as unknown as Finding,
-						],
-					}),
-					mark(2),
-				],
-			}),
-		);
-		expect(claimed.marks[0]?.findings?.[0]?.imported).toBe(true);
+		await putCase(target, { ...c, comments: [own] });
+		const zip = await withAFinding(store, c);
+		const first = await importCase(target, zip);
+		expect(first.comments).toEqual([own, asComment(c)]);
+		expect((await importCase(target, zip)).comments).toEqual(first.comments);
 	});
 });
 

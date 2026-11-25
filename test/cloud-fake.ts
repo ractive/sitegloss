@@ -11,6 +11,7 @@
 import Ajv2020 from "ajv/dist/2020";
 import {
 	type ElementDetails,
+	findingCommentId,
 	lookOf,
 	MAX_PAGES,
 	pageKey,
@@ -71,7 +72,6 @@ import {
 	type UserRef,
 	type WireCase,
 	type WireComment,
-	type WireFinding,
 	type WireMark,
 	type WireReopen,
 	type WireResolution,
@@ -232,6 +232,60 @@ export class FakeServer {
 		return { ...c, assignee: c.assignee ?? null };
 	}
 
+	/**
+	 * Findings a server of before DEC-053 (the service's) stored on its marks,
+	 * by the mark's id: never sent (it answers every mark with none), until
+	 * `findingsToComments` makes them comments, as the service's script does.
+	 */
+	readonly heldFindings = new Map<
+		string,
+		{
+			id: string;
+			text: string;
+			at: string;
+			user?: UserRef;
+			app: AppRef;
+		}[]
+	>();
+
+	/**
+	 * The service's script (its `findings-to-comments.ts`, DEC-053): each
+	 * finding it holds a comment on its mark, its id `f_` and 40 hex digits
+	 * (`findingCommentId` of the mark's id here and the finding's), by the
+	 * finding's person, at its time; one that is there already, or one past the
+	 * case's 1,000 comments, none more.
+	 */
+	findingsToComments(): void {
+		const rev = ++this.seq;
+		for (const [markId, findings] of this.heldFindings) {
+			const mark = this.marks.get(markId);
+			if (mark === undefined || mark.deleted) continue;
+			for (const f of findings) {
+				const id = findingCommentId(markId, f.id);
+				if (this.comments.has(id) || f.text.trim() === "") continue;
+				// The case's limit, as the service's script keeps it.
+				if (this.commentsOf(mark.value.caseId).length >= 1000) continue;
+				this.comments.set(id, {
+					deleted: false,
+					rev,
+					createdRev: rev,
+					value: compact({
+						id,
+						caseId: mark.value.caseId,
+						markId,
+						text: f.text,
+						user: f.user ?? null,
+						app: f.app,
+						at: f.at,
+						rev,
+					}) as WireComment,
+				});
+			}
+			this.#touch(this.#live(mark.value.caseId), rev, this.now.toISOString());
+		}
+		this.heldFindings.clear();
+	}
+
 	caseOf(caseId: string): WireCase | undefined {
 		const row = this.cases.get(caseId);
 		return row === undefined || row.deleted ? undefined : row.value;
@@ -346,32 +400,6 @@ export class FakeServer {
 				}) as WireReopen;
 			});
 		return [...previous, ...added].slice(-20);
-	}
-
-	#stampFinding(
-		user: UserRef,
-		previous: WireFinding | undefined,
-		next: WireFinding,
-		imports: boolean,
-	): WireFinding {
-		if (previous) {
-			if (next.text === previous.text) return previous;
-			return compact({
-				...previous,
-				text: next.text,
-				editedAt: next.editedAt ?? this.now.toISOString(),
-			}) as WireFinding;
-		}
-		const imported = imports && next.imported ? true : undefined;
-		return compact({
-			id: next.id,
-			text: next.text,
-			app: next.app,
-			at: next.at,
-			editedAt: next.editedAt,
-			imported,
-			user: imported ? undefined : user,
-		}) as WireFinding;
 	}
 
 	#live(caseId: string): Row<WireCase> {
@@ -813,9 +841,9 @@ export class FakeServer {
 							undefined,
 							imports,
 						),
-						findings: (op.mark.findings ?? []).map((f) =>
-							this.#stampFinding(user, undefined, f, imports),
-						),
+						// Findings it is sent are none of this fake's: the
+						// extension sends none (DEC-081).
+						findings: [],
 						images,
 						status: statusOf(resolution),
 						createdBy: user,
@@ -879,18 +907,6 @@ export class FakeServer {
 						resolution,
 						status: statusOf(resolution),
 					};
-				}
-				if (op.findings !== undefined) {
-					const gone = new Set(op.findings.remove ?? []);
-					const kept = v.findings.filter((f) => !gone.has(f.id));
-					for (const f of op.findings.upsert ?? []) {
-						const i = kept.findIndex((k) => k.id === f.id);
-						if (i >= 0) kept[i] = this.#stampFinding(user, kept[i], f, imports);
-						else kept.push(this.#stampFinding(user, undefined, f, imports));
-					}
-					if (kept.length > 20)
-						throw new Refusal("limit", "A mark holds at most 20 findings.");
-					v = { ...v, findings: kept };
 				}
 				if (op.images !== undefined) {
 					const gone = new Set(op.images.remove ?? []);

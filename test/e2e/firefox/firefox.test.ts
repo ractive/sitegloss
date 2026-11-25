@@ -460,9 +460,11 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 				name: "list_cases",
 				arguments: {},
 			});
-			const cases = JSON.parse(
-				(listed.content as { text: string }[])[0]?.text ?? "[]",
-			) as { caseId: string; title: string }[];
+			// One case per line, as JSON (DEC-081).
+			const cases = ((listed.content as { text: string }[])[0]?.text ?? "")
+				.split("\n")
+				.filter((line) => line.startsWith("{"))
+				.map((line) => JSON.parse(line)) as { caseId: string; title: string }[];
 			const target = cases.find((c) => c.title === `${TITLE} (copy)`);
 			expect(target).toBeDefined();
 

@@ -9,6 +9,8 @@ import { describe, expect, test } from "bun:test";
 import {
 	type Case,
 	exactPage,
+	findingCommentId,
+	findingsAsComments,
 	isOfferedOn,
 	type Mark,
 	markAddress,
@@ -446,8 +448,22 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 	const pageLine = (l: string) =>
 		l.startsWith("- Page:") || l.startsWith("Screenshot ");
 
-	test("validateCase keeps the server's case.json as it is, the query too", () => {
-		expect(validateCase(caseFile.caseJson)).toEqual(caseFile.caseJson as never);
+	test("validateCase keeps the server's case.json as it is, the query too, but for its findings, which are comments on their mark", () => {
+		const read = validateCase(caseFile.caseJson);
+		expect(read).toEqual(findingsAsComments(caseFile.caseJson) as never);
+		const [m1] = caseFile.caseJson.marks;
+		const [f1] = m1?.findings ?? [];
+		expect(read.marks[0]).not.toHaveProperty("findings");
+		expect(
+			read.comments?.find((k) => k.id === findingCommentId("m1", "f_1")),
+		).toEqual({
+			id: findingCommentId("m1", "f_1"),
+			mark: "m1",
+			text: f1?.text as string,
+			at: f1?.at as string,
+			user: f1?.user as never,
+			app: f1?.app as never,
+		});
 		expect(validateCase(caseFile.singlePageCaseJson)).toEqual(
 			caseFile.singlePageCaseJson as never,
 		);
