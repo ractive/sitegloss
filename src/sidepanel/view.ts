@@ -3041,6 +3041,11 @@ function runPending(): void {
 		}
 		// Its head, not its Verify: a second Enter must not verify it unseen.
 		head(k.to)?.focus({ preventScroll: true });
+		// And on the page, as its Show would (owner, 25 November): only where
+		// the marks are drawn here. Never another page, nor drawing marks a
+		// Hide took off ("they stay off on this tab until you show them").
+		// A row away by now (the tab went on since it was drawn) is not.
+		if (!row.hasAttribute("data-away")) showsHere.get(row)?.();
 		sayAfterVerify(
 			p.hint,
 			k.caseId,
@@ -4527,6 +4532,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 /** Marks shown open (`caseId:markId`); the rest show only their head. */
 const openMarks = new Set<string>();
 
+/**
+ * A drawn row's Show where it shows the mark on the page in front without
+ * leaving it or drawing the marks first: what the row a Verify opens does too.
+ */
+const showsHere = new WeakMap<HTMLElement, () => void>();
+
 function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	const key = `${caseId}:${li.dataset["mark"]}`;
 	if (open) openMarks.add(key);
@@ -4786,6 +4797,14 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	// A mark of an unknown kind with no element is nowhere this version can
 	// show (DEC-066). On a tab without access none: the tool bar says why
 	// (DEC-076; "Show marks" is not there either, so `loadFirst` is false).
+	const here =
+		!x.loadFirst &&
+		canShow(m) &&
+		x.canReach &&
+		!(a.shape.kind === "unknown" && m.status === "no-element")
+			? () => actions.showMatch(c.id, a, m.current)
+			: undefined;
+	if (here) showsHere.set(li, here);
 	const show = x.loadFirst
 		? h(
 				"button",
@@ -4801,9 +4820,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 				},
 				icon("show-mark"),
 			)
-		: canShow(m) &&
-				x.canReach &&
-				!(a.shape.kind === "unknown" && m.status === "no-element")
+		: here
 			? h(
 					"button",
 					{
@@ -4812,7 +4829,7 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 						"data-action": "show",
 						"aria-label": `Show mark ${a.number} on the page`,
 						title: `Show mark ${a.number} on the page: scroll to it and outline it`,
-						onclick: () => actions.showMatch(c.id, a, m.current),
+						onclick: here,
 					},
 					icon("show-mark"),
 				)
