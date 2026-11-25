@@ -24,7 +24,7 @@
 		"test:server": "SITEGLOSS_E2E=full bun test --timeout 30000 test/cloud-server.test.ts test/e2e/cloud.test.ts test/e2e/firefox/cloud.test.ts"
 	},
 	"dependencies": {
-		"@ractive-ch/tab-mcp-client": "0.24.0",
+		"@ractive-ch/tab-mcp-client": "0.25.0-rc.1",
 		"tldts": "7.5.5"
 	},
 	"devDependencies": {

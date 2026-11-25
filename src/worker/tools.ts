@@ -6,8 +6,8 @@
 
 import type {
 	ConfirmRequest,
+	ModelContextTool,
 	RelayClient,
-	Tool,
 	ToolCallClient,
 } from "@ractive-ch/tab-mcp-client";
 import { blobToBase64 } from "../lib/base64.ts";
@@ -883,7 +883,7 @@ function fittingList<T>(
 /** How many of a case's pages `list_cases` names; get_case has them all. */
 export const LIST_PAGES = 5;
 
-export function createTools(deps: ToolDeps): Tool[] {
+export function createTools(deps: ToolDeps): ModelContextTool[] {
 	const { store, images } = deps;
 	const settle = deps.settle ?? (() => new Promise((r) => setTimeout(r, 150)));
 	const blurForms = async () => (await deps.blurForms?.()) ?? false;
@@ -991,7 +991,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		throw new CaseError("The image does not fit the relay's message limit.");
 	}
 
-	const listCases: Tool<{ mine?: boolean }> = {
+	const listCases: ModelContextTool<{ mine?: boolean }> = {
 		name: "list_cases",
 		title: "List cases",
 		description:
@@ -1058,7 +1058,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const getCase: Tool<{ caseId: string; images?: boolean }> = {
+	const getCase: ModelContextTool<{ caseId: string; images?: boolean }> = {
 		name: "get_case",
 		title: "Read a case",
 		description:
@@ -1143,7 +1143,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const getImage: Tool<{ caseId: string; path: string }> = {
+	const getImage: ModelContextTool<{ caseId: string; path: string }> = {
 		name: "get_image",
 		title: "Get a screenshot, crop or added image",
 		description:
@@ -1175,7 +1175,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const loadCase: Tool<{ caseId: string }> = {
+	const loadCase: ModelContextTool<{ caseId: string }> = {
 		name: "load_case",
 		title: "Load a case onto the page in front",
 		description:
@@ -1230,7 +1230,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		];
 	}
 
-	const openCase: Tool<{ caseId: string }> = {
+	const openCase: ModelContextTool<{ caseId: string }> = {
 		name: "open_case",
 		title: "Open a case in the side panel",
 		description:
@@ -1285,70 +1285,72 @@ export function createTools(deps: ToolDeps): Tool[] {
 			}),
 	};
 
-	const highlight: Tool<{ caseId: string; mark: number; candidate?: number }> =
-		{
-			name: "highlight",
-			title: "Show a mark's element",
-			description:
-				"Scroll the page in front to one mark's element and show it; candidate picks another of the candidates load_case reported (0 is the best). The result says the mark's page and whether the tab in front shows it (page, onThisPage). A mark is on the page in front when that page has the same path and hash route as the mark's page, whatever the host; otherwise it is not looked for (onThisPage false; lost, or no-element for a mark drawn on no element): open the mark's page. Loads the case first when needed.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					caseId: CASE_ID,
-					mark: {
-						type: "integer",
-						minimum: 1,
-						description: "The mark's number.",
-					},
-					candidate: { type: "integer", minimum: 0, maximum: 2 },
+	const highlight: ModelContextTool<{
+		caseId: string;
+		mark: number;
+		candidate?: number;
+	}> = {
+		name: "highlight",
+		title: "Show a mark's element",
+		description:
+			"Scroll the page in front to one mark's element and show it; candidate picks another of the candidates load_case reported (0 is the best). The result says the mark's page and whether the tab in front shows it (page, onThisPage). A mark is on the page in front when that page has the same path and hash route as the mark's page, whatever the host; otherwise it is not looked for (onThisPage false; lost, or no-element for a mark drawn on no element): open the mark's page. Loads the case first when needed.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				caseId: CASE_ID,
+				mark: {
+					type: "integer",
+					minimum: 1,
+					description: "The mark's number.",
 				},
-				required: ["caseId", "mark"],
-				additionalProperties: false,
+				candidate: { type: "integer", minimum: 0, maximum: 2 },
 			},
-			annotations: { readOnlyHint: true, untrustedContentHint: true },
-			execute: ({ caseId, mark, candidate }, { signal }) =>
-				serial(signal, async () => {
-					const c = await mustGet(caseId);
-					const found = c.marks.find((a) => a.number === mark);
-					if (found === undefined)
-						throw new CaseError(`The case has no mark ${mark}.`);
-					const current = await tab.current();
-					const show = async () => {
-						const m = await tab.send<MarkMatch | { error: string } | null>(
-							current.id,
-							{
-								type: "case:show",
-								caseId: c.id,
-								markId: found.id,
-								// The mark meant: the page's copy may predate a renumbering.
-								mark: markKey(c, found),
-								...(candidate !== undefined ? { candidate } : {}),
-							},
-						);
-						if (m !== null && "error" in m) throw new CaseError(m.error);
-						return m;
-					};
-					const state = await tab.send<OverlayState>(current.id, {
-						type: "overlay:state",
-					});
-					// null: another case is loaded, or the loaded copy predates the
-					// mark; load this case again.
-					let m = state.loadedCase === c.id ? await show() : null;
-					if (m === null) {
-						await load(current, c);
-						m = await show();
-					}
-					if (m === null)
-						throw new CaseError(`Mark ${mark} could not be shown.`);
-					// The page's own word for its address (it may have changed within the page).
-					const front = state.url || current.url;
-					return {
-						content: [text({ ...matchView(m), ...pageView(c, found, front) })],
-					};
-				}),
-		};
+			required: ["caseId", "mark"],
+			additionalProperties: false,
+		},
+		annotations: { readOnlyHint: true, untrustedContentHint: true },
+		execute: ({ caseId, mark, candidate }, { signal }) =>
+			serial(signal, async () => {
+				const c = await mustGet(caseId);
+				const found = c.marks.find((a) => a.number === mark);
+				if (found === undefined)
+					throw new CaseError(`The case has no mark ${mark}.`);
+				const current = await tab.current();
+				const show = async () => {
+					const m = await tab.send<MarkMatch | { error: string } | null>(
+						current.id,
+						{
+							type: "case:show",
+							caseId: c.id,
+							markId: found.id,
+							// The mark meant: the page's copy may predate a renumbering.
+							mark: markKey(c, found),
+							...(candidate !== undefined ? { candidate } : {}),
+						},
+					);
+					if (m !== null && "error" in m) throw new CaseError(m.error);
+					return m;
+				};
+				const state = await tab.send<OverlayState>(current.id, {
+					type: "overlay:state",
+				});
+				// null: another case is loaded, or the loaded copy predates the
+				// mark; load this case again.
+				let m = state.loadedCase === c.id ? await show() : null;
+				if (m === null) {
+					await load(current, c);
+					m = await show();
+				}
+				if (m === null) throw new CaseError(`Mark ${mark} could not be shown.`);
+				// The page's own word for its address (it may have changed within the page).
+				const front = state.url || current.url;
+				return {
+					content: [text({ ...matchView(m), ...pageView(c, found, front) })],
+				};
+			}),
+	};
 
-	const getMarkElement: Tool<{
+	const getMarkElement: ModelContextTool<{
 		caseId: string;
 		mark: number;
 		selector?: string;
@@ -1435,7 +1437,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			}),
 	};
 
-	const capture: Tool = {
+	const capture: ModelContextTool = {
 		name: "capture",
 		title: "Screenshot of the page in front",
 		description:
@@ -1586,7 +1588,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		};
 	}
 
-	const addMarkTool: Tool<{
+	const addMarkTool: ModelContextTool<{
 		caseId: string;
 		selector: string;
 		comment: string;
@@ -1624,7 +1626,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			serial(signal, () => addMark(input, signal, appOfCaller(client))),
 	};
 
-	const setSummary: Tool<{ caseId: string; summary: string }> = {
+	const setSummary: ModelContextTool<{ caseId: string; summary: string }> = {
 		name: "set_summary",
 		title: "Record the summary for the developer",
 		description:
@@ -1668,7 +1670,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const setMarkStatus: Tool<{
+	const setMarkStatus: ModelContextTool<{
 		caseId: string;
 		mark: number;
 		status: MarkStatus;
@@ -1845,7 +1847,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 		pattern: "\\S",
 	};
 
-	const addFinding: Tool<{ caseId: string; mark: number; text: string }> = {
+	const addFinding: ModelContextTool<{
+		caseId: string;
+		mark: number;
+		text: string;
+	}> = {
 		name: "add_finding",
 		title: "Add a finding to a mark",
 		description: `Add a finding of yours to a mark: what you found out about it (a cause, where the code is, what to change). It is kept apart from the user's comment and shows with your app's name. A mark holds at most ${MAX_FINDINGS} findings, a case at most ${MAX_FINDINGS_TEXT} characters of findings on all marks. The user is asked first.`,
@@ -1882,7 +1888,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const editFinding: Tool<{
+	const editFinding: ModelContextTool<{
 		caseId: string;
 		mark: number;
 		finding: string;
@@ -1929,36 +1935,39 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const deleteFinding: Tool<{ caseId: string; mark: number; finding: string }> =
-		{
-			name: "delete_finding",
-			title: "Delete a finding",
-			description:
-				"Delete one of your own findings on a mark (own is true in get_case). Another app's findings, and those of a case from a file, cannot be deleted. The user is asked first.",
-			inputSchema: {
-				type: "object",
-				properties: { caseId: CASE_ID, mark: MARK, finding: FINDING_ID },
-				required: ["caseId", "mark", "finding"],
-				additionalProperties: false,
-			},
-			annotations: { consequentialHint: true, destructiveHint: true },
-			execute: async ({ caseId, mark, finding }, { client, signal }) => {
-				const writer = findingWriter(client);
-				const now = new Date().toISOString();
-				const me = await deps.me?.();
-				await store.updateCase(caseId, (current) => {
-					const { c, a } = caseAndMark(current, caseId, mark, signal);
-					ownFinding(a, finding, writer, me);
-					return {
-						value: byApp(withoutFinding(c, a.id, finding, now), client, a.id),
-					};
-				});
-				deps.onChange?.(caseId);
+	const deleteFinding: ModelContextTool<{
+		caseId: string;
+		mark: number;
+		finding: string;
+	}> = {
+		name: "delete_finding",
+		title: "Delete a finding",
+		description:
+			"Delete one of your own findings on a mark (own is true in get_case). Another app's findings, and those of a case from a file, cannot be deleted. The user is asked first.",
+		inputSchema: {
+			type: "object",
+			properties: { caseId: CASE_ID, mark: MARK, finding: FINDING_ID },
+			required: ["caseId", "mark", "finding"],
+			additionalProperties: false,
+		},
+		annotations: { consequentialHint: true, destructiveHint: true },
+		execute: async ({ caseId, mark, finding }, { client, signal }) => {
+			const writer = findingWriter(client);
+			const now = new Date().toISOString();
+			const me = await deps.me?.();
+			await store.updateCase(caseId, (current) => {
+				const { c, a } = caseAndMark(current, caseId, mark, signal);
+				ownFinding(a, finding, writer, me);
 				return {
-					content: [text(`Finding ${finding} on mark ${mark} is deleted.`)],
+					value: byApp(withoutFinding(c, a.id, finding, now), client, a.id),
 				};
-			},
-		};
+			});
+			deps.onChange?.(caseId);
+			return {
+				content: [text(`Finding ${finding} on mark ${mark} is deleted.`)],
+			};
+		},
+	};
 
 	// --- the case's thread and its closing (DEC-046) ---
 
@@ -1993,7 +2002,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		return k;
 	}
 
-	const listComments: Tool<{ caseId: string; offset?: number }> = {
+	const listComments: ModelContextTool<{ caseId: string; offset?: number }> = {
 		name: "list_comments",
 		title: "Read a case's comments",
 		description:
@@ -2032,7 +2041,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const addComment: Tool<{ caseId: string; text: string; mark?: number }> = {
+	const addComment: ModelContextTool<{
+		caseId: string;
+		text: string;
+		mark?: number;
+	}> = {
 		name: "add_comment",
 		title: "Add a comment to a case",
 		description:
@@ -2074,7 +2087,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const editComment: Tool<{ caseId: string; comment: string; text: string }> = {
+	const editComment: ModelContextTool<{
+		caseId: string;
+		comment: string;
+		text: string;
+	}> = {
 		name: "edit_comment",
 		title: "Edit a comment",
 		description:
@@ -2104,7 +2121,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const deleteComment: Tool<{ caseId: string; comment: string }> = {
+	const deleteComment: ModelContextTool<{ caseId: string; comment: string }> = {
 		name: "delete_comment",
 		title: "Delete a comment",
 		description:
@@ -2132,7 +2149,10 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const setCaseStatus: Tool<{ caseId: string; status: "open" | "closed" }> = {
+	const setCaseStatus: ModelContextTool<{
+		caseId: string;
+		status: "open" | "closed";
+	}> = {
 		name: "set_case_status",
 		title: "Close or reopen a case",
 		description:
@@ -2168,7 +2188,10 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const assignCase: Tool<{ caseId: string; assignee: string | null }> = {
+	const assignCase: ModelContextTool<{
+		caseId: string;
+		assignee: string | null;
+	}> = {
 		name: "assign_case",
 		title: "Assign a case",
 		description:
@@ -2216,7 +2239,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const deleteCase: Tool<{ caseId: string }> = {
+	const deleteCase: ModelContextTool<{ caseId: string }> = {
 		name: "delete_case",
 		title: "Delete a case",
 		description:
@@ -2262,7 +2285,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		setCaseStatus,
 		assignCase,
 		deleteCase,
-	] as Tool[];
+	] as ModelContextTool[];
 }
 
 /**
