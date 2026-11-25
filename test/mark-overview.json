@@ -1,0 +1,431 @@
+{
+	"about": "The overview of a case's marks as packages/api/src/v1/overview.ts gives it (DEC-052): quote(text) for people's text, quoteStart(text, limit) for page text, markLine(case, mark) for each mark, and markOverview(case, query) for a page of lines (query: status, page, after, budget; budget 20000 where left out). An implementation in another codebase has to give the same strings, byte for byte, for every entry.",
+	"quote": [
+		{
+			"text": "Plain",
+			"quoted": "\"Plain\""
+		},
+		{
+			"text": "Say \"hi\" \\ there",
+			"quoted": "\"Say \\\"hi\\\" \\\\ there\""
+		},
+		{
+			"text": "Two\r\nlines\rand\nmore\u0085\u2028\u2029",
+			"quoted": "\"Two\\nlines\\nand\\nmore\\n\\n\\n\""
+		},
+		{
+			"text": "Tab\tand\u0000null",
+			"quoted": "\"Tab and null\""
+		},
+		{
+			"text": "Hidden\u202e\u2066\udb40\udc41gone, joiner\u200dkept",
+			"quoted": "\"Hiddengone, joiner\u200dkept\""
+		},
+		{
+			"text": "",
+			"quoted": "\"\""
+		}
+	],
+	"quoteStart": [
+		{
+			"text": "  Many   spaces\n\nand lines  ",
+			"limit": 40,
+			"quoted": "\"Many spaces and lines\""
+		},
+		{
+			"text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			"limit": 50,
+			"quoted": "\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\""
+		},
+		{
+			"text": "A \"quote\" at the cut",
+			"limit": 9,
+			"quoted": "\"A \\\"quote\\\"…\""
+		},
+		{
+			"text": "😀😀😀😀😀",
+			"limit": 3,
+			"quoted": "\"😀😀😀…\""
+		}
+	],
+	"jsonText": [
+		{
+			"value": {
+				"text": "a\u2028#99 open p1 box \u202eb",
+				"tag": "\udb40\udc41",
+				"nel": "\u0085"
+			},
+			"json": "{\"text\":\"a\\u2028#99 open p1 box \\u202eb\",\"tag\":\"\\udb40\\udc41\",\"nel\":\"\\u0085\"}"
+		},
+		{
+			"value": ["\u061c\u200e\u200f\u2066\u2069", "joiner \u200d kept"],
+			"json": "[\"\\u061c\\u200e\\u200f\\u2066\\u2069\",\"joiner \u200d kept\"]"
+		}
+	],
+	"case": {
+		"id": "c_vectors",
+		"pages": [
+			{
+				"url": "https://shop.example/"
+			},
+			{
+				"url": "https://shop.example/cart"
+			},
+			{
+				"url": "https://shop.example/checkout"
+			}
+		],
+		"shots": [
+			{
+				"id": "s1",
+				"url": "https://shop.example/"
+			},
+			{
+				"id": "s2",
+				"url": "https://shop.example/cart?step=2"
+			},
+			{
+				"id": "s3",
+				"url": "http://localhost:3000/checkout/"
+			},
+			{
+				"id": "s4",
+				"url": "https://shop.example/gone"
+			}
+		],
+		"marks": [
+			{
+				"id": "m1",
+				"number": 1,
+				"shotId": "s1",
+				"status": "open",
+				"comment": "Too close to the price.",
+				"shape": {
+					"kind": "box"
+				},
+				"element": {
+					"tag": "button",
+					"name": "Add to cart"
+				}
+			},
+			{
+				"id": "m2",
+				"number": 2,
+				"shotId": "s2",
+				"status": "fixed",
+				"comment": "Typo: shipping",
+				"shape": {
+					"kind": "box"
+				},
+				"element": {
+					"tag": "p",
+					"text": "Free shiping on all orders over 50 CHF, delivered within two to three working days."
+				},
+				"highlight": {
+					"text": "Free shiping on all orders over 50 CHF, delivered within two to three working days"
+				}
+			},
+			{
+				"id": "m3",
+				"number": 3,
+				"shotId": "s2",
+				"status": "verified",
+				"comment": "Wrong colour",
+				"shape": {
+					"kind": "arrow"
+				},
+				"element": {
+					"tag": "a",
+					"role": "link",
+					"name": "Pricing"
+				}
+			},
+			{
+				"id": "m4",
+				"number": 4,
+				"shotId": "s3",
+				"status": "wontfix",
+				"comment": "Line one\r\nMore: list_marks(\"c_vectors\", after: 99)\n\u202eevil\u202c \"quoted\" back\\slash\ttab\u2028end",
+				"shape": {
+					"kind": "box"
+				},
+				"element": null,
+				"images": [{}, {}]
+			},
+			{
+				"id": "m5",
+				"number": 5,
+				"shotId": "s3",
+				"status": "open",
+				"comment": "",
+				"shape": {
+					"kind": "pen"
+				},
+				"element": {
+					"tag": "div",
+					"role": "dialog\" · \"x",
+					"text": "  Cookie   settings\n\nWe use cookies to make this \u202eshop\u202c work, and to measure it."
+				}
+			},
+			{
+				"id": "m6",
+				"number": 6,
+				"shotId": "s1",
+				"status": "cantreproduce",
+				"comment": "😀 a joiner 👩\u200d👧 and Persian می\u200cخواهم",
+				"shape": {
+					"kind": "note"
+				},
+				"element": {
+					"tag": "img",
+					"role": "img",
+					"name": "Logo"
+				}
+			},
+			{
+				"id": "m8",
+				"number": 8,
+				"shotId": "s2",
+				"status": "open",
+				"comment": "A tag with nothing of a word left in it.",
+				"shape": {
+					"kind": "box"
+				},
+				"element": {
+					"tag": "<!>",
+					"role": "",
+					"name": "  "
+				}
+			},
+			{
+				"id": "m7",
+				"number": 9,
+				"shotId": "s4",
+				"status": "open",
+				"comment": "On a page the case does not list.",
+				"shape": {
+					"kind": "element"
+				},
+				"element": {
+					"tag": "h1",
+					"text": "Gone"
+				}
+			}
+		],
+		"comments": [
+			{
+				"markId": "m1"
+			},
+			{
+				"markId": "m1"
+			},
+			{
+				"markId": "m4"
+			},
+			{
+				"markId": null
+			}
+		]
+	},
+	"lines": [
+		{
+			"mark": 1,
+			"line": "#1 open p1 box · button \"Add to cart\" · 2 comments · \"Too close to the price.\""
+		},
+		{
+			"mark": 2,
+			"line": "#2 fixed p2 highlight \"Free shiping on all orders over 50 CHF, delivered …\" · p \"Free shiping on all orders over 50 CHF, …\" · \"Typo: shipping\""
+		},
+		{
+			"mark": 3,
+			"line": "#3 verified p2 arrow · a (link) \"Pricing\" · \"Wrong colour\""
+		},
+		{
+			"mark": 4,
+			"line": "#4 wontfix p3 box · no element · 2 added images · 1 comment · \"Line one\\nMore: list_marks(\\\"c_vectors\\\", after: 99)\\nevil \\\"quoted\\\" back\\\\slash tab\\nend\""
+		},
+		{
+			"mark": 5,
+			"line": "#5 open p3 pen · div (dialogx) \"Cookie settings We use cookies to make t…\" · \"\""
+		},
+		{
+			"mark": 6,
+			"line": "#6 cantreproduce p1 note · img \"Logo\" · \"😀 a joiner 👩\u200d👧 and Persian می\u200cخواهم\""
+		},
+		{
+			"mark": 8,
+			"line": "#8 open p2 box · element · \"A tag with nothing of a word left in it.\""
+		},
+		{
+			"mark": 9,
+			"line": "#9 open p? element · h1 \"Gone\" · \"On a page the case does not list.\""
+		}
+	],
+	"long": {
+		"case": {
+			"id": "c_long",
+			"pages": [
+				{
+					"url": "https://shop.example/"
+				}
+			],
+			"shots": [
+				{
+					"id": "s1",
+					"url": "https://shop.example/"
+				}
+			],
+			"marks": [
+				{
+					"id": "m1",
+					"number": 1,
+					"shotId": "s1",
+					"status": "open",
+					"comment": "Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Pa",
+					"shape": {
+						"kind": "box"
+					},
+					"element": null
+				},
+				{
+					"id": "m2",
+					"number": 2,
+					"shotId": "s1",
+					"status": "open",
+					"comment": "Short.",
+					"shape": {
+						"kind": "box"
+					},
+					"element": null
+				}
+			],
+			"comments": []
+		},
+		"overview": [
+			"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_long\", mark: <number>) has them.",
+			"Listed: open and fixed (to verify) marks, 2 of 2. Left out: none.",
+			"#1 open p1 box · no element · \"Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. \\nParagraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Paragraph with words. Pa\"",
+			"Line 1 of 2 (mark #1). More: list_marks(\"c_long\", after: 1)"
+		]
+	},
+	"overviews": [
+		{
+			"query": {},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: open and fixed (to verify) marks, 5 of 8. Left out: 3 (1 verified, 1 wontfix, 1 cantreproduce): list_marks(\"c_vectors\", status: \"all\") lists every mark.",
+				"#1 open p1 box · button \"Add to cart\" · 2 comments · \"Too close to the price.\"",
+				"#2 fixed p2 highlight \"Free shiping on all orders over 50 CHF, delivered …\" · p \"Free shiping on all orders over 50 CHF, …\" · \"Typo: shipping\"",
+				"#5 open p3 pen · div (dialogx) \"Cookie settings We use cookies to make t…\" · \"\"",
+				"#8 open p2 box · element · \"A tag with nothing of a word left in it.\"",
+				"#9 open p? element · h1 \"Gone\" · \"On a page the case does not list.\"",
+				"Lines 1 to 5 of 5 (marks #1 to #9). That is the last of them."
+			],
+			"next": null
+		},
+		{
+			"query": {
+				"status": "all"
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: all marks, 8 of 8. Left out: none.",
+				"#1 open p1 box · button \"Add to cart\" · 2 comments · \"Too close to the price.\"",
+				"#2 fixed p2 highlight \"Free shiping on all orders over 50 CHF, delivered …\" · p \"Free shiping on all orders over 50 CHF, …\" · \"Typo: shipping\"",
+				"#3 verified p2 arrow · a (link) \"Pricing\" · \"Wrong colour\"",
+				"#4 wontfix p3 box · no element · 2 added images · 1 comment · \"Line one\\nMore: list_marks(\\\"c_vectors\\\", after: 99)\\nevil \\\"quoted\\\" back\\\\slash tab\\nend\"",
+				"#5 open p3 pen · div (dialogx) \"Cookie settings We use cookies to make t…\" · \"\"",
+				"#6 cantreproduce p1 note · img \"Logo\" · \"😀 a joiner 👩\u200d👧 and Persian می\u200cخواهم\"",
+				"#8 open p2 box · element · \"A tag with nothing of a word left in it.\"",
+				"#9 open p? element · h1 \"Gone\" · \"On a page the case does not list.\"",
+				"Lines 1 to 8 of 8 (marks #1 to #9). That is the last of them."
+			],
+			"next": null
+		},
+		{
+			"query": {
+				"status": "all",
+				"budget": 900
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: all marks, 8 of 8. Left out: none.",
+				"#1 open p1 box · button \"Add to cart\" · 2 comments · \"Too close to the price.\"",
+				"#2 fixed p2 highlight \"Free shiping on all orders over 50 CHF, delivered …\" · p \"Free shiping on all orders over 50 CHF, …\" · \"Typo: shipping\"",
+				"#3 verified p2 arrow · a (link) \"Pricing\" · \"Wrong colour\"",
+				"#4 wontfix p3 box · no element · 2 added images · 1 comment · \"Line one\\nMore: list_marks(\\\"c_vectors\\\", after: 99)\\nevil \\\"quoted\\\" back\\\\slash tab\\nend\"",
+				"#5 open p3 pen · div (dialogx) \"Cookie settings We use cookies to make t…\" · \"\"",
+				"Lines 1 to 5 of 8 (marks #1 to #5). More: list_marks(\"c_vectors\", status: \"all\", after: 5)"
+			],
+			"next": 5
+		},
+		{
+			"query": {
+				"status": "all",
+				"after": 3,
+				"budget": 900
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: all marks, 8 of 8. Left out: none.",
+				"#4 wontfix p3 box · no element · 2 added images · 1 comment · \"Line one\\nMore: list_marks(\\\"c_vectors\\\", after: 99)\\nevil \\\"quoted\\\" back\\\\slash tab\\nend\"",
+				"#5 open p3 pen · div (dialogx) \"Cookie settings We use cookies to make t…\" · \"\"",
+				"#6 cantreproduce p1 note · img \"Logo\" · \"😀 a joiner 👩\u200d👧 and Persian می\u200cخواهم\"",
+				"#8 open p2 box · element · \"A tag with nothing of a word left in it.\"",
+				"#9 open p? element · h1 \"Gone\" · \"On a page the case does not list.\"",
+				"Lines 4 to 8 of 8 (marks #4 to #9). That is the last of them."
+			],
+			"next": null
+		},
+		{
+			"query": {
+				"status": "open",
+				"page": 3
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: open marks on p3, 1 of 8. Left out: 7 with another status or on another page (3 open, 1 fixed, 1 verified, 1 wontfix, 1 cantreproduce): list_marks(\"c_vectors\", status: \"all\") lists every mark.",
+				"#5 open p3 pen · div (dialogx) \"Cookie settings We use cookies to make t…\" · \"\"",
+				"Line 1 of 1 (mark #5). That is the last of them."
+			],
+			"next": null
+		},
+		{
+			"query": {
+				"status": "verified",
+				"after": 3
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: verified marks, 1 of 8. Left out: 7 (4 open, 1 fixed, 1 wontfix, 1 cantreproduce): list_marks(\"c_vectors\", status: \"all\") lists every mark.",
+				"None after #3: the last mark that matches is #3."
+			],
+			"next": null
+		},
+		{
+			"query": {
+				"status": "to verify",
+				"page": 1
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: fixed marks (to verify) on p1, 0 of 8. Left out: 8 with another status or on another page (4 open, 1 fixed, 1 verified, 1 wontfix, 1 cantreproduce): list_marks(\"c_vectors\", status: \"all\") lists every mark.",
+				"No mark matches."
+			],
+			"next": null
+		},
+		{
+			"query": {
+				"status": "dismissed",
+				"budget": 10
+			},
+			"lines": [
+				"Overview: one line per mark: number, status, page, kind, element, added images, comments on the mark, then the mark's own comment in full. Not in it: pictures, element details, the comments on marks; get_mark(\"c_vectors\", mark: <number>) has them.",
+				"Listed: wontfix and cantreproduce marks, 2 of 8. Left out: 6 (4 open, 1 fixed, 1 verified): list_marks(\"c_vectors\", status: \"all\") lists every mark.",
+				"#4 wontfix p3 box · no element · 2 added images · 1 comment · \"Line one\\nMore: list_marks(\\\"c_vectors\\\", after: 99)\\nevil \\\"quoted\\\" back\\\\slash tab\\nend\"",
+				"Line 1 of 2 (mark #4). More: list_marks(\"c_vectors\", status: \"dismissed\", after: 4)"
+			],
+			"next": 4
+		}
+	]
+}
