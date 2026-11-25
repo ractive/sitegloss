@@ -12,8 +12,8 @@ send to sitegloss.dev when you sign in there.
 Sitegloss stores in your browser, on your computer:
 
 - the case's title, your comments, the summary for the developer, a link you attach,
-  a connected AI app's findings, the case's thread of comments and whether the case is
-  closed;
+  the case's thread of comments (yours and a connected AI app's) and whether the case
+  is closed;
 - the address, title and language of each page you mark, the window size, and the
   browser's user agent. An address is kept without its fragment (only a fragment that is
   a route of the page stays). Its query string is kept with each screenshot, so that the
@@ -112,9 +112,8 @@ Only in four cases, each one started by you:
    agent, the marks with their comments, statuses, notes, element details (an arrow's
    two ends too; for the marked element also how it looked: its computed styles, the
    colour behind it and its neighbours' boxes; for a mark made with the Highlight tool,
-   the text you selected, the words right around it and the boxes of its lines) and AI
-   findings, the case's thread of
-   comments, whether it is closed and to whom it is assigned, and the screenshots, crops
+   the text you selected, the words right around it and the boxes of its lines), the
+   case's thread of comments, whether it is closed and to whom it is assigned, and the screenshots, crops
    and images added to marks. To offer "Assign", Sitegloss also fetches the names of
    your team's members, at most every ten minutes. The members of the
    team you choose can see and change them, in the extension and on the website; the
@@ -122,7 +121,7 @@ Only in four cases, each one started by you:
    [its own privacy policy](https://sitegloss.dev/privacy/).
 
    When a connected AI app changes a case through Sitegloss (a comment, a mark, a
-   status, a finding, the summary, an assignment, closing), Sitegloss also sends the app's name, the
+   status, the summary, an assignment, closing), Sitegloss also sends the app's name, the
    address it gave for itself and its host (for example "Claude", `claude.ai`), so that
    your team sees "Dana via Claude". What you do by hand is sent without one.
 

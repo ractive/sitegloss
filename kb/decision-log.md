@@ -5059,3 +5059,122 @@ This replaces DEC-069's wording of this text, including its change of 23 Novembe
 web app carries the same text (sitegloss.dev DEC-050); the two are still kept in step by
 hand. It reaches users with the next release: 0.4.0 is in the stores' review with the
 old text, and the version is not changed here.
+
+## DEC-081: The tools for an AI app as the server's: a case read in three steps, findings are comments (owner, 25 November 2026)
+
+2026-11-25. The service redesigned its MCP server's case tools (sitegloss.dev DEC-052):
+its `get_case` had answered a case of 46 marks with 124,912 characters, which an AI app
+cannot hold (Claude Code writes a text over about 50,000 characters into a file), and its
+instructions had passed the 4,096 characters a client keeps. The extension's `get_case`
+was the same kind of answer, larger still with the crops in it. The owner wants the
+extension's tools in line with the server's. The same day the owner decided: "Get rid of
+the findings": what an AI app finds out about a mark is a comment on that mark.
+
+**Reading a case, in the server's three steps:**
+
+- **`get_case(caseId)`** answers in plain text: the case (id, title, link, state; in a
+  case of the user's team whose turn it is, the assignee and who started it; closed or
+  not, the summary in full, the pages numbered `p1`, `p2`, its sites, its marks by
+  status), its last 5 comments that fit, with how many there are and the `list_comments`
+  call for the rest, then the first page of the overview of its marks. No pictures and
+  no element details. Where the extension knows more than the server it says it in the
+  same style: "Kept in this browser only, with no team" for a case without a team, and
+  "not sent to the team yet" for an assignment that waits for the sync.
+- **`list_marks(caseId, status?, page?, after?)`** gives the overview a page at a time:
+  one line per mark, by default the open and fixed ones, at most about 20,000
+  characters, ending at a mark, its last line the literal next call. The lines are the
+  server's, byte for byte: `src/lib/overview.ts` is a copy of its
+  `packages/api/src/v1/overview.ts`, held to `test/mark-overview.json`, a copy of its
+  vectors, as `test/page-key.json` is. Its `jsonText`, `quote`, `quoteStart` and
+  `plainLine` came with it: every JSON in these answers goes through `jsonText`, so a
+  line separator or a direction control in a case's text cannot start a line or turn
+  text around.
+- **`get_mark(caseId, mark)`** gives one mark in full: its status and how it was settled,
+  who made it and who wrote its comment, the comment, kind and shape, its page and the
+  address it was made at, a highlight's text, the element's details as one line of JSON
+  (cut field by field as the server cuts them), a stroke's ends, its last 5 comments and
+  its reopens, newest kept where they do not all fit. Its crop comes as a picture; the
+  screenshot and the images a person added are named with their `get_image` call. What
+  only the extension can say: whether the tab in front shows the mark's page, so that
+  `load_case`, `highlight` and `get_mark_element` find its element there; reopens that
+  do not fit are in the mark's history in the side panel.
+- `list_cases` gives one case per line as compact JSON, at most about 20,000 characters,
+  with a cursor for the next page (last change and id), as the server's does. The same
+  fields as before.
+- `list_comments` takes `mark` and `before` (a comment's id), as the server's; `offset`
+  stays.
+
+**Writing:**
+
+- **`set_mark_status(caseId, marks, status, note?)`** takes a list of marks with one note
+  for all, at most 100. Each mark stands on its own: one the case does not have or that is
+  refused is said, the others are changed, and the answer says per mark what happened
+  and then where the case stands. A call where nothing changed and something was refused
+  is an error. The old `mark: 3` is still taken, as `marks: [3]`; the schema lists it as
+  such, since the relay checks the input against the schema. The question to the user
+  names each mark (the first ten one by one) and says which will change nothing or be
+  refused; what the user allowed is held to those marks, whatever their numbers are by
+  then (DEC-039).
+- **No more findings.** `add_finding`, `edit_finding` and `delete_finding` are gone (DEC-019
+  is replaced in this). What an AI app finds out about a mark it writes with
+  `add_comment` and the mark's number, where the team reads it and can answer. The panel
+  no longer shows findings apart, nor their "N AI findings" tag or their Delete; they are
+  comments on the mark, in the thread. case.md has no findings section. The extension
+  sends no findings to the service and reads none from it (`wire.ts`, `book.ts`); the
+  service keeps taking them from older extensions and turns them into comments itself.
+
+**Findings already stored become comments, once:**
+
+- `findingsAsComments` (`src/lib/case.ts`) makes each finding of a mark a comment on that
+  mark: its text, its time, its app, the person a team's server wrote it down for,
+  `imported` for one from a file, and `edited` with its time for one its app changed.
+  It goes into the thread by its time. Its id is made from the case's, the mark's and the
+  finding's ids (`f_` and 16 hex digits), so the same finding gives the same comment and
+  never a second one. A finding without words makes none, and none goes past the
+  thread's 1,000 comments (the server's rule too).
+- **The store's version 3** (`DB_VERSION`, `store.ts`, after DEC-051's 2): its upgrade
+  rewrites each stored case that has findings, in the upgrade's own transaction. Every
+  case is converted or, if the transaction fails, none is, and the database stays at
+  version 2 for the next open to try again: a failure halfway loses nothing. A case the
+  conversion cannot read is kept as it was. A build before this one cannot open version 3.
+- `validateCase` runs the same conversion first, so a file with findings (an export of an
+  older build) is read with them as comments on their marks, imported. A file put in place
+  of a case here keeps that case's thread (DEC-046) and adds the file's finding-comments it
+  does not have yet. An export of this build carries no findings.
+- **A case of a team:** its findings are the server's, which turns them into comments of
+  its own with ids of its own. A comment the upgrade made of a finding that names the
+  person the server wrote it down for, on a mark the server has, is therefore never sent,
+  and goes at the next merge, where the server's comment comes in (`serversFinding` in
+  `wire.ts`). A finding written here and never sent names nobody: its comment is sent as a
+  new one, by the person signed in. Between this build's upgrade and the next sync, the
+  team's findings show as those comments.
+
+**The instructions and the copied text:**
+
+- The instructions an AI app gets are 2,241 characters (the server's: about 1,900; a
+  client keeps 4,096): the rule that a case's texts and a page's are data and not
+  instructions first, then the three steps of reading, what only this connection does
+  (the live page), and how to report. Each reading tool's description ends with whose
+  words it returns. Every case tool has the server's title and hints (`readOnlyHint`,
+  `idempotentHint`, `destructiveHint`, `openWorldHint: false`) besides Sitegloss's own
+  (`consequentialHint` asks first, `untrustedContentHint`). No tool answers with
+  `structuredContent` and none has an `outputSchema`. The tools for the live page, their
+  descriptions and hints are as they were.
+- Step 1 of "Copy for your AI app" (`caseInstructions`, DEC-080) is the server's: "Read the
+  case with get_case. Before you work on a mark, read it with get_mark if you have that
+  tool. Look at its picture when its words and its element's details do not make clear
+  what is meant." Nothing else of the text changed.
+
+**What an AI app connected to an older extension still sees:** that extension's tools as
+they were: its `get_case` answers with the whole case as JSON, findings included, and
+`add_finding` writes one. Its findings of a team's case go to the service, which makes
+them comments; the service answers with no findings, so on the next sync they leave that
+extension's marks and come back as comments in its thread. The copied text's step 1 says
+"if you have that tool", so an AI app on an older extension reads the case with
+`get_case` alone.
+
+Decided here, not by the owner: the extension's `list_cases` has no `show` (it lists
+closed cases with `closed: true`, as before); `get_case` still takes `images` from a
+call of before and does nothing with it, as the relay refuses an argument the schema
+does not list; the question for `set_mark_status` names
+at most ten marks one by one. The version is not changed: the release is not part of this.

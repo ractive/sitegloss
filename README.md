@@ -222,10 +222,9 @@ user agent. What differs from Chrome and Edge:
    one grey, both faded, and no longer counted. A mark can also have its comment
    edited, or be deleted. A deleted mark's number is not given again, and its pin
    stays on screenshots that other marks share.
-   Under the comment a mark shows its AI findings: what a connected AI app found out
-   about it, each with the app's name and when it was written. An AI app never changes
-   your comment, and changes only its own findings; you can delete any finding (click
-   Delete twice).
+   What a connected AI app finds out about a mark it writes as a comment on that mark,
+   in the case's thread, with the app's name. An AI app never changes your comment on
+   the mark.
 6. The case's "Summary for the developer" says what should change overall, as agreed;
    whoever loads the case sees it first. You or the AI app write it.
    Under the marks, Comments is the case's thread: what was done (a fix, a pull request),
@@ -289,9 +288,11 @@ The tools:
 
 | Tool | What it does |
 |---|---|
-| `list_cases` | The saved cases, with their pages, their marks by status and where each stands; in a team's case whose turn it is, who it is assigned to and who started it; `mine` lists only yours |
-| `get_case` | A case's pages, its summary for the developer, its marks with their page (and the address with its query where it had one), comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, whether it is closed, where it stands, and in a team's case whose turn it is and who it is assigned to |
-| `get_image` | One screenshot or crop |
+| `list_cases` | The saved cases, one per line, with their pages, their marks by status and where each stands; in a team's case whose turn it is, who it is assigned to and who started it; `mine` lists only yours; a long list comes a page at a time |
+| `get_case` | A case: its link, where it stands, in a team's case whose turn it is and who it is assigned to, whether it is closed, its summary for the developer, its pages, its marks by status and the newest comments of its thread; then the overview of its open and fixed marks, one line per mark |
+| `list_marks` | More of the overview of a case's marks, a page at a time: by status (the open and fixed ones unless asked), by page, after a mark's number |
+| `get_mark` | One mark in full: how it was settled and who made it, its comment, its page and the address it was made at, whether the tab in front shows that page, its element's details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes), the comments on it, its reopens, and its crop as a picture; the screenshot and the images added to it are named for `get_image` |
+| `get_image` | One screenshot, crop or added image |
 | `load_case` | Finds the marks' elements on the tab in front and draws the marks there |
 | `open_case` | Opens a case in the side panel, as a click on it there would, and draws its marks on the tab in front (the case made on production, the tab on `localhost:3000`), leaving the case shown as a click would and never while something is being typed there; navigates nowhere; asks first |
 | `highlight` | Scrolls to one mark's element (or another candidate) |
@@ -299,12 +300,9 @@ The tools:
 | `capture` | A screenshot of the tab in front |
 | `add_mark` | Adds a mark on an element (by CSS selector); asks first |
 | `set_summary` | Records the summary for the developer: what should change overall, as agreed; asks first |
-| `set_mark_status` | Sets a mark fixed, verified (a fixed one, when you say so), won't fix or can't reproduce, or reopens it with a note; asks first |
-| `add_finding` | Adds a finding of the AI app to a mark, apart from your comment; asks first |
-| `edit_finding` | Changes one of the app's own findings; asks first |
-| `delete_finding` | Deletes one of the app's own findings; asks first |
-| `list_comments` | A case's thread, oldest first, 50 at a time, each comment with who wrote it and whether it is the app's own |
-| `add_comment` | Adds a comment to the case's thread, about the case or one mark; asks first |
+| `set_mark_status` | Sets one or more marks fixed, verified (a fixed one, when you say so), won't fix or can't reproduce, or reopens them with a note; asks first |
+| `list_comments` | A case's thread or one mark's comments, oldest first, 50 at a time, each comment with who wrote it and whether it is the app's own |
+| `add_comment` | Adds a comment to the case's thread, about the case or one mark: what the app did, what it found out about a mark, or a question; asks first |
 | `edit_comment` | Changes one of the app's own comments; asks first |
 | `delete_comment` | Deletes one of the app's own comments; asks first |
 | `set_case_status` | Closes a case or opens it again; asks first |
@@ -447,7 +445,7 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
 - Two people who change different things of one mark both keep their change; for the
   same thing the later one wins. Two who add a mark at once: the later one gets the next
   number (its pin in the screenshot keeps the number it was drawn with).
-- A resolution, a verification, a reopen, a finding, a comment, a close and the summary
+- A resolution, a verification, a reopen, a comment, a close and the summary
   say who made them ("by Dana"), and a mark who added it and who last changed its
   comment; "by Dana via Claude" when an AI app connected to Sitegloss did it for Dana.
 - The thread and closing sync like the rest: a comment written offline waits and is
