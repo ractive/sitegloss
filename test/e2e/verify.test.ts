@@ -295,14 +295,16 @@ inFullSet("Verify", () => {
 		// Both fixed, and a third mark to verify on /v2.
 		const at = "2026-11-25T10:00:00.000Z";
 		const fixed = { kind: "fixed", at };
+		// Ids as a saved case has them (`validateCase`): s<n>, m<number>.
+		const shotV2 = `s${Math.max(...made.shots.map((s) => Number(s.id.slice(1)))) + 1}`;
 		const c = {
 			...made,
 			title: "Shown next",
 			shots: [
 				...made.shots,
 				{
-					id: "s_v2",
-					image: "shots/s_v2.webp",
+					id: shotV2,
+					image: `shots/${shotV2}.webp`,
 					scrollX: 0,
 					scrollY: 0,
 					viewport: { width: 1280, height: 800, dpr: 2 },
@@ -313,13 +315,13 @@ inFullSet("Verify", () => {
 			marks: [
 				...made.marks.map((m) => ({ ...m, resolution: fixed })),
 				{
-					id: "m_v2",
+					id: "m3",
 					number: 3,
-					shot: "s_v2",
+					shot: shotV2,
 					comment: "On the other page",
 					author: "user",
 					shape: { kind: "note", at: { x: 40, y: 80 } },
-					crop: "crops/m_v2.webp",
+					crop: "crops/m3.webp",
 					element: null,
 					resolution: fixed,
 				},
@@ -360,7 +362,7 @@ inFullSet("Verify", () => {
 			`${row(second.id)}.querySelector('.body [data-mark-action="verify"]')`,
 		);
 		await panel.waitFor(
-			`${row("m_v2")}?.hasAttribute("data-open") && ${row("m_v2")}.hasAttribute("data-away")`,
+			`${row("m3")}?.hasAttribute("data-open") && ${row("m3")}.hasAttribute("data-away")`,
 		);
 		await Bun.sleep(500);
 		expect(
