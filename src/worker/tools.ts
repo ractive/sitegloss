@@ -275,7 +275,8 @@ type Content =
 
 const text = (value: unknown): Content => ({
 	type: "text",
-	text: typeof value === "string" ? value : JSON.stringify(value, null, 2),
+	// JSON that cannot start a line or turn text around (`jsonText`, DEC-081).
+	text: typeof value === "string" ? value : jsonText(value, 2),
 });
 
 async function image(img: StoredImage): Promise<Content> {
@@ -593,11 +594,11 @@ function pageLines(c: Case): string[] {
 /** How a mark was settled, in a sentence: who, when, the note; and who verified it. */
 function settledText(r: Resolution): string {
 	const set = r.imported
-		? `Set ${r.kind} before the case was imported (${r.at})`
-		: `Set ${r.kind} by ${who(r.user, r.app)} at ${r.at}`;
+		? `Set ${r.kind} before the case was imported (${plainLine(r.at)})`
+		: `Set ${r.kind} by ${who(r.user, r.app)} at ${plainLine(r.at)}`;
 	const note = r.note ? `, note: ${quote(r.note)}` : ", no note";
 	const verified = r.verified
-		? `; verified ${r.verified.imported ? "before the case was imported" : `by ${who(r.verified.user, r.verified.app)}`} at ${r.verified.at}`
+		? `; verified ${r.verified.imported ? "before the case was imported" : `by ${who(r.verified.user, r.verified.app)}`} at ${plainLine(r.verified.at)}`
 		: "";
 	return `${set}${note}${verified}.`;
 }
@@ -646,9 +647,9 @@ function commentLine(
 		? `${plainLine(byline(k.user, k.app) ?? "") || "someone"}, as the file says`
 		: who(k.user, k.app);
 	const edited = k.edited
-		? `, edited by ${who(k.edited.user, k.edited.app)} at ${k.edited.at}`
+		? `, edited by ${who(k.edited.user, k.edited.app)} at ${plainLine(k.edited.at)}`
 		: "";
-	return `[${k.id}] ${k.at} ${by}${own ? " (yours)" : ""}${on}${edited}: ${quote(k.text)}`;
+	return `[${plainLine(k.id)}] ${plainLine(k.at)} ${by}${own ? " (yours)" : ""}${on}${edited}: ${quote(k.text)}`;
 }
 
 /**
@@ -874,7 +875,7 @@ function reopenLines(reopens: readonly Reopen[], room: number): string[] {
 	const kept = newestThatFit(
 		reopens,
 		(r, index) =>
-			`- ${index + 1}. At ${r.at}${r.imported ? ", before the case was imported" : ` by ${who(r.user, r.app)}`}, note: ${quote(r.note ?? "")}. What it ended: ${settledText(r.was)}`,
+			`- ${index + 1}. At ${plainLine(r.at)}${r.imported ? ", before the case was imported" : ` by ${who(r.user, r.app)}`}, note: ${quote(r.note ?? "")}. What it ended: ${settledText(r.was)}`,
 		room - 300,
 	);
 	const older = reopens.length - kept.length;
@@ -1163,32 +1164,32 @@ export function createTools(deps: ToolDeps): Tool[] {
 					: [
 							`Assigned to: ${
 								view.assignee
-									? `${plainLine(view.assignee.name)} (id ${view.assignee.id})${
+									? `${plainLine(view.assignee.name)} (id ${plainLine(view.assignee.id)})${
 											view.assignedBy
-												? `, by ${who(c.assignedBy?.user, c.assignedBy?.app)} at ${view.assignedBy.at}`
+												? `, by ${who(c.assignedBy?.user, c.assignedBy?.app)} at ${plainLine(view.assignedBy.at)}`
 												: ""
 										}${view.assignmentNotSentYet ? ", not sent to the team yet" : ""}`
 									: "nobody"
 							}. Started by: ${c.createdBy ? plainLine(c.createdBy.name) : "someone no longer in the team"}.`,
 						];
 			const head = [
-				`Case ${c.id}: ${quote(c.title)}.${c.link ? ` Link: ${quote(c.link)}.` : ""}`,
+				`Case ${plainLine(c.id)}: ${quote(c.title)}.${c.link ? ` Link: ${quote(c.link)}.` : ""}`,
 				`State: ${view.state}.${view.turn === undefined ? "" : ` Turn: ${view.turn}${whose}.`}`,
 				team !== undefined
 					? `Team: ${quote(team)}; the case syncs with it.`
 					: "Kept in this browser only, with no team: nobody is assigned to it.",
 				...assigned,
-				`Started at ${c.createdAt}${c.importedAt ? ` (imported from a file at ${c.importedAt}: who did what before is what the file says)` : ""}. Last change: ${c.updatedAt}.`,
+				`Started at ${plainLine(c.createdAt)}${c.importedAt ? ` (imported from a file at ${plainLine(c.importedAt)}: who did what before is what the file says)` : ""}. Last change: ${plainLine(c.updatedAt)}.`,
 				c.closed
-					? `Closed by ${who(c.closed.user, c.closed.app)} at ${c.closed.at}: filed away; it opens again when a mark is added or reopened.`
+					? `Closed by ${who(c.closed.user, c.closed.app)} at ${plainLine(c.closed.at)}: filed away; it opens again when a mark is added or reopened.`
 					: "Not closed.",
 				`Pages (${pages.length}):`,
 				...pageLines(c),
-				`Sites: ${sites.length > 0 ? sites.join(", ") : "none (local addresses only)"}.`,
+				`Sites: ${sites.length > 0 ? plainLine(sites.join(", ")) : "none (local addresses only)"}.`,
 				`Marks: ${c.marks.length}: ${counts("open")} open, ${counts("fixed")} fixed (to verify), ${counts("verified")} verified, ${counts("wontfix")} wontfix, ${counts("cantreproduce")} cantreproduce.`,
 				// The summary for the developer, stored as verdict (DEC-019).
 				c.verdict
-					? `Summary for the developer${c.summaryBy ? ` (by ${who(c.summaryBy.user, c.summaryBy.app)} at ${c.summaryBy.at})` : ""}: ${quote(c.verdict)}`
+					? `Summary for the developer${c.summaryBy ? ` (by ${who(c.summaryBy.user, c.summaryBy.app)} at ${plainLine(c.summaryBy.at)})` : ""}: ${quote(c.verdict)}`
 					: "Summary for the developer: none.",
 			].join("\n");
 			// The case and its summary always, whole; the newest comments that
@@ -1311,7 +1312,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			const status = markStatus(a);
 			// Always sent, whole: the mark, the person's comment and how it was settled.
 			const lines: string[] = [
-				`Mark #${a.number} of case ${c.id}, on ${page === null ? "a page the case no longer lists" : `p${page}`}, made at ${plainLine(address)}.`,
+				`Mark #${a.number} of case ${plainLine(c.id)}, on ${page === null ? "a page the case no longer lists" : `p${page}`}, made at ${plainLine(address)}.`,
 				...(front === undefined || front === ""
 					? []
 					: [
@@ -1358,14 +1359,14 @@ export function createTools(deps: ToolDeps): Tool[] {
 				for (const x of added) {
 					const stored = await store.getImage(c.id, x.image);
 					tail.push(
-						`- ${x.image}${stored ? `, ${stored.width} × ${stored.height} pixels` : ""}, added at ${x.added.at}: ${getImageCall(c.id, x.image)}`,
+						`- ${plainLine(x.image)}${stored ? `, ${stored.width} × ${stored.height} pixels` : ""}, added at ${plainLine(x.added.at)}: ${getImageCall(c.id, x.image)}`,
 					);
 				}
 			}
 			if (shot) {
 				const stored = await store.getImage(c.id, shot.image);
 				tail.push(
-					`The whole screenshot (not sent here): ${shot.image}${stored ? `, ${stored.width} × ${stored.height} pixels` : ""}, ${shot.viewport.width} × ${shot.viewport.height} CSS pixels: ${getImageCall(c.id, shot.image)}`,
+					`The whole screenshot (not sent here): ${plainLine(shot.image)}${stored ? `, ${stored.width} × ${stored.height} pixels` : ""}, ${shot.viewport.width} × ${shot.viewport.height} CSS pixels: ${getImageCall(c.id, shot.image)}`,
 				);
 			}
 			// What is left of the budget: the comments on the mark first, then its reopens.
@@ -1405,13 +1406,13 @@ export function createTools(deps: ToolDeps): Tool[] {
 			if (stored === undefined || block === undefined || sizeOf(block) > left)
 				content.push(
 					text(
-						`Its crop (not sent here${stored === undefined ? ": the picture is not in this browser" : ": too large for this answer"}): ${a.crop}: ${getImageCall(c.id, a.crop)}`,
+						`Its crop (not sent here${stored === undefined ? ": the picture is not in this browser" : ": too large for this answer"}): ${plainLine(a.crop)}: ${getImageCall(c.id, a.crop)}`,
 					),
 				);
 			else
 				content.push(
 					text(
-						`Its crop, ${a.crop} (${stored.width} × ${stored.height}${small ? "" : `, sent at most ${CROP_SIDE} pixels a side`}):`,
+						`Its crop, ${plainLine(a.crop)} (${stored.width} × ${stored.height}${small ? "" : `, sent at most ${CROP_SIDE} pixels a side`}):`,
 					),
 					block,
 				);
@@ -1448,7 +1449,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			const stored = await store.getImage(c.id, path);
 			if (stored === undefined)
 				throw new CaseError(`The case has no image ${path}.`);
-			const label = text(`${path} of “${c.title}”:`);
+			const label = text(`${path} of ${quote(c.title)}:`);
 			return {
 				content: [label, await fitted(stored.blob, budget() - sizeOf(label))],
 			};
@@ -1860,7 +1861,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		return {
 			content: [
 				text(
-					`Added mark ${next.mark} to “${saved.title}” on ${withQuery(plainUrl(described.url), queryOf(described.url))}.`,
+					`Added mark ${next.mark} to ${quote(saved.title)} on ${plainLine(withQuery(plainUrl(described.url), queryOf(described.url)))}.`,
 				),
 			],
 		};
@@ -2441,7 +2442,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 			const to = check.to;
 			if (hand === undefined) return { content: [] };
 			const said = (who: UserRef | null) =>
-				who === null ? "nobody" : who.id === hand.me ? "the user" : who.name;
+				who === null
+					? "nobody"
+					: who.id === hand.me
+						? "the user"
+						: plainLine(who.name);
 			let result = "";
 			await store.updateCase(c.id, (current) => {
 				if (current === undefined)
@@ -2451,8 +2456,8 @@ export function createTools(deps: ToolDeps): Tool[] {
 				const open = caseCounts(current).open;
 				result =
 					next === current
-						? `The case “${current.title}” is assigned to ${said(to)} already.`
-						: `Assigned the case “${current.title}” to ${said(to)}. ${open} of its marks ${open === 1 ? "is" : "are"} open. It goes to the team with the next sync.`;
+						? `The case ${quote(current.title)} is assigned to ${said(to)} already.`
+						: `Assigned the case ${quote(current.title)} to ${said(to)}. ${open} of its marks ${open === 1 ? "is" : "are"} open. It goes to the team with the next sync.`;
 				return { value: next };
 			});
 			deps.onChange?.(c.id);
@@ -2482,7 +2487,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			const c = await mustGet(caseId);
 			await store.deleteCase(c.id);
 			deps.onChange?.(c.id);
-			return { content: [text(`Deleted “${c.title}”.`)] };
+			return { content: [text(`Deleted ${quote(c.title)}.`)] };
 		},
 	};
 
@@ -2531,7 +2536,7 @@ export function assignCheck(
 	if (!hand.mayAssign)
 		return no(
 			`your role in “${hand.team}” does not allow changing its cases.`,
-			`The user's role in “${hand.team}” does not allow changing its cases.`,
+			`The user's role in ${quote(hand.team)} does not allow changing its cases.`,
 		);
 	const members = hand.members ?? [];
 	if (members.length === 0)
@@ -2543,15 +2548,15 @@ export function assignCheck(
 	const found = findMember(members, assignee, hand.me);
 	if (typeof found !== "string") return { to: found };
 	const name = cut(assignee.trim(), 60);
-	const list = `The members: ${members.map((m) => `${m.name} (${m.id})`).join(", ")}.`;
+	const list = `The members: ${members.map((m) => `${plainLine(m.name)} (${plainLine(m.id)})`).join(", ")}.`;
 	return found === "several"
 		? no(
 				`more than one member is called “${name}”.`,
-				`More than one member is called ${name}: use the id. ${list}`,
+				`More than one member is called ${plainLine(name)}: use the id. ${list}`,
 			)
 		: no(
 				`no member of the team is called “${name}”.`,
-				`No member of the team is ${name}. ${list}`,
+				`No member of the team is ${plainLine(name)}. ${list}`,
 			);
 }
 
@@ -2578,9 +2583,9 @@ function findMember(
 function panelWord(answer: OpenCaseAnswer): string {
 	if (answer.opened) return "opened";
 	if (answer.reason === "adding")
-		return `not opened: the toolbar on that tab is adding marks to “${answer.title ?? "another case"}”, and the panel stays on it`;
+		return `not opened: the toolbar on that tab is adding marks to ${answer.title === undefined ? "another case" : quote(answer.title)}, and the panel stays on it`;
 	if (answer.reason === "busy")
-		return `not opened: the panel is busy with “${answer.title ?? "another case"}”: ${answer.why ?? "it is in use"}. Nothing the user typed is given up for this; ask the user to finish there, then call open_case again`;
+		return `not opened: the panel is busy with ${answer.title === undefined ? "another case" : quote(answer.title)}: ${plainLine(answer.why ?? "it is in use")}. Nothing the user typed is given up for this; ask the user to finish there, then call open_case again`;
 	return "not opened: no side panel is open in that window; the case opens there when the user opens the panel on this tab, while the page shows its marks";
 }
 
