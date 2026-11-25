@@ -5125,63 +5125,75 @@ the findings": what an AI app finds out about a mark is a comment on that mark.
   sends no findings to the service and reads none from it (`wire.ts`, `book.ts`); the
   service keeps taking them from older extensions and turns them into comments itself.
 
-**Findings already stored become comments, once:**
+**Findings already stored, at the update:** a stored finding of a mark goes one of three
+ways.
 
-- `findingsAsComments` (`src/lib/case.ts`) makes each finding of a mark a comment on that
-  mark: its text, its time, its app, the person a team's server wrote it down for,
-  `imported` for one from a file, and `edited` with its time for one its app changed,
-  its text as it was. It goes into the thread by its time. **Its id is the server's**
-  (`findingCommentId`, its DEC-053): `f_` and the first 40 hexadecimal digits of the
-  SHA-256 of the mark's id, a line feed and the finding's id, held to a copy of the
-  server's vectors (`test/finding-comment-id.json`; `src/lib/sha256.ts` computes it at
-  once, as an upgrade needs). The same finding gives the same comment and never a second
-  one. A finding without words makes none. What does not fit the thread's 1,000 comments
-  stays on its mark as it was and becomes a comment when a later read finds room (the
-  server does the same).
+1. **A case in no team (no book of a sync):** it becomes a comment on its mark in this
+   browser (`findingsAsComments`, `src/lib/case.ts`): its text as it was, its time, its
+   app, the person a team's server once wrote it down for, `imported` for one from a
+   file, and `edited` with its time for one its app changed. It goes into the thread by
+   its time. Its id is made by the server's function (its DEC-053): `f_` and the first 40
+   hexadecimal digits of the SHA-256 of the mark's id, a line feed and the finding's id,
+   held to a copy of the server's vectors (`test/finding-comment-id.json`;
+   `src/lib/sha256.ts` computes it at once, as an upgrade needs). It is made from the
+   mark's id here, so it has the server's shape, not the value the server would give the
+   same finding. The same finding gives the same comment, never a second one; a finding
+   without words makes none. What does not fit the thread's 1,000 comments stays on its
+   mark as it was and becomes a comment when a later read finds room, as at the server.
+2. **The case syncs with a team, and a book of a server it syncs with (`mode` synced)
+   says that server has the finding** (its shadow has it): the finding is removed here,
+   with no comment made. The server owns it, turns it into a comment itself, and that
+   comment comes with the ordinary sync, like any other.
+3. **The case syncs with a team, and no server confirmed the finding** (no shadow has
+   it): it stays the ordinary local comment of way 1, which the comment sync sends once
+   as a new comment. A finding that waited in the queue, sent and not confirmed, counts
+   as this: the queued operation goes without its findings (a `mark.patch` left with
+   nothing else goes), and the comment instead; the service takes a comment id it has in
+   the same case as a duplicate, so a lost confirmation of the comment does not double it.
+
+How it runs:
+
 - **The store's version 3** (`DB_VERSION`, `store.ts`, after DEC-051's 2): its upgrade
-  rewrites each stored case that has findings, in the upgrade's own transaction. Every
-  case is converted or, if the transaction fails, none is, and the database stays at
-  version 2 for the next open to try again: a failure halfway loses nothing. A case the
-  conversion cannot read is kept as it was. A build before this one cannot open version 3.
-- `validateCase` runs the same conversion first, so a file with findings (an export of an
-  older build) is read with them as comments on their marks, imported. A file put in place
-  of a case here keeps that case's thread (DEC-046) and adds the file's finding-comments it
-  does not have yet. An export of this build carries no findings.
-- **A case of a team: the same ids here and there, and no special case in the sync.** A
-  mark's id here (`m<number>`) is never its id at the server (`m_` and 16 hex digits, made
-  by the device that made the mark); the sync's bookkeeping maps one to the other. The
-  store's upgrade can only know the id here, so before the sync runs again, once, the
-  worker brings the books along (`findingsIntoThreadsOnce` in `cloud/findings.ts`, after
-  `forgetCases`, in `casesReady`): for each case of the server the cases sync with, a
-  comment made of a finding the server had (the shadow says so) or was sent (it waits in
-  the queue) takes the id made from the mark's id there; in the shadow, the findings the
-  server had become the comments the server makes of them, with the same ids, texts and
-  person; and the queue goes without findings. A pushed finding is in the shadow: a push
-  the server confirmed brought the shadow along (`applyOp` did so for findings up to
-  0.4.0); one not confirmed is in the queue. The comment sync then does the rest as for
-  any comment: a finding unchanged here matches the server's comment; one edited here and
-  not pushed goes as an edit; one deleted here and not pushed goes as a delete; one never
-  pushed goes as a new comment, by the person signed in. The case is changed before its
-  book, so a run cut short is run again and finds the case done. The books of another
-  server lose their findings without comments: the case follows the ids of the server it
-  syncs with, and a shadow that said it had comments the case lacks would delete them
-  there.
-- **Comments from a file's findings are ordinary local comments,** sent like any other
-  when their case syncs. A file put in place of a team's case whose server has the same
-  findings gives them twice (the file's are made from the ids here); nothing is lost.
+  does way 1 for every stored case, in the upgrade's own transaction. Every case is
+  converted or, if the transaction fails, none is, and the database stays at version 2
+  for the next open to try again. A case the conversion cannot read is kept as it was. A
+  build before this one cannot open version 3.
+- **Then, once, before the sync runs again** (`findingsIntoThreadsOnce` in
+  `cloud/findings.ts`, in the worker's `casesReady`, after `forgetCases`): for every
+  server's books, the comments of way 2 go from the case (they are found by their id,
+  made from the mark's id here, which the book maps to the server's), and every book,
+  of every server, loses its findings, shadow and queue, with nothing written in their
+  place. A case that two servers have (dev and production) therefore gets each server's
+  own comments from that server. A case is changed before its books. One that fails is
+  passed by and its books keep their findings; the marker stays unset, so it all runs
+  again at the next start, and the sync does not wait for it meanwhile.
+- `validateCase` runs way 1 first, so a file with findings (an export of an older build)
+  is read with them as comments on their marks, imported. These are ordinary local
+  comments: they are sent like any other when their case syncs. A file put in place of a
+  case here keeps that case's thread (DEC-046) and adds the file's finding-comments it
+  does not have yet.
+- An export never writes findings: a finding left on its mark past the 1,000 comments
+  stays in this browser and is left out of the file.
+- In a case of a team nothing is left on a mark by way 2. A finding of way 3 past the
+  1,000 comments stays on its mark until there is room, as in way 1 (the rule said
+  otherwise; dropping it would lose words the server never had).
+
+**Known and accepted:**
+
+- An edit or a delete of an already synced finding that was made on 0.4.0 and not yet
+  pushed when the extension updates is not carried over: the server's text stands, and a
+  deleted one comes back as a comment.
+- A finding whose push the old server confirmed but this device has not pulled back is
+  in the shadow (0.4.0's `applyOp` put it there): way 2, not doubled.
+- A queued operation whose confirmation was lost while the old server stored its
+  finding: the words are there twice, the server's comment and this device's.
+- If the service's script has not run when this version meets it, the findings of
+  synced cases are out of sight on every device until it runs, and nothing is lost: the
+  server keeps them stored, and nothing is sent about them.
 
 **Releasing:** the service with its findings change (its DEC-053) is deployed and its
 script has turned every stored finding into a comment, on production and on dev, with
-nothing left, before this version goes out. If the order is broken, nothing is lost:
-what the server has not turned into comments yet stays stored there, and this version
-sends nothing that deletes it. A finding the server had shows here as a comment that the
-server does not send yet: other devices do not see it until the script runs, and a case
-read again whole hides it here until then. An edit or a delete of such a finding not
-pushed yet is refused by the server until its comment exists, and goes again with a
-later sync. A finding that waited in the queue goes as a new comment with the server's
-id, which the script then finds taken: one comment. Doubled, in rare cases only: a sent
-operation whose confirmation was lost exactly at the update, and a file put in place of
-a team's case whose server has the same findings.
+nothing left, before this version goes out.
 
 **The instructions and the copied text:**
 
