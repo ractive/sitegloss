@@ -226,6 +226,18 @@ export interface MarkMatch {
 	 */
 	textChanged?: true;
 	/**
+	 * A highlight whose text is not in the element shown, found around it
+	 * instead (DEC-083), and drawn there as probable: `nearby`, the same
+	 * text in another element near it; `reworded`, other text between the
+	 * same text before and after it (`textNow`). `textChanged` stays: it is
+	 * not where it was.
+	 */
+	textNear?: "nearby" | "reworded";
+	/** The text found instead (`textNear`), whitespace collapsed, cut: page text. */
+	textNow?: string;
+	/** The element it was found in (`textNear`), as a CSS selector. */
+	textAt?: string;
+	/**
 	 * A highlight whose element is too long to read whole (DEC-066): its
 	 * text was not looked for, and nothing is said of whether it changed.
 	 */

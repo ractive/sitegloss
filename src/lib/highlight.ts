@@ -1,6 +1,6 @@
 /**
  * The Highlight tool's pure parts (DEC-066): an element's text as one line
- * of words, where a quote is in it, the text around it, and the line boxes
+ * of words, where a quote is in it (or around it, DEC-083), the text around it, and the line boxes
  * of a selection. The page's side (content/text-range.ts) gives them the
  * DOM's text nodes and client rects; nothing here needs a page.
  */
@@ -102,16 +102,12 @@ function commonStart(a: string, b: string): number {
 /** The most places of a quote looked at in one text. */
 const MAX_OCCURRENCES = 1000;
 
-/**
- * Where `quote` is in `text` (both flat): of several places, the one whose
- * text around it is most like `before` and `after`, the first of equals.
- * None when it is not there: the text changed (often the fix itself).
- */
-export function quoteIn(
+/** Where a quote is in a text, and how much of the text around it is the same. */
+function bestQuote(
 	text: string,
 	quote: string,
-	context: { before?: string; after?: string } = {},
-): { start: number; end: number } | undefined {
+	context: { before?: string; after?: string },
+): { start: number; end: number; score: number } | undefined {
 	if (quote === "") return undefined;
 	let best: { start: number; score: number } | undefined;
 	let seen = 0;
@@ -140,7 +136,99 @@ export function quoteIn(
 	}
 	return best === undefined
 		? undefined
-		: { start: best.start, end: best.start + quote.length };
+		: { ...best, end: best.start + quote.length };
+}
+
+/**
+ * Where `quote` is in `text` (both flat): of several places, the one whose
+ * text around it is most like `before` and `after`, the first of equals.
+ * None when it is not there: the text changed (often the fix itself).
+ */
+export function quoteIn(
+	text: string,
+	quote: string,
+	context: { before?: string; after?: string } = {},
+): { start: number; end: number } | undefined {
+	const best = bestQuote(text, quote, context);
+	return best === undefined ? undefined : { start: best.start, end: best.end };
+}
+
+/**
+ * The fewest characters (code points, without spaces at the ends) the text
+ * before and the text after a highlight must each have to place new text
+ * between them (DEC-083): shorter ones ("a ", ".") are found anywhere.
+ */
+export const PLACE_CONTEXT = 6;
+
+/**
+ * The most characters new text in a highlight's place may have: twice the
+ * old text, and 20 more ("localhost:3000" for "localhost", a sentence
+ * reworded). Longer, it is no longer the same place's text.
+ */
+export const maxReplacement = (old: string): number => 2 * textLength(old) + 20;
+
+/**
+ * The text that stands now where a highlight's text stood (DEC-083): right
+ * after the whole of its `before` and right before the whole of its
+ * `after`, not empty and no longer than `maxReplacement`. Both sides must be
+ * there and at least `PLACE_CONTEXT` long; one side alone places nothing.
+ */
+export function replacedIn(
+	text: string,
+	h: { text: string; before?: string; after?: string },
+): { start: number; end: number } | undefined {
+	const { before, after } = h;
+	if (before === undefined || after === undefined) return undefined;
+	if (
+		textLength(before.trim()) < PLACE_CONTEXT ||
+		textLength(after.trim()) < PLACE_CONTEXT
+	)
+		return undefined;
+	const most = maxReplacement(h.text);
+	let seen = 0;
+	for (
+		let i = text.indexOf(before);
+		i !== -1 && seen < MAX_OCCURRENCES;
+		i = text.indexOf(before, i + 1), seen++
+	) {
+		const from = i + before.length;
+		const to = text.indexOf(after, from);
+		// None after this one: none after a later one either.
+		if (to === -1) return undefined;
+		let s = from;
+		let e = to;
+		while (s < e && text[s] === " ") s++;
+		while (e > s && text[e - 1] === " ") e--;
+		if (e > s && textLength(text.slice(s, e)) <= most)
+			return { start: s, end: e };
+	}
+	return undefined;
+}
+
+/**
+ * Where a highlight's text is in the text around its element, when it is
+ * no longer in the element (DEC-083). `nearby`: the same text, chosen by
+ * the text around it as `quoteIn` does; `reworded`: other text between the
+ * same text before and after it (`replacedIn`). The same text with all of
+ * its old text around it is taken first (the whole sentence moved), then
+ * new text in the old place, then the same text with less around it. None:
+ * neither is there.
+ */
+export function quoteNear(
+	text: string,
+	h: { text: string; before?: string; after?: string },
+): { start: number; end: number; how: "nearby" | "reworded" } | undefined {
+	const same = bestQuote(text, h.text, h);
+	const whole = (h.before?.length ?? 0) + (h.after?.length ?? 0);
+	const nearby = (at: { start: number; end: number }) => ({
+		start: at.start,
+		end: at.end,
+		how: "nearby" as const,
+	});
+	if (same !== undefined && same.score === whole) return nearby(same);
+	const place = replacedIn(text, h);
+	if (place !== undefined) return { ...place, how: "reworded" };
+	return same === undefined ? undefined : nearby(same);
 }
 
 /** The last `max` characters (code points) of `text`. */

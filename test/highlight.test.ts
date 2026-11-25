@@ -20,6 +20,8 @@ import {
 	flatten,
 	lineBoxes,
 	quoteIn,
+	quoteNear,
+	replacedIn,
 } from "../src/lib/highlight.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
 import {
@@ -102,6 +104,77 @@ describe("where a quote is in an element's text", () => {
 		expect(end).toBeLessThanOrEqual(500);
 		expect(words.slice(0, end).endsWith(" ")).toBe(false);
 		expect(cutSpan("short", 0, 5)).toBe(5);
+	});
+});
+
+describe("where a highlight's text is around its element (DEC-083)", () => {
+	const old = {
+		text: "localhost:3000",
+		before: "The developer opens the case on ",
+		after: " and finds the marks drawn again.",
+	};
+
+	test("new text between the same text before and after it: the text changed in place", () => {
+		const now =
+			"Mail. The developer opens the case on localhost and finds the marks drawn again.";
+		const at = quoteNear(now, old);
+		expect(at?.how).toBe("reworded");
+		expect(now.slice(at?.start, at?.end)).toBe("localhost");
+	});
+
+	test("one side alone, a side that is too short, nothing or too much between: no place", () => {
+		// The text after it was reworded too.
+		expect(
+			replacedIn("The developer opens the case on localhost, then fixes.", old),
+		).toBeUndefined();
+		// "on " and "." are found anywhere.
+		const short = { text: "localhost:3000", before: "on ", after: "." };
+		expect(replacedIn("It runs on localhost.", short)).toBeUndefined();
+		expect(quoteNear("It runs on localhost.", short)).toBeUndefined();
+		// The text was taken out; or what is between is longer than twice it and 20.
+		expect(replacedIn(`${old.before}${old.after}`, old)).toBeUndefined();
+		const long = "x".repeat(2 * old.text.length + 21);
+		expect(replacedIn(`${old.before}${long}${old.after}`, old)).toBeUndefined();
+		expect(
+			replacedIn(
+				`${old.before}${"x".repeat(2 * old.text.length + 20)}${old.after}`,
+				old,
+			),
+		).toBeDefined();
+	});
+
+	test("the same text with all of its old text around it comes first: the sentence moved", () => {
+		const text = `A card: localhost:3000 here. ${old.before}localhost:3000${old.after}`;
+		const at = quoteNear(text, old);
+		expect(at).toEqual({
+			start: text.lastIndexOf("localhost:3000"),
+			end: text.lastIndexOf("localhost:3000") + 14,
+			how: "nearby",
+		});
+	});
+
+	test("of several places of the same text, the text around it chooses", () => {
+		const h = { text: "localhost", before: "Start it on " };
+		const text = "Mark it on localhost. Start it on localhost and open it.";
+		expect(quoteNear(text, h)).toEqual({
+			start: text.lastIndexOf("localhost"),
+			end: text.lastIndexOf("localhost") + 9,
+			how: "nearby",
+		});
+		// New text in the old place beats the same words elsewhere with less around them.
+		const placed = {
+			text: "localhost:3000",
+			before: "Start it on ",
+			after: " and open it.",
+		};
+		const both = "Run localhost:3000 first. Start it on localhost and open it.";
+		const at = quoteNear(both, placed);
+		expect(at?.how).toBe("reworded");
+		expect(both.slice(at?.start, at?.end)).toBe("localhost");
+	});
+
+	test("neither the text nor its place: none", () => {
+		expect(quoteNear("Something else entirely.", old)).toBeUndefined();
 	});
 });
 

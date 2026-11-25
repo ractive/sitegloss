@@ -166,5 +166,19 @@ inFullSet("the Highlight tool", () => {
 		})()`);
 		expect(drawn.strokes).toBe(mark?.highlight?.rects.length ?? -1);
 		expect(Math.abs(drawn.top - drawn.text)).toBeLessThan(6);
+
+		// The fix changed the text in its place: drawn on the new text, probable only (DEC-083).
+		await page.eval(
+			`(t => { t.data = t.data.replace("wekend", "weekend"); })(document.querySelector(".pp-lead").firstChild)`,
+		);
+		const fixed = await h.control.eval<{ matches: Record<string, unknown>[] }>(
+			`chrome.tabs.sendMessage(${tabId}, { type: "case:load", case: ${JSON.stringify(c)} })`,
+		);
+		expect(fixed.matches[0]).toMatchObject({
+			status: "probable",
+			textChanged: true,
+			textNear: "reworded",
+			textNow: "weekend: pick up a bike at the trailhead",
+		});
 	}, 60_000);
 });

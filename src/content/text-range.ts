@@ -15,6 +15,7 @@ import {
 	flatten,
 	lineBoxes,
 	quoteIn,
+	quoteNear,
 	type Source,
 	type TextPiece,
 } from "../lib/highlight.ts";
@@ -47,9 +48,11 @@ const MAX_NODES = 50_000;
 /**
  * An element's text nodes, without scripts, styles and what is typed into
  * editors and form fields (that is somebody's input, never recorded); a
- * block's edge and a line break count as a space between words.
+ * block's edge and a line break count as a space between words. At most
+ * `max` text nodes with words are read (`MAX_NODES`; the area around an
+ * element, `AREA_NODES`).
  */
-export function elementText(el: Element): ElementText {
+export function elementText(el: Element, max = MAX_NODES): ElementText {
 	const win = el.ownerDocument.defaultView;
 	const nodes: Text[] = [];
 	const pieces: TextPiece[] = [];
@@ -62,7 +65,7 @@ export function elementText(el: Element): ElementText {
 	};
 	const walk = (parent: Node): void => {
 		for (const child of parent.childNodes) {
-			if (words >= MAX_NODES) {
+			if (words >= max) {
 				truncated = true;
 				return;
 			}
@@ -241,6 +244,112 @@ export function findText(
 	const at = quoteIn(text.flat.text, h.text, h);
 	if (at === undefined) return text.truncated ? "unread" : "gone";
 	return rangeOf(text, at.start, at.end);
+}
+
+/**
+ * Where the search for a highlight's text around its element stops
+ * (DEC-083): the nearest of these above it, or the element itself when it
+ * is one.
+ */
+const AREA_EDGE = "section, article, main, aside, form, dialog, body";
+
+/**
+ * How many levels above its element a highlight's text is looked for
+ * (DEC-083): a card's text, a list item's neighbours, a heading's section.
+ */
+export const AREA_LEVELS = 4;
+
+/**
+ * The most text nodes with words read of the area around an element
+ * (DEC-083): an area with more is too large and a smaller one is taken. A
+ * section of a page has a few hundred; this runs for every highlight whose
+ * text is not in its element, at every look at the page.
+ */
+export const AREA_NODES = 2_000;
+
+/**
+ * The elements a highlight's text is looked for in when it is not in its
+ * element (DEC-083), largest first: up to `levels` ancestors, not past the
+ * nearest section, article, main, aside, form, dialog or body; then the
+ * element itself (new text in the old place is often in it).
+ */
+export function nearbyAreas(
+	element: Element,
+	levels: number = AREA_LEVELS,
+): Element[] {
+	const areas = [element];
+	let at = element;
+	for (let level = 0; level < levels && !at.matches(AREA_EDGE); level++) {
+		const up = at.parentElement;
+		if (up === null) break;
+		areas.push(up);
+		at = up;
+	}
+	return areas.reverse();
+}
+
+/** A highlight's text found around its element (DEC-083). */
+export interface NearText {
+	range: Range;
+	/** The element that holds all of it. */
+	holder: Element;
+	/** `nearby`: the same text elsewhere; `reworded`: new text in its place. */
+	how: "nearby" | "reworded";
+	/** The text found, whitespace collapsed (page text). */
+	now: string;
+}
+
+/**
+ * A highlight's text around `element`, where it is not in it any more
+ * (DEC-083): in the largest area of `nearbyAreas` whose text is not over
+ * `AREA_NODES` (`quoteNear`). None: not there either.
+ */
+export function findNearby(
+	element: Element,
+	h: Pick<Highlight, "text" | "before" | "after">,
+	levels: number = AREA_LEVELS,
+): NearText | undefined {
+	for (const area of nearbyAreas(element, levels)) {
+		const text = elementText(area, AREA_NODES);
+		if (text.truncated) continue;
+		// The largest area that is read holds the smaller ones.
+		const at = quoteNear(text.flat.text, h);
+		if (at === undefined) return undefined;
+		const range = rangeOf(text, at.start, at.end);
+		return {
+			range,
+			holder: elementOfRange(range) ?? area,
+			how: at.how,
+			now: text.flat.text.slice(at.start, at.end),
+		};
+	}
+	return undefined;
+}
+
+/**
+ * Where to look for a highlight's text when no element was found for it
+ * (DEC-083): the element its recorded selector names, else the nearest of
+ * the selector's own ancestors, up to `AREA_LEVELS` of them, that is on the
+ * page once; with how many levels of the area are left above it.
+ */
+export function placeOf(
+	doc: Document,
+	selector: string,
+): { element: Element; levels: number } | undefined {
+	const parts = selector.split(" > ");
+	for (let drop = 0; drop <= AREA_LEVELS && drop < parts.length; drop++) {
+		let found: NodeListOf<Element>;
+		try {
+			found = doc.querySelectorAll(
+				parts.slice(0, parts.length - drop).join(" > "),
+			);
+		} catch {
+			continue;
+		}
+		if (found.length === 1)
+			return { element: found[0] as Element, levels: AREA_LEVELS - drop };
+	}
+	return undefined;
 }
 
 /** A range's text without its white space: what tells that the text under it changed. */
