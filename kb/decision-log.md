@@ -5266,3 +5266,19 @@ Decided here, not by the owner:
 - There is no test of an upgrade that fails: IndexedDB's transaction is what keeps it
   whole.
 - The version is not changed: the release is not part of this.
+
+## DEC-082: tab-mcp client 0.25.0: the WebMCP draft's names and errors; the tools' type is renamed (owner, 25 November 2026)
+
+2026-11-25. `@ractive-ch/tab-mcp-client` goes from 0.24.0 to 0.25.0 (tested first as 0.25.0-rc.1);
+the relay used by the tests stays `@ractive-ch/tab-mcp` 0.13.3.
+
+- **What 0.25.0 changes in the library:** the types `Tool`, `RegisterToolOptions` and
+  `ToolExecuteOptions` are `ModelContextTool`, `ModelContextRegisterToolOptions` and
+  `ToolExecuteCallbackOptions`; the event `toolschange` is `toolchange`; `registerTool` fails as
+  the WebMCP draft says (an invalid name or an empty description is an `InvalidStateError`, a
+  missing name, description or `execute`, a schema that is no object, a signal that is no
+  `AbortSignal` or a list option that is `null` a `TypeError`, an `exposedTo` entry that is not
+  https, wss or loopback a `SecurityError`).
+- **What Sitegloss needed:** the rename of `Tool` in `src/worker/tools.ts` and
+  `test/tools.test.ts`. Sitegloss listens to no `toolschange`, and its tools are fixed and valid,
+  so no error of `registerTool` is new to it.

@@ -5,9 +5,9 @@ import {
 } from "@modelcontextprotocol/client";
 import { startTestRelay, tokenFor } from "@ractive-ch/tab-mcp/testing";
 import {
+	type ModelContextTool,
 	type RelayClient,
 	TabMcp,
-	type Tool,
 	type ToolCallClient,
 } from "@ractive-ch/tab-mcp-client";
 import {
@@ -238,7 +238,7 @@ const images: ImageTools = {
 let store: MemoryStore;
 let tab: FakeTab;
 let changed: string[];
-let tools: Map<string, Tool>;
+let tools: Map<string, ModelContextTool>;
 
 /** Case c_1 with marks 1 and 2; its crops are `cropWidth` pixels wide. */
 async function seed(

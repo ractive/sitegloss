@@ -367,7 +367,7 @@ dashboard first: everything below is the full text to paste, not a change to 0.3
      question, on any site, as they do without all sites on a tab where the icon was
      clicked. Every change to a case is asked first, unless the user chose Always allow
      (for that tool) or Allow all changes (for that AI app). `PRIVACY.md`, "All sites".
-   - **Bundled libraries:** `@ractive-ch/tab-mcp-client` 0.24.0 (MIT, the relay's client;
+   - **Bundled libraries:** `@ractive-ch/tab-mcp-client` 0.25.0 (MIT, the relay's client;
      data only; its WebMCP mirror is switched off with `webmcp: false`, DEC-068/074, so
      nothing is registered with the browser's WebMCP and no code is loaded with
      `import()`); `tldts` 7.5.5 with `tldts-core` (MIT): the public suffix list as data

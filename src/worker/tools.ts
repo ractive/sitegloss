@@ -6,8 +6,8 @@
 
 import type {
 	ConfirmRequest,
+	ModelContextTool,
 	RelayClient,
-	Tool,
 	ToolCallClient,
 } from "@ractive-ch/tab-mcp-client";
 import { blobToBase64 } from "../lib/base64.ts";
@@ -904,7 +904,7 @@ const MARK = {
 /** How many of a case's pages `list_cases` names; get_case has them all. */
 export const LIST_PAGES = 5;
 
-export function createTools(deps: ToolDeps): Tool[] {
+export function createTools(deps: ToolDeps): ModelContextTool[] {
 	const { store, images } = deps;
 	const settle = deps.settle ?? (() => new Promise((r) => setTimeout(r, 150)));
 	const blurForms = async () => (await deps.blurForms?.()) ?? false;
@@ -1025,7 +1025,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		return key.at < at || (key.at === at && key.id > id);
 	};
 
-	const listCases: Tool<{ mine?: boolean; cursor?: string }> = {
+	const listCases: ModelContextTool<{ mine?: boolean; cursor?: string }> = {
 		name: "list_cases",
 		title: "List cases",
 		description: `List the saved cases, one per line as JSON, newest change first: caseId, title, its first pages and how many it has (url is the first; get_case lists them all), its sites (the registrable domains its pages are on, most pages first; none for local addresses), its marks by status (open, toVerify: fixed and waiting to be verified, verified, dismissed: won't fix or can't reproduce), where it stands (state: empty, new, in progress, to verify, settled, closed), and in a case of the user's team whose turn it is (turn: assignee, reporter or nobody), who it is assigned to (assignee, or null) and who started it (startedBy: the reporter), the start of the summary for the developer, closed: true for a closed case, last change. mine: only the user's cases, the open ones where it is their turn: assigned to them with open marks, or started by them and empty, waiting to be handed over, to verify or settled; a case kept only in this browser is the user's while it is open. An answer stops at about ${ANSWER_BUDGET.toLocaleString("en-US")} characters; its last line then is the call for the next page, with the cursor from this answer. ${DATA}`,
@@ -1113,7 +1113,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const getCase: Tool<{ caseId: string; images?: boolean }> = {
+	const getCase: ModelContextTool<{ caseId: string; images?: boolean }> = {
 		name: "get_case",
 		title: "Read a case",
 		description: `Read a case: what it is about, and the first page of the overview of its marks. The case: its id, title, link (a ticket or the like), state, and in a case of the user's team whose turn it is, its assignee and who started it; whether it is closed, the summary for the developer in full, its pages numbered p1, p2, … (as the marks' lines name them), its sites, its marks by status, and up to its last ${THREAD_IN_ANSWER} comments, whole, as many as fit, with how many there are and the list_comments call for the rest. Then one line per mark, by default the open and fixed (to verify) ones, as list_marks gives them, with how many the filter left out; when more remain, the last line is the list_marks call for them. No pictures, no element details and no comments on marks: get_mark has them, one mark in full. ${DATA}`,
@@ -1211,7 +1211,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const listMarks: Tool<{
+	const listMarks: ModelContextTool<{
 		caseId: string;
 		status?: MarkFilter;
 		page?: number;
@@ -1272,7 +1272,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const getMark: Tool<{ caseId: string; mark: number }> = {
+	const getMark: ModelContextTool<{ caseId: string; mark: number }> = {
 		name: "get_mark",
 		title: "Read one mark",
 		description: `Read one mark of a case in full, to work on it: its status and how it was settled, who made it and who wrote its comment, the comment, kind and shape (CSS pixels of its screenshot), its page and the address it was made at, whether the tab in front shows that page, a highlight's text with what stood before and after it, the element's recorded details as one line of JSON (tag, role, name, text, classes, test id, heading, selector; from newer versions its computed styles, the colour behind it and its siblings' boxes, for contrast, typography and alignment), a stroke's ends, its last ${THREAD_IN_ANSWER} comments and its reopens. Its crop comes as an image; the screenshot and images a person added are listed with the get_image call. Comments and reopens that do not fit about ${ANSWER_BUDGET.toLocaleString("en-US")} characters are left out, newest kept. ${DATA}`,
@@ -1420,7 +1420,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const getImage: Tool<{ caseId: string; path: string }> = {
+	const getImage: ModelContextTool<{ caseId: string; path: string }> = {
 		name: "get_image",
 		title: "Get a screenshot, crop or added image",
 		description:
@@ -1456,7 +1456,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const loadCase: Tool<{ caseId: string }> = {
+	const loadCase: ModelContextTool<{ caseId: string }> = {
 		name: "load_case",
 		title: "Load a case onto the page in front",
 		description:
@@ -1511,7 +1511,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		];
 	}
 
-	const openCase: Tool<{ caseId: string }> = {
+	const openCase: ModelContextTool<{ caseId: string }> = {
 		name: "open_case",
 		title: "Open a case in the side panel",
 		description:
@@ -1566,70 +1566,72 @@ export function createTools(deps: ToolDeps): Tool[] {
 			}),
 	};
 
-	const highlight: Tool<{ caseId: string; mark: number; candidate?: number }> =
-		{
-			name: "highlight",
-			title: "Show a mark's element",
-			description:
-				"Scroll the page in front to one mark's element and show it; candidate picks another of the candidates load_case reported (0 is the best). The result says the mark's page and whether the tab in front shows it (page, onThisPage). A mark is on the page in front when that page has the same path and hash route as the mark's page, whatever the host; otherwise it is not looked for (onThisPage false; lost, or no-element for a mark drawn on no element): open the mark's page. Loads the case first when needed.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					caseId: CASE_ID,
-					mark: {
-						type: "integer",
-						minimum: 1,
-						description: "The mark's number.",
-					},
-					candidate: { type: "integer", minimum: 0, maximum: 2 },
+	const highlight: ModelContextTool<{
+		caseId: string;
+		mark: number;
+		candidate?: number;
+	}> = {
+		name: "highlight",
+		title: "Show a mark's element",
+		description:
+			"Scroll the page in front to one mark's element and show it; candidate picks another of the candidates load_case reported (0 is the best). The result says the mark's page and whether the tab in front shows it (page, onThisPage). A mark is on the page in front when that page has the same path and hash route as the mark's page, whatever the host; otherwise it is not looked for (onThisPage false; lost, or no-element for a mark drawn on no element): open the mark's page. Loads the case first when needed.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				caseId: CASE_ID,
+				mark: {
+					type: "integer",
+					minimum: 1,
+					description: "The mark's number.",
 				},
-				required: ["caseId", "mark"],
-				additionalProperties: false,
+				candidate: { type: "integer", minimum: 0, maximum: 2 },
 			},
-			annotations: { readOnlyHint: true, untrustedContentHint: true },
-			execute: ({ caseId, mark, candidate }, { signal }) =>
-				serial(signal, async () => {
-					const c = await mustGet(caseId);
-					const found = c.marks.find((a) => a.number === mark);
-					if (found === undefined)
-						throw new CaseError(`The case has no mark ${mark}.`);
-					const current = await tab.current();
-					const show = async () => {
-						const m = await tab.send<MarkMatch | { error: string } | null>(
-							current.id,
-							{
-								type: "case:show",
-								caseId: c.id,
-								markId: found.id,
-								// The mark meant: the page's copy may predate a renumbering.
-								mark: markKey(c, found),
-								...(candidate !== undefined ? { candidate } : {}),
-							},
-						);
-						if (m !== null && "error" in m) throw new CaseError(m.error);
-						return m;
-					};
-					const state = await tab.send<OverlayState>(current.id, {
-						type: "overlay:state",
-					});
-					// null: another case is loaded, or the loaded copy predates the
-					// mark; load this case again.
-					let m = state.loadedCase === c.id ? await show() : null;
-					if (m === null) {
-						await load(current, c);
-						m = await show();
-					}
-					if (m === null)
-						throw new CaseError(`Mark ${mark} could not be shown.`);
-					// The page's own word for its address (it may have changed within the page).
-					const front = state.url || current.url;
-					return {
-						content: [text({ ...matchView(m), ...pageView(c, found, front) })],
-					};
-				}),
-		};
+			required: ["caseId", "mark"],
+			additionalProperties: false,
+		},
+		annotations: { readOnlyHint: true, untrustedContentHint: true },
+		execute: ({ caseId, mark, candidate }, { signal }) =>
+			serial(signal, async () => {
+				const c = await mustGet(caseId);
+				const found = c.marks.find((a) => a.number === mark);
+				if (found === undefined)
+					throw new CaseError(`The case has no mark ${mark}.`);
+				const current = await tab.current();
+				const show = async () => {
+					const m = await tab.send<MarkMatch | { error: string } | null>(
+						current.id,
+						{
+							type: "case:show",
+							caseId: c.id,
+							markId: found.id,
+							// The mark meant: the page's copy may predate a renumbering.
+							mark: markKey(c, found),
+							...(candidate !== undefined ? { candidate } : {}),
+						},
+					);
+					if (m !== null && "error" in m) throw new CaseError(m.error);
+					return m;
+				};
+				const state = await tab.send<OverlayState>(current.id, {
+					type: "overlay:state",
+				});
+				// null: another case is loaded, or the loaded copy predates the
+				// mark; load this case again.
+				let m = state.loadedCase === c.id ? await show() : null;
+				if (m === null) {
+					await load(current, c);
+					m = await show();
+				}
+				if (m === null) throw new CaseError(`Mark ${mark} could not be shown.`);
+				// The page's own word for its address (it may have changed within the page).
+				const front = state.url || current.url;
+				return {
+					content: [text({ ...matchView(m), ...pageView(c, found, front) })],
+				};
+			}),
+	};
 
-	const getMarkElement: Tool<{
+	const getMarkElement: ModelContextTool<{
 		caseId: string;
 		mark: number;
 		selector?: string;
@@ -1716,7 +1718,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			}),
 	};
 
-	const capture: Tool = {
+	const capture: ModelContextTool = {
 		name: "capture",
 		title: "Screenshot of the page in front",
 		description:
@@ -1867,7 +1869,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		};
 	}
 
-	const addMarkTool: Tool<{
+	const addMarkTool: ModelContextTool<{
 		caseId: string;
 		selector: string;
 		comment: string;
@@ -1905,7 +1907,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			serial(signal, () => addMark(input, signal, appOfCaller(client))),
 	};
 
-	const setSummary: Tool<{ caseId: string; summary: string }> = {
+	const setSummary: ModelContextTool<{ caseId: string; summary: string }> = {
 		name: "set_summary",
 		title: "Record the summary for the developer",
 		description:
@@ -1955,7 +1957,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const setMarkStatus: Tool<{
+	const setMarkStatus: ModelContextTool<{
 		caseId: string;
 		marks?: number[];
 		mark?: number;
@@ -2153,7 +2155,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		return k;
 	}
 
-	const listComments: Tool<{
+	const listComments: ModelContextTool<{
 		caseId: string;
 		mark?: number;
 		before?: string;
@@ -2242,7 +2244,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const addComment: Tool<{ caseId: string; text: string; mark?: number }> = {
+	const addComment: ModelContextTool<{
+		caseId: string;
+		text: string;
+		mark?: number;
+	}> = {
 		name: "add_comment",
 		title: "Add a comment to a case",
 		description: `Add a comment to the case's thread: shown as written by your app (in a case of the user's team, as "person via app", beside the person signed in here). This is where you report what you did (what changed, where: a branch or pull request, how to check it), say what you found out about a mark (its cause, where the code is), and ask a question; with mark, it is about that one mark. The summary for the developer stays the reporter's: do not use set_summary for your report. A comment sends nobody a mail: people read it on the case. At most ${MAX_CASE_COMMENT.toLocaleString("en-US")} characters; a case holds at most ${MAX_CASE_COMMENTS.toLocaleString("en-US")} comments. A comment does not reopen a closed case. The user is asked first.`,
@@ -2296,7 +2302,11 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const editComment: Tool<{ caseId: string; comment: string; text: string }> = {
+	const editComment: ModelContextTool<{
+		caseId: string;
+		comment: string;
+		text: string;
+	}> = {
 		name: "edit_comment",
 		title: "Edit a comment",
 		description:
@@ -2332,7 +2342,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const deleteComment: Tool<{ caseId: string; comment: string }> = {
+	const deleteComment: ModelContextTool<{ caseId: string; comment: string }> = {
 		name: "delete_comment",
 		title: "Delete a comment",
 		description:
@@ -2365,7 +2375,10 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const setCaseStatus: Tool<{ caseId: string; status: "open" | "closed" }> = {
+	const setCaseStatus: ModelContextTool<{
+		caseId: string;
+		status: "open" | "closed";
+	}> = {
 		name: "set_case_status",
 		title: "Close or reopen a case",
 		description:
@@ -2407,7 +2420,10 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const assignCase: Tool<{ caseId: string; assignee: string | null }> = {
+	const assignCase: ModelContextTool<{
+		caseId: string;
+		assignee: string | null;
+	}> = {
 		name: "assign_case",
 		title: "Assign a case",
 		description:
@@ -2465,7 +2481,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		},
 	};
 
-	const deleteCase: Tool<{ caseId: string }> = {
+	const deleteCase: ModelContextTool<{ caseId: string }> = {
 		name: "delete_case",
 		title: "Delete a case",
 		description:
@@ -2512,7 +2528,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 		setCaseStatus,
 		assignCase,
 		deleteCase,
-	] as Tool[];
+	] as ModelContextTool[];
 }
 
 /**

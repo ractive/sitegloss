@@ -166,7 +166,7 @@ file's history.
   (at most 3000 characters); for a version submitted by hand, paste that text. It says how
   to try it and how to build the zip from the source archive, and now also: the Highlight
   tool; all sites offered in the sidebar and asked in the click; the bundled `tldts` 7.5.5
-  (MIT) with the public suffix list as data, no network; the client library 0.24.0 with
+  (MIT) with the public suffix list as data, no network; the client library 0.25.0 with
   its WebMCP mirror off (`webmcp: false`); the extension pages `viewer/` and `field/`; the
   two font files in `fonts/` (SIL OFL 1.1, loaded only by the sidebar and the viewer);
   copy buttons that write to the clipboard in the click; `src/lib/cloud/api.gen.ts`
