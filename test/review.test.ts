@@ -1520,10 +1520,13 @@ describe("a highlight's text found around its element (DEC-083)", () => {
 		const loaded = await reviewer.load(c);
 		expect(loaded.matches[0]?.textNear).toBe("nearby");
 		expect(overlay.items.length).toBe(1);
+		expect(reviewer.drawnText("m1")).toBe("localhost");
 		$("h1").remove();
 		await until(() => overlay.items.length === 0);
 		const now = await reviewer.matches(c.id);
 		expect(now?.matches[0]?.status).toBe("lost");
+		// The text found before is gone with it, not only hidden.
+		expect(reviewer.drawnText("m1")).toBeUndefined();
 		expect(bar()).toContain("0 of 1 found");
 	});
 

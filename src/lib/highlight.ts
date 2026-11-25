@@ -170,17 +170,46 @@ export interface Span {
 	end: number;
 }
 
-/** Every place of `needle` in `text`, at most `MAX_OCCURRENCES`. */
+/**
+ * Every place of `needle` in `text`; none at all when there are more than
+ * `MAX_OCCURRENCES`: so common a text is no evidence of a place, and a
+ * count cut short would make one of many look like the only one.
+ */
 function occurrences(text: string, needle: string): number[] {
 	const out: number[] = [];
 	if (needle === "") return out;
 	for (
 		let i = text.indexOf(needle);
-		i !== -1 && out.length < MAX_OCCURRENCES;
+		i !== -1;
 		i = text.indexOf(needle, i + 1)
-	)
+	) {
+		if (out.length === MAX_OCCURRENCES) return [];
 		out.push(i);
+	}
 	return out;
+}
+
+/** The ways a highlight's text is looked for around its element (`nearPlaces`). */
+export type NearWay = "moved" | "reworded" | "alone";
+
+/**
+ * Which ways a highlight's text is looked for in around its element, by
+ * how its element was found (DEC-083). `found`: all three. `probable`: not
+ * `reworded`, which trusts that the element is the text's old place.
+ * `ambiguous`, or more than one candidate: none. `lost` (a place its
+ * recorded selector names, `placed`): only the ways that carry the text
+ * around it, `moved` and `reworded`.
+ */
+export function nearWays(
+	status: string,
+	candidates: number,
+	placed = false,
+): NearWay[] {
+	if (placed) return ["moved", "reworded"];
+	if (candidates > 1) return [];
+	if (status === "found") return ["moved", "reworded", "alone"];
+	if (status === "probable") return ["moved", "alone"];
+	return [];
 }
 
 /** Whether both the text before and the text after a highlight are evidence (`PLACE_CONTEXT`). */

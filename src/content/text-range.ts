@@ -14,6 +14,7 @@ import {
 	flatSpan,
 	flatten,
 	lineBoxes,
+	type NearWay,
 	nearPlaces,
 	quoteIn,
 	type Source,
@@ -289,34 +290,49 @@ export function nearbyAreas(
 	return areas;
 }
 
-/** How many ancestors of a text are looked at for a box that cuts it to a pixel. */
-const CLIP_LEVELS = 4;
-
 /**
- * Whether a range's text shows (DEC-083): its element is rendered and
- * visible (`checkVisibility` where there is one), its text has a line box
- * larger than 2 px each way, and no box round it of at most 2 px cuts what
- * overflows (text for screen readers only, a closed part). Only for a few
- * candidates: it lays the page out.
+ * Whether a range's text shows (DEC-083): its element is rendered, visible
+ * and not transparent (`checkVisibility` where there is one); its text has
+ * a line box larger than 2 px each way that is not wholly left of or above
+ * the page (text put off the page for screen readers); and no box between
+ * it and `root`, the area's top, of at most 2 px each way cuts what
+ * overflows (text for screen readers only, a collapsed part). Only for a
+ * few candidates: it lays the page out.
  */
-export function showsOnPage(range: Range): boolean {
+export function showsOnPage(range: Range, root: Element): boolean {
 	const el = elementOfRange(range);
 	if (el === null) return false;
 	if (
 		typeof el.checkVisibility === "function" &&
-		!el.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true })
+		!el.checkVisibility({
+			opacityProperty: true,
+			visibilityProperty: true,
+			checkOpacity: true,
+			checkVisibilityCSS: true,
+		})
 	)
 		return false;
-	if (!rangeLines(range).some((r) => r.width > 2 && r.height > 2)) return false;
 	const win = el.ownerDocument.defaultView;
-	let at: Element | null = el;
-	for (let k = 0; at !== null && k < CLIP_LEVELS; k++, at = at.parentElement) {
+	const sx = win?.scrollX ?? 0;
+	const sy = win?.scrollY ?? 0;
+	if (
+		!rangeLines(range).some(
+			(r) =>
+				r.width > 2 &&
+				r.height > 2 &&
+				r.x + r.width + sx > 0 &&
+				r.y + r.height + sy > 0,
+		)
+	)
+		return false;
+	for (let at: Element | null = el; at !== null; at = at.parentElement) {
 		const box = at.getBoundingClientRect();
 		if (
 			(box.width <= 2 || box.height <= 2) &&
 			win?.getComputedStyle(at).overflow !== "visible"
 		)
 			return false;
+		if (at === root) break;
 	}
 	return true;
 }
@@ -350,8 +366,8 @@ function onlyShown(
 
 /**
  * A highlight's text around `element`, where it is not in it any more
- * (DEC-083): in the nearest area of `nearbyAreas` where a way of
- * `nearPlaces` has exactly one place that shows, in the ways' order. None
+ * (DEC-083): in the nearest area of `nearbyAreas` where one of `ways`
+ * (`nearWays`) has exactly one place that shows, in the ways' order. None
  * (the element's box, "Text changed", as before): no way has that before
  * the areas end or grow over `AREA_NODES`. `shows` is the page's
  * `showsOnPage`; a test without layout gives its own.
@@ -359,16 +375,21 @@ function onlyShown(
 export function findNearby(
 	element: Element,
 	h: Pick<Highlight, "text" | "before" | "after">,
-	levels: number = AREA_LEVELS,
-	shows: (range: Range) => boolean = showsOnPage,
+	options: {
+		ways: readonly NearWay[];
+		levels?: number;
+		shows?: (range: Range, root: Element) => boolean;
+	},
 ): NearText | undefined {
+	const { ways, levels = AREA_LEVELS, shows = showsOnPage } = options;
+	if (ways.length === 0) return undefined;
 	for (const area of nearbyAreas(element, levels)) {
 		const text = elementText(area, AREA_NODES);
 		// The areas above are larger still.
 		if (text.truncated) return undefined;
 		const places = nearPlaces(text.flat.text, h);
-		for (const way of ["moved", "reworded", "alone"] as const) {
-			const one = onlyShown(text, places[way], shows);
+		for (const way of ways) {
+			const one = onlyShown(text, places[way], (r) => shows(r, area));
 			if (one === undefined) continue;
 			return {
 				range: one.range,
@@ -385,7 +406,10 @@ export function findNearby(
  * Where to look for a highlight's text when no element was found for it
  * (DEC-083): the element its recorded selector names, else the nearest of
  * the selector's own ancestors, up to `AREA_LEVELS` of them, that is on the
- * page once; with how many levels of the area are left above it.
+ * page once; with how many levels of the area are left above it. Never a
+ * section, article, main, aside, form, dialog or body, nor a child of the
+ * body (an app's root): what is left of the path there is so wide that the
+ * place says nothing, and there is none.
  */
 export function placeOf(
 	doc: Document,
@@ -393,14 +417,26 @@ export function placeOf(
 ): { element: Element; levels: number } | undefined {
 	const parts = selector.split(" > ");
 	for (let drop = 0; drop <= AREA_LEVELS && drop < parts.length; drop++) {
-		let found: NodeListOf<Element>;
+		let found: Element[];
 		try {
-			found = doc.querySelectorAll(
-				parts.slice(0, parts.length - drop).join(" > "),
-			);
+			found = [
+				...doc.querySelectorAll(
+					parts.slice(0, parts.length - drop).join(" > "),
+				),
+			];
 		} catch {
 			continue;
 		}
+		if (
+			found.some(
+				(e) =>
+					e.matches(AREA_EDGE) ||
+					e.parentElement === null ||
+					e.parentElement === doc.body ||
+					e === doc.documentElement,
+			)
+		)
+			return undefined;
 		if (found.length === 1)
 			return { element: found[0] as Element, levels: AREA_LEVELS - drop };
 	}

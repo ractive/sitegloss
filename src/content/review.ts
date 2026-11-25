@@ -54,7 +54,7 @@ import {
 	describeElement,
 	summarize,
 } from "../lib/element.ts";
-import { boundsOfRects } from "../lib/highlight.ts";
+import { boundsOfRects, type NearWay, nearWays } from "../lib/highlight.ts";
 import { backdropOf } from "../lib/look.ts";
 import { badgeRadius, isDarkGround, pinPosition } from "../lib/marks.ts";
 import { clearTextCache, type MatchStatus } from "../lib/match.ts";
@@ -762,8 +762,11 @@ export class Reviewer {
 			return entry;
 		}
 		const found = findText(el, h);
-		// Not in its element: around it (DEC-083).
-		const near = found === "gone" ? findNearby(el, h) : undefined;
+		// Not in its element: around it, as far as its element's match lets (DEC-083).
+		const near =
+			found === "gone"
+				? findNearby(el, h, { ways: this.#nearWays(entry) })
+				: undefined;
 		const range = typeof found === "string" ? (near?.range ?? null) : found;
 		entry.text = {
 			element: el,
@@ -807,7 +810,10 @@ export class Reviewer {
 		const near =
 			place === undefined
 				? undefined
-				: findNearby(place.element, h, place.levels);
+				: findNearby(place.element, h, {
+						ways: nearWays("lost", 0, true),
+						levels: place.levels,
+					});
 		if (near === undefined) return entry;
 		const candidate: Candidate = {
 			element: near.holder,
@@ -861,11 +867,31 @@ export class Reviewer {
 		if (this.#element(entry)?.isConnected === false) return true;
 		const text = entry.text;
 		if (!textMoved(text)) return false;
-		// Text found around its element: not looked for at every change (DEC-083).
+		// Text found around its element: not looked for at every change
+		// (DEC-083), unless it left the page (a re-render).
 		return (
 			text?.near === undefined ||
+			!text.near.holder.isConnected ||
+			text.range?.startContainer.isConnected !== true ||
 			performance.now() - text.near.at >= this.#refindMs
 		);
+	}
+
+	/** The ways a highlight's text is looked for around its element, by its match (DEC-083). */
+	#nearWays(entry: Entry): NearWay[] {
+		return nearWays(
+			entry.elementStatus ?? entry.match.status,
+			entry.candidates.length,
+		);
+	}
+
+	/**
+	 * The text a loaded highlight is drawn on now (DEC-066, DEC-083), none
+	 * where it is drawn on no text; a test reads it.
+	 */
+	drawnText(markId: string): string | undefined {
+		const range = this.#entries.find((e) => e.mark.id === markId)?.text?.range;
+		return range == null ? undefined : range.toString();
 	}
 
 	/**
@@ -911,7 +937,9 @@ export class Reviewer {
 			text.lookedAt = this.#changes;
 			if (typeof findText(text.element, h) !== "string") return entry;
 			// Text that was found nowhere may have come around it (DEC-083).
-			return text.range === null && findNearby(text.element, h) !== undefined
+			return text.range === null &&
+				findNearby(text.element, h, { ways: this.#nearWays(entry) }) !==
+					undefined
 				? entry
 				: undefined;
 		}

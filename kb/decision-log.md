@@ -5301,10 +5301,21 @@ the "3" of "2023", a button's "Save" (now "Submit") on "Saved drafts", a "the" t
 the "the" of "About the team" as "Text moved", "1042" of the third of three rows "Delete invoice …
 from the list" on the first row's "1040".
 
+- **Whether it looks, by how the element was found** (`nearWays`). The element search found it
+  (`found`): all three ways below. Only `probable`: ways 1 and 3, not 2, which trusts that the
+  element is the text's old place, and "probable" does not establish that (three rows
+  "Delete invoice … from the list", "1042" highlighted in the one the fix deleted, the first row
+  picked as probable: way 2 would say "1042" now reads "1040"). `ambiguous`, or more than one
+  candidate: no search around it at all. A lost mark: ways 1 and 2 only, which carry the text
+  around it; never way 3, a lone word anywhere in a wide area.
 - **Where it looks.** When the text is not in the matched element, or no element was matched and
   the element's recorded selector names a place (`placeOf`: the element it names, else the
   nearest of its own ancestors in it, up to four, that is on the page once; the levels dropped
-  count against the area's). The areas, nearest first: the element itself, then its ancestors, at
+  count against the area's). The dropping stops, with no place, where what is left of the path
+  would name a `section`, `article`, `main`, `aside`, `form`, `dialog`, the body or a child of the
+  body (an app's root): an area that wide says nothing of where the mark was (a review placed a
+  lost headline's mark on the one "localhost" in a page's footer this way). The areas, nearest
+  first: the element itself, then its ancestors, at
   most four levels up, not past the nearest `section`, `article`, `main`, `aside`, `form`, `dialog`
   or `body`. The first area where one way has exactly one place that shows is taken; a wider area
   is tried only when nothing qualifies in the nearer one. An area over 2,000 text nodes with words
@@ -5317,15 +5328,20 @@ from the list" on the first row's "1040".
   2. *Reworded in place*: the whole `before` and the whole `after`, the same sides' rule, with text
      between them that is not empty and no longer than twice the old text and 20 characters
      ("localhost:3000" now "localhost"); exactly one such place in the area, so of three rows
-     with the same words round a number none is taken, unless the row is the element itself (its
-     own area comes first). A fix that deleted the text leaves nothing between: no place.
+     with the same words round a number none is taken, unless the row is the element itself,
+     found for sure (its own area comes first). A fix that deleted the text leaves nothing between: no place.
   3. *The same text alone* (a highlight of a whole span, button, cell or link has no `before` and
      `after`): only whole words (not inside a longer word or number: "Save" is not in "Saved"), at
      least 4 characters and a letter ("3" and "the" are found anywhere), exactly once in the area.
-  A place counts only where its text shows: its element passes `checkVisibility` (where there is
-  one), its line boxes are larger than 2 by 2 px, and no box of at most 2 px that cuts its overflow
-  holds it (text for screen readers only, a collapsed part); a hidden copy (a mobile duplicate)
-  is no second place, nor a place. Checked only for the candidates, not for every node.
+  A text with more than 1,000 places in an area is no evidence of any one of them: no places at
+  all (counting only the first 1,000 would make one of many look like the only one).
+  A place counts only where its text shows: its element passes `checkVisibility` with its
+  visibility and opacity (where there is one); one of its line boxes is larger than 2 by 2 px and
+  not wholly left of or above the page (text put at `left: -10000px` for screen readers); and no
+  box of at most 2 px that cuts its overflow holds it, from its element up to the area's root
+  (text for screen readers only, a collapsed accordion however far up); a hidden copy (a mobile
+  duplicate) is no second place, nor a place. Checked only for the candidates, not for every
+  node.
 - **Probable only.** The mark is drawn dashed on the text (on the element that holds it, which also
   decides where it shows, DEC-075); `textChanged` stays true ("not where it was"); a found element
   becomes probable. A lost mark that was placed gets the element that holds the text as its one
@@ -5334,7 +5350,7 @@ from the list" on the first row's "1040".
 - **Looked for again.** A mark looked for again and not found any more loses what was found before
   (its text was kept and drawn on its old element). Text found this way that keeps changing (a
   clock, a countdown, a price) is looked for again at most every 3 s (`REFIND_MS`), not at every
-  tick; and the tick takes the replaced elements and texts in turn, so one that keeps changing does
+  tick, while it is on the page (text or element re-rendered away is looked for at once); and the tick takes the replaced elements and texts in turn, so one that keeps changing does
   not keep the others waiting.
 - **Time.** Reading an area of 2,012 text nodes (over the limit, so the search ends there): about
   4 ms in happy-dom, 71 ms the first time (measured once, `test/text-near.test.ts`). In Chrome
@@ -5349,6 +5365,4 @@ from the list" on the first row's "1040".
   cut to 80 characters, as text. The AI app's tools (load_case, highlight, get_mark_element):
   `textChanged` then says "The highlighted text is not where it was any more: textFound says what
   was found instead.", with `textFound` in a sentence, `textNow` and `textAt`.
-- **Not done**: a search of the whole page, a fuzzy match of reworded text without both sides, and
-  a way for a mark matched to the wrong one of several rows (its own area would place new text in
-  that row; the element match decides, as before).
+- **Not done**: a search of the whole page, and a fuzzy match of reworded text without both sides.

@@ -180,6 +180,10 @@ describe("where a highlight's text is around its element (DEC-083)", () => {
 		expect(nearPlaces("About the team", { text: "the" }).alone).toEqual([]);
 		expect(nearPlaces("Code 1234 here", { text: "1234" }).alone).toEqual([]);
 		// Each whole-word place.
+		// More than 1,000 places: no evidence of any one.
+		expect(nearPlaces("word ".repeat(1001), { text: "word" }).alone).toEqual(
+			[],
+		);
 		const text = "Open localhost. Not localhosts. Then localhost again.";
 		expect(texts(text, nearPlaces(text, { text: "localhost" }).alone)).toEqual([
 			"localhost",
