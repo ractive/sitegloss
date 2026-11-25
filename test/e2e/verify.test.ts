@@ -20,6 +20,7 @@ import {
 import {
 	type Db,
 	exportOpenCase,
+	HOST,
 	importFile,
 	markElement,
 	marksIn,
@@ -372,4 +373,67 @@ inFullSet("Verify", () => {
 		).toBe(`${h.base}/v1`);
 		await v1.page.send("Page.close");
 	}, 90_000);
+
+	test("after Hide marks, the mark a Verify opens only opens: its marks are not drawn again, the page does not move", async () => {
+		const at = "2026-11-25T10:00:00.000Z";
+		const viewport = { width: 1280, height: 800, dpr: 2 };
+		// The second mark's place is far down: a show would scroll there.
+		const shots = [0, 1400].map((scrollY, i) => ({
+			id: `s${i + 1}`,
+			image: `shots/s${i + 1}.webp`,
+			scrollX: 0,
+			scrollY,
+			viewport,
+			capturedAt: at,
+		}));
+		const marks = [1, 2].map((n) => ({
+			id: `m${n}`,
+			number: n,
+			shot: `s${n}`,
+			comment: `Comment ${n}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 40, y: 200 } },
+			crop: `crops/m${n}.webp`,
+			element: null,
+			resolution: { kind: "fixed", at },
+		}));
+		const c = {
+			format: CASE_FORMAT,
+			id: "c_hidden",
+			title: "Hidden on the tab",
+			createdAt: at,
+			updatedAt: at,
+			page: {
+				url: `${h.base}/v1`,
+				title: "Members",
+				lang: "en",
+				viewport,
+				userAgent: "test",
+			},
+			shots,
+			marks,
+		} as unknown as Case;
+		await putCases(h, [c]);
+		const panel = await panelHome(h);
+		await openCase(panel, "Hidden on the tab");
+		const v1 = await h.open("v1");
+		await v1.page.activate();
+		const load = `document.getElementById("load-case")`;
+		const drawn = `(${HOST}?.shadowRoot?.querySelector("[data-review]") ?? null) !== null`;
+		await panel.waitFor(`${load}?.textContent === "Hide marks"`, 15_000);
+		await v1.page.waitFor(drawn);
+		// Hidden by the person: the second row's Show would draw them first.
+		await panel.eval(`${load}.click()`);
+		await panel.waitFor(
+			`${load}.textContent === "Show marks" && ${row("m2")}?.querySelector('[data-action="show"][data-loads]') && ${row("m1")}.querySelector('.head-verify')`,
+		);
+		await v1.page.waitFor(`!${drawn}`);
+
+		await panel.click(`${row("m1")}.querySelector('.head-verify')`);
+		await panel.waitFor(`${row("m2")}?.hasAttribute("data-open")`);
+		await Bun.sleep(500);
+		expect(await v1.page.eval<boolean>(drawn)).toBe(false);
+		expect(await v1.page.eval<number>("scrollY")).toBe(0);
+		await v1.page.send("Page.close");
+	}, 60_000);
 });

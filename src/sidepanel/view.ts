@@ -3044,7 +3044,8 @@ function runPending(): void {
 		// And on the page, as its Show would (owner, 25 November): only where
 		// the marks are drawn here. Never another page, nor drawing marks a
 		// Hide took off ("they stay off on this tab until you show them").
-		showsHere.get(row)?.();
+		// A row away by now (the tab went on since it was drawn) is not.
+		if (!row.hasAttribute("data-away")) showsHere.get(row)?.();
 		sayAfterVerify(
 			p.hint,
 			k.caseId,
