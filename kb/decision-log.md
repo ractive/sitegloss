@@ -5086,9 +5086,11 @@ the findings": what an AI app finds out about a mark is a comment on that mark.
   server's, byte for byte: `src/lib/overview.ts` is a copy of its
   `packages/api/src/v1/overview.ts`, held to `test/mark-overview.json`, a copy of its
   vectors, as `test/page-key.json` is. Its `jsonText`, `quote`, `quoteStart` and
-  `plainLine` came with it: every JSON in these answers goes through `jsonText`, so a
-  line separator or a direction control in a case's text cannot start a line or turn
-  text around.
+  `plainLine` came with it: every JSON in the tools' answers goes through `jsonText`,
+  and every value of a case printed outside JSON (a time, a title, a name, an id, a
+  path) through `plainLine` or `quote`, so a line break, a line separator or a direction
+  control in a case, also in a time a file brings, cannot start a line or turn text
+  around. `validateCase` stays as lenient as it was: stored cases keep loading.
 - **`get_mark(caseId, mark)`** gives one mark in full: its status and how it was settled,
   who made it and who wrote its comment, the comment, kind and shape, its page and the
   address it was made at, a highlight's text, the element's details as one line of JSON
@@ -5127,11 +5129,15 @@ the findings": what an AI app finds out about a mark is a comment on that mark.
 
 - `findingsAsComments` (`src/lib/case.ts`) makes each finding of a mark a comment on that
   mark: its text, its time, its app, the person a team's server wrote it down for,
-  `imported` for one from a file, and `edited` with its time for one its app changed.
-  It goes into the thread by its time. Its id is made from the case's, the mark's and the
-  finding's ids (`f_` and 16 hex digits), so the same finding gives the same comment and
-  never a second one. A finding without words makes none, and none goes past the
-  thread's 1,000 comments (the server's rule too).
+  `imported` for one from a file, and `edited` with its time for one its app changed,
+  its text as it was. It goes into the thread by its time. **Its id is the server's**
+  (`findingCommentId`, its DEC-053): `f_` and the first 40 hexadecimal digits of the
+  SHA-256 of the mark's id, a line feed and the finding's id, held to a copy of the
+  server's vectors (`test/finding-comment-id.json`; `src/lib/sha256.ts` computes it at
+  once, as an upgrade needs). The same finding gives the same comment and never a second
+  one. A finding without words makes none. What does not fit the thread's 1,000 comments
+  stays on its mark as it was and becomes a comment when a later read finds room (the
+  server does the same).
 - **The store's version 3** (`DB_VERSION`, `store.ts`, after DEC-051's 2): its upgrade
   rewrites each stored case that has findings, in the upgrade's own transaction. Every
   case is converted or, if the transaction fails, none is, and the database stays at
@@ -5141,13 +5147,41 @@ the findings": what an AI app finds out about a mark is a comment on that mark.
   older build) is read with them as comments on their marks, imported. A file put in place
   of a case here keeps that case's thread (DEC-046) and adds the file's finding-comments it
   does not have yet. An export of this build carries no findings.
-- **A case of a team:** its findings are the server's, which turns them into comments of
-  its own with ids of its own. A comment the upgrade made of a finding that names the
-  person the server wrote it down for, on a mark the server has, is therefore never sent,
-  and goes at the next merge, where the server's comment comes in (`serversFinding` in
-  `wire.ts`). A finding written here and never sent names nobody: its comment is sent as a
-  new one, by the person signed in. Between this build's upgrade and the next sync, the
-  team's findings show as those comments.
+- **A case of a team: the same ids here and there, and no special case in the sync.** A
+  mark's id here (`m<number>`) is never its id at the server (`m_` and 16 hex digits, made
+  by the device that made the mark); the sync's bookkeeping maps one to the other. The
+  store's upgrade can only know the id here, so before the sync runs again, once, the
+  worker brings the books along (`findingsIntoThreadsOnce` in `cloud/findings.ts`, after
+  `forgetCases`, in `casesReady`): for each case of the server the cases sync with, a
+  comment made of a finding the server had (the shadow says so) or was sent (it waits in
+  the queue) takes the id made from the mark's id there; in the shadow, the findings the
+  server had become the comments the server makes of them, with the same ids, texts and
+  person; and the queue goes without findings. A pushed finding is in the shadow: a push
+  the server confirmed brought the shadow along (`applyOp` did so for findings up to
+  0.4.0); one not confirmed is in the queue. The comment sync then does the rest as for
+  any comment: a finding unchanged here matches the server's comment; one edited here and
+  not pushed goes as an edit; one deleted here and not pushed goes as a delete; one never
+  pushed goes as a new comment, by the person signed in. The case is changed before its
+  book, so a run cut short is run again and finds the case done. The books of another
+  server lose their findings without comments: the case follows the ids of the server it
+  syncs with, and a shadow that said it had comments the case lacks would delete them
+  there.
+- **Comments from a file's findings are ordinary local comments,** sent like any other
+  when their case syncs. A file put in place of a team's case whose server has the same
+  findings gives them twice (the file's are made from the ids here); nothing is lost.
+
+**Releasing:** the service with its findings change (its DEC-053) is deployed and its
+script has turned every stored finding into a comment, on production and on dev, with
+nothing left, before this version goes out. If the order is broken, nothing is lost:
+what the server has not turned into comments yet stays stored there, and this version
+sends nothing that deletes it. A finding the server had shows here as a comment that the
+server does not send yet: other devices do not see it until the script runs, and a case
+read again whole hides it here until then. An edit or a delete of such a finding not
+pushed yet is refused by the server until its comment exists, and goes again with a
+later sync. A finding that waited in the queue goes as a new comment with the server's
+id, which the script then finds taken: one comment. Doubled, in rare cases only: a sent
+operation whose confirmation was lost exactly at the update, and a file put in place of
+a team's case whose server has the same findings.
 
 **The instructions and the copied text:**
 
@@ -5173,8 +5207,18 @@ extension's marks and come back as comments in its thread. The copied text's ste
 "if you have that tool", so an AI app on an older extension reads the case with
 `get_case` alone.
 
-Decided here, not by the owner: the extension's `list_cases` has no `show` (it lists
-closed cases with `closed: true`, as before); `get_case` still takes `images` from a
-call of before and does nothing with it, as the relay refuses an argument the schema
-does not list; the question for `set_mark_status` names
-at most ten marks one by one. The version is not changed: the release is not part of this.
+Decided here, not by the owner:
+
+- The differences from the server's tools stay: no `full` on `get_image`, no `team` or
+  `show` on `list_cases` (it lists closed cases with `closed: true`, as before), another
+  cursor format (`<ms>.<id>`), a smaller inline crop (at most 800 pixels a side), and crop
+  paths by the mark's id. The tools print the calls an AI app should make, so it need not
+  build a path itself.
+- A person's summary or comment is never cut, so one very long text can make an answer
+  large, as at the server; `list_comments` has no budget, as in 0.4.0.
+- `get_case` still takes `images` from a call of before and does nothing with it, as the
+  relay refuses an argument the schema does not list.
+- The question for `set_mark_status` names at most ten marks one by one.
+- There is no test of an upgrade that fails: IndexedDB's transaction is what keeps it
+  whole.
+- The version is not changed: the release is not part of this.
