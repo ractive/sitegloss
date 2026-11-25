@@ -11,6 +11,7 @@
 import Ajv2020 from "ajv/dist/2020";
 import {
 	type ElementDetails,
+	findingCommentId,
 	lookOf,
 	MAX_PAGES,
 	pageKey,
@@ -229,6 +230,57 @@ export class FakeServer {
 			return rest;
 		}
 		return { ...c, assignee: c.assignee ?? null };
+	}
+
+	/**
+	 * Findings a server of before DEC-053 (the service's) stored on its marks,
+	 * by the mark's id: never sent (it answers every mark with none), until
+	 * `findingsToComments` makes them comments, as the service's script does.
+	 */
+	readonly heldFindings = new Map<
+		string,
+		{
+			id: string;
+			text: string;
+			at: string;
+			user?: UserRef;
+			app: AppRef;
+		}[]
+	>();
+
+	/**
+	 * The service's script (its `findings-to-comments.ts`, DEC-053): each
+	 * finding it holds a comment on its mark, its id `f_` and 40 hex digits
+	 * (`findingCommentId` of the mark's id here and the finding's), by the
+	 * finding's person, at its time; one that is there already, none more.
+	 */
+	findingsToComments(): void {
+		const rev = ++this.seq;
+		for (const [markId, findings] of this.heldFindings) {
+			const mark = this.marks.get(markId);
+			if (mark === undefined || mark.deleted) continue;
+			for (const f of findings) {
+				const id = findingCommentId(markId, f.id);
+				if (this.comments.has(id) || f.text.trim() === "") continue;
+				this.comments.set(id, {
+					deleted: false,
+					rev,
+					createdRev: rev,
+					value: compact({
+						id,
+						caseId: mark.value.caseId,
+						markId,
+						text: f.text,
+						user: f.user ?? null,
+						app: f.app,
+						at: f.at,
+						rev,
+					}) as WireComment,
+				});
+			}
+			this.#touch(this.#live(mark.value.caseId), rev, this.now.toISOString());
+		}
+		this.heldFindings.clear();
 	}
 
 	caseOf(caseId: string): WireCase | undefined {

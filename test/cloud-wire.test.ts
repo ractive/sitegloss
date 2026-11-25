@@ -8,7 +8,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	type Case,
 	type ElementDetails,
-	findingCommentId,
 	type Mark,
 	validateCase,
 	withComment,
@@ -207,39 +206,6 @@ describe("the operations a case becomes", () => {
 		expect(ops).toEqual([
 			{ opId: expect.any(String), type: "mark.delete", markId: wire },
 		]);
-	});
-
-	test("a comment that was a finding the server has is not sent; one written here and never sent is (DEC-081)", () => {
-		const c = local();
-		const { book } = synced(c);
-		const asComment = (
-			findingId: string,
-			user?: { id: string; name: string },
-		) => ({
-			id: findingCommentId(c.id, "m1", findingId),
-			mark: "m1",
-			text: "Found",
-			at: NOW,
-			app: { id: "https://claude.ai/oauth", host: "claude.ai" },
-			...(user === undefined ? {} : { user }),
-		});
-		const { ops } = deriveOps(
-			{
-				...c,
-				comments: [
-					asComment("f_1", { id: "u_dana", name: "Dana" }),
-					asComment("f_2"),
-				],
-			},
-			book,
-			ref,
-			newId,
-		);
-		expect(
-			ops.flatMap((op) =>
-				op.type === "comment.create" ? [op.comment.id] : [],
-			),
-		).toEqual([findingCommentId(c.id, "m1", "f_2")]);
 	});
 
 	test("an image that is not here: its mark is left out and named, the rest goes", () => {

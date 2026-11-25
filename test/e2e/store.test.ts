@@ -151,7 +151,7 @@ inBothSets("IdbStore and openKv", () => {
 		expect(two?.marks[0]).not.toHaveProperty("findings");
 		expect(two?.comments).toEqual([
 			{
-				id: findingCommentId("c_two", "m1", "f_1"),
+				id: findingCommentId("m1", "f_1"),
 				mark: "m1",
 				text: "The grey is Button_primary's.",
 				at: "2026-11-10T10:00:00Z",

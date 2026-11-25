@@ -16,7 +16,6 @@ import {
 	cutText,
 	ELEMENT_ATTRIBUTES,
 	type ElementDetails,
-	FINDING_COMMENT,
 	type FindingApp,
 	type Highlight,
 	highlightWithin,
@@ -798,8 +797,6 @@ function commentOps(
 	for (const k of c.comments ?? []) {
 		const before = known[k.id];
 		if (before === undefined) {
-			// The server's finding, made a comment here: the server makes its own.
-			if (serversFinding(k, book)) continue;
 			const markId = k.mark === undefined ? undefined : book.marks[k.mark];
 			if (k.mark !== undefined && markId === undefined) continue;
 			ops.push({
@@ -829,20 +826,6 @@ function commentOps(
 	}
 	return ops;
 }
-
-/**
- * A comment the store's upgrade made of a finding the team's server has
- * (DEC-081): it names the person the server wrote it down for, on a mark the
- * server has. The server turns its findings into comments itself, with ids of
- * its own, so this one is never sent and goes at the next merge, where the
- * server's comes in. A finding written here and never sent names nobody: its
- * comment is sent as any new one.
- */
-export const serversFinding = (k: CaseComment, book: CaseBook): boolean =>
-	FINDING_COMMENT.test(k.id) &&
-	k.user !== undefined &&
-	k.mark !== undefined &&
-	book.marks[k.mark] !== undefined;
 
 /** A comment the server has is one's own: written by the person signed in (or not known). */
 const ownAtServer = (before: ShadowComment, me: string | undefined) =>
@@ -2073,12 +2056,7 @@ function mergeComments(
 				else removed.add(id);
 			}
 	}
-	let list = (c.comments ?? []).filter(
-		(k) =>
-			!removed.has(k.id) &&
-			// The server's own comment of that finding comes instead (DEC-081).
-			!(known[k.id] === undefined && serversFinding(k, book)),
-	);
+	let list = (c.comments ?? []).filter((k) => !removed.has(k.id));
 	for (const id of removed) delete known[id];
 	const marks = reverse(book.marks);
 	for (const w of came) {

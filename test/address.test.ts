@@ -455,11 +455,9 @@ describe("the server's member download (its vectors/case-file.json)", () => {
 		const [f1] = m1?.findings ?? [];
 		expect(read.marks[0]).not.toHaveProperty("findings");
 		expect(
-			read.comments?.find(
-				(k) => k.id === findingCommentId(caseFile.caseJson.id, "m1", "f_1"),
-			),
+			read.comments?.find((k) => k.id === findingCommentId("m1", "f_1")),
 		).toEqual({
-			id: findingCommentId(caseFile.caseJson.id, "m1", "f_1"),
+			id: findingCommentId("m1", "f_1"),
 			mark: "m1",
 			text: f1?.text as string,
 			at: f1?.at as string,

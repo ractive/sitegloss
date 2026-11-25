@@ -46,6 +46,7 @@ import {
 	teamOf,
 } from "../lib/cloud/book.ts";
 import { CloudSync } from "../lib/cloud/engine.ts";
+import { findingsIntoThreadsOnce } from "../lib/cloud/findings.ts";
 import {
 	chosenServer,
 	SERVER_KEY,
@@ -171,13 +172,23 @@ export class Cloud {
 	 * store opened at its version 2 (its upgrade emptied it), then the cloud's
 	 * database brought along in one step (`forgetCases`): here, in the
 	 * worker, and nowhere else. The store not open yet (held up by a build
-	 * before this one, say): no, and nothing is forgotten.
+	 * before this one, say): no, and nothing is forgotten. Then, once, the
+	 * books' findings become comments as the store's did (DEC-081,
+	 * `findingsIntoThreadsOnce`).
 	 */
 	async #casesReady(): Promise<boolean> {
 		const deps = this.#deps;
 		if ((await deps.store.version()) !== DB_VERSION) return false;
 		await forgetCases(deps.kv);
-		return casesForgotten(deps.kv);
+		if (!(await casesForgotten(deps.kv))) return false;
+		// The books' findings as the comments the server makes of them (DEC-081).
+		await findingsIntoThreadsOnce(
+			deps.store,
+			deps.kv,
+			await this.server(),
+			(server) => scopedKv(deps.kv, server),
+		);
+		return true;
 	}
 
 	/**

@@ -5,6 +5,7 @@
  */
 
 import { storedQuery, withQuery } from "./query.ts";
+import { sha256Hex } from "./sha256.ts";
 
 export const CASE_FORMAT = "sitegloss/2";
 
@@ -556,6 +557,13 @@ export interface Mark {
 	 * holds all of the text. Set once, with the mark.
 	 */
 	highlight?: Highlight;
+	/**
+	 * Findings from before DEC-081 that did not fit the thread yet (its
+	 * `MAX_CASE_COMMENTS`), exactly as they were: they become comments on
+	 * this mark once there is room (`findingsAsComments`). Never shown, sent
+	 * or changed.
+	 */
+	findings?: unknown[];
 }
 
 /**
@@ -1872,6 +1880,8 @@ export function validateCase(value: unknown): Case {
 				? {}
 				: { resolution: resolution(a["resolution"], `${p}.resolution`) }),
 			...reopensOf(a["reopens"], `${p}.reopens`),
+			// Findings that did not fit the thread yet (DEC-081): kept as they are.
+			...leftFindings(a["findings"], `${p}.findings`),
 			...imagesOf(a["images"], `${p}.images`, imageIds),
 			// This browser's images held back (DEC-058); a file never has them
 			// (the import leaves them out), the store does.
@@ -2206,6 +2216,13 @@ function reopensOf(value: unknown, path: string): { reopens?: Reopen[] } {
 		};
 	});
 	return reopens.length > 0 ? { reopens } : {};
+}
+
+/** A mark's findings that did not fit the thread yet (DEC-081): checked, and kept as they came. */
+function leftFindings(value: unknown, path: string): { findings?: unknown[] } {
+	if (value === undefined) return {};
+	findingsOf(value, path);
+	return { findings: value as unknown[] };
 }
 
 /** A mark's findings; none, or an empty list: no `findings` at all. */
@@ -2748,51 +2765,46 @@ export function withoutImage(
 // --- findings, once kept apart, become comments (DEC-081) ----------------------
 
 /**
- * The id of the comment a finding becomes: made from the case's id, its
- * mark's and the finding's own, so the same finding gives the same comment
- * each time (the store's upgrade, a file read again) and never a second one.
- * FNV-1a twice over, as 16 hex digits: `f_` and those (`FINDING_COMMENT`).
+ * The id of the comment a finding becomes, the server's (its DEC-053): `f_`
+ * and the first 40 hexadecimal digits of the SHA-256 over the UTF-8 bytes of
+ * the mark's id, a line feed and the finding's id. Held to the server's
+ * vectors (`test/finding-comment-id.json`). The mark's id is the server's for
+ * a mark the server has (the sync's bookkeeping knows it); in a case of no
+ * team, the id here. The same finding gives the same comment each time,
+ * never a second one.
  */
-export function findingCommentId(
-	caseId: string,
-	markId: string,
-	findingId: string,
-): string {
-	const text = `${caseId}\n${markId}\n${findingId}`;
-	let h1 = 0x811c9dc5;
-	let h2 = 0x01000193;
-	for (let i = 0; i < text.length; i++) {
-		const ch = text.charCodeAt(i);
-		h1 = Math.imul(h1 ^ ch, 0x01000193) >>> 0;
-		h2 = Math.imul(h2 ^ ch, 0x811c9dc5) >>> 0;
-	}
-	return `f_${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
+export function findingCommentId(markId: string, findingId: string): string {
+	return `f_${sha256Hex(`${markId}\n${findingId}`).slice(0, 40)}`;
 }
 
-/** A comment that was a finding here (`findingCommentId`); the server's own ids are longer. */
-export const FINDING_COMMENT = /^f_[0-9a-f]{16}$/;
+/** The id of a comment that was a finding (`findingCommentId`), here or at the server. */
+export const FINDING_COMMENT = /^f_[0-9a-f]{40}$/;
 
 /**
  * A case with its marks' findings as comments on those marks (DEC-081): a
  * finding was what an AI app found out about a mark, and that is a comment
- * on the mark now. Each keeps its text, its time, its app, the person it was
- * written for (in a case of a team) and whether it came from a file; an
- * edited one says when. The comments go into the thread by their time; a
- * finding whose comment is there already (the same id) adds nothing, so the
- * function can run on a case any number of times. A finding without words,
- * or one past the thread's `MAX_CASE_COMMENTS`, makes none (the server's
- * rule too). A finding that is not one (a file made by hand) fails as it
- * did before. Anything else of `value` is left as it is: `validateCase`
- * checks it afterwards, and the store's upgrade keeps a case it cannot read
- * as it was.
+ * on the mark now. Each keeps its text as it is, its time, its app, the
+ * person it was written for (in a case of a team) and whether it came from a
+ * file; an edited one says when. The comments go into the thread by their
+ * time; a finding whose comment is there already (the same id) adds nothing,
+ * so the function can run on a case any number of times. A finding without
+ * words makes none (the server's rule too). What does not fit the thread's
+ * `MAX_CASE_COMMENTS` stays on its mark as it was, and becomes a comment when
+ * a later run finds room. `hashId` gives the mark's id the comment's id is
+ * made from (`findingCommentId`): the id here unless told otherwise. A
+ * finding that is not one (a file made by hand) fails as it did before.
+ * Anything else of `value` is left as it is: `validateCase` checks it
+ * afterwards, and the store's upgrade keeps a case it cannot read as it was.
  */
-export function findingsAsComments(value: unknown): unknown {
+export function findingsAsComments(
+	value: unknown,
+	hashId: (markId: string) => string = (markId) => markId,
+): unknown {
 	if (value === null || typeof value !== "object" || Array.isArray(value))
 		return value;
 	const o = value as Obj;
 	const marks = o["marks"];
 	if (!Array.isArray(marks)) return value;
-	const caseId = typeof o["id"] === "string" ? o["id"] : "";
 	if (
 		!marks.some(
 			(m) =>
@@ -2808,42 +2820,51 @@ export function findingsAsComments(value: unknown): unknown {
 	const taken = new Set(
 		thread.map((k) => (k !== null && typeof k === "object" ? k["id"] : "")),
 	);
-	const added: CaseComment[] = [];
+	const added: { comment: CaseComment; mark: number; raw: unknown }[] = [];
 	const plain = marks.map((m, i) => {
 		if (m === null || typeof m !== "object") return m;
 		const { findings: given, ...mark } = m as Obj;
 		if (given === undefined) return m;
 		const markId = typeof mark["id"] === "string" ? mark["id"] : "";
 		const { findings = [] } = findingsOf(given, `case.marks[${i}].findings`);
-		for (const f of findings) {
-			const id = findingCommentId(caseId, markId, f.id);
+		const raws = given as unknown[];
+		for (const [j, f] of findings.entries()) {
+			const id = findingCommentId(hashId(markId), f.id);
 			if (taken.has(id) || f.text.trim() === "") continue;
 			taken.add(id);
 			added.push({
-				id,
-				mark: markId,
-				text: f.text.trim(),
-				at: f.at,
-				...(f.user === undefined ? {} : { user: f.user }),
-				app: f.app,
-				...(f.editedAt === undefined
-					? {}
-					: {
-							edited: {
-								at: f.editedAt,
-								...(f.user === undefined ? {} : { user: f.user }),
-								app: f.app,
-							},
-						}),
-				...(f.imported ? { imported: true as const } : {}),
+				mark: i,
+				raw: raws[j],
+				comment: {
+					id,
+					mark: markId,
+					text: f.text,
+					at: f.at,
+					...(f.user === undefined ? {} : { user: f.user }),
+					app: f.app,
+					...(f.editedAt === undefined
+						? {}
+						: {
+								edited: {
+									at: f.editedAt,
+									...(f.user === undefined ? {} : { user: f.user }),
+									app: f.app,
+								},
+							}),
+					...(f.imported ? { imported: true as const } : {}),
+				},
 			});
 		}
 		return mark;
 	});
 	// By time, each after the comments written before it; the thread's own order stays.
-	added.sort((x, y) => x.at.localeCompare(y.at));
-	for (const k of added) {
-		if (thread.length >= MAX_CASE_COMMENTS) break;
+	added.sort((x, y) => x.comment.at.localeCompare(y.comment.at));
+	const left = new Map<number, unknown[]>();
+	for (const { comment: k, mark, raw } of added) {
+		if (thread.length >= MAX_CASE_COMMENTS) {
+			left.set(mark, [...(left.get(mark) ?? []), raw]);
+			continue;
+		}
 		const at = thread.findIndex(
 			(other) =>
 				other !== null &&
@@ -2856,7 +2877,9 @@ export function findingsAsComments(value: unknown): unknown {
 	}
 	return {
 		...o,
-		marks: plain,
+		marks: plain.map((m, i) =>
+			left.has(i) ? { ...(m as Obj), findings: left.get(i) } : m,
+		),
 		...(thread.length > 0 ? { comments: thread } : {}),
 	};
 }

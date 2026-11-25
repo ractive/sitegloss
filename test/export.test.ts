@@ -384,8 +384,8 @@ describe("findings in a file from a build before DEC-081", () => {
 		files.set("case.json", new TextEncoder().encode(JSON.stringify(json)));
 		return writeZip([...files].map(([name, data]) => ({ name, data })));
 	}
-	const asComment = (c: Case): CaseComment => ({
-		id: findingCommentId(c.id, "m1", "f_1"),
+	const asComment = (_c: Case): CaseComment => ({
+		id: findingCommentId("m1", "f_1"),
 		mark: "m1",
 		text: "The class Button_primary sets the colour.",
 		at: "2026-11-10T10:00:00.000Z",
