@@ -4969,6 +4969,13 @@ nobody) and D7 (thin status answers). The service's part is its own.
   action, and the status line says "Mark 4 opened: it is on another page; open its page
   to verify it." The tab is not navigated by itself. Start verifying (the next step's,
   and This page's) opens the first mark to verify of the page in front, else the lowest.
+  - *Shown on the page too (owner, 25 November):* "When you click "Verify" and the next
+    mark opens, this mark should also just be shown." The row that opens does what its
+    Show does (`showMatch`: the page scrolls to it and outlines it) where the case's marks
+    are drawn on the tab and the mark is found there. Where they are not drawn (Hide marks,
+    whose promise is "they stay off on this tab until you show them again") its Show would
+    draw them first: a Verify does not, the row only opens. A mark of another page only
+    opens, as before. Focus and the status line unchanged.
 - **B6, "This page" for whoever came to verify.** When the page in front has one open
   case (pull request 81: only open cases are promoted there) that waits for this person
   to verify it, it says so instead of "This page already has a case …": "3 marks wait

@@ -27,6 +27,7 @@ import {
 	putCases,
 	READ_DB,
 	saveAs,
+	shadow,
 	showToolbar,
 	until,
 } from "./steps.ts";
@@ -276,4 +277,94 @@ inFullSet("Verify", () => {
 		);
 		await v1.page.send("Page.close");
 	}, 60_000);
+
+	test("the mark a Verify opens is shown on the page in front, as its Show would; one of another page only opens, the tab stays", async () => {
+		const { page, tabId } = await h.open("v1");
+		await showToolbar(h, page, tabId);
+		await markElement(page, "[data-truth=submit]", "Too pale");
+		// Below the filler: shown means the page scrolled to it.
+		await markElement(page, "[data-truth=contact]", "Hard to find");
+		await saveAs(page, "Shown next");
+		await page.send("Page.close");
+		const made = (await storedCases()).find((c) => c.title === "Shown next");
+		const [first, second] = made?.marks ?? [];
+		if (made === undefined || first === undefined || second === undefined)
+			throw new Error("not saved");
+		// Both fixed, and a third mark to verify on /v2.
+		const at = "2026-11-25T10:00:00.000Z";
+		const fixed = { kind: "fixed", at };
+		const c = {
+			...made,
+			shots: [
+				...made.shots,
+				{
+					id: "s_v2",
+					image: "shots/s_v2.webp",
+					scrollX: 0,
+					scrollY: 0,
+					viewport: { width: 1280, height: 800, dpr: 2 },
+					capturedAt: at,
+					url: `${h.base}/v2`,
+				},
+			],
+			marks: [
+				...made.marks.map((m) => ({ ...m, resolution: fixed })),
+				{
+					id: "m_v2",
+					number: 3,
+					shot: "s_v2",
+					comment: "On the other page",
+					author: "user",
+					shape: { kind: "note", at: { x: 40, y: 80 } },
+					crop: "crops/m_v2.webp",
+					element: null,
+					resolution: fixed,
+				},
+			],
+		} as unknown as Case;
+		await putCases(h, [c]);
+		const panel = await panelHome(h);
+		await openCase(panel, "Shown next");
+		const v1 = await h.open("v1");
+		await v1.page.activate();
+		// Drawn on the tab: the second mark's Show shows it here, nothing shown yet.
+		await panel.waitFor(
+			`${row(second.id)}?.querySelector('[data-action="show"]:not([data-loads])') && ${row(first.id)}.querySelector('.head-verify')`,
+			15_000,
+		);
+		const outlined = shadow('[data-review="2"] [data-element]');
+		expect(await v1.page.eval(`${outlined} === null`)).toBe(true);
+		expect(await v1.page.eval<number>("scrollY")).toBe(0);
+
+		await panel.click(`${row(first.id)}.querySelector('.head-verify')`);
+		await panel.waitFor(`${row(second.id)}?.hasAttribute("data-open")`);
+		// On the page: scrolled to it and outlined, as Show does.
+		await v1.page.waitFor(`${outlined} !== null`);
+		expect(
+			await v1.page.eval<boolean>(
+				`(() => { const r = document.querySelector("[data-truth=contact]").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`,
+			),
+		).toBe(true);
+		// The panel's focus is where a Verify puts it: the opened row's head.
+		expect(
+			await panel.eval<boolean>(
+				`document.activeElement === ${row(second.id)}.querySelector(".mark-toggle")`,
+			),
+		).toBe(true);
+
+		// The next is on /v2: its row opens, the tab is not taken there.
+		await panel.click(
+			`${row(second.id)}.querySelector('.body [data-mark-action="verify"]')`,
+		);
+		await panel.waitFor(
+			`${row("m_v2")}?.hasAttribute("data-open") && ${row("m_v2")}.hasAttribute("data-away")`,
+		);
+		await Bun.sleep(500);
+		expect(
+			await panel.eval<string>(
+				`chrome.tabs.get(${v1.tabId}).then((t) => t.pendingUrl || t.url)`,
+			),
+		).toBe(`${h.base}/v1`);
+		await v1.page.send("Page.close");
+	}, 90_000);
 });
