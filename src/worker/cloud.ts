@@ -184,13 +184,13 @@ export class Cloud {
 		// The findings the servers own leave this browser (DEC-081). A run
 		// that did not go whole is tried again at the next start; the sync
 		// does not wait for it.
-		const whole = await findingsIntoThreadsOnce(deps.store, deps.kv, (server) =>
+		await findingsIntoThreadsOnce(deps.store, deps.kv, (server) =>
 			scopedKv(deps.kv, server),
-		).catch(() => false);
-		if (!whole)
+		).catch((error: unknown) => {
 			console.warn(
-				"Sitegloss: the findings of some cases could not be brought along; it is tried again at the next start.",
+				`Sitegloss: the findings could not be brought along (${error instanceof Error ? error.name : "unknown"}); it is tried again at the next start.`,
 			);
+		});
 		return true;
 	}
 

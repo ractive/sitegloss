@@ -9,11 +9,22 @@
 
 import { beforeEach, expect, test } from "bun:test";
 import { type Case, validateCase } from "../src/lib/case.ts";
-import { type CaseBook, KEYS, type Queue } from "../src/lib/cloud/book.ts";
-import { findingsOutOfBooks } from "../src/lib/cloud/findings.ts";
+import {
+	type Account,
+	type CaseBook,
+	KEYS,
+	type Queue,
+} from "../src/lib/cloud/book.ts";
+import {
+	FINDINGS,
+	FINDINGS_KEY,
+	findingsIntoThreadsOnce,
+	findingsOutOfBooks,
+} from "../src/lib/cloud/findings.ts";
+import { scopedKv } from "../src/lib/cloud/servers.ts";
 import { storeImport } from "../src/lib/export.ts";
 import { memoryKv } from "../src/lib/kv.ts";
-import { upgradedCase } from "../src/lib/store.ts";
+import { MemoryStore, upgradedCase } from "../src/lib/store.ts";
 import type { FakeApi } from "./cloud-fake.ts";
 import { FakeServer } from "./cloud-fake.ts";
 import {
@@ -147,6 +158,7 @@ test("a finding that waited in the queue goes out once, as a comment; the queue 
 
 test("a case two servers have: a finding either has goes from here, and neither book keeps findings", async () => {
 	const other = memoryKv();
+	await other.set({ [KEYS.account]: await tess.kv.get(KEYS.account) });
 	await leftBy040(
 		[finding("f_1", "Both have it")],
 		[finding("f_1", "Both have it")],
@@ -194,4 +206,73 @@ test("a file's finding that names a person survives its case's first sync to a t
 	expect(
 		((await tess.store.getCase("c_file"))?.comments ?? []).map((k) => k.text),
 	).toEqual(["WORDS FROM A FILE"]);
+});
+
+test("a finding stays a comment here when its book's server has no signed-in account of the book's team: signed out, run out or another team", async () => {
+	const account = (await tess.kv.get(KEYS.account)) as Account;
+	for (const now of [
+		undefined,
+		{ ...account, expired: true as const },
+		{ ...account, teamId: "team_other" },
+	]) {
+		if (now === undefined) await tess.kv.remove(KEYS.account);
+		else await tess.kv.set({ [KEYS.account]: now });
+		await leftBy040(
+			[finding("f_1", "Kept here")],
+			[finding("f_1", "Kept here")],
+		);
+		expect(await here()).toEqual(["Kept here"]);
+	}
+});
+
+test("once: the servers are found by their keys, a queue alone too; the marker only when every case went", async () => {
+	const kv = memoryKv();
+	const failing = new (class extends MemoryStore {
+		override async updateCase(): Promise<Case> {
+			throw new DOMException("no room", "QuotaExceededError");
+		}
+	})();
+	const b = structuredClone(book());
+	const shadowed = b.shadow?.marks[there()];
+	if (shadowed)
+		(shadowed.content as { findings?: unknown }).findings = [
+			finding("f_1", "Had"),
+		];
+	const queued: Queue = {
+		caseId: "c_q",
+		teamId: "team_1",
+		ops: [
+			{
+				opId: "o_1",
+				type: "mark.patch",
+				markId: "m_x",
+				findings: { upsert: [finding("f_2", "Queued")] },
+			} as never,
+		],
+	};
+	await kv.set({
+		[`@https://a.test ${KEYS.account}`]: await tess.kv.get(KEYS.account),
+		"@https://a.test case:c_f": b,
+		[`@https://b.test ${KEYS.queue}`]: queued,
+	});
+	await failing.replaceCase(tess.store.cases.get("c_f") as Case, new Map());
+	const scoped = (server: string) => scopedKv(kv, server);
+	// The case cannot be written: its book keeps its findings, no marker;
+	// what waits in a queue goes without them all the same.
+	expect(await findingsIntoThreadsOnce(failing, kv, scoped)).toBe(false);
+	expect(await kv.get(FINDINGS_KEY)).toBeUndefined();
+	expect(JSON.stringify(await kv.get("@https://a.test case:c_f"))).toContain(
+		"findings",
+	);
+	expect(
+		((await kv.get(`@https://b.test ${KEYS.queue}`)) as Queue).ops,
+	).toEqual([]);
+	// Again with a store that works: whole, and the marker.
+	const store = new MemoryStore();
+	await store.replaceCase(tess.store.cases.get("c_f") as Case, new Map());
+	expect(await findingsIntoThreadsOnce(store, kv, scoped)).toBe(true);
+	expect(await kv.get(FINDINGS_KEY)).toBe(FINDINGS);
+	expect(
+		JSON.stringify(await kv.get("@https://a.test case:c_f")),
+	).not.toContain("findings");
 });
