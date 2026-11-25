@@ -428,6 +428,24 @@ function commentView(
 	};
 }
 
+/**
+ * Where a highlight's text was found instead of in its element (DEC-083),
+ * in words, with the text found and its element: drawn there, probable.
+ */
+function textFoundView(m: MarkMatch) {
+	if (m.textNear === undefined) return {};
+	return {
+		textFound:
+			m.textNear === "nearby"
+				? m.textPlaced
+					? "Its element was not found; the same text, the only place of it that shows, is near where the element was (textAt): the mark is drawn on it, as probable."
+					: "The same text, the only place of it that shows, is in an element nearby (textAt): the mark is drawn on it there, as probable."
+				: "Between the same text that stood before and after it, the page now has other text (textNow, in textAt; perhaps the fix): the mark is drawn on it, as probable.",
+		...(m.textNow === undefined ? {} : { textNow: m.textNow }),
+		...(m.textAt === undefined ? {} : { textAt: cut(m.textAt, 500) }),
+	};
+}
+
 function matchView(m: MarkMatch) {
 	return {
 		mark: m.number,
@@ -436,9 +454,12 @@ function matchView(m: MarkMatch) {
 		...(m.textChanged
 			? {
 					textChanged:
-						"The highlighted text is not in this element any more: the text changed, perhaps by the fix.",
+						m.textNear === undefined
+							? "The highlighted text is not in this element any more: the text changed, perhaps by the fix."
+							: "The highlighted text is not where it was any more: textFound says what was found instead.",
 				}
 			: {}),
+		...textFoundView(m),
 		...(m.textUnread
 			? {
 					textUnread:
@@ -776,6 +797,8 @@ export function inspectionView(
 				score: match.score,
 				// A highlight whose text is not in the element now (DEC-066).
 				...(match.textChanged ? { textChanged: true } : {}),
+				// Found around it instead (DEC-083).
+				...textFoundView(match),
 			},
 			element: {
 				relation: result.relation,

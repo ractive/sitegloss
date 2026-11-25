@@ -1278,7 +1278,8 @@ function colourOf(m: MarkMatch): "found" | "unsure" | "lost" {
 /** Where the mark is on the tab in front, in words: the number's colour says it too, but not to everyone. */
 function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
-	// A highlight whose text is not there any more (DEC-066).
+	// A highlight whose text is not there any more (DEC-066), found nearby (DEC-083).
+	if (m.textNear === "nearby" && m.status !== "lost") return "Text moved";
 	if (m.textChanged && m.status !== "lost") return "Text changed";
 	if (m.textUnread && m.status !== "lost") return "Text not looked for";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
@@ -1294,6 +1295,15 @@ const PILL: Record<MarkStatus, string | undefined> = {
 };
 
 function matchText(m: MarkMatch): string {
+	// Found around its element instead (DEC-083): page text, shown as text.
+	if (m.textNear === "nearby" && m.status !== "lost")
+		return m.textPlaced
+			? `The highlighted text was found on the page near where the mark was, and drawn there (${percent(m.score)}).`
+			: `The highlighted text is now in another element nearby, and drawn there (${percent(m.score)}).`;
+	if (m.textNear === "reworded" && m.status !== "lost") {
+		const now = m.textNow ?? "";
+		return `The highlighted text has changed in place; it now reads “${textLength(now) > NOW_SHOWN ? `${cutText(now, NOW_SHOWN - 1)}…` : now}” (${percent(m.score)}).`;
+	}
 	if (m.textChanged && m.status !== "lost")
 		return `The highlighted text is no longer in the element: it changed, or the fix changed it. Its element is outlined (${percent(m.score)}).`;
 	if (m.textUnread && m.status !== "lost")
@@ -1335,6 +1345,9 @@ const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 
 /** A highlight's text, cut to the most a row's line shows (DEC-066). */
 const QUOTE_SHOWN = 160;
+
+/** The text found in a highlight's place, cut to the most its sentence quotes (DEC-083). */
+const NOW_SHOWN = 80;
 
 /**
  * A mark of a kind this version does not know (DEC-066): its kind's name,

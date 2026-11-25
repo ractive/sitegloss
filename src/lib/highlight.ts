@@ -1,6 +1,6 @@
 /**
  * The Highlight tool's pure parts (DEC-066): an element's text as one line
- * of words, where a quote is in it, the text around it, and the line boxes
+ * of words, where a quote is in it (or around it, DEC-083), the text around it, and the line boxes
  * of a selection. The page's side (content/text-range.ts) gives them the
  * DOM's text nodes and client rects; nothing here needs a page.
  */
@@ -141,6 +141,175 @@ export function quoteIn(
 	return best === undefined
 		? undefined
 		: { start: best.start, end: best.start + quote.length };
+}
+
+/**
+ * The fewest characters (code points, without spaces at the ends) the text
+ * before and the text after a highlight must each have to be evidence of
+ * its place (DEC-083): shorter ones ("a ", ".") are found anywhere.
+ */
+export const PLACE_CONTEXT = 6;
+
+/**
+ * The fewest characters a highlighted text must have to be looked for by
+ * itself, without the text around it (DEC-083): "3", "the" and "Save" are
+ * found anywhere.
+ */
+export const LONE_QUOTE = 4;
+
+/**
+ * The most characters new text in a highlight's place may have: twice the
+ * old text, and 20 more ("localhost:3000" for "localhost", a sentence
+ * reworded). Longer, it is no longer the same place's text.
+ */
+export const maxReplacement = (old: string): number => 2 * textLength(old) + 20;
+
+/** A part of a flat text: `start` inclusive, `end` exclusive. */
+export interface Span {
+	start: number;
+	end: number;
+}
+
+/**
+ * Every place of `needle` in `text`; none at all when there are more than
+ * `MAX_OCCURRENCES`: so common a text is no evidence of a place, and a
+ * count cut short would make one of many look like the only one.
+ */
+function occurrences(text: string, needle: string): number[] {
+	const out: number[] = [];
+	if (needle === "") return out;
+	for (
+		let i = text.indexOf(needle);
+		i !== -1;
+		i = text.indexOf(needle, i + 1)
+	) {
+		if (out.length === MAX_OCCURRENCES) return [];
+		out.push(i);
+	}
+	return out;
+}
+
+/** The ways a highlight's text is looked for around its element (`nearPlaces`). */
+export type NearWay = "moved" | "reworded" | "alone";
+
+/**
+ * Which ways a highlight's text is looked for in around its element, by
+ * how its element was found (DEC-083). `found`: all three. `probable`: not
+ * `reworded`, which trusts that the element is the text's old place.
+ * `ambiguous`, or more than one candidate: none. `lost` (a place its
+ * recorded selector names, `placed`): only the ways that carry the text
+ * around it, `moved` and `reworded`.
+ */
+export function nearWays(
+	status: string,
+	candidates: number,
+	placed = false,
+): NearWay[] {
+	if (placed) return ["moved", "reworded"];
+	if (candidates > 1) return [];
+	if (status === "found") return ["moved", "reworded", "alone"];
+	if (status === "probable") return ["moved", "alone"];
+	return [];
+}
+
+/** Whether both the text before and the text after a highlight are evidence (`PLACE_CONTEXT`). */
+function hasSides(h: { before?: string; after?: string }): h is {
+	before: string;
+	after: string;
+} {
+	return (
+		h.before !== undefined &&
+		h.after !== undefined &&
+		textLength(h.before.trim()) >= PLACE_CONTEXT &&
+		textLength(h.after.trim()) >= PLACE_CONTEXT
+	);
+}
+
+/** A letter, digit or mark: part of a word or a number. */
+const WORD = /[\p{L}\p{N}\p{M}_]/u;
+
+const isWord = (ch: string | undefined): boolean =>
+	ch !== undefined && WORD.test(ch);
+
+/** The character (code point) that ends at `i`, if any. */
+const charBefore = (text: string, i: number): string | undefined =>
+	i <= 0 ? undefined : [...text.slice(Math.max(0, i - 2), i)].at(-1);
+
+/** The character (code point) that starts at `i`, if any. */
+const charAt = (text: string, i: number): string | undefined => {
+	const c = text.codePointAt(i);
+	return c === undefined ? undefined : String.fromCodePoint(c);
+};
+
+/**
+ * Whether `start`..`end` of a text is a whole word or words: not inside a
+ * longer word or number at either end ("Save" in "Saved", "3" in "2023").
+ */
+export function wordBounded(text: string, start: number, end: number): boolean {
+	return (
+		!(isWord(charAt(text, start)) && isWord(charBefore(text, start))) &&
+		!(isWord(charBefore(text, end)) && isWord(charAt(text, end)))
+	);
+}
+
+/**
+ * Every place where text stands now between the whole of a highlight's
+ * `before` and the whole of its `after` (DEC-083): right after the one,
+ * right before the nearest other, not empty and no longer than
+ * `maxReplacement`. None unless both sides are evidence (`PLACE_CONTEXT`).
+ */
+export function replacedPlaces(
+	text: string,
+	h: { text: string; before?: string; after?: string },
+): Span[] {
+	if (!hasSides(h)) return [];
+	const most = maxReplacement(h.text);
+	const out: Span[] = [];
+	for (const i of occurrences(text, h.before)) {
+		const from = i + h.before.length;
+		const to = text.indexOf(h.after, from);
+		// None after this one: none after a later one either.
+		if (to === -1) break;
+		let s = from;
+		let e = to;
+		while (s < e && text[s] === " ") s++;
+		while (e > s && text[e - 1] === " ") e--;
+		if (e > s && textLength(text.slice(s, e)) <= most)
+			out.push({ start: s, end: e });
+	}
+	return out;
+}
+
+/**
+ * The places in the text around an element where a highlight's text may
+ * be, when it is not in the element any more (DEC-083), each way with its
+ * evidence; a way counts only where it has exactly one place (that shows,
+ * the page decides). In order:
+ * - `moved`: the same text with all of its old text before and after it
+ *   (both sides evidence): the sentence moved.
+ * - `reworded`: other text between the same text before and after it
+ *   (`replacedPlaces`): the text changed in place, often the fix.
+ * - `alone`: the same text as whole words, without the text around it,
+ *   only where it has at least `LONE_QUOTE` characters and a letter.
+ */
+export function nearPlaces(
+	text: string,
+	h: { text: string; before?: string; after?: string },
+): { moved: Span[]; reworded: Span[]; alone: Span[] } {
+	const n = h.text.length;
+	const moved = hasSides(h)
+		? occurrences(text, `${h.before}${h.text}${h.after}`).map((i) => ({
+				start: i + h.before.length,
+				end: i + h.before.length + n,
+			}))
+		: [];
+	const alone =
+		textLength(h.text) >= LONE_QUOTE && /\p{L}/u.test(h.text)
+			? occurrences(text, h.text)
+					.filter((i) => wordBounded(text, i, i + n))
+					.map((i) => ({ start: i, end: i + n }))
+			: [];
+	return { moved, reworded: replacedPlaces(text, h), alone };
 }
 
 /** The last `max` characters (code points) of `text`. */

@@ -1476,3 +1476,93 @@ describe("a highlight's text (DEC-066)", () => {
 		expect(now?.matches[0]?.status).toBe("found");
 	});
 });
+
+describe("a highlight's text found around its element (DEC-083)", () => {
+	/** Puts happy-dom's own range rects back. */
+	let restoreRects: () => void = () => undefined;
+
+	beforeEach(() => {
+		// Text that shows: happy-dom lays nothing out.
+		const proto = (doc.defaultView as unknown as { Range: typeof Range }).Range
+			.prototype;
+		const rects = proto.getClientRects;
+		proto.getClientRects = () =>
+			[{ x: 0, y: 0, width: 50, height: 16 }] as never;
+		restoreRects = () => {
+			proto.getClientRects = rects;
+		};
+	});
+
+	afterEach(() => restoreRects());
+
+	function highlightOf(el: Element, highlight: Mark["highlight"]): Case {
+		const c = caseOf(el);
+		const mark = c.marks[0] as Mark;
+		return {
+			...c,
+			marks: [
+				{
+					...mark,
+					shape: { kind: "box", rect: mark.element?.rect },
+					highlight,
+				} as Mark,
+			],
+		};
+	}
+
+	test("looked for again and not found, nothing stays drawn on the element its text was found in", async () => {
+		doc.body.innerHTML = `<main><section><h1><span id="headline" style="display: inline">localhost</span></h1><ul><li>First start the development server, then open the page on localhost in a browser of your choice.</li></ul></section></main>`;
+		const c = highlightOf($("#headline"), {
+			text: "localhost",
+			rects: [{ x: 0, y: 0, width: 50, height: 16 }],
+		});
+		($("#headline").firstChild as Text).nodeValue = "Mark it";
+		const loaded = await reviewer.load(c);
+		expect(loaded.matches[0]?.textNear).toBe("nearby");
+		expect(overlay.items.length).toBe(1);
+		expect(reviewer.drawnText("m1")).toBe("localhost");
+		$("h1").remove();
+		await until(() => overlay.items.length === 0);
+		const now = await reviewer.matches(c.id);
+		expect(now?.matches[0]?.status).toBe("lost");
+		// The text found before is gone with it, not only hidden.
+		expect(reviewer.drawnText("m1")).toBeUndefined();
+		expect(bar()).toContain("0 of 1 found");
+	});
+
+	test("new text in its place that keeps changing is looked for again only after a while", async () => {
+		doc.body.innerHTML = `<main><p id="p">The developer opens the case on <span style="display: inline">localhost:3000</span> and fixes it.</p></main>`;
+		const c = highlightOf($("#p"), {
+			text: "localhost:3000",
+			before: "The developer opens the case on ",
+			after: " and fixes it.",
+			rects: [{ x: 0, y: 0, width: 50, height: 16 }],
+		});
+		reviewer.clear();
+		reviewer = new Reviewer(overlay as unknown as Overlay, async () => answer, {
+			tickMs: TICK_MS,
+			refindMs: 400,
+		});
+		const text = $("span").firstChild as Text;
+		text.nodeValue = "localhost";
+		const loaded = await reviewer.load(c);
+		expect(loaded.matches[0]).toMatchObject({
+			status: "probable",
+			textNear: "reworded",
+			textNow: "localhost",
+		});
+		// A clock: its text changes at every tick, and is not looked for at every one.
+		text.nodeValue = "127.0.0.1";
+		await Bun.sleep(150);
+		expect((await reviewer.matches(c.id))?.matches[0]?.textNow).toBe(
+			"localhost",
+		);
+		let now: string | undefined;
+		await until(() => {
+			void reviewer.matches(c.id).then((m) => {
+				now = m?.matches[0]?.textNow;
+			});
+			return now === "127.0.0.1";
+		});
+	});
+});
