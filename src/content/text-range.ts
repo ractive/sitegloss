@@ -14,9 +14,10 @@ import {
 	flatSpan,
 	flatten,
 	lineBoxes,
+	nearPlaces,
 	quoteIn,
-	quoteNear,
 	type Source,
+	type Span,
 	type TextPiece,
 } from "../lib/highlight.ts";
 
@@ -254,24 +255,24 @@ export function findText(
 const AREA_EDGE = "section, article, main, aside, form, dialog, body";
 
 /**
- * How many levels above its element a highlight's text is looked for
- * (DEC-083): a card's text, a list item's neighbours, a heading's section.
+ * How many levels above its element a highlight's text is looked for at
+ * most (DEC-083). On a page of divs that may be most of it; the areas are
+ * tried nearest first, and only one place that shows counts.
  */
 export const AREA_LEVELS = 4;
 
 /**
- * The most text nodes with words read of the area around an element
- * (DEC-083): an area with more is too large and a smaller one is taken. A
- * section of a page has a few hundred; this runs for every highlight whose
- * text is not in its element, at every look at the page.
+ * The most text nodes with words read of an area around an element
+ * (DEC-083): a larger area, and every one above it, is not read. This runs
+ * for every highlight whose text is not in its element, at every look.
  */
 export const AREA_NODES = 2_000;
 
 /**
  * The elements a highlight's text is looked for in when it is not in its
- * element (DEC-083), largest first: up to `levels` ancestors, not past the
- * nearest section, article, main, aside, form, dialog or body; then the
- * element itself (new text in the old place is often in it).
+ * element (DEC-083), nearest first: the element itself (new text in the
+ * old place is often in it), then up to `levels` ancestors, not past the
+ * nearest section, article, main, aside, form, dialog or body.
  */
 export function nearbyAreas(
 	element: Element,
@@ -285,7 +286,39 @@ export function nearbyAreas(
 		areas.push(up);
 		at = up;
 	}
-	return areas.reverse();
+	return areas;
+}
+
+/** How many ancestors of a text are looked at for a box that cuts it to a pixel. */
+const CLIP_LEVELS = 4;
+
+/**
+ * Whether a range's text shows (DEC-083): its element is rendered and
+ * visible (`checkVisibility` where there is one), its text has a line box
+ * larger than 2 px each way, and no box round it of at most 2 px cuts what
+ * overflows (text for screen readers only, a closed part). Only for a few
+ * candidates: it lays the page out.
+ */
+export function showsOnPage(range: Range): boolean {
+	const el = elementOfRange(range);
+	if (el === null) return false;
+	if (
+		typeof el.checkVisibility === "function" &&
+		!el.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true })
+	)
+		return false;
+	if (!rangeLines(range).some((r) => r.width > 2 && r.height > 2)) return false;
+	const win = el.ownerDocument.defaultView;
+	let at: Element | null = el;
+	for (let k = 0; at !== null && k < CLIP_LEVELS; k++, at = at.parentElement) {
+		const box = at.getBoundingClientRect();
+		if (
+			(box.width <= 2 || box.height <= 2) &&
+			win?.getComputedStyle(at).overflow !== "visible"
+		)
+			return false;
+	}
+	return true;
 }
 
 /** A highlight's text found around its element (DEC-083). */
@@ -299,29 +332,51 @@ export interface NearText {
 	now: string;
 }
 
+/** The one place of `spans` whose text shows; none when none or more than one shows. */
+function onlyShown(
+	text: ElementText,
+	spans: readonly Span[],
+	shows: (range: Range) => boolean,
+): { span: Span; range: Range } | undefined {
+	let one: { span: Span; range: Range } | undefined;
+	for (const span of spans) {
+		const range = rangeOf(text, span.start, span.end);
+		if (!shows(range)) continue;
+		if (one !== undefined) return undefined;
+		one = { span, range };
+	}
+	return one;
+}
+
 /**
  * A highlight's text around `element`, where it is not in it any more
- * (DEC-083): in the largest area of `nearbyAreas` whose text is not over
- * `AREA_NODES` (`quoteNear`). None: not there either.
+ * (DEC-083): in the nearest area of `nearbyAreas` where a way of
+ * `nearPlaces` has exactly one place that shows, in the ways' order. None
+ * (the element's box, "Text changed", as before): no way has that before
+ * the areas end or grow over `AREA_NODES`. `shows` is the page's
+ * `showsOnPage`; a test without layout gives its own.
  */
 export function findNearby(
 	element: Element,
 	h: Pick<Highlight, "text" | "before" | "after">,
 	levels: number = AREA_LEVELS,
+	shows: (range: Range) => boolean = showsOnPage,
 ): NearText | undefined {
 	for (const area of nearbyAreas(element, levels)) {
 		const text = elementText(area, AREA_NODES);
-		if (text.truncated) continue;
-		// The largest area that is read holds the smaller ones.
-		const at = quoteNear(text.flat.text, h);
-		if (at === undefined) return undefined;
-		const range = rangeOf(text, at.start, at.end);
-		return {
-			range,
-			holder: elementOfRange(range) ?? area,
-			how: at.how,
-			now: text.flat.text.slice(at.start, at.end),
-		};
+		// The areas above are larger still.
+		if (text.truncated) return undefined;
+		const places = nearPlaces(text.flat.text, h);
+		for (const way of ["moved", "reworded", "alone"] as const) {
+			const one = onlyShown(text, places[way], shows);
+			if (one === undefined) continue;
+			return {
+				range: one.range,
+				holder: elementOfRange(one.range) ?? area,
+				how: way === "reworded" ? "reworded" : "nearby",
+				now: text.flat.text.slice(one.span.start, one.span.end),
+			};
+		}
 	}
 	return undefined;
 }

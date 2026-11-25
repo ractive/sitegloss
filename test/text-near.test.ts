@@ -1,9 +1,9 @@
 /**
  * A highlight's text looked for around its element when it is not in it
- * (DEC-083): the area (a few levels up, not past the nearest section), the
- * same text in another element there, new text in the old place, and the
- * place a lost element's selector names. The decisions are
- * test/highlight.test.ts's; this gives them a page.
+ * (DEC-083): the areas nearest first (not past the nearest section, not
+ * over 2,000 text nodes), a way taken only where it has exactly one place
+ * that shows, and the place a lost element's selector names. The ways'
+ * places are test/highlight.test.ts's; this gives them a page.
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
@@ -25,18 +25,27 @@ beforeEach(() => {
 
 const $ = (s: string) => doc.querySelector(s) as Element;
 
+/** happy-dom lays nothing out: text shows unless it is for screen readers only. */
+const shows = (r: Range) =>
+	r.startContainer.parentElement?.closest(".sr-only") == null;
+
+const near = (
+	el: Element,
+	h: { text: string; before?: string; after?: string },
+) => findNearby(el, h, undefined, shows);
+
 describe("a highlight's text around its element", () => {
-	test("the same text in another element of its card", () => {
+	test("a span that held only the word, its word now the only one in the card", () => {
 		doc.body.innerHTML = `<main><section><div class="card">
 			<h1><span id="was">Mark it, then fix it</span></h1>
 			<p>Open the case on <code>localhost</code> to fix it.</p>
 		</div></section></main>`;
 		const h = { text: "localhost" };
 		expect(findText($("#was"), h)).toBe("gone");
-		const near = findNearby($("#was"), h);
-		expect(near?.how).toBe("nearby");
-		expect(near?.holder).toBe($("code"));
-		expect(near?.range.toString()).toBe("localhost");
+		const found = near($("#was"), h);
+		expect(found?.how).toBe("nearby");
+		expect(found?.holder).toBe($("code"));
+		expect(found?.range.toString()).toBe("localhost");
 	});
 
 	test("new text between the same text before and after it, in the element itself", () => {
@@ -49,41 +58,73 @@ describe("a highlight's text around its element", () => {
 			after: " and fixes it.",
 		};
 		expect(findText($("#p"), h)).toBe("gone");
-		const near = findNearby($("#p"), h);
-		expect(near?.how).toBe("reworded");
-		expect(near?.now).toBe("localhost");
-		expect(near?.range.toString()).toBe("localhost");
+		const found = near($("#p"), h);
+		expect(found?.how).toBe("reworded");
+		expect(found?.now).toBe("localhost");
 	});
 
-	test("not past the nearest section: the same text in the next section is not taken", () => {
+	test("no evidence, nothing: a digit, a word inside a longer one, a deleted short word", () => {
+		doc.body.innerHTML = `<main>
+			<table><tr><td id="cell">4</td><td>2023</td></tr></table>
+			<form><button id="button">Submit</button> <a href="/d">Saved drafts</a></form>
+			<section><h2>About the team</h2><p id="p">We are small team.</p></section>
+		</main>`;
+		expect(near($("#cell"), { text: "3" })).toBeUndefined();
+		expect(near($("#button"), { text: "Save" })).toBeUndefined();
+		// "the" was taken out by the fix: nothing is between the text around it.
+		expect(
+			near($("#p"), { text: "the", before: "We are ", after: " small team." }),
+		).toBeUndefined();
+	});
+
+	test("rows with the same text around it: none of them, unless the row is the element", () => {
+		doc.body.innerHTML = `<main><ul>
+			<li>Delete invoice 1040 from the list.</li>
+			<li>Delete invoice 1041 from the list.</li>
+			<li id="row">Delete invoice INV-42 from the list.</li>
+		</ul></main>`;
+		const h = {
+			text: "1042",
+			before: "Delete invoice ",
+			after: " from the list.",
+		};
+		expect(near($("ul"), h)).toBeUndefined();
+		expect(near($("#row"), h)?.now).toBe("INV-42");
+	});
+
+	test("a copy that does not show is no second place, and none that shows is no place", () => {
+		doc.body.innerHTML = `<main><section>
+			<p id="p">Mark it</p><p>Run it on <code>localhost</code>.</p>
+			<span class="sr-only">localhost</span>
+		</section></main>`;
+		expect(near($("#p"), { text: "localhost" })?.holder).toBe($("code"));
+		// Both shown: two places, none taken.
+		expect(
+			findNearby($("#p"), { text: "localhost" }, undefined, () => true),
+		).toBeUndefined();
+	});
+
+	test("not past the nearest section, nearest area first", () => {
 		doc.body.innerHTML = `<main>
 			<section><div><p id="p">Install the extension.</p></div></section>
 			<section><p>Open it on localhost.</p></section>
 		</main>`;
 		expect(nearbyAreas($("#p")).map((e) => e.localName)).toEqual([
-			"section",
-			"div",
 			"p",
+			"div",
+			"section",
 		]);
-		expect(findNearby($("#p"), { text: "localhost" })).toBeUndefined();
+		expect(near($("#p"), { text: "localhost" })).toBeUndefined();
 	});
 
-	test("a few levels up at most, where no section is near", () => {
-		doc.body.innerHTML = `<div id="far">localhost<div><div><div><div><div><span id="s">Here</span></div></div></div></div></div></div>`;
-		expect(nearbyAreas($("#s"))).toHaveLength(5);
-		expect(findNearby($("#s"), { text: "localhost" })).toBeUndefined();
-	});
-
-	test("an area with too much text gives way to the largest one under it that is read", () => {
+	test("an area over 2,000 text nodes is not read, nor any above it", () => {
 		const many = Array.from(
 			{ length: AREA_NODES + 10 },
 			(_, i) => `<p>Line ${i}</p>`,
 		).join("");
-		doc.body.innerHTML = `<article>${many}<div><p id="p">Old words</p><p>Open it on localhost.</p></div></article>`;
-		// Measured once here: 69 ms in happy-dom (DEC-083).
-		const near = findNearby($("#p"), { text: "localhost" });
-		expect(near?.how).toBe("nearby");
-		expect(near?.range.toString()).toBe("localhost");
+		doc.body.innerHTML = `<article><p>Open it on localhost.</p>${many}<div><p id="p">Old words</p></div></article>`;
+		// Measured once (DEC-083): reading it, about 4 ms in happy-dom (71 ms the first time).
+		expect(near($("#p"), { text: "localhost" })).toBeUndefined();
 	});
 
 	test("a lost element's selector: the element it names, else its nearest ancestor on the page once", () => {

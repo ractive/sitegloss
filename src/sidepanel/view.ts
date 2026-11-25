@@ -1297,7 +1297,9 @@ const PILL: Record<MarkStatus, string | undefined> = {
 function matchText(m: MarkMatch): string {
 	// Found around its element instead (DEC-083): page text, shown as text.
 	if (m.textNear === "nearby" && m.status !== "lost")
-		return `The highlighted text is now in another element nearby, and drawn there (${percent(m.score)}).`;
+		return m.textPlaced
+			? `The highlighted text was found on the page near where the mark was, and drawn there (${percent(m.score)}).`
+			: `The highlighted text is now in another element nearby, and drawn there (${percent(m.score)}).`;
 	if (m.textNear === "reworded" && m.status !== "lost") {
 		const now = m.textNow ?? "";
 		return `The highlighted text has changed in place; it now reads “${textLength(now) > NOW_SHOWN ? `${cutText(now, NOW_SHOWN - 1)}…` : now}” (${percent(m.score)}).`;

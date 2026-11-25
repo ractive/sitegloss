@@ -19,9 +19,10 @@ import {
 	flatSpan,
 	flatten,
 	lineBoxes,
+	nearPlaces,
 	quoteIn,
-	quoteNear,
-	replacedIn,
+	replacedPlaces,
+	wordBounded,
 } from "../src/lib/highlight.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
 import {
@@ -113,68 +114,77 @@ describe("where a highlight's text is around its element (DEC-083)", () => {
 		before: "The developer opens the case on ",
 		after: " and finds the marks drawn again.",
 	};
+	const texts = (text: string, spans: { start: number; end: number }[]) =>
+		spans.map((p) => text.slice(p.start, p.end));
 
 	test("new text between the same text before and after it: the text changed in place", () => {
 		const now =
 			"Mail. The developer opens the case on localhost and finds the marks drawn again.";
-		const at = quoteNear(now, old);
-		expect(at?.how).toBe("reworded");
-		expect(now.slice(at?.start, at?.end)).toBe("localhost");
+		expect(texts(now, nearPlaces(now, old).reworded)).toEqual(["localhost"]);
 	});
 
 	test("one side alone, a side that is too short, nothing or too much between: no place", () => {
 		// The text after it was reworded too.
 		expect(
-			replacedIn("The developer opens the case on localhost, then fixes.", old),
-		).toBeUndefined();
-		// "on " and "." are found anywhere.
-		const short = { text: "localhost:3000", before: "on ", after: "." };
-		expect(replacedIn("It runs on localhost.", short)).toBeUndefined();
-		expect(quoteNear("It runs on localhost.", short)).toBeUndefined();
-		// The text was taken out; or what is between is longer than twice it and 20.
-		expect(replacedIn(`${old.before}${old.after}`, old)).toBeUndefined();
-		const long = "x".repeat(2 * old.text.length + 21);
-		expect(replacedIn(`${old.before}${long}${old.after}`, old)).toBeUndefined();
-		expect(
-			replacedIn(
-				`${old.before}${"x".repeat(2 * old.text.length + 20)}${old.after}`,
+			replacedPlaces(
+				"The developer opens the case on localhost, then fixes.",
 				old,
 			),
-		).toBeDefined();
+		).toEqual([]);
+		// "on " and "." are found anywhere.
+		const short = { text: "localhost:3000", before: "on ", after: "." };
+		expect(nearPlaces("It runs on localhost.", short)).toEqual({
+			moved: [],
+			reworded: [],
+			alone: [],
+		});
+		// The text was taken out (a fix that deletes it); or what is between is
+		// longer than twice it and 20.
+		expect(replacedPlaces(`${old.before}${old.after}`, old)).toEqual([]);
+		const at = (n: number) => `${old.before}${"x".repeat(n)}${old.after}`;
+		expect(replacedPlaces(at(2 * old.text.length + 21), old)).toEqual([]);
+		expect(replacedPlaces(at(2 * old.text.length + 20), old)).toHaveLength(1);
 	});
 
-	test("the same text with all of its old text around it comes first: the sentence moved", () => {
-		const text = `A card: localhost:3000 here. ${old.before}localhost:3000${old.after}`;
-		const at = quoteNear(text, old);
-		expect(at).toEqual({
-			start: text.lastIndexOf("localhost:3000"),
-			end: text.lastIndexOf("localhost:3000") + 14,
-			how: "nearby",
-		});
-	});
-
-	test("of several places of the same text, the text around it chooses", () => {
-		const h = { text: "localhost", before: "Start it on " };
-		const text = "Mark it on localhost. Start it on localhost and open it.";
-		expect(quoteNear(text, h)).toEqual({
-			start: text.lastIndexOf("localhost"),
-			end: text.lastIndexOf("localhost") + 9,
-			how: "nearby",
-		});
-		// New text in the old place beats the same words elsewhere with less around them.
-		const placed = {
-			text: "localhost:3000",
-			before: "Start it on ",
-			after: " and open it.",
+	test("several rows with the same text before and after: every one is a place, so the page takes none", () => {
+		const rows =
+			"Delete invoice 1040 from the list. Delete invoice 1041 from the list. Delete invoice INV-42 from the list.";
+		const h = {
+			text: "1042",
+			before: "Delete invoice ",
+			after: " from the list",
 		};
-		const both = "Run localhost:3000 first. Start it on localhost and open it.";
-		const at = quoteNear(both, placed);
-		expect(at?.how).toBe("reworded");
-		expect(both.slice(at?.start, at?.end)).toBe("localhost");
+		expect(texts(rows, nearPlaces(rows, h).reworded)).toEqual([
+			"1040",
+			"1041",
+			"INV-42",
+		]);
 	});
 
-	test("neither the text nor its place: none", () => {
-		expect(quoteNear("Something else entirely.", old)).toBeUndefined();
+	test("the sentence moved: the same text with all of its text before and after it", () => {
+		const text = `A card. ${old.before}localhost:3000${old.after}`;
+		expect(texts(text, nearPlaces(text, old).moved)).toEqual([
+			"localhost:3000",
+		]);
+	});
+
+	test("the same text alone: whole words, at least 4 characters and a letter", () => {
+		// Inside a longer word or number it is no place.
+		expect(
+			texts("Saved drafts", nearPlaces("Saved drafts", { text: "Save" }).alone),
+		).toEqual([]);
+		expect(wordBounded("Saved drafts", 0, 4)).toBe(false);
+		expect(wordBounded("Run it on localhost:3000.", 10, 19)).toBe(true);
+		// Too short, or no letter.
+		expect(nearPlaces("Year 2023", { text: "3" }).alone).toEqual([]);
+		expect(nearPlaces("About the team", { text: "the" }).alone).toEqual([]);
+		expect(nearPlaces("Code 1234 here", { text: "1234" }).alone).toEqual([]);
+		// Each whole-word place.
+		const text = "Open localhost. Not localhosts. Then localhost again.";
+		expect(texts(text, nearPlaces(text, { text: "localhost" }).alone)).toEqual([
+			"localhost",
+			"localhost",
+		]);
 	});
 });
 

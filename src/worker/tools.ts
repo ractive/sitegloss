@@ -437,7 +437,9 @@ function textFoundView(m: MarkMatch) {
 	return {
 		textFound:
 			m.textNear === "nearby"
-				? "The same text is in an element nearby (textAt): the mark is drawn on it there, as probable, since the same words may stand in more than one place."
+				? m.textPlaced
+					? "Its element was not found; the same text, the only place of it that shows, is near where the element was (textAt): the mark is drawn on it, as probable."
+					: "The same text, the only place of it that shows, is in an element nearby (textAt): the mark is drawn on it there, as probable."
 				: "Between the same text that stood before and after it, the page now has other text (textNow, in textAt; perhaps the fix): the mark is drawn on it, as probable.",
 		...(m.textNow === undefined ? {} : { textNow: m.textNow }),
 		...(m.textAt === undefined ? {} : { textAt: cut(m.textAt, 500) }),

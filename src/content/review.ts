@@ -116,7 +116,7 @@ interface Entry {
 		 * holds it, which the mark is drawn on. `placed`: no element was found
 		 * for the mark, and this one is its only candidate.
 		 */
-		near?: { holder: Element; placed?: true };
+		near?: { holder: Element; placed?: true; at: number };
 	};
 }
 
@@ -140,7 +140,26 @@ function withoutNear(match: MarkMatch): void {
 	delete match.textNear;
 	delete match.textNow;
 	delete match.textAt;
+	delete match.textPlaced;
 }
+
+/**
+ * An entry looked for again: what was found before and is not found now
+ * goes (a highlight's text, which would stay drawn on its old element).
+ */
+function renew(entry: Entry, next: Entry): void {
+	delete entry.text;
+	delete entry.elementStatus;
+	Object.assign(entry, next);
+}
+
+/**
+ * How long a highlight's text found around its element (DEC-083) is left
+ * drawn where it was when the text under it changes, before it is looked
+ * for again: text that keeps changing (a clock, a countdown, a price)
+ * would have it looked for at every tick.
+ */
+const REFIND_MS = 3000;
 
 /** Asks the side panel that shows the case (DEC-027). */
 export type AskPanel = (request: MarkRequest) => Promise<MarkAnswer>;
@@ -289,6 +308,8 @@ export class Reviewer {
 	#observer: MutationObserver | undefined;
 	/** Where the round over the highlights whose text was gone stands. */
 	#goneAt = 0;
+	/** Where the round over the replaced elements and texts stands (`#nextReplaced`). */
+	#replacedAt = 0;
 	/** Which page (`pageKey`) the marks were last looked for on. */
 	#page = "";
 	/**
@@ -313,6 +334,8 @@ export class Reviewer {
 	#stillTimer: ReturnType<typeof setTimeout> | undefined;
 	/** How often the page is looked at without a scroll: 500 ms, unless a unit test gives its own. */
 	readonly #tickMs: number;
+	/** `REFIND_MS`, shorter or longer in a test. */
+	readonly #refindMs: number;
 	/**
 	 * The case's marks are hidden (DEC-061): the case is kept, nothing is
 	 * drawn or looked for, and the bar is the pill that brings them back.
@@ -337,11 +360,12 @@ export class Reviewer {
 	constructor(
 		overlay: Overlay,
 		ask: AskPanel = askPanel,
-		options: { tickMs?: number } = {},
+		options: { tickMs?: number; refindMs?: number } = {},
 	) {
 		this.overlay = overlay;
 		this.#ask = ask;
 		this.#tickMs = options.tickMs ?? 500;
+		this.#refindMs = options.refindMs ?? REFIND_MS;
 		this.#visibility = new Visibility(overlay.doc, overlay.host);
 		overlay.onPick = (number) => this.pick(number);
 		const doc = overlay.doc;
@@ -438,7 +462,7 @@ export class Reviewer {
 			this.#checkPage();
 			// One search a tick: a new route replaces every element at once.
 			const replaced =
-				this.#entries.find((e) => this.#replaced(e)) ??
+				this.#nextReplaced() ??
 				// Now and then one highlight whose text was gone (DEC-066).
 				(++this.#ticks % GONE_TICKS === 0 ? this.#textBack() : undefined);
 			if (replaced !== undefined) this.#findAgain(replaced);
@@ -609,7 +633,7 @@ export class Reviewer {
 			if (this.#own(entry.mark)) this.#stale.add(entry);
 			else if (entry.here) {
 				this.#stale.delete(entry);
-				Object.assign(entry, this.#elsewhere(entry.mark));
+				renew(entry, this.#elsewhere(entry.mark));
 				// Its popover goes with it, what was typed kept as on any close.
 				if (entry.mark.id === this.#open?.markId) this.overlay.dismissPopover();
 				if (entry.mark.id === this.#focused) this.#focused = undefined;
@@ -640,7 +664,7 @@ export class Reviewer {
 		for (const entry of [...this.#stale]) {
 			this.#stale.delete(entry);
 			if (this.#entries.includes(entry))
-				Object.assign(entry, this.#find(search, entry.mark));
+				renew(entry, this.#find(search, entry.mark));
 			if (performance.now() >= until) break;
 		}
 		clearTextCache();
@@ -748,7 +772,9 @@ export class Reviewer {
 			...(found === "unread" ? { unread: true as const } : {}),
 			lookedAt: this.#changes,
 			dark: isDarkGround(backdropOf(near?.holder ?? el)?.color),
-			...(near === undefined ? {} : { near: { holder: near.holder } }),
+			...(near === undefined
+				? {}
+				: { near: { holder: near.holder, at: performance.now() } }),
 		};
 		const was = entry.elementStatus ?? entry.match.status;
 		if (found === "unread") entry.match.textUnread = true;
@@ -795,6 +821,7 @@ export class Reviewer {
 			current: 0,
 			candidates: [this.#info(candidate, search.context)],
 			textChanged: true,
+			textPlaced: true,
 			...nearMatch(near),
 		};
 		entry.text = {
@@ -803,7 +830,7 @@ export class Reviewer {
 			said: bareText(near.range.toString()),
 			lookedAt: this.#changes,
 			dark: isDarkGround(backdropOf(near.holder)?.color),
-			near: { holder: near.holder, placed: true },
+			near: { holder: near.holder, placed: true, at: performance.now() },
 		};
 		return entry;
 	}
@@ -831,7 +858,31 @@ export class Reviewer {
 	 * collapsed, and the text is looked for again (DEC-066).
 	 */
 	#replaced(entry: Entry): boolean {
-		return this.#element(entry)?.isConnected === false || textMoved(entry.text);
+		if (this.#element(entry)?.isConnected === false) return true;
+		const text = entry.text;
+		if (!textMoved(text)) return false;
+		// Text found around its element: not looked for at every change (DEC-083).
+		return (
+			text?.near === undefined ||
+			performance.now() - text.near.at >= this.#refindMs
+		);
+	}
+
+	/**
+	 * The next entry whose element or text was replaced, in turn from the
+	 * one after the last: one that keeps changing does not keep the others
+	 * waiting (DEC-083).
+	 */
+	#nextReplaced(): Entry | undefined {
+		const n = this.#entries.length;
+		for (let k = 0; k < n; k++) {
+			const i = (this.#replacedAt + k) % n;
+			const entry = this.#entries[i] as Entry;
+			if (!this.#replaced(entry)) continue;
+			this.#replacedAt = (i + 1) % n;
+			return entry;
+		}
+		return undefined;
 	}
 
 	/**
@@ -880,7 +931,7 @@ export class Reviewer {
 	}
 
 	#findAgain(entry: Entry): void {
-		Object.assign(entry, this.#find(this.#search(), entry.mark));
+		renew(entry, this.#find(this.#search(), entry.mark));
 		clearTextCache();
 		this.#renderBar();
 		this.#render();
@@ -1595,7 +1646,10 @@ export class Reviewer {
 				return;
 			}
 			// A highlight found around its element: where its text is (DEC-083).
-			const el = entry.text?.near?.holder ?? this.#element(entry);
+			const el =
+				(entry.match.status === "lost"
+					? undefined
+					: entry.text?.near?.holder) ?? this.#element(entry);
 			if (el === undefined || !el.isConnected) return;
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 && r.height === 0) return;

@@ -5283,7 +5283,7 @@ the relay used by the tests stays `@ractive-ch/tab-mcp` 0.13.3.
   `test/tools.test.ts`. Sitegloss listens to no `toolschange`, and its tools are fixed and valid,
   so no error of `registerTool` is new to it.
 
-## DEC-083: A highlight's text found around its element: the same text nearby, or new text in its place; probable only (owner, 25 November 2026)
+## DEC-083: A highlight's text found around its element, only on evidence and only where it is the one place (owner, 25 November 2026)
 
 2026-11-25. On `highlight-nearby`. The owner, checking his case of sitegloss.dev, whose texts were
 reworded after he marked them: "This mark here is off. I highlighted the word "localhost". Maybe the
@@ -5293,43 +5293,62 @@ one whose text was "localhost:3000" in a paragraph that now says "localhost" (th
 fix the mark asked for). Until now (DEC-066) a highlight's text was looked for only in the element
 its mark was matched to; not there, the element was drawn as a box, "Text changed".
 
-- **Two more places to look**, when the text is not in the matched element, or no element was
-  matched and the element's recorded selector names a place (`placeOf`: the element it names, else
-  the nearest of its own ancestors in it, up to four, that is on the page once; the levels dropped
-  count against the area's):
-  1. **The same text nearby**: the exact text (`quoteIn`'s rules: of several places, the one whose
-     text around it is most like `before` and `after`) in the area around the element.
-  2. **The same place with new text**: in the same area, the whole stored `before` and the whole
-     `after` with text between them: drawn on what is between, when it is not empty and no longer
-     than twice the old text and 20 characters ("localhost:3000" for "localhost", a reworded
-     phrase). Both sides must be there and each at least 6 characters without spaces at the ends: a
-     shorter one ("on ", ".") is found anywhere. One side alone places nothing.
-  The same text with all of its old text around it comes first (the whole sentence moved), then new
-  text in the old place, then the same text with less around it: 64 characters of unchanged
-  context round new text say more than the same word somewhere else in the area.
-- **The area**: the element's ancestors, at most four levels up, not past the nearest `section`,
-  `article`, `main`, `aside`, `form`, `dialog` or `body` (an element that is one is its own area);
-  never more than 2,000 text nodes with words (`AREA_NODES`, through `elementText`'s limit, which
-  is `MAX_NODES` for an element itself): an area with more gives way to the largest one under it.
-  Largest first, so one read does it when it fits. Measured on an `article` of 2,012 text nodes in
-  a unit test (the article over the limit, the card under it read): 69 ms in happy-dom, whose
-  computed styles are slow; in Chrome 50,000 nodes took 66 ms (DEC-066), so 2,000 are about 3 ms,
-  and the worst case (five areas each over the limit) about 13 ms. It runs only for a highlight
-  whose text is not in its element, at each look, and one such highlight every 2 s after the page
-  changed (as the looks of DEC-066).
-- **Probable only, never found**: the same words may stand in more than one place, and new text
-  between unchanged words may be a different change than the fix. The mark is drawn dashed on the
-  text found (on the element that holds it, which also decides where it shows, DEC-075);
-  `textChanged` stays true ("not where it was"); a found element becomes probable, and a lost one
-  that was placed gets the element that holds the text as its one candidate, probable, at the
-  element search's score. Such a mark is still looked for again with the late looks of a lost one.
+**The rule: a dashed mark on the wrong text is worse than the old box.** A mark found this way is
+drawn on the text, dashed, probable, never found; so it is drawn only where there is evidence and
+exactly one place. When in doubt, the old box and "Text changed". The first version took any
+occurrence and the first of several, and a review reproduced what that does: a cell's "3" drawn on
+the "3" of "2023", a button's "Save" (now "Submit") on "Saved drafts", a "the" the fix deleted on
+the "the" of "About the team" as "Text moved", "1042" of the third of three rows "Delete invoice …
+from the list" on the first row's "1040".
+
+- **Where it looks.** When the text is not in the matched element, or no element was matched and
+  the element's recorded selector names a place (`placeOf`: the element it names, else the
+  nearest of its own ancestors in it, up to four, that is on the page once; the levels dropped
+  count against the area's). The areas, nearest first: the element itself, then its ancestors, at
+  most four levels up, not past the nearest `section`, `article`, `main`, `aside`, `form`, `dialog`
+  or `body`. The first area where one way has exactly one place that shows is taken; a wider area
+  is tried only when nothing qualifies in the nearer one. An area over 2,000 text nodes with words
+  (`AREA_NODES`, through `elementText`'s limit, `MAX_NODES` for an element itself) ends the search:
+  every area above it is larger. On a page of nested divs four levels can be much of the page;
+  nearest first and one place only are what keep that from drawing on a far copy.
+- **Three ways, in this order, each with its evidence.**
+  1. *The sentence moved*: the stored `before`, the text and the stored `after` as they were, both
+     sides at least 6 characters without spaces at the ends, exactly once in the area.
+  2. *Reworded in place*: the whole `before` and the whole `after`, the same sides' rule, with text
+     between them that is not empty and no longer than twice the old text and 20 characters
+     ("localhost:3000" now "localhost"); exactly one such place in the area, so of three rows
+     with the same words round a number none is taken, unless the row is the element itself (its
+     own area comes first). A fix that deleted the text leaves nothing between: no place.
+  3. *The same text alone* (a highlight of a whole span, button, cell or link has no `before` and
+     `after`): only whole words (not inside a longer word or number: "Save" is not in "Saved"), at
+     least 4 characters and a letter ("3" and "the" are found anywhere), exactly once in the area.
+  A place counts only where its text shows: its element passes `checkVisibility` (where there is
+  one), its line boxes are larger than 2 by 2 px, and no box of at most 2 px that cuts its overflow
+  holds it (text for screen readers only, a collapsed part); a hidden copy (a mobile duplicate)
+  is no second place, nor a place. Checked only for the candidates, not for every node.
+- **Probable only.** The mark is drawn dashed on the text (on the element that holds it, which also
+  decides where it shows, DEC-075); `textChanged` stays true ("not where it was"); a found element
+  becomes probable. A lost mark that was placed gets the element that holds the text as its one
+  candidate, probable at the element search's score, and so counts in the bar's "N of M found" as
+  every probable mark does; the late looks of a lost mark still look for its own element again.
+- **Looked for again.** A mark looked for again and not found any more loses what was found before
+  (its text was kept and drawn on its old element). Text found this way that keeps changing (a
+  clock, a countdown, a price) is looked for again at most every 3 s (`REFIND_MS`), not at every
+  tick; and the tick takes the replaced elements and texts in turn, so one that keeps changing does
+  not keep the others waiting.
+- **Time.** Reading an area of 2,012 text nodes (over the limit, so the search ends there): about
+  4 ms in happy-dom, 71 ms the first time (measured once, `test/text-near.test.ts`). In Chrome
+  50,000 nodes took 66 ms (DEC-066), so 2,000 are about 3 ms, and the worst case (five areas, the
+  last at the limit) a few ms more. It runs only for a highlight whose text is not in its element.
 - **What it says.** The match carries `textNear` (`nearby` or `reworded`), `textNow` (the text
-  found, cut to 200 characters; page text) and `textAt` (its element's selector). The panel, where
-  "Text changed" stood: "Text moved" and "The highlighted text is now in another element nearby,
-  and drawn there (NN%)."; or "Text changed" and "The highlighted text has changed in place; it now
-  reads “…” (NN%).", the text cut to 80 characters, as text. The AI app's tools (load_case,
-  highlight, get_mark_element): `textChanged` then says "The highlighted text is not where it was
-  any more: textFound says what was found instead.", with `textFound` in a sentence, `textNow` and
-  `textAt`.
-- **Not done**: a highlight's text searched on the whole page (a long document's every text, for
-  every such mark at every look), and a fuzzy match of reworded text without both sides.
+  found, cut to 200 characters; page text), `textAt` (its element's selector) and `textPlaced` (a
+  lost mark placed). The panel, where "Text changed" stood: "Text moved" and "The highlighted text
+  is now in another element nearby, and drawn there (NN%)."; for a placed lost mark "The
+  highlighted text was found on the page near where the mark was, and drawn there (NN%)."; or
+  "Text changed" and "The highlighted text has changed in place; it now reads “…” (NN%).", the text
+  cut to 80 characters, as text. The AI app's tools (load_case, highlight, get_mark_element):
+  `textChanged` then says "The highlighted text is not where it was any more: textFound says what
+  was found instead.", with `textFound` in a sentence, `textNow` and `textAt`.
+- **Not done**: a search of the whole page, a fuzzy match of reworded text without both sides, and
+  a way for a mark matched to the wrong one of several rows (its own area would place new text in
+  that row; the element match decides, as before).

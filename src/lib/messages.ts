@@ -238,6 +238,12 @@ export interface MarkMatch {
 	/** The element it was found in (`textNear`), as a CSS selector. */
 	textAt?: string;
 	/**
+	 * No element was found for the mark; its text was found near where the
+	 * element was (`textNear`), and the element that holds it is its one
+	 * candidate (DEC-083).
+	 */
+	textPlaced?: true;
+	/**
 	 * A highlight whose element is too long to read whole (DEC-066): its
 	 * text was not looked for, and nothing is said of whether it changed.
 	 */

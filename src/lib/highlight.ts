@@ -102,12 +102,16 @@ function commonStart(a: string, b: string): number {
 /** The most places of a quote looked at in one text. */
 const MAX_OCCURRENCES = 1000;
 
-/** Where a quote is in a text, and how much of the text around it is the same. */
-function bestQuote(
+/**
+ * Where `quote` is in `text` (both flat): of several places, the one whose
+ * text around it is most like `before` and `after`, the first of equals.
+ * None when it is not there: the text changed (often the fix itself).
+ */
+export function quoteIn(
 	text: string,
 	quote: string,
-	context: { before?: string; after?: string },
-): { start: number; end: number; score: number } | undefined {
+	context: { before?: string; after?: string } = {},
+): { start: number; end: number } | undefined {
 	if (quote === "") return undefined;
 	let best: { start: number; score: number } | undefined;
 	let seen = 0;
@@ -136,29 +140,22 @@ function bestQuote(
 	}
 	return best === undefined
 		? undefined
-		: { ...best, end: best.start + quote.length };
-}
-
-/**
- * Where `quote` is in `text` (both flat): of several places, the one whose
- * text around it is most like `before` and `after`, the first of equals.
- * None when it is not there: the text changed (often the fix itself).
- */
-export function quoteIn(
-	text: string,
-	quote: string,
-	context: { before?: string; after?: string } = {},
-): { start: number; end: number } | undefined {
-	const best = bestQuote(text, quote, context);
-	return best === undefined ? undefined : { start: best.start, end: best.end };
+		: { start: best.start, end: best.start + quote.length };
 }
 
 /**
  * The fewest characters (code points, without spaces at the ends) the text
- * before and the text after a highlight must each have to place new text
- * between them (DEC-083): shorter ones ("a ", ".") are found anywhere.
+ * before and the text after a highlight must each have to be evidence of
+ * its place (DEC-083): shorter ones ("a ", ".") are found anywhere.
  */
 export const PLACE_CONTEXT = 6;
+
+/**
+ * The fewest characters a highlighted text must have to be looked for by
+ * itself, without the text around it (DEC-083): "3", "the" and "Save" are
+ * found anywhere.
+ */
+export const LONE_QUOTE = 4;
 
 /**
  * The most characters new text in a highlight's place may have: twice the
@@ -167,68 +164,123 @@ export const PLACE_CONTEXT = 6;
  */
 export const maxReplacement = (old: string): number => 2 * textLength(old) + 20;
 
+/** A part of a flat text: `start` inclusive, `end` exclusive. */
+export interface Span {
+	start: number;
+	end: number;
+}
+
+/** Every place of `needle` in `text`, at most `MAX_OCCURRENCES`. */
+function occurrences(text: string, needle: string): number[] {
+	const out: number[] = [];
+	if (needle === "") return out;
+	for (
+		let i = text.indexOf(needle);
+		i !== -1 && out.length < MAX_OCCURRENCES;
+		i = text.indexOf(needle, i + 1)
+	)
+		out.push(i);
+	return out;
+}
+
+/** Whether both the text before and the text after a highlight are evidence (`PLACE_CONTEXT`). */
+function hasSides(h: { before?: string; after?: string }): h is {
+	before: string;
+	after: string;
+} {
+	return (
+		h.before !== undefined &&
+		h.after !== undefined &&
+		textLength(h.before.trim()) >= PLACE_CONTEXT &&
+		textLength(h.after.trim()) >= PLACE_CONTEXT
+	);
+}
+
+/** A letter, digit or mark: part of a word or a number. */
+const WORD = /[\p{L}\p{N}\p{M}_]/u;
+
+const isWord = (ch: string | undefined): boolean =>
+	ch !== undefined && WORD.test(ch);
+
+/** The character (code point) that ends at `i`, if any. */
+const charBefore = (text: string, i: number): string | undefined =>
+	i <= 0 ? undefined : [...text.slice(Math.max(0, i - 2), i)].at(-1);
+
+/** The character (code point) that starts at `i`, if any. */
+const charAt = (text: string, i: number): string | undefined => {
+	const c = text.codePointAt(i);
+	return c === undefined ? undefined : String.fromCodePoint(c);
+};
+
 /**
- * The text that stands now where a highlight's text stood (DEC-083): right
- * after the whole of its `before` and right before the whole of its
- * `after`, not empty and no longer than `maxReplacement`. Both sides must be
- * there and at least `PLACE_CONTEXT` long; one side alone places nothing.
+ * Whether `start`..`end` of a text is a whole word or words: not inside a
+ * longer word or number at either end ("Save" in "Saved", "3" in "2023").
  */
-export function replacedIn(
+export function wordBounded(text: string, start: number, end: number): boolean {
+	return (
+		!(isWord(charAt(text, start)) && isWord(charBefore(text, start))) &&
+		!(isWord(charBefore(text, end)) && isWord(charAt(text, end)))
+	);
+}
+
+/**
+ * Every place where text stands now between the whole of a highlight's
+ * `before` and the whole of its `after` (DEC-083): right after the one,
+ * right before the nearest other, not empty and no longer than
+ * `maxReplacement`. None unless both sides are evidence (`PLACE_CONTEXT`).
+ */
+export function replacedPlaces(
 	text: string,
 	h: { text: string; before?: string; after?: string },
-): { start: number; end: number } | undefined {
-	const { before, after } = h;
-	if (before === undefined || after === undefined) return undefined;
-	if (
-		textLength(before.trim()) < PLACE_CONTEXT ||
-		textLength(after.trim()) < PLACE_CONTEXT
-	)
-		return undefined;
+): Span[] {
+	if (!hasSides(h)) return [];
 	const most = maxReplacement(h.text);
-	let seen = 0;
-	for (
-		let i = text.indexOf(before);
-		i !== -1 && seen < MAX_OCCURRENCES;
-		i = text.indexOf(before, i + 1), seen++
-	) {
-		const from = i + before.length;
-		const to = text.indexOf(after, from);
+	const out: Span[] = [];
+	for (const i of occurrences(text, h.before)) {
+		const from = i + h.before.length;
+		const to = text.indexOf(h.after, from);
 		// None after this one: none after a later one either.
-		if (to === -1) return undefined;
+		if (to === -1) break;
 		let s = from;
 		let e = to;
 		while (s < e && text[s] === " ") s++;
 		while (e > s && text[e - 1] === " ") e--;
 		if (e > s && textLength(text.slice(s, e)) <= most)
-			return { start: s, end: e };
+			out.push({ start: s, end: e });
 	}
-	return undefined;
+	return out;
 }
 
 /**
- * Where a highlight's text is in the text around its element, when it is
- * no longer in the element (DEC-083). `nearby`: the same text, chosen by
- * the text around it as `quoteIn` does; `reworded`: other text between the
- * same text before and after it (`replacedIn`). The same text with all of
- * its old text around it is taken first (the whole sentence moved), then
- * new text in the old place, then the same text with less around it. None:
- * neither is there.
+ * The places in the text around an element where a highlight's text may
+ * be, when it is not in the element any more (DEC-083), each way with its
+ * evidence; a way counts only where it has exactly one place (that shows,
+ * the page decides). In order:
+ * - `moved`: the same text with all of its old text before and after it
+ *   (both sides evidence): the sentence moved.
+ * - `reworded`: other text between the same text before and after it
+ *   (`replacedPlaces`): the text changed in place, often the fix.
+ * - `alone`: the same text as whole words, without the text around it,
+ *   only where it has at least `LONE_QUOTE` characters and a letter.
  */
-export function quoteNear(
+export function nearPlaces(
 	text: string,
 	h: { text: string; before?: string; after?: string },
-): { start: number; end: number; how: "nearby" | "reworded" } | undefined {
-	const same = bestQuote(text, h.text, h);
-	const whole = (h.before?.length ?? 0) + (h.after?.length ?? 0);
-	const nearby = (at: { start: number; end: number }) => ({
-		start: at.start,
-		end: at.end,
-		how: "nearby" as const,
-	});
-	if (same !== undefined && same.score === whole) return nearby(same);
-	const place = replacedIn(text, h);
-	if (place !== undefined) return { ...place, how: "reworded" };
-	return same === undefined ? undefined : nearby(same);
+): { moved: Span[]; reworded: Span[]; alone: Span[] } {
+	const n = h.text.length;
+	const moved = hasSides(h)
+		? occurrences(text, `${h.before}${h.text}${h.after}`).map((i) => ({
+				start: i + h.before.length,
+				end: i + h.before.length + n,
+			}))
+		: [];
+	const alone =
+		textLength(h.text) >= LONE_QUOTE && /\p{L}/u.test(h.text)
+			? occurrences(text, h.text)
+					.filter((i) => wordBounded(text, i, i + n))
+					.map((i) => ({ start: i, end: i + n }))
+			: [];
+	return { moved, reworded: replacedPlaces(text, h), alone };
 }
 
 /** The last `max` characters (code points) of `text`. */
