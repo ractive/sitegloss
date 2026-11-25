@@ -1711,7 +1711,21 @@ describe("tools", () => {
 			}).catch((error: Error) => ({
 				content: [{ type: "text", text: error.message }],
 			}));
-			const texts = [...answers, refused].map(textOf);
+			// add_mark refused because the page in front changed: it names the page allowed.
+			const signal = new AbortController().signal;
+			tab.url = address(evil);
+			await ask("add_mark", { caseId: "c_1" }, CLAUDE, undefined, signal);
+			tab.url = "http://localhost:3000/other";
+			const moved = await call(
+				"add_mark",
+				{ caseId: "c_1", selector: "button", comment: "x" },
+				signal,
+			).catch((error: Error) => ({
+				content: [{ type: "text", text: error.message }],
+			}));
+			tab.url = "http://localhost:3000/kk";
+			expect(textOf(moved)).toContain("The page in front changed");
+			const texts = [...answers, refused, moved].map(textOf);
 			for (const t of texts)
 				expect(t).not.toMatch(/[\u202a-\u202e\u2066-\u2069]/);
 			return texts.map((t) => t.split(/\r\n|[\n\r\u2028\u2029\u0085]/).length);
