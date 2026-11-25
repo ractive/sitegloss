@@ -252,7 +252,8 @@ export class FakeServer {
 	 * The service's script (its `findings-to-comments.ts`, DEC-053): each
 	 * finding it holds a comment on its mark, its id `f_` and 40 hex digits
 	 * (`findingCommentId` of the mark's id here and the finding's), by the
-	 * finding's person, at its time; one that is there already, none more.
+	 * finding's person, at its time; one that is there already, or one past the
+	 * case's 1,000 comments, none more.
 	 */
 	findingsToComments(): void {
 		const rev = ++this.seq;
@@ -262,6 +263,8 @@ export class FakeServer {
 			for (const f of findings) {
 				const id = findingCommentId(markId, f.id);
 				if (this.comments.has(id) || f.text.trim() === "") continue;
+				// The case's limit, as the service's script keeps it.
+				if (this.commentsOf(mark.value.caseId).length >= 1000) continue;
 				this.comments.set(id, {
 					deleted: false,
 					rev,

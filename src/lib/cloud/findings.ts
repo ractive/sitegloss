@@ -1,83 +1,93 @@
 /**
  * The sync's side of findings becoming comments (DEC-081). The store's
- * upgrade (store.ts) made each finding a comment on its mark, its id made
- * from the mark's id here (`findingCommentId`). For a mark the server has,
- * the server makes its own comment of the same finding, its id made from
- * the mark's id there. This brings the two together, once per server, before
- * the sync runs again (`casesReady` in worker/cloud.ts):
+ * upgrade (store.ts) made each finding of a mark a comment on it in this
+ * browser (`findingsAsComments`, with ids made from the ids here). For a case
+ * that syncs with a team, the server owns the findings it has: it turns them
+ * into comments itself, and those come with the ordinary sync. So once,
+ * before the sync runs again (`casesReady` in worker/cloud.ts):
  *
- * - In the case here, a comment made of a finding the server had (the
- *   shadow says so) or was sent (it waits in the queue) takes the server's
- *   id. The same finding is then one comment here and there.
- * - In the shadow, the findings the server had become the comments the
- *   server makes of them: the same ids, the same texts, the same person. The
- *   comment sync does the rest as for any comment: one unchanged here is
- *   what the server has; one changed here goes as an edit; one deleted here
- *   goes as a delete; one the server never had goes as a new comment.
- * - What waits in the queue is sent without its findings: their comments go
- *   as comments. An operation left with nothing else goes.
+ * - A finding the shadow of a case's book says its server has, in a book
+ *   that syncs (`mode` synced), of any server, is removed here: its comment,
+ *   or the finding itself where it was left on its mark. No comment is made
+ *   for it on this side.
+ * - A finding the server never confirmed stays the comment the upgrade made,
+ *   which the comment sync sends once as a new comment. One that waited in
+ *   the queue counts as such: the queued operation goes without its findings
+ *   (a `mark.patch` left with nothing else goes), and the comment instead.
+ * - Every book, of every server, loses its findings, shadow and queue, with
+ *   nothing written in their place.
  *
- * A case here is changed before its book, so a run cut short is run again
- * and finds the case done and the book not.
+ * A case is changed before its book, so a run cut short finds the case done
+ * the next time. A case that fails is passed by, its books keep their
+ * findings, and the marker stays unset: the next start of the sync runs it
+ * all again, and the sync is not held up by it meanwhile.
  */
 
 import { type Case, findingCommentId } from "../case.ts";
 import type { Kv } from "../kv.ts";
 import type { CaseStore } from "../store.ts";
 import type { Op } from "./api.ts";
-import {
-	BOOK,
-	type CaseBook,
-	KEYS,
-	type Queue,
-	type ShadowComment,
-} from "./book.ts";
+import { BOOK, type CaseBook, KEYS, type Queue } from "./book.ts";
 
-/** The marker that this database's findings are comments, set once (not per server). */
+/** The marker that this database's findings are dealt with, set once (not per server). */
 export const FINDINGS_KEY = "findings";
 export const FINDINGS = "comments";
 
-/** A finding as a book or an operation of before DEC-081 holds it. */
+/** A finding as a book of before DEC-081 holds it. */
 interface WasFinding {
 	id: string;
-	text: string;
-	user?: { id: string } | null;
 }
 
-const findingsIn = (value: unknown): WasFinding[] =>
+const findingIds = (value: unknown): string[] =>
 	Array.isArray(value)
-		? (value as WasFinding[]).filter(
-				(f) =>
-					f !== null &&
-					typeof f === "object" &&
-					typeof f.id === "string" &&
-					typeof f.text === "string",
+		? value.flatMap((f) =>
+				f !== null &&
+				typeof f === "object" &&
+				typeof (f as WasFinding).id === "string"
+					? [(f as WasFinding).id]
+					: [],
 			)
 		: [];
 
-/** The findings the server had of each of the case's marks, by the mark's id there. */
-function shadowFindings(book: CaseBook): [string, WasFinding][] {
-	return Object.entries(book.shadow?.marks ?? {}).flatMap(([there, mark]) =>
-		findingsIn((mark.content as { findings?: unknown }).findings).map(
-			(f): [string, WasFinding] => [there, f],
-		),
+/** The findings the server has of a case, by the mark's id here and the finding's id. */
+function serverHas(book: CaseBook): [string, string][] {
+	if (book.mode !== "synced" || book.shadow === undefined) return [];
+	const here = new Map(
+		Object.entries(book.marks).map(([local, there]) => [there, local]),
 	);
+	return Object.entries(book.shadow.marks).flatMap(([there, mark]) => {
+		const local = here.get(there);
+		return local === undefined
+			? []
+			: findingIds((mark.content as { findings?: unknown }).findings).map(
+					(id): [string, string] => [local, id],
+				);
+	});
 }
 
-/** The findings the queue was to send, by their mark's id at the server. */
-function queuedFindings(ops: readonly Op[]): [string, WasFinding][] {
-	return ops.flatMap((op): [string, WasFinding][] => {
-		const o = op as unknown as Record<string, unknown>;
-		if (op.type === "mark.create") {
-			const mark = o["mark"] as { id: string; findings?: unknown };
-			return findingsIn(mark.findings).map((f) => [mark.id, f]);
-		}
-		if (op.type === "mark.patch") {
-			const change = o["findings"] as { upsert?: unknown } | undefined;
-			return findingsIn(change?.upsert).map((f) => [op.markId, f]);
-		}
-		return [];
-	});
+/** The case without the comments (or left-over findings) of findings its server owns. */
+function withoutServers(c: Case, owned: readonly [string, string][]): Case {
+	if (owned.length === 0) return c;
+	const comments = new Set(
+		owned.map(([mark, id]) => findingCommentId(mark, id)),
+	);
+	const byMark = new Map<string, Set<string>>();
+	for (const [mark, id] of owned)
+		byMark.set(mark, (byMark.get(mark) ?? new Set()).add(id));
+	const thread = (c.comments ?? []).filter((k) => !comments.has(k.id));
+	return {
+		...c,
+		...(thread.length > 0 ? { comments: thread } : { comments: [] }),
+		marks: c.marks.map((a) => {
+			const ids = byMark.get(a.id);
+			if (ids === undefined || a.findings === undefined) return a;
+			const kept = a.findings.filter(
+				(f) => !ids.has((f as WasFinding | null)?.id ?? ""),
+			);
+			const { findings: _f, ...rest } = a;
+			return kept.length > 0 ? { ...rest, findings: kept } : rest;
+		}),
+	};
 }
 
 /** An operation without its findings; none when nothing else was in it. */
@@ -97,104 +107,100 @@ function withoutFindings(op: Op): Op | undefined {
 	return op;
 }
 
-/** The case with the comments of these findings under the server's ids. */
-function withServerIds(
-	c: Case,
-	book: CaseBook,
-	findings: readonly [string, WasFinding][],
-): Case {
-	const here = new Map(
-		Object.entries(book.marks).map(([local, there]) => [there, local]),
-	);
-	const rename = new Map<string, string>();
-	for (const [there, f] of findings) {
-		const local = here.get(there);
-		if (local !== undefined)
-			rename.set(findingCommentId(local, f.id), findingCommentId(there, f.id));
-	}
-	const ids = new Set((c.comments ?? []).map((k) => k.id));
-	let changed = false;
-	const comments = (c.comments ?? []).map((k) => {
-		const to = rename.get(k.id);
-		if (to === undefined || ids.has(to)) return k;
-		changed = true;
-		return { ...k, id: to };
-	});
-	return changed ? { ...c, comments } : c;
+/** A book without findings in its shadow. */
+function bookWithout(book: CaseBook): CaseBook {
+	const next = structuredClone(book);
+	for (const mark of Object.values(next.shadow?.marks ?? {}))
+		delete (mark.content as { findings?: unknown }).findings;
+	return next;
 }
 
 /**
- * Every server's books in the cloud's database (`kv`, not scoped), once:
- * `current` is the server the cases sync with now. Then the marker, so it
- * never runs again.
+ * Every server's books in the cloud's database (`kv`, not scoped; `scoped`
+ * gives one server's part), once: the cases first, then the books and
+ * queues. Answers whether all went; then the marker is set.
  */
 export async function findingsIntoThreadsOnce(
 	store: CaseStore,
 	kv: Kv,
-	server: string,
 	scoped: (server: string) => Kv,
-): Promise<void> {
-	if ((await kv.get(FINDINGS_KEY)) === FINDINGS) return;
+): Promise<boolean> {
+	if ((await kv.get(FINDINGS_KEY)) === FINDINGS) return true;
 	const servers = new Set<string>();
 	for (const key of Object.keys(await kv.all())) {
 		const at = key.indexOf(` ${BOOK}`);
+		const own = key.indexOf(` ${KEYS.queue}`);
 		if (key.startsWith("@") && at > 0) servers.add(key.slice(1, at));
+		if (key.startsWith("@") && own > 0) servers.add(key.slice(1, own));
 	}
-	for (const other of servers)
-		await findingsIntoThreads(store, scoped(other), other === server);
-	await kv.set({ [FINDINGS_KEY]: FINDINGS });
+	const whole = await findingsOutOfBooks(
+		store,
+		[...servers].map((server) => scoped(server)),
+	);
+	if (whole) await kv.set({ [FINDINGS_KEY]: FINDINGS });
+	return whole;
 }
 
 /**
- * One server's books (`kv`, that server's part of the database) and the
- * cases they are for. `current`: the server the cases sync with now. For
- * another one only the findings go from its books and its queue: the cases
- * here follow the current server's ids, and a shadow of another server that
- * said it had comments the case lacks would delete them there.
+ * The rule for the cases and books of these servers' parts of the database
+ * (`parts`, each one server's): the findings a server that the case syncs
+ * with has go from the case here, and every book and queue loses its
+ * findings. Answers whether every case went.
  */
-export async function findingsIntoThreads(
+export async function findingsOutOfBooks(
 	store: CaseStore,
-	kv: Kv,
-	current: boolean,
-): Promise<void> {
-	const all = await kv.all();
-	const queue = all[KEYS.queue] as Queue | undefined;
-	for (const [key, value] of Object.entries(all)) {
-		if (!key.startsWith(BOOK)) continue;
-		const book = value as CaseBook;
-		const queued = queue?.caseId === book.caseId ? queue.ops : [];
-		const had = shadowFindings(book);
-		const sent = queuedFindings(queued);
-		const holds = Object.values(book.shadow?.marks ?? {}).some(
-			(mark) => "findings" in mark.content,
-		);
-		if (!holds && sent.length === 0) continue;
-		if (current && (await store.getCase(book.caseId)) !== undefined)
-			await store.updateCase(book.caseId, (c) => {
-				if (c === undefined) throw new Error("the case went meanwhile");
-				return { value: withServerIds(c, book, [...had, ...sent]) };
-			});
-		const next: CaseBook = structuredClone(book);
-		if (next.shadow !== undefined) {
-			for (const mark of Object.values(next.shadow.marks))
-				delete (mark.content as { findings?: unknown }).findings;
-			if (current && next.shadow.comments !== undefined)
-				for (const [there, f] of had) {
-					const id = findingCommentId(there, f.id);
-					if (f.text.trim() === "" || next.shadow.comments[id] !== undefined)
-						continue;
-					const comment: ShadowComment = {
-						text: f.text,
-						...(f.user ? { userId: f.user.id } : {}),
-					};
-					next.shadow.comments[id] = comment;
-				}
+	parts: readonly Kv[],
+): Promise<boolean> {
+	let whole = true;
+	const failed = new Set<string>();
+	// The cases: what any server that the case syncs with has, goes here.
+	const owned = new Map<string, [string, string][]>();
+	for (const part of parts)
+		for (const [key, value] of Object.entries(await part.all()))
+			if (key.startsWith(BOOK)) {
+				const book = value as CaseBook;
+				owned.set(book.caseId, [
+					...(owned.get(book.caseId) ?? []),
+					...serverHas(book),
+				]);
+			}
+	for (const [caseId, findings] of owned) {
+		if (findings.length === 0) continue;
+		try {
+			if ((await store.getCase(caseId)) !== undefined)
+				await store.updateCase(caseId, (c) => {
+					if (c === undefined) throw new Error("the case went meanwhile");
+					return { value: withoutServers(c, findings) };
+				});
+		} catch {
+			whole = false;
+			failed.add(caseId);
 		}
-		const entries: Record<string, unknown> = { [key]: next };
-		if (queued.length > 0 && queue !== undefined) {
-			const ops = queued.flatMap((op) => withoutFindings(op) ?? []);
-			entries[KEYS.queue] = { ...queue, ops };
-		}
-		await kv.set(entries);
 	}
+	// The books and the queues: no findings left in them.
+	for (const part of parts) {
+		const all = await part.all();
+		const queue = all[KEYS.queue] as Queue | undefined;
+		const entries: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(all))
+			if (
+				key.startsWith(BOOK) &&
+				!failed.has((value as CaseBook).caseId) &&
+				Object.values((value as CaseBook).shadow?.marks ?? {}).some(
+					(mark) => "findings" in mark.content,
+				)
+			)
+				entries[key] = bookWithout(value as CaseBook);
+		if (queue !== undefined && !failed.has(queue.caseId))
+			entries[KEYS.queue] = {
+				...queue,
+				ops: queue.ops.flatMap((op) => withoutFindings(op) ?? []),
+			};
+		try {
+			if (Object.keys(entries).length > 0) await part.set(entries);
+		} catch {
+			whole = false;
+		}
+	}
+	return whole;
 }

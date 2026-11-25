@@ -6,9 +6,11 @@ import {
 	findingsAsComments,
 	validateCase,
 } from "../src/lib/case.ts";
-import { upgradedCase } from "../src/lib/store.ts";
+import { exportCase } from "../src/lib/export.ts";
+import { MemoryStore, upgradedCase } from "../src/lib/store.ts";
+import { readZip } from "../src/lib/zip.ts";
 import vectors from "./finding-comment-id.json" with { type: "json" };
-import { sampleCase, withOneMark } from "./fixtures.ts";
+import { putCase, putMarked, sampleCase, withOneMark } from "./fixtures.ts";
 
 const CLAUDE = {
 	id: "https://claude.ai/oauth",
@@ -51,7 +53,8 @@ const stored = () => {
 
 describe("findings become comments on their mark (DEC-081)", () => {
 	// test/finding-comment-id.json is sitegloss.dev's packages/api/vectors/finding-comment-id.json.
-	test("the comment's id is the server's, for every case of its vectors", () => {
+	// The id has the server's shape and its function; made from the ids here, not the server's value.
+	test("the comment's id is the server's function, for every case of its vectors", () => {
 		for (const v of vectors.vectors)
 			expect([v, findingCommentId(v.markId, v.findingId)]).toEqual([v, v.id]);
 	});
@@ -87,7 +90,7 @@ describe("findings become comments on their mark (DEC-081)", () => {
 		expect(c.comments?.[1]?.id).toMatch(FINDING_COMMENT);
 	});
 
-	test("what does not fit the thread's 1,000 comments stays on its mark, as it was, until there is room", () => {
+	test("what does not fit the thread's 1,000 comments stays on its mark, as it was, until there is room; an export leaves it out", async () => {
 		const full = {
 			...stored(),
 			comments: Array.from({ length: 999 }, (_, i) => ({
@@ -99,6 +102,15 @@ describe("findings become comments on their mark (DEC-081)", () => {
 		const once = validateCase(full);
 		expect(once.comments).toHaveLength(1000);
 		expect(once.marks[0]?.findings).toEqual([stored().marks[0]?.findings[1]]);
+		const store = new MemoryStore();
+		// Its images, then the case as it is, the finding left on its mark.
+		await putMarked(store, once);
+		await putCase(store, once);
+		expect((await store.getCase(once.id))?.marks[0]?.findings).toHaveLength(1);
+		const files = await readZip(await exportCase(store, once));
+		expect(new TextDecoder().decode(files.get("case.json"))).not.toContain(
+			'"findings"',
+		);
 	});
 
 	test("once: run again, or on a case with none, nothing changes", () => {

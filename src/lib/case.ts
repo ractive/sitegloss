@@ -2765,19 +2765,18 @@ export function withoutImage(
 // --- findings, once kept apart, become comments (DEC-081) ----------------------
 
 /**
- * The id of the comment a finding becomes, the server's (its DEC-053): `f_`
- * and the first 40 hexadecimal digits of the SHA-256 over the UTF-8 bytes of
- * the mark's id, a line feed and the finding's id. Held to the server's
- * vectors (`test/finding-comment-id.json`). The mark's id is the server's for
- * a mark the server has (the sync's bookkeeping knows it); in a case of no
- * team, the id here. The same finding gives the same comment each time,
- * never a second one.
+ * The id of the comment a finding becomes here: the server's function (its
+ * DEC-053), `f_` and the first 40 hexadecimal digits of the SHA-256 over the
+ * UTF-8 bytes of the mark's id, a line feed and the finding's id, held to its
+ * vectors (`test/finding-comment-id.json`); made from the mark's id here, so
+ * it has the server's shape, not the value the server gives the same finding.
+ * The same finding gives the same comment each time, never a second one.
  */
 export function findingCommentId(markId: string, findingId: string): string {
 	return `f_${sha256Hex(`${markId}\n${findingId}`).slice(0, 40)}`;
 }
 
-/** The id of a comment that was a finding (`findingCommentId`), here or at the server. */
+/** The shape of a comment's id that was a finding (`findingCommentId`), here or at the server. */
 export const FINDING_COMMENT = /^f_[0-9a-f]{40}$/;
 
 /**
@@ -2790,16 +2789,11 @@ export const FINDING_COMMENT = /^f_[0-9a-f]{40}$/;
  * so the function can run on a case any number of times. A finding without
  * words makes none (the server's rule too). What does not fit the thread's
  * `MAX_CASE_COMMENTS` stays on its mark as it was, and becomes a comment when
- * a later run finds room. `hashId` gives the mark's id the comment's id is
- * made from (`findingCommentId`): the id here unless told otherwise. A
- * finding that is not one (a file made by hand) fails as it did before.
+ * a later run finds room. A finding that is not one (a file made by hand) fails as it did before.
  * Anything else of `value` is left as it is: `validateCase` checks it
  * afterwards, and the store's upgrade keeps a case it cannot read as it was.
  */
-export function findingsAsComments(
-	value: unknown,
-	hashId: (markId: string) => string = (markId) => markId,
-): unknown {
+export function findingsAsComments(value: unknown): unknown {
 	if (value === null || typeof value !== "object" || Array.isArray(value))
 		return value;
 	const o = value as Obj;
@@ -2829,7 +2823,7 @@ export function findingsAsComments(
 		const { findings = [] } = findingsOf(given, `case.marks[${i}].findings`);
 		const raws = given as unknown[];
 		for (const [j, f] of findings.entries()) {
-			const id = findingCommentId(hashId(markId), f.id);
+			const id = findingCommentId(markId, f.id);
 			if (taken.has(id) || f.text.trim() === "") continue;
 			taken.add(id);
 			added.push({

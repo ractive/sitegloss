@@ -172,22 +172,25 @@ export class Cloud {
 	 * store opened at its version 2 (its upgrade emptied it), then the cloud's
 	 * database brought along in one step (`forgetCases`): here, in the
 	 * worker, and nowhere else. The store not open yet (held up by a build
-	 * before this one, say): no, and nothing is forgotten. Then, once, the
-	 * books' findings become comments as the store's did (DEC-081,
-	 * `findingsIntoThreadsOnce`).
+	 * before this one, say): no, and nothing is forgotten. Then, once, what
+	 * the servers own of the findings goes from the cases here and every
+	 * book loses its findings (DEC-081, `findingsIntoThreadsOnce`).
 	 */
 	async #casesReady(): Promise<boolean> {
 		const deps = this.#deps;
 		if ((await deps.store.version()) !== DB_VERSION) return false;
 		await forgetCases(deps.kv);
 		if (!(await casesForgotten(deps.kv))) return false;
-		// The books' findings as the comments the server makes of them (DEC-081).
-		await findingsIntoThreadsOnce(
-			deps.store,
-			deps.kv,
-			await this.server(),
-			(server) => scopedKv(deps.kv, server),
-		);
+		// The findings the servers own leave this browser (DEC-081). A run
+		// that did not go whole is tried again at the next start; the sync
+		// does not wait for it.
+		const whole = await findingsIntoThreadsOnce(deps.store, deps.kv, (server) =>
+			scopedKv(deps.kv, server),
+		).catch(() => false);
+		if (!whole)
+			console.warn(
+				"Sitegloss: the findings of some cases could not be brought along; it is tried again at the next start.",
+			);
 		return true;
 	}
 

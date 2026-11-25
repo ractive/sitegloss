@@ -125,9 +125,11 @@ async function caseFiles(
 	// (DEC-046), not part of the case: a file never carries it. A shape of a
 	// kind this version does not know goes out as it came (DEC-066).
 	const kept = withoutSyncNotes(c);
+	// Findings that did not fit the thread (DEC-081) stay in this browser: a
+	// file never carries findings.
 	const written = {
 		...kept,
-		marks: kept.marks.map((a) =>
+		marks: kept.marks.map(({ findings: _f, ...a }) =>
 			a.shape.kind === "unknown" ? { ...a, shape: shapeOut(a.shape) } : a,
 		),
 	};
