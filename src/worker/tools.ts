@@ -1689,7 +1689,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 				if (result === null)
 					throw new CaseError(`Mark ${mark} could not be read.`);
 				if (!result.ok) {
-					const page = plainUrl(markUrl(c, found));
+					const page = plainLine(plainUrl(markUrl(c, found)));
 					throw new CaseError(
 						// Looked for only on its own page (DEC-057).
 						result.reason === "lost"
@@ -1768,7 +1768,7 @@ export function createTools(deps: ToolDeps): Tool[] {
 			(allowed.id !== current.id || allowed.url !== current.url)
 		)
 			throw new CaseError(
-				`The page in front changed since the user allowed this (it was ${plainUrl(allowed.url)}); ask again.`,
+				`The page in front changed since the user allowed this (it was ${plainLine(plainUrl(allowed.url))}); ask again.`,
 			);
 		const described = await tab.send<DescribedElement>(current.id, {
 			type: "element:mark",
