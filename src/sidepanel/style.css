@@ -758,6 +758,35 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	border-radius: var(--r-control);
 }
 
+/*
+ * The logo at the bar's left end (DEC-084): the lockup where there is no way
+ * back, the tile alone before "All cases" or "Back". In a panel too narrow
+ * for the tile and the AI pill's words, the tile gives way.
+ */
+:where(#bar) .brand {
+	display: flex;
+	flex: none;
+}
+
+:where(#bar) .brand > img {
+	display: block;
+}
+
+:where(#bar) .brand-lockup {
+	margin-right: auto;
+}
+
+#bar:has(> #back:not([hidden])) > .brand-lockup,
+#bar:not(:has(> #back:not([hidden]))) > .brand-tile {
+	display: none;
+}
+
+@media (max-width: 384px) {
+	#bar > .brand-tile {
+		display: none;
+	}
+}
+
 /* "All cases" / "Back": large enough to be seen, and hit. */
 #back {
 	justify-content: center;
