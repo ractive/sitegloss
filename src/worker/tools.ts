@@ -100,9 +100,9 @@ import {
 } from "../lib/overview.ts";
 import { queryOf, withQuery } from "../lib/query.ts";
 import { type Crop, cropRectFor, SaveError, saveCase } from "../lib/save.ts";
+import { shortUrl } from "../lib/short-url.ts";
 import { caseSites } from "../lib/site.ts";
 import type { CaseStore, StoredImage } from "../lib/store.ts";
-import { shortUrl } from "../sidepanel/dom.ts";
 
 export interface CurrentTab {
 	id: number;
