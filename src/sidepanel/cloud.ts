@@ -25,6 +25,7 @@ import {
 } from "../lib/cloud/book.ts";
 import { chosenServer, scopedKv, serverProblem } from "../lib/cloud/servers.ts";
 import { listen } from "../lib/cloud/sse.ts";
+import { debugLog } from "../lib/debug.ts";
 import { type Kv, kvWhenOpen, openKv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
 import type { CloudActions } from "./cloud-view.ts";
@@ -228,7 +229,12 @@ export function startCloud(
 			s.cloud.problem = undefined;
 		});
 		void (async () => {
-			if (!(await consent.catch(() => false))) {
+			if (
+				!(await consent.catch((error: unknown) => {
+					debugLog("cloud consent", error);
+					return false;
+				}))
+			) {
 				problem(
 					`${BROWSER} did not allow it: without that consent nothing is sent, and Sitegloss cannot sync. Click Sign in to ask again.`,
 				);
@@ -269,7 +275,9 @@ export function startCloud(
 		if (now - checkedAt < SHOWN_CHECK_MS) return;
 		checkedAt = now;
 		// A change comes back as the worker's news, as any other.
-		void send({ type: "cloud:check" }).catch(() => undefined);
+		void send({ type: "cloud:check" }).catch((error: unknown) =>
+			debugLog("cloud check", error),
+		);
 	}
 
 	return {

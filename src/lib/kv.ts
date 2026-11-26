@@ -68,6 +68,7 @@ export async function openKv(name: string): Promise<Kv> {
 		})();
 		current = opening;
 		opening.catch(() => {
+			// The callers of `opening` get the failure; this forgets the attempt.
 			if (current === opening) current = undefined;
 		});
 		return opening;
@@ -132,6 +133,7 @@ export async function openKv(name: string): Promise<Kv> {
 					for (const [key, value] of Object.entries(write?.set ?? {}))
 						s.put(value, key);
 				} catch (error) {
+					// The abort's own failure is not the cause.
 					end.catch(() => {});
 					s.transaction.abort();
 					failure = error;
@@ -161,6 +163,7 @@ export function kvWhenOpen(open: () => Promise<Kv>): Kv {
 		const attempt = (async () => open())();
 		opening = attempt;
 		attempt.catch(() => {
+			// The callers of `opening` get the failure; this forgets the attempt.
 			if (opening === attempt) opening = undefined;
 		});
 		return attempt;

@@ -6,8 +6,8 @@
 import { FIREFOX } from "./browser.ts";
 import {
 	CONTENT_SCRIPT,
+	type ContentAnswer,
 	type ContentRequest,
-	type OverlayState,
 } from "./messages.ts";
 
 /** Sitegloss may not run on this tab (no click on the icon, no host access). */
@@ -134,21 +134,33 @@ export async function injectOnClick(
 	try {
 		await inject(id);
 	} catch {
+		// No content script yet: once more after a pause.
 		await new Promise((resolve) => setTimeout(resolve, retryMs));
 		await inject(id);
 	}
 }
 
-/** Send a request to the tab's content script, injecting it if needed. */
-export async function sendToTab<T = OverlayState>(
+/**
+ * Ask the tab's content script, without injecting it: rejects where there
+ * is none.
+ */
+export function askTab<R extends ContentRequest>(
 	tabId: number,
-	request: ContentRequest,
-): Promise<T> {
+	request: R,
+): Promise<ContentAnswer<R>> {
+	return chrome.tabs.sendMessage(tabId, request);
+}
+
+/** Send a request to the tab's content script, injecting it if needed. */
+export async function sendToTab<R extends ContentRequest>(
+	tabId: number,
+	request: R,
+): Promise<ContentAnswer<R>> {
 	try {
-		return (await chrome.tabs.sendMessage(tabId, request)) as T;
+		return await askTab(tabId, request);
 	} catch {
 		// No content script yet (or the page navigated): inject and try once more.
 		await inject(tabId);
-		return (await chrome.tabs.sendMessage(tabId, request)) as T;
+		return await askTab(tabId, request);
 	}
 }

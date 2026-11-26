@@ -22,6 +22,7 @@ import {
 	nearPlaces,
 	quoteIn,
 	replacedPlaces,
+	sourceAt,
 	wordBounded,
 } from "../src/lib/highlight.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
@@ -43,11 +44,11 @@ describe("an element's text as one line", () => {
 		]);
 		expect(flat.text).toBe("Ride the forest trails this wekend");
 		// Each character says where it is in its text node.
-		expect(flat.at[0]).toEqual({ piece: 0, offset: 2 });
+		expect(sourceAt(flat, 0)).toEqual({ piece: 0, offset: 2 });
 		const t = flat.text.indexOf("trails");
-		expect(flat.at[t]).toEqual({ piece: 1, offset: 0 });
+		expect(sourceAt(flat, t)).toEqual({ piece: 1, offset: 0 });
 		// The space for the block's edge is at the start of the next node.
-		expect(flat.at[t + 6]).toEqual({ piece: 2, offset: 0 });
+		expect(sourceAt(flat, t + 6)).toEqual({ piece: 2, offset: 0 });
 	});
 
 	test("a span between two places, without spaces at its ends", () => {

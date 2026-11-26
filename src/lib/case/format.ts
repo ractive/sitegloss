@@ -988,6 +988,7 @@ export function plainUrl(href: string): string {
 		url.hash = route;
 		return url.href.slice(0, MAX_URL);
 	} catch {
+		// Not an address.
 		return href.slice(0, MAX_URL);
 	}
 }

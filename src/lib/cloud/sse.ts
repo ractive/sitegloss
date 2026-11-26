@@ -96,6 +96,7 @@ export function changeCursor(event: StreamEvent): number | undefined {
 			? cursor
 			: undefined;
 	} catch {
+		// Not JSON.
 		return undefined;
 	}
 }

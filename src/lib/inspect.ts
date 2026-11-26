@@ -166,6 +166,7 @@ export function cleanUrl(value: string): string {
 	try {
 		u = new URL(v, "https://base.invalid/");
 	} catch {
+		// Not an address.
 		return "…";
 	}
 	if (u.protocol !== "http:" && u.protocol !== "https:")
@@ -736,6 +737,7 @@ function holds(test: () => boolean): boolean | undefined {
 	try {
 		return test();
 	} catch {
+		// A selector this browser does not know.
 		return undefined;
 	}
 }
@@ -858,6 +860,7 @@ export function matchedRules(el: Element): MatchedRules {
 		try {
 			rules = s.cssRules;
 		} catch {
+			// A sheet of another origin: listed as unreadable.
 			unreadable.push(s.href ? cleanUrl(s.href) : at.sheet);
 			return;
 		}

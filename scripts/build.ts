@@ -334,6 +334,9 @@ async function bundle(
 			SITEGLOSS_TEST_BUILD: String(options.test),
 			SITEGLOSS_FIREFOX: String(options.firefox),
 			SITEGLOSS_DEV_SERVER: String(options.devServer),
+			// Handled failures said in the console (lib/debug.ts): not in a
+			// build that goes to people.
+			SITEGLOSS_DEBUG: String(options.devServer),
 		},
 		minify: options.minify,
 		// The fonts: one copy at the extension's root, not one per page.

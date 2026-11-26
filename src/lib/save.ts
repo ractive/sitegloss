@@ -36,6 +36,7 @@ import {
 	validateCase,
 	withPagesOfShots,
 } from "./case.ts";
+import { debugLog } from "./debug.ts";
 import { isDarkGround, type RenderedMark } from "./marks.ts";
 import { queryOf } from "./query.ts";
 import type { CaseStore, StoredImage } from "./store.ts";
@@ -327,7 +328,7 @@ export async function saveCase(
 				from,
 				request.shots.map((s) => pendingImage(s.id)),
 			)
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("delete pending images", error));
 	return saved;
 }
 

@@ -211,6 +211,7 @@ export function httpApi(options: HttpApiOptions): Api {
 		try {
 			return JSON.parse(new TextDecoder().decode(bytes)) as T;
 		} catch {
+			// Not JSON: said as the server's fault.
 			throw new ApiFailure("server", "The server's answer could not be read.");
 		}
 	};

@@ -33,6 +33,7 @@ export function pageKey(address: string): string {
 	try {
 		url = new URL(address);
 	} catch {
+		// Not an address.
 		return address;
 	}
 	if (url.protocol !== "http:" && url.protocol !== "https:") return address;
@@ -57,6 +58,7 @@ function webOrigin(address: string): string | undefined {
 			? url.origin
 			: undefined;
 	} catch {
+		// Not an address.
 		return undefined;
 	}
 }
@@ -160,6 +162,7 @@ export function markFor(
 	try {
 		drawn = JSON.stringify((JSON.parse(key) as unknown[]).slice(0, 4));
 	} catch {
+		// Not JSON.
 		return undefined;
 	}
 	return c.marks.some((a) => drawnKey(c, a) === drawn)
@@ -365,6 +368,7 @@ export function isWebPage(url: string): boolean {
 		const { protocol } = new URL(url);
 		return protocol === "https:" || protocol === "http:";
 	} catch {
+		// Not an address.
 		return false;
 	}
 }

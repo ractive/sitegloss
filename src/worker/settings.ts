@@ -23,6 +23,7 @@ export function relayProblem(value: string): string | undefined {
 	try {
 		url = new URL(value);
 	} catch {
+		// Not an address.
 		return "Not an address.";
 	}
 	if (url.protocol === "https:" || url.protocol === "wss:") return undefined;

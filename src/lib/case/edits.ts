@@ -300,6 +300,7 @@ export function cleanLink(text: string): string | undefined {
 	try {
 		url = new URL(trimmed);
 	} catch {
+		// Not an address.
 		return undefined;
 	}
 	if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;

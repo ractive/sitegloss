@@ -11,6 +11,7 @@
  * (`scopedKv`).
  */
 
+import { debugLog } from "../debug.ts";
 import type { Kv } from "../kv.ts";
 
 /** The service. What an ordinary user signs in to, without ever choosing. */
@@ -52,6 +53,7 @@ export function serverProblem(value: string): string | undefined {
 	try {
 		url = new URL(value);
 	} catch {
+		// Not an address.
 		return "Not an address.";
 	}
 	if (url.protocol === "https:") return undefined;
@@ -78,6 +80,7 @@ const hostOf = (server: string): string => {
 	try {
 		return new URL(server).host;
 	} catch {
+		// Not an address.
 		return server;
 	}
 };
@@ -107,7 +110,9 @@ export const SERVER_KEY = "server";
 
 /** The server chosen, as the database has it; the service unless another was set. */
 export async function chosenServer(kv: Kv): Promise<string> {
-	const set = await kv.get(SERVER_KEY).catch(() => undefined);
+	const set = await kv
+		.get(SERVER_KEY)
+		.catch((error: unknown) => debugLog("server choice", error));
 	return (
 		(typeof set === "string" ? serverOrigin(set) : undefined) ?? DEFAULT_SERVER
 	);

@@ -46,6 +46,7 @@ export function hostOf(server: string): string {
 	try {
 		return new URL(server).host;
 	} catch {
+		// Not an address.
 		return server;
 	}
 }

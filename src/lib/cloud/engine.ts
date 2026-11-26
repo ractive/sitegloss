@@ -28,6 +28,7 @@ import {
 	newId as randomId,
 	validateCase,
 } from "../case.ts";
+import { debugLog } from "../debug.ts";
 import type { Kv } from "../kv.ts";
 import { type CaseStore, DELETED_KEPT_MS, type StoredImage } from "../store.ts";
 import {
@@ -371,6 +372,7 @@ export class CloudSync {
 			return work();
 		};
 		const next = this.#chain.then(gated, gated);
+		// The caller of `next` gets the failure; the chain only waits for it.
 		this.#chain = next.catch(() => undefined);
 		return next;
 	}
@@ -395,7 +397,12 @@ export class CloudSync {
 	/** Throws `CasesNotReadyError` until `casesReady` said yes once. */
 	async #casesReady(): Promise<void> {
 		if (this.#ready || this.#deps.casesReady === undefined) return;
-		if (!(await this.#deps.casesReady().catch(() => false)))
+		if (
+			!(await this.#deps.casesReady().catch((error: unknown) => {
+				debugLog("cases ready", error);
+				return false;
+			}))
+		)
 			throw new CasesNotReadyError();
 		this.#ready = true;
 	}
@@ -774,7 +781,9 @@ export class CloudSync {
 
 	async #say(status: CloudStatus): Promise<void> {
 		this.#said = status;
-		await this.#deps.kv.set({ [KEYS.status]: status }).catch(() => undefined);
+		await this.#deps.kv
+			.set({ [KEYS.status]: status })
+			.catch((error: unknown) => debugLog("cloud status", error));
 		this.#deps.onStatus?.(status);
 	}
 
@@ -988,7 +997,9 @@ export class CloudSync {
 				done.problems.length > 0 ? { ...done, state: "problem" } : done,
 			);
 		} catch (error) {
-			await this.#books.publishModes().catch(() => undefined);
+			await this.#books
+				.publishModes()
+				.catch((error: unknown) => debugLog("publish modes", error));
 			if (!(error instanceof ApiFailure)) {
 				await this.#say(
 					await this.#status("problem", {
@@ -1006,7 +1017,10 @@ export class CloudSync {
 					const live = await this.#deps.store
 						.deletedCases()
 						.then((all) => all.map((r) => r.id))
-						.catch(() => []);
+						.catch((error: unknown) => {
+							debugLog("deleted cases", error);
+							return [];
+						});
 					await kv.set({
 						[KEYS.account]: { ...now, expired: true, liveDeletes: live },
 					});
