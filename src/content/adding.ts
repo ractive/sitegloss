@@ -55,16 +55,14 @@ import {
 	pinPosition,
 	type RenderedMark,
 } from "../lib/marks.ts";
-import type {
-	CaptureResult,
-	MarkTarget,
-	NumberCheck,
-	OverlayState,
-	PanelMarkWhat,
-	SaveResult,
-	UndoResult,
-	WorkerRequest,
-	WorkerResponse,
+import {
+	askWorker,
+	type CaptureResult,
+	type MarkTarget,
+	type OverlayState,
+	type PanelMarkWhat,
+	type WorkerAnswers,
+	type WorkerRequest,
 } from "../lib/messages.ts";
 import { cropRectFor, type MarkDraft } from "../lib/save.ts";
 import { parentOf, shadowTrees } from "../lib/shadow.ts";
@@ -214,10 +212,10 @@ interface Drag {
 	caret?: Caret;
 }
 
-async function ask<T extends object>(request: WorkerRequest): Promise<T> {
-	const response = (await chrome.runtime.sendMessage(request)) as
-		| WorkerResponse<T>
-		| undefined;
+async function ask<R extends WorkerRequest>(
+	request: R,
+): Promise<WorkerAnswers[R["type"]]> {
+	const response = await askWorker(request);
 	if (response === undefined) throw new Error("Sitegloss did not answer.");
 	if (!response.ok) throw new Error(response.error);
 	return response;
@@ -1760,7 +1758,7 @@ export class MarkAdder {
 				};
 				this.#scrolled = false;
 				this.#mutated = false;
-				image = await ask<CaptureResult>({
+				image = await ask({
 					type: "capture",
 					caseId: this.#pendingId(),
 					shotId,
@@ -2078,7 +2076,7 @@ export class MarkAdder {
 			this.#renderToolbar();
 			const { view } = draft.shot as NonNullable<Draft["shot"]>;
 			const isFree = async () => {
-				const check = await ask<NumberCheck>({
+				const check = await ask({
 					type: "case:number",
 					caseId: (target as MarkTarget).caseId,
 					number: draft.number,
@@ -2115,7 +2113,7 @@ export class MarkAdder {
 						: [],
 				);
 				try {
-					await ask<SaveResult>({
+					await ask({
 						type: "case:save",
 						request: {
 							caseId: target.caseId,
@@ -2182,7 +2180,7 @@ export class MarkAdder {
 			if (target === undefined || !this.#added.includes(draft)) return;
 			this.#message = `Deleting mark ${draft.number} from “${target.title}”…`;
 			this.#renderToolbar();
-			const result = await ask<UndoResult>({
+			const result = await ask({
 				type: "case:undo-add",
 				caseId: target.caseId,
 				markId: markIdOf(draft.number),

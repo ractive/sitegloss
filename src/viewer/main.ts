@@ -11,6 +11,7 @@
  * "Actual size" only where it changes something.
  */
 
+import { askWorker } from "../lib/messages.ts";
 import { IdbStore } from "../lib/store.ts";
 import { offersNavigation, PICTURE_PAD, sizeChoice } from "./layout.ts";
 import {
@@ -202,7 +203,8 @@ else {
 if (where === "window") {
 	close.focus();
 	// The frame above the page, for the next window's size (DEC-064).
-	void chrome.runtime
-		.sendMessage({ type: "viewer:frame", height: outerHeight - innerHeight })
-		.catch(() => undefined);
+	void askWorker({
+		type: "viewer:frame",
+		height: outerHeight - innerHeight,
+	}).catch(() => undefined);
 }

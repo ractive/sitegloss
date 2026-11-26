@@ -7,6 +7,7 @@ import {
 	type Case,
 	type ElementDetails,
 	type Highlight,
+	type PageInfo,
 	RESOLVE_CHOICES,
 	type Rect,
 	type ResolveChoice,
@@ -405,6 +406,82 @@ export function isWorkerRequest(message: unknown): message is WorkerRequest {
 export type WorkerResponse<T = object> =
 	| ({ ok: true } & T)
 	| { ok: false; error: string };
+
+/**
+ * A map from each request's `type` to its answer: every type of `R` must
+ * have one.
+ */
+type AnswerMap<
+	R extends { type: string },
+	M extends { [K in R["type"]]: unknown },
+> = M;
+
+/**
+ * What the content script answers to each request (`index.ts`). A content
+ * script of another build (an old one left in a tab) may not answer at all;
+ * where that matters the answer says `undefined`.
+ */
+export type ContentAnswers = AnswerMap<
+	ContentRequest,
+	{
+		"overlay:show": OverlayState;
+		"overlay:end": OverlayState;
+		"overlay:state": OverlayState;
+		"overlay:title": OverlayState;
+		"page:info": PageInfo | undefined;
+		"overlay:settings": OverlayState;
+		"case:load":
+			| LoadResult
+			| LoadReplacedAnswer
+			| { error: string; busy?: true };
+		"case:show": MarkMatch | { error: string } | null;
+		"case:update": LoadResult | null;
+		"case:matches": LoadResult | null;
+		"case:clear": OverlayState;
+		"case:hide": OverlayState;
+		"element:mark": DescribedElement;
+		"element:inspect": InspectResult | null;
+		"element:unmark": Released | undefined;
+		"page:blur": BlurResult;
+		"page:unblur": Released | undefined;
+		"page:captured": undefined;
+	}
+>;
+
+/** The content script's answer to `R`. */
+export type ContentAnswer<R extends ContentRequest> = ContentAnswers[R["type"]];
+
+/** What the service worker answers to each request, once it went well (`background.ts`). */
+export type WorkerAnswers = AnswerMap<
+	WorkerRequest,
+	{
+		capture: CaptureResult;
+		"case:save": SaveResult;
+		"case:number": NumberCheck;
+		"case:undo-add": UndoResult;
+		"images:discard": object;
+		"bar:place": BarPlaceAnswer;
+		"panel:images": object;
+		"panel:images-take": ImagesForAnswer;
+		"viewer:open": { viewerWindowId: number };
+		"viewer:frame": object;
+	}
+>;
+
+/** The service worker's answer to `R`. */
+export type WorkerAnswer<R extends WorkerRequest> = WorkerResponse<
+	WorkerAnswers[R["type"]]
+>;
+
+/**
+ * Ask the service worker: its answer as `WorkerAnswers` has it, `undefined`
+ * where nothing answered.
+ */
+export function askWorker<R extends WorkerRequest>(
+	request: R,
+): Promise<WorkerAnswer<R> | undefined> {
+	return chrome.runtime.sendMessage(request);
+}
 
 export interface CaptureResult {
 	/** Pixels of the stored screenshot. */

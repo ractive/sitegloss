@@ -79,16 +79,12 @@ import {
 } from "../lib/element.ts";
 import type { Relation } from "../lib/inspect.ts";
 import type {
-	BlurResult,
+	ContentAnswer,
 	ContentRequest,
-	DescribedElement,
 	InspectResult,
-	LoadReplacedAnswer,
 	LoadResult,
 	MarkMatch,
 	OpenCaseAnswer,
-	OverlayState,
-	Released,
 } from "../lib/messages.ts";
 import {
 	jsonText,
@@ -119,7 +115,10 @@ export interface CurrentTab {
 export interface TabBridge {
 	current(): Promise<CurrentTab>;
 	/** Send to the tab's content script, injecting it when needed. */
-	send<T>(tabId: number, request: ContentRequest): Promise<T>;
+	send<R extends ContentRequest>(
+		tabId: number,
+		request: R,
+	): Promise<ContentAnswer<R>>;
 	/** A screenshot of `tab`, which must still be in front of its window (PNG). */
 	capture(tab: CurrentTab): Promise<Blob>;
 }
@@ -982,9 +981,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 	}
 
 	async function load(current: CurrentTab, c: Case): Promise<LoadResult> {
-		const result = await tab.send<
-			LoadResult | LoadReplacedAnswer | { error: string }
-		>(current.id, {
+		const result = await tab.send(current.id, {
 			type: "case:load",
 			case: c,
 		});
@@ -1013,12 +1010,10 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			await tab.send(current.id, { type: end }).catch(() => undefined);
 			throw error;
 		}
-		const held = await tab
-			.send<Released | undefined>(current.id, { type: end })
-			.then(
-				(answer) => answer?.held === true,
-				() => false,
-			);
+		const held = await tab.send(current.id, { type: end }).then(
+			(answer) => answer?.held === true,
+			() => false,
+		);
 		if (!held)
 			throw new CaseError(
 				"The page changed while the screenshot was taken, so it was thrown away. Try again.",
@@ -1621,21 +1616,18 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 					throw new CaseError(`The case has no mark ${mark}.`);
 				const current = await tab.current();
 				const show = async () => {
-					const m = await tab.send<MarkMatch | { error: string } | null>(
-						current.id,
-						{
-							type: "case:show",
-							caseId: c.id,
-							markId: found.id,
-							// The mark meant: the page's copy may predate a renumbering.
-							mark: markKey(c, found),
-							...(candidate !== undefined ? { candidate } : {}),
-						},
-					);
+					const m = await tab.send(current.id, {
+						type: "case:show",
+						caseId: c.id,
+						markId: found.id,
+						// The mark meant: the page's copy may predate a renumbering.
+						mark: markKey(c, found),
+						...(candidate !== undefined ? { candidate } : {}),
+					});
 					if (m !== null && "error" in m) throw new CaseError(m.error);
 					return m;
 				};
-				const state = await tab.send<OverlayState>(current.id, {
+				const state = await tab.send(current.id, {
 					type: "overlay:state",
 				});
 				// null: another case is loaded, or the loaded copy predates the
@@ -1692,7 +1684,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 					throw new CaseError(`The case has no mark ${mark}.`);
 				const current = await tab.current();
 				const ask = () =>
-					tab.send<InspectResult | null>(current.id, {
+					tab.send(current.id, {
 						type: "element:inspect",
 						caseId: c.id,
 						markId: found.id,
@@ -1701,7 +1693,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 						casePage: markUrl(c, found),
 						...(selector !== undefined ? { selector } : {}),
 					});
-				const state = await tab.send<OverlayState>(current.id, {
+				const state = await tab.send(current.id, {
 					type: "overlay:state",
 				});
 				// null: another case is loaded, or the loaded copy predates the
@@ -1757,7 +1749,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 				const current = await tab.current();
 				// Password fields (and form fields, if the user says so) blurred,
 				// as in the user's own screenshots.
-				const blurred = await tab.send<BlurResult>(current.id, {
+				const blurred = await tab.send(current.id, {
 					type: "page:blur",
 					blurForms: await blurForms(),
 				});
@@ -1795,7 +1787,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			throw new CaseError(
 				`The page in front changed since the user allowed this (it was ${plainLine(plainUrl(allowed.url))}); ask again.`,
 			);
-		const described = await tab.send<DescribedElement>(current.id, {
+		const described = await tab.send(current.id, {
 			type: "element:mark",
 			selector: input.selector,
 			number: next.mark,
