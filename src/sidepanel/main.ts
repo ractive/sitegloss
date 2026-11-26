@@ -426,6 +426,7 @@ async function loadInto(
 	const here = { tabId, caseId: c.id };
 	try {
 		loadsUnderWay++;
+		await handCase(tabId, c.id);
 		const result = await sendToTab(tabId, {
 			type: "case:load",
 			case: c,
@@ -768,6 +769,13 @@ async function settledSize(tabId: number): Promise<void> {
 		last = now;
 	}
 }
+
+/**
+ * The tab's page may add marks to the case (tab-cases.ts): the worker is
+ * told before the page gets it.
+ */
+const handCase = (tabId: number, caseId: string) =>
+	askWorker({ type: "tab:case", tabId, caseId }).catch(() => undefined);
 
 /** The overlay's state on the tab, or `undefined` where it is not injected. */
 async function overlayState(tabId: number): Promise<OverlayState | undefined> {
@@ -1512,6 +1520,7 @@ async function startAddingMarks(
 	const tab = { id };
 	tabWork.cancel(); // a refresh still running must not overwrite this
 	try {
+		await handCase(tab.id, target.id);
 		const overlay = await sendToTab(tab.id, {
 			type: "overlay:show",
 			blurForms: await blurFormsNow(),

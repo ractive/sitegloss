@@ -83,6 +83,7 @@ import {
 	PANEL_PORT,
 	type WorkerMessage,
 } from "./worker/protocol.ts";
+import { TabCases } from "./worker/tab-cases.ts";
 import {
 	boundsFor,
 	openViewer,
@@ -138,6 +139,8 @@ if (typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD) {
 
 const store = new IdbStore();
 const added = new AddLedger(chrome.storage.session);
+/** The cases each tab's page was handed: a save adds to no other. */
+const tabCases = new TabCases(chrome.storage.session);
 
 /**
  * The one writer of the sync (DEC-021, DEC-025). To Downloads it writes
@@ -242,6 +245,11 @@ chrome.permissions.onAdded.addListener(() => {
 void store
 	.sweepPending(Date.now() - PENDING_MAX_AGE_MS)
 	.catch((error: unknown) => console.warn("Sitegloss: sweep", error));
+
+// A tab that closes was handed nothing any more.
+chrome.tabs.onRemoved.addListener((tabId) => {
+	void tabCases.forget(tabId).catch(() => undefined);
+});
 
 // A browser window that closes takes its picture viewer with it (DEC-064).
 chrome.windows.onRemoved.addListener((windowId) => {
@@ -354,6 +362,15 @@ async function handle(
 		case "case:save": {
 			const from = request.request.imagesFrom;
 			if (from !== undefined && !isSafeId(from)) throw new Error("invalid id");
+			// Only to a case the panel, or an AI app's tool, gave this tab.
+			const tabId = sender.tab?.id;
+			if (
+				tabId === undefined ||
+				!(await tabCases.has(tabId, request.request.caseId))
+			)
+				throw new Error(
+					`this page was not given that case; add marks to it from the ${PANEL}.`,
+				);
 			const saved = await saveCase(
 				store,
 				fromPage(request.request),
@@ -362,7 +379,6 @@ async function handle(
 				drawMarks,
 			);
 			// Marks added one by one: the page that added them may undo them.
-			const tabId = sender.tab?.id;
 			if (
 				request.request.keepPending &&
 				tabId !== undefined &&
@@ -473,6 +489,14 @@ async function handle(
 			);
 			return { viewerWindowId };
 		}
+		case "tab:case": {
+			// The panel's own: a page may not hand itself a case.
+			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			if (!Number.isInteger(request.tabId) || !isSafeId(request.caseId))
+				throw new Error("invalid request");
+			await tabCases.record(request.tabId, request.caseId);
+			return {};
+		}
 		case "viewer:frame": {
 			if (!fromExtensionPage(sender)) throw new Error("not from the viewer");
 			await rememberFrame(request.height);
@@ -547,6 +571,7 @@ chrome.runtime.onMessage.addListener(
 const ready = Connection.start({
 	store,
 	capture,
+	handed: (tabId, caseId) => tabCases.record(tabId, caseId),
 	changed: () => {
 		void sync.request();
 		cloud.request();

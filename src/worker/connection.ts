@@ -119,6 +119,8 @@ interface Panel {
 export interface ConnectionDeps {
 	store: CaseStore;
 	capture: Capture;
+	/** A tool handed the case to the tab's page (`case:load`, tab-cases.ts). */
+	handed?: (tabId: number, caseId: string) => Promise<void>;
 	/** A tool changed or deleted a case (the sync writes it, DEC-021). */
 	changed?: (caseId: string) => void;
 	/** Who is signed in to sitegloss.dev here, by id (DEC-039); none: nobody. */
@@ -394,7 +396,7 @@ export class Connection {
 	) {
 		this.#deps = deps;
 		this.#kv = kv;
-		this.#tab = workerTab(deps.capture);
+		this.#tab = workerTab(deps.capture, deps.handed);
 		this.#storage = storage;
 		this.#settings = settings;
 		this.#sessionOn = sessionOn;

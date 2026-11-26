@@ -5,6 +5,7 @@
  */
 
 import { PANEL } from "../lib/browser.ts";
+import { handedCase } from "../lib/messages.ts";
 import { NoAccessError, sendToTab } from "../lib/tabs.ts";
 import type { TabBridge } from "./tools.ts";
 
@@ -30,7 +31,11 @@ export async function tabInFront(): Promise<chrome.tabs.Tab | undefined> {
 	return tab;
 }
 
-export function workerTab(capture: Capture): TabBridge {
+export function workerTab(
+	capture: Capture,
+	/** The page is handed the case (tab-cases.ts): before it gets it. */
+	handed?: (tabId: number, caseId: string) => Promise<void>,
+): TabBridge {
 	return {
 		async current() {
 			const tab = await tabInFront();
@@ -44,6 +49,9 @@ export function workerTab(capture: Capture): TabBridge {
 			};
 		},
 		async send(tabId, request) {
+			const caseId = handedCase(request);
+			if (caseId !== undefined)
+				await handed?.(tabId, caseId).catch(() => undefined);
 			try {
 				return await sendToTab(tabId, request);
 			} catch (error) {

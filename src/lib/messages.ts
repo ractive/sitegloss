@@ -136,6 +136,16 @@ export type ContentRequest =
 	/** The screenshot a mark asked for is taken: the overlay can come back. */
 	| { type: "page:captured" };
 
+/**
+ * The case a request hands the page, which it may then add marks to
+ * (`tab:case`): the toolbar's, or the one whose marks it draws.
+ */
+export function handedCase(request: ContentRequest): string | undefined {
+	if (request.type === "overlay:show") return request.target.caseId;
+	if (request.type === "case:load") return request.case.id;
+	return undefined;
+}
+
 /** The answer to `page:blur`: refused while the page is busy. */
 export type BlurResult = { ok: true } | { ok: false; error: string };
 
@@ -345,7 +355,13 @@ export type WorkerRequest =
 			};
 	  }
 	/** From the viewer in its window: the frame above its page, for the next window's size. */
-	| { type: "viewer:frame"; height: number };
+	| { type: "viewer:frame"; height: number }
+	/**
+	 * From the side panel, before it hands the case to the tab's page
+	 * (`overlay:show`, `case:load`): the page may add marks to it
+	 * (`case:save` adds to no other case, tab-cases.ts).
+	 */
+	| { type: "tab:case"; tabId: number; caseId: string };
 
 export interface ImagesForAnswer {
 	images?: ImagesFor;
@@ -389,6 +405,7 @@ export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	"panel:images-take",
 	"viewer:open",
 	"viewer:frame",
+	"tab:case",
 ]);
 
 export interface BarPlaceAnswer {
@@ -465,6 +482,7 @@ export type WorkerAnswers = AnswerMap<
 		"panel:images-take": ImagesForAnswer;
 		"viewer:open": { viewerWindowId: number };
 		"viewer:frame": object;
+		"tab:case": object;
 	}
 >;
 
