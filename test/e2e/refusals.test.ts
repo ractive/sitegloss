@@ -155,6 +155,16 @@ inFullSet("the worker refuses", () => {
 		// Handed by the extension's page: the save goes past that check.
 		await h.control.eval(HAND_CASE(a.tabId, "c_not_handed"));
 		expect((await fromPage(save)).error ?? "").not.toContain("not given");
+		// Nor does it ask about the case's numbers.
+		expect(
+			(
+				await fromPage({
+					type: "case:number",
+					caseId: "c_not_handed_either",
+					number: 1,
+				})
+			).error,
+		).toContain("not given that case");
 		// Another tab was not handed it.
 		expect(
 			(
@@ -167,6 +177,27 @@ inFullSet("the worker refuses", () => {
 				)
 			).error,
 		).toContain("not given that case");
+	});
+
+	test("a page's screenshots waiting for a save are its tab's: another tab cannot add to them, take them or delete them", async () => {
+		await a.page.activate();
+		expect((await capture(a.tabId)).ok).toBe(true);
+		const fromB = (message: object) =>
+			h.control.eval<{ ok: boolean; error?: string }>(
+				`chrome.scripting.executeScript({
+					target: { tabId: ${b.tabId} },
+					func: (m) => chrome.runtime.sendMessage(m),
+					args: [${JSON.stringify(message)}],
+				}).then(([injected]) => injected.result)`,
+			);
+		await b.page.activate();
+		const before = await captures();
+		for (const message of [
+			{ type: "capture", caseId: "c_refusals", shotId: "s2" },
+			{ type: "images:discard", caseId: "c_refusals", shotIds: ["s1"] },
+		])
+			expect((await fromB(message)).error).toContain("another page's");
+		expect(await captures()).toBe(before);
 	});
 
 	test("the account and the tokens are asked for by a page of the extension only, never by a content script (DEC-039)", async () => {

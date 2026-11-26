@@ -430,7 +430,10 @@ async function loadInto(
 	const here = { tabId, caseId: c.id };
 	try {
 		loadsUnderWay++;
-		await handCase(tabId, c.id);
+		// Not told: a mark from the page's own Add marks is refused later.
+		await handCase(tabId, c.id).catch((error: unknown) =>
+			debugLog("hand case to worker", error),
+		);
 		const result = await sendToTab(tabId, {
 			type: "case:load",
 			case: c,
@@ -776,12 +779,22 @@ async function settledSize(tabId: number): Promise<void> {
 
 /**
  * The tab's page may add marks to the case (tab-cases.ts): the worker is
- * told before the page gets it.
+ * told before the page gets it; `adding`: for the page's toolbar.
  */
-const handCase = (tabId: number, caseId: string) =>
-	askWorker({ type: "tab:case", tabId, caseId }).catch((error: unknown) =>
-		debugLog("hand case to worker", error),
-	);
+async function handCase(
+	tabId: number,
+	caseId: string,
+	adding = false,
+): Promise<void> {
+	const answer = await askWorker({
+		type: "tab:case",
+		tabId,
+		caseId,
+		...(adding ? { adding: true as const } : {}),
+	});
+	if (answer === undefined) throw new Error("Sitegloss did not answer.");
+	if (!answer.ok) throw new Error(answer.error);
+}
 
 /** The overlay's state on the tab, or `undefined` where it is not injected. */
 async function overlayState(tabId: number): Promise<OverlayState | undefined> {
@@ -1537,7 +1550,8 @@ async function startAddingMarks(
 	const tab = { id };
 	tabWork.cancel(); // a refresh still running must not overwrite this
 	try {
-		await handCase(tab.id, target.id);
+		// Not told, the toolbar's marks would be refused: it does not come up.
+		await handCase(tab.id, target.id, true);
 		const overlay = await sendToTab(tab.id, {
 			type: "overlay:show",
 			blurForms: await blurFormsNow(),

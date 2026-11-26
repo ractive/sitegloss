@@ -340,6 +340,23 @@ async function broadcast(message: Broadcast): Promise<void> {
 	await tell(message);
 }
 
+/**
+ * Refuses a page's request about a case its tab was not handed (only the
+ * panel, or an AI app's tool, gives a page a case, tab-cases.ts); else the
+ * tab's id.
+ */
+async function mayAddTo(
+	sender: chrome.runtime.MessageSender,
+	caseId: string,
+): Promise<number> {
+	const tabId = sender.tab?.id;
+	if (tabId === undefined || !(await tabCases.has(tabId, caseId)))
+		throw new Error(
+			`this page was not given that case; click Add marks for it in the ${PANEL}.`,
+		);
+	return tabId;
+}
+
 async function handle(
 	request: WorkerRequest,
 	sender: chrome.runtime.MessageSender,
@@ -350,6 +367,9 @@ async function handle(
 			if (tab?.id === undefined) throw new Error("not sent from a tab");
 			if (!isSafeId(request.caseId) || !isSafeId(request.shotId))
 				throw new Error("invalid id");
+			// The id its screenshots wait under is this tab's, no other's.
+			if (!(await tabCases.claimPending(tab.id, request.caseId)))
+				throw new Error("those are another page's screenshots");
 			const png = await capture(tab.id, tab.windowId);
 			// Encoding takes a while; the page need not stay blurred for it.
 			const taken: ContentRequest = { type: "page:captured" };
@@ -368,15 +388,10 @@ async function handle(
 		case "case:save": {
 			const from = request.request.imagesFrom;
 			if (from !== undefined && !isSafeId(from)) throw new Error("invalid id");
-			// Only to a case the panel, or an AI app's tool, gave this tab.
-			const tabId = sender.tab?.id;
-			if (
-				tabId === undefined ||
-				!(await tabCases.has(tabId, request.request.caseId))
-			)
-				throw new Error(
-					`this page was not given that case; add marks to it from the ${PANEL}.`,
-				);
+			const tabId = await mayAddTo(sender, request.request.caseId);
+			// Its screenshots: this tab's own.
+			if (from !== undefined && !(await tabCases.ownsPending(tabId, from)))
+				throw new Error("those are another page's screenshots");
 			const saved = await saveCase(
 				store,
 				fromPage(request.request),
@@ -385,11 +400,7 @@ async function handle(
 				drawMarks,
 			);
 			// Marks added one by one: the page that added them may undo them.
-			if (
-				request.request.keepPending &&
-				tabId !== undefined &&
-				sender.documentId !== undefined
-			)
+			if (request.request.keepPending && sender.documentId !== undefined)
 				for (const draft of request.request.marks) {
 					const a = saved.marks.find((x) => x.number === draft.number);
 					if (a !== undefined)
@@ -411,6 +422,7 @@ async function handle(
 		}
 		case "case:number":
 			if (!isSafeId(request.caseId)) throw new Error("invalid id");
+			await mayAddTo(sender, request.caseId);
 			return (await numberFree(
 				store,
 				request.caseId,
@@ -419,6 +431,7 @@ async function handle(
 		case "case:undo-add": {
 			if (!isSafeId(request.caseId) || !isSafeId(request.markId))
 				throw new Error("invalid id");
+			await mayAddTo(sender, request.caseId);
 			const mark = await added.find(
 				request.caseId,
 				request.markId,
@@ -435,13 +448,20 @@ async function handle(
 				await broadcast({ type: "cases:changed", caseId: request.caseId });
 			return result satisfies UndoResult;
 		}
-		case "images:discard":
+		case "images:discard": {
 			if (!isSafeId(request.caseId)) throw new Error("invalid id");
+			const tabId = sender.tab?.id;
+			if (
+				tabId === undefined ||
+				!(await tabCases.ownsPending(tabId, request.caseId))
+			)
+				throw new Error("those are another page's screenshots");
 			await store.deleteImages(
 				request.caseId,
 				request.shotIds.filter(isSafeId).map(pendingImage),
 			);
 			return {};
+		}
 		case "panel:images": {
 			const tab = sender.tab;
 			if (
@@ -501,7 +521,11 @@ async function handle(
 			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
 			if (!Number.isInteger(request.tabId) || !isSafeId(request.caseId))
 				throw new Error("invalid request");
-			await tabCases.record(request.tabId, request.caseId);
+			await tabCases.record(
+				request.tabId,
+				request.caseId,
+				request.adding === true,
+			);
 			return {};
 		}
 		case "viewer:frame": {
@@ -578,7 +602,7 @@ chrome.runtime.onMessage.addListener(
 const ready = Connection.start({
 	store,
 	capture,
-	handed: (tabId, caseId) => tabCases.record(tabId, caseId),
+	handed: (tabId, caseId, adding) => tabCases.record(tabId, caseId, adding),
 	changed: () => {
 		void sync.request();
 		cloud.request();

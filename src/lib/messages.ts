@@ -140,9 +140,13 @@ export type ContentRequest =
  * The case a request hands the page, which it may then add marks to
  * (`tab:case`): the toolbar's, or the one whose marks it draws.
  */
-export function handedCase(request: ContentRequest): string | undefined {
-	if (request.type === "overlay:show") return request.target.caseId;
-	if (request.type === "case:load") return request.case.id;
+export function handedCase(
+	request: ContentRequest,
+): { caseId: string; adding: boolean } | undefined {
+	if (request.type === "overlay:show")
+		return { caseId: request.target.caseId, adding: true };
+	if (request.type === "case:load")
+		return { caseId: request.case.id, adding: false };
 	return undefined;
 }
 
@@ -361,7 +365,13 @@ export type WorkerRequest =
 	 * (`overlay:show`, `case:load`): the page may add marks to it
 	 * (`case:save` adds to no other case, tab-cases.ts).
 	 */
-	| { type: "tab:case"; tabId: number; caseId: string };
+	| {
+			type: "tab:case";
+			tabId: number;
+			caseId: string;
+			/** For the toolbar (`overlay:show`): kept while the tab lives. */
+			adding?: true;
+	  };
 
 export interface ImagesForAnswer {
 	images?: ImagesFor;
@@ -443,7 +453,7 @@ export type ContentAnswers = AnswerMap<
 	{
 		"overlay:show": OverlayState;
 		"overlay:end": OverlayState;
-		"overlay:state": OverlayState;
+		"overlay:state": OverlayState | undefined;
 		"overlay:title": OverlayState;
 		"page:info": PageInfo | undefined;
 		"overlay:settings": OverlayState;

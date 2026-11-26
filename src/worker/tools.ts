@@ -1637,16 +1637,16 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 				const state = await tab.send(current.id, {
 					type: "overlay:state",
 				});
-				// null: another case is loaded, or the loaded copy predates the
-				// mark; load this case again.
-				let m = state.loadedCase === c.id ? await show() : null;
+				// Another case is loaded, the loaded copy predates the mark, or
+				// a script of another build gave no answer: load this case again.
+				let m = state?.loadedCase === c.id ? await show() : null;
 				if (m === null) {
 					await load(current, c);
 					m = await show();
 				}
 				if (m === null) throw new CaseError(`Mark ${mark} could not be shown.`);
 				// The page's own word for its address (it may have changed within the page).
-				const front = state.url || current.url;
+				const front = state?.url || current.url;
 				return {
 					content: [text({ ...matchView(m), ...pageView(c, found, front) })],
 				};
@@ -1703,9 +1703,9 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 				const state = await tab.send(current.id, {
 					type: "overlay:state",
 				});
-				// null: another case is loaded, or the loaded copy predates the
-				// mark; load this case again.
-				let result = state.loadedCase === c.id ? await ask() : null;
+				// Another case is loaded, the loaded copy predates the mark, or
+				// a script of another build gave no answer: load this case again.
+				let result = state?.loadedCase === c.id ? await ask() : null;
 				if (result === null) {
 					await load(current, c);
 					result = await ask();

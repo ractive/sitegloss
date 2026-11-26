@@ -35,7 +35,7 @@ export async function tabInFront(): Promise<chrome.tabs.Tab | undefined> {
 export function workerTab(
 	capture: Capture,
 	/** The page is handed the case (tab-cases.ts): before it gets it. */
-	handed?: (tabId: number, caseId: string) => Promise<void>,
+	handed?: (tabId: number, caseId: string, adding: boolean) => Promise<void>,
 ): TabBridge {
 	return {
 		async current() {
@@ -50,10 +50,10 @@ export function workerTab(
 			};
 		},
 		async send(tabId, request) {
-			const caseId = handedCase(request);
-			if (caseId !== undefined)
-				await handed?.(tabId, caseId).catch((error: unknown) =>
-					debugLog("hand case to worker", error),
+			const given = handedCase(request);
+			if (given !== undefined)
+				await handed?.(tabId, given.caseId, given.adding).catch(
+					(error: unknown) => debugLog("hand case to worker", error),
 				);
 			try {
 				return await sendToTab(tabId, request);

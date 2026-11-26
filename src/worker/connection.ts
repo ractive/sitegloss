@@ -121,7 +121,7 @@ export interface ConnectionDeps {
 	store: CaseStore;
 	capture: Capture;
 	/** A tool handed the case to the tab's page (`case:load`, tab-cases.ts). */
-	handed?: (tabId: number, caseId: string) => Promise<void>;
+	handed?: (tabId: number, caseId: string, adding: boolean) => Promise<void>;
 	/** A tool changed or deleted a case (the sync writes it, DEC-021). */
 	changed?: (caseId: string) => void;
 	/** Who is signed in to sitegloss.dev here, by id (DEC-039); none: nobody. */
