@@ -5424,6 +5424,15 @@ line), 295 px without. Nothing the head could do is gone; what moved, and why:
   On an open mark, where the web app has it as a button, and only where the case's copy is offered
   (the server has the case). What it did is said at the mark, in the web app's words.
 
+- **The logo is the panel's title**: "Use the logo as the title on the top of the extension." The
+  strip above the panel is the browser's (its text is the manifest's name; an extension cannot
+  style it), so the logo stands at the left end of the panel's own top bar: the lockup, tile and
+  wordmark as in the web app's header, where the bar has no way back (Home), and the tile alone
+  before "All cases" or "Back", which need the room. Under 385 px with a way back the tile gives
+  way, so the AI pill keeps its words. The files are `assets/brand/`'s (`lockup`, `icon`, and their
+  `-light` ones with the white tile for the dark scheme, chosen by the same media query as in the
+  web app), bundled beside the panel's page. Decoration: the bar's heading names the panel.
+
 Not done, for the owner to say: "Allow all changes" still has its row under the top bar (DEC-036);
 a settled mark has no copy (the web app has it in the mark's "…" there); Home's Team section is as
 it was.

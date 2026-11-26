@@ -11,6 +11,11 @@
 		     top bar (DEC-023): the way back, and the AI app. -->
 		<header id="bar">
 			<h1 class="visually-hidden">Sitegloss</h1>
+			<!-- The logo, as the web app's header has it (the owner; DEC-084): the lockup where the bar
+			     has no way back (Home), the tile alone beside "All cases" or "Back". Decoration: the
+			     heading above names the panel. The dark scheme's files have the white tile. -->
+			<picture class="brand brand-lockup"><source media="(prefers-color-scheme: dark)" srcset="../../assets/brand/lockup-light.svg" /><img src="../../assets/brand/lockup.svg" alt="" width="91" height="22" /></picture>
+			<picture class="brand brand-tile"><source media="(prefers-color-scheme: dark)" srcset="../../assets/brand/icon-light.svg" /><img src="../../assets/brand/icon.svg" alt="" width="24" height="24" /></picture>
 			<!-- No space between the parts: the buttons' text is their words alone. The icons are
 			     icons.ts's (heroicons, DEC-078). -->
 			<button id="back" type="button" class="back" hidden><svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-icon="back"><path d="M15.75 19.5 8.25 12l7.5-7.5" /></svg><span id="back-label">All cases</span></button>

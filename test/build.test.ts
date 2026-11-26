@@ -215,9 +215,19 @@ describe("build", () => {
 		// lazy one (the client's WebMCP mirror since 0.16.1, say, for
 		// `webmcp: true`, which Sitegloss leaves off) would be one more script.
 		// Each page's files, exactly: the html, one chunk with its map, and
-		// the side panel's stylesheet.
+		// the side panel's stylesheet and the logo of its bar (the lockup and
+		// the tile, each for a light and a dark ground; DEC-084).
 		const pages = {
-			sidepanel: ["chunk-#.css", "chunk-#.js", "chunk-#.js.map", "index.html"],
+			sidepanel: [
+				"chunk-#.css",
+				"chunk-#.js",
+				"chunk-#.js.map",
+				"icon-#.svg",
+				"icon-light-#.svg",
+				"index.html",
+				"lockup-#.svg",
+				"lockup-light-#.svg",
+			],
 			offscreen: ["chunk-#.js", "chunk-#.js.map", "index.html"],
 		};
 		for (const [page, expected] of Object.entries(pages)) {
