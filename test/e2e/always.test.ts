@@ -284,7 +284,7 @@ inFullSet(
 			).toBe(true);
 		});
 
-		test("Allow all changes skips every tool's question until it is off, in the card and under the top bar on Home", async () => {
+		test("Allow all changes skips every tool's question until it is off; its switch is in the card only, and the top bar's pill says while it is on", async () => {
 			const allowAll = `${GRANT}.querySelector('[data-focus="allow-all"]')`;
 			expect(await panel.eval(`${allowAll}.checked`)).toBe(false);
 			// Right after the questions' dialog closed the switch turns nothing
@@ -322,49 +322,38 @@ inFullSet(
 			await panel.eval(`${allowAll}.click()`);
 			await until(kept, (k) => k === undefined, 10_000);
 
-			// The same switch is under the top bar on Home, and Settings shows
-			// only the card's.
-			const bar = `document.querySelector('#ai-allow [data-focus="allow-all"]')`;
-			const card = allowAll;
-			const shown = `getComputedStyle(document.getElementById("ai-allow")).display !== "none"`;
-			// In Settings the card has it: the bar's is not shown twice.
-			expect(await panel.eval(shown)).toBe(false);
+			// The switch is in the card only (DEC-084): no row of it under the
+			// top bar. On, the pill says so on every view, Home too; off, it
+			// counts the apps again.
+			const label = `document.getElementById("ai-label").textContent`;
+			expect(
+				await panel.eval(`document.getElementById("ai-allow") === null`),
+			).toBe(true);
+			expect(await panel.eval<string>(label)).toBe("AI on · 1 app");
+			await panel.waitFor(QUIET_OVER);
+			await panel.eval(`${allowAll}.click()`);
+			await panel.waitFor(`${label} === "AI · all allowed"`, 10_000);
+			// The line that says what it means is in the card, under the switch.
+			expect(await panel.eval<string>(`${GRANT}.textContent`)).toContain(
+				"deleting a case too",
+			);
 			await panel.eval(`document.getElementById("back").click()`);
 			await panel.waitFor(`document.getElementById("settings").hidden`);
-			expect(await panel.eval(shown)).toBe(true);
-			// It names the app, which the card's has above it.
+			expect(await panel.eval<string>(label)).toBe("AI · all allowed");
 			expect(
-				await panel.eval<string>(`${bar}.closest("label").textContent`),
-			).toContain("Allow all changes ·");
-			expect(await panel.eval(`${bar}.checked`)).toBe(false);
-			await panel.waitFor(QUIET_OVER);
-			await panel.eval(`(() => { const b = ${bar}; b.focus(); b.click(); })()`);
-			await until(
-				kept,
-				(k) => Object.values(k ?? {}).some((e) => e.all),
-				10_000,
-			);
-			// Redrawn with the new state: on, with the keyboard's focus kept, the
-			// line that says what it means, and the card's switch on too.
-			await panel.waitFor(`${bar}.checked && ${card}.checked`);
-			expect(await panel.eval(`document.activeElement === ${bar}`)).toBe(true);
-			expect(
-				await panel.eval<string>(
-					`document.getElementById("ai-allow").textContent`,
-				),
-			).toContain("deleting a case too");
+				await panel.eval<string>(`document.getElementById("ai-button").title`),
+			).toContain("runs without asking you");
 			await runs("set_summary", { caseId: "c_1", summary: "Six and a half" });
-			await panel.eval(`${bar}.click()`);
+			await panel.eval(`document.getElementById("ai-button").click()`);
+			await panel.waitFor(`!document.getElementById("settings").hidden`);
+			await panel.eval(`${allowAll}.click()`);
 			await until(kept, (k) => k === undefined, 10_000);
-			await panel.waitFor(`!${bar}.checked && !${card}.checked`);
+			await panel.waitFor(`${label} === "AI on · 1 app"`, 10_000);
 			// Off, the tool asks again.
 			expect(
 				(await asks("set_summary", { caseId: "c_1", summary: "Six" }, "deny"))
 					.isError,
 			).toBe(true);
-			// Back where the next tests expect the panel.
-			await panel.eval(`document.getElementById("ai-button").click()`);
-			await panel.waitFor(`!document.getElementById("settings").hidden`);
 		});
 
 		test("the notification's Always allow counts, and survives a worker restart", async () => {

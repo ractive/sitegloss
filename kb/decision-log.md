@@ -408,7 +408,7 @@ pairing view gives way to it.
   allow do not apply: every change asks each time (DEC-008). (Replaced by DEC-018: Allow
   and Always allow, closing it is Don't allow.)
 
-## DEC-018: Always allow, per tool or for all, until the AI app is disconnected (owner; the switch's place amended by DEC-036)
+## DEC-018: Always allow, per tool or for all, until the AI app is disconnected (owner; the switch's place amended by DEC-036, and again by DEC-084)
 
 The owner, 2026-11-10: bring "Always allow" back, per tool and also as "allow
 everything" for an AI app, lasting until that app is disconnected. This replaces
@@ -1341,7 +1341,7 @@ Chrome's (DEC-032) and Edge's (DEC-033).
   (see `operations/firefox-add-ons.md`).
 - No third-party code in the job: the API is called with `curl`, as for Chrome and Edge.
 
-## DEC-036: "Allow all changes" is also under the top bar (owner)
+## DEC-036: "Allow all changes" is also under the top bar (owner; the row taken out again by DEC-084)
 
 The owner, 2026-11-17, testing the Firefox build with an AI app: the switch "Allow all
 changes" was only in the AI app card, behind the pill "AI on · 1 app", and nothing on
@@ -5433,6 +5433,17 @@ line), 295 px without. Nothing the head could do is gone; what moved, and why:
   `-light` ones with the white tile for the dark scheme, chosen by the same media query as in the
   web app), bundled beside the panel's page. Decoration: the bar's heading names the panel.
 
-Not done, for the owner to say: "Allow all changes" still has its row under the top bar (DEC-036);
-a settled mark has no copy (the web app has it in the mark's "…" there); Home's Team section is as
-it was.
+- **"Allow all changes" has no row under the top bar any more** (the owner, asked whether to keep
+  DEC-036's row: "Hide it"). It was the first thing above every case and above Home. The switch is
+  where the AI app is managed, in its card behind the pill, with the sentence on what it means
+  while it is on, as before. The row was also the sign, on the view the person is on, that changes
+  run without asking; that sign is now the pill: while an app's switch is on it reads "AI · all
+  allowed" in place of "AI on · 1 app" (16 characters: it fits a 345 px panel beside "All cases"),
+  with the amber edge of the logo's pen, and its tooltip and its name for a reader say "Allow all
+  changes is on: every change it asks for runs without asking you, deleting a case too." With
+  several apps the label is the same when any of them has it, and the sentence says how many. A
+  problem with the connection still takes the pill (red), as before. Without the row the marks'
+  heading stands at about 255 px, 330 px with the Match size line.
+
+Not done, for the owner to say: a settled mark has no copy (the web app has it in the mark's "…"
+there); Home's Team section is as it was.

@@ -5278,6 +5278,12 @@ export function aiPill(ai: PanelState["ai"]): {
 	label: string;
 	dot: "off" | "problem" | "waiting" | "connected";
 	title: string;
+	/**
+	 * An app's "Allow all changes" is on (DEC-084): what that means, in a
+	 * sentence, for the pill's tooltip and its name. The switch is in the
+	 * card behind the pill.
+	 */
+	allowAll?: string;
 } {
 	if (ai.problem !== undefined) {
 		const retrying = ai.problem === "connection" && ai.active;
@@ -5290,12 +5296,30 @@ export function aiPill(ai: PanelState["ai"]): {
 					: sentence(ai.status),
 		};
 	}
-	if (ai.connected && ai.apps > 0)
+	if (ai.connected && ai.apps > 0) {
+		const manage = `Click to manage ${ai.apps === 1 ? "it" : "them"}.`;
+		if (ai.allowAll > 0) {
+			// Short: it has to fit a 345 px panel beside the way back.
+			const whose =
+				ai.apps === 1
+					? "it asks for"
+					: ai.allowAll === ai.apps
+						? "they ask for"
+						: `${ai.allowAll} of them ask${ai.allowAll === 1 ? "s" : ""} for`;
+			const allowAll = `Allow all changes is on: every change ${whose} runs without asking you, deleting a case too.`;
+			return {
+				label: "AI · all allowed",
+				dot: "connected",
+				title: `${sentence(ai.status)} ${allowAll} ${manage}`,
+				allowAll,
+			};
+		}
 		return {
 			label: `AI on · ${ai.apps} app${ai.apps === 1 ? "" : "s"}`,
 			dot: "connected",
-			title: `${sentence(ai.status)} Click to manage ${ai.apps === 1 ? "it" : "them"}.`,
+			title: `${sentence(ai.status)} ${manage}`,
 		};
+	}
 	if (ai.connected)
 		return {
 			label: "AI on, no app yet",
@@ -5331,9 +5355,14 @@ function renderPaired(state: PanelState, actions: Actions): void {
 function renderAi({ ai }: PanelState): void {
 	const pill = aiPill(ai);
 	aiLabel.textContent = pill.label;
-	// The whole status in the pill's name, for a screen reader; the pill shows the label.
-	aiStatus.textContent = ai.status;
+	// The whole status in the pill's name, for a screen reader; the pill shows
+	// the label. With it, that changes run without asking, while they do.
+	aiStatus.textContent =
+		pill.allowAll === undefined
+			? ai.status
+			: `${sentence(ai.status)} ${pill.allowAll}`;
 	aiButton.title = pill.title;
+	aiButton.toggleAttribute("data-allow-all", pill.allowAll !== undefined);
 	// Waiting for an app to pair: nothing to do but wait (a click shows how).
 	aiAction.hidden = (ai.active && !ai.connected) || ai.problem !== undefined;
 	aiAction.textContent = ai.connected ? "Manage" : "Turn on";

@@ -992,6 +992,15 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 	white-space: nowrap;
 }
 
+/*
+ * An app's "Allow all changes" is on (DEC-084): the pill says so in words
+ * ("AI · all allowed") and wears the amber edge, the logo's pen, since the
+ * switch itself is in the card behind it.
+ */
+:where(#bar) .ai-pill[data-allow-all] {
+	box-shadow: inset 0 0 0 1.5px var(--accent-edge);
+}
+
 #ai-label {
 	min-width: 0;
 	overflow: hidden;
@@ -1124,28 +1133,6 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 }
 
 .pair-fill-ask p {
-	margin: 0;
-}
-
-/* Each connected AI app's "Allow all changes", under the top bar (DEC-036).
-   Settings shows the card, which has the same switch. */
-.ai-allow {
-	display: grid;
-	gap: var(--s1);
-	padding: var(--s2) var(--s4);
-	border-bottom: 1px solid var(--rule);
-}
-
-.ai-allow[hidden],
-body:has(#settings:not([hidden])) .ai-allow {
-	display: none;
-}
-
-.ai-allow .switch.small {
-	margin-top: 0;
-}
-
-.ai-allow p {
 	margin: 0;
 }
 
