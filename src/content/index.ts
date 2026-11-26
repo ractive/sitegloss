@@ -4,6 +4,7 @@
  */
 
 import { LANGUAGE, nextNumbers } from "../lib/case.ts";
+import { debugLog } from "../lib/debug.ts";
 import { cssSelector, describeElement } from "../lib/element.ts";
 import { boundsOfRects } from "../lib/highlight.ts";
 import {
@@ -249,7 +250,7 @@ function start(): void {
 			caseId,
 			number,
 			...(what === undefined ? {} : { what }),
-		}).catch(() => undefined);
+		}).catch((error: unknown) => debugLog("panel images message", error));
 	};
 	// A loaded mark's dialog whose field the page refused: the panel's form.
 	reviewer.onPanel = (caseId, number, what) =>
@@ -279,13 +280,15 @@ function start(): void {
 	// The bar is where the person left it, in every tab of this profile.
 	// The worker keeps it: this profile's storage is not a page's to reach.
 	overlay.onBarMoved = (place) =>
-		void askWorker({ type: "bar:place", place }).catch(() => undefined);
+		void askWorker({ type: "bar:place", place }).catch((error: unknown) =>
+			debugLog("bar place message", error),
+		);
 	void askWorker({ type: "bar:place" })
 		.then((answer) => {
 			const place = storedBarPlace(answer?.ok ? answer.place : undefined);
 			if (place !== undefined) overlay.setBarPlace(place);
 		})
-		.catch(() => undefined);
+		.catch((error: unknown) => debugLog("bar place read", error));
 	overlay.onChange = () => {
 		const message: Broadcast = { type: "overlay:changed", state: state() };
 		// Nobody may be listening (side panel closed): that is fine.

@@ -134,6 +134,7 @@ export async function injectOnClick(
 	try {
 		await inject(id);
 	} catch {
+		// No content script yet: once more after a pause.
 		await new Promise((resolve) => setTimeout(resolve, retryMs));
 		await inject(id);
 	}

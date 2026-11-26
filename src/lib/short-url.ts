@@ -13,6 +13,7 @@ export function shortUrl(url: string): string {
 		const route = hashRoute(u.hash);
 		return `${u.host}${u.pathname === "/" && route === "" ? "" : u.pathname}${route}`;
 	} catch {
+		// Not an address.
 		return url;
 	}
 }
@@ -27,6 +28,7 @@ export function shortPath(url: string, withHost: boolean): string {
 		const u = new URL(url);
 		return `${u.pathname}${hashRoute(u.hash)}`;
 	} catch {
+		// Not an address.
 		return url;
 	}
 }

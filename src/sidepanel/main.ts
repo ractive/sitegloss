@@ -41,6 +41,7 @@ import {
 	withVerified,
 } from "../lib/case.ts";
 import { sha256Of } from "../lib/cloud/api.ts";
+import { debugLog } from "../lib/debug.ts";
 import {
 	type CheckedExport,
 	exportAllCases,
@@ -269,7 +270,10 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 /** The tab's size in CSS pixels, as a case records its viewport. */
 async function tabSize(tab: chrome.tabs.Tab): Promise<Size | undefined> {
 	if (tab.id === undefined || !tab.width || !tab.height) return undefined;
-	const zoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+	const zoom = await chrome.tabs.getZoom(tab.id).catch((error: unknown) => {
+		debugLog("tab zoom", error);
+		return 1;
+	});
 	return cssSize({ width: tab.width, height: tab.height }, zoom);
 }
 
@@ -775,7 +779,9 @@ async function settledSize(tabId: number): Promise<void> {
  * told before the page gets it.
  */
 const handCase = (tabId: number, caseId: string) =>
-	askWorker({ type: "tab:case", tabId, caseId }).catch(() => undefined);
+	askWorker({ type: "tab:case", tabId, caseId }).catch((error: unknown) =>
+		debugLog("hand case to worker", error),
+	);
 
 /** The overlay's state on the tab, or `undefined` where it is not injected. */
 async function overlayState(tabId: number): Promise<OverlayState | undefined> {
@@ -1169,7 +1175,10 @@ async function askAllTabs(): Promise<TabAnswer[]> {
 
 /** `askAllTabs`, by tab id. */
 async function askTabsById(): Promise<Map<number, TabAnswer>> {
-	const tabs = await chrome.tabs.query({}).catch(() => []);
+	const tabs = await chrome.tabs.query({}).catch((error: unknown) => {
+		debugLog("tabs query", error);
+		return [];
+	});
 	const answers = await Promise.all(
 		tabs.map(async ({ id }): Promise<[number, TabAnswer]> => {
 			if (id === undefined) return [-1, "none"];
@@ -1272,7 +1281,9 @@ async function closeFromPanel(caseId: string): Promise<void> {
 	);
 	if (!left) return;
 	// Read again: another writer may have reopened it meanwhile.
-	const saved = await store.getCase(caseId).catch(() => undefined);
+	const saved = await store
+		.getCase(caseId)
+		.catch((error: unknown) => debugLog("read case", error));
 	if (saved?.closed === undefined || state.view.kind !== "home") return;
 	update((s) => {
 		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
@@ -1417,7 +1428,10 @@ async function endDeleted(
 	caseId: string,
 	title: string | undefined,
 ): Promise<void> {
-	const tabs = await chrome.tabs.query({}).catch(() => []);
+	const tabs = await chrome.tabs.query({}).catch((error: unknown) => {
+		debugLog("tabs query", error);
+		return [];
+	});
 	let lost = 0;
 	await Promise.all(
 		tabs.map(async ({ id }) => {
@@ -1456,7 +1470,10 @@ async function forgetUntouched(caseId: string): Promise<boolean> {
 	const link = typedLink(caseId);
 	const gone = await store
 		.deleteCaseIf(caseId, (c) => isUntouched(c, typed, title, link))
-		.catch(() => false);
+		.catch((error: unknown) => {
+			debugLog("delete untouched case", error);
+			return false;
+		});
 	if (!gone) return false;
 	update((s) => {
 		s.verdictDrafts.delete(caseId);
@@ -1667,9 +1684,12 @@ async function linkCase(caseId: string, text: string): Promise<void> {
  * A toolbar adding to another case ignores it.
  */
 async function retitleToolbars(c: Case): Promise<void> {
-	const tabs = (await chrome.tabs.query({}).catch(() => [])).flatMap((t) =>
-		t.id === undefined ? [] : [t.id],
-	);
+	const tabs = (
+		await chrome.tabs.query({}).catch((error: unknown) => {
+			debugLog("tabs query", error);
+			return [];
+		})
+	).flatMap((t) => (t.id === undefined ? [] : [t.id]));
 	// Each on its own: a tab that does not answer holds up no other.
 	await Promise.all(
 		tabs.map(async (tabId) => {
@@ -2120,7 +2140,12 @@ const actions: Actions = {
 						win.height === undefined
 					)
 						break;
-					const zoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+					const zoom = await chrome.tabs
+						.getZoom(tab.id)
+						.catch((error: unknown) => {
+							debugLog("tab zoom", error);
+							return 1;
+						});
 					const bigger = windowFor(
 						want,
 						{ width: tab.width, height: tab.height },
@@ -2689,7 +2714,10 @@ async function refreshAllSites(): Promise<void> {
 
 /** The icon's shortcut, as the browser has it now (the person may change it). */
 async function refreshShortcut(): Promise<void> {
-	const all = await chrome.commands.getAll().catch(() => []);
+	const all = await chrome.commands.getAll().catch((error: unknown) => {
+		debugLog("commands", error);
+		return [];
+	});
 	const shortcut = all.find((c) => c.name === "_execute_action")?.shortcut;
 	update((s) => (s.shortcut = shortcut || undefined));
 }
@@ -2919,7 +2947,7 @@ function takeImages(tabId: number | undefined): void {
 	if (tabId === undefined) return;
 	void askWorker({ type: "panel:images-take", tabId })
 		.then((answer) => takeImagesFor(answer?.ok ? answer.images : undefined))
-		.catch(() => undefined);
+		.catch((error: unknown) => debugLog("panel images", error));
 }
 
 function askImages(s: PanelState): void {
@@ -2965,7 +2993,9 @@ async function showPicture(
 		? markPictures(c, markId).find((p) => p.id === pictureId)?.path
 		: undefined;
 	const stored = path
-		? await store.getImage(caseId, path).catch(() => undefined)
+		? await store
+				.getImage(caseId, path)
+				.catch((error: unknown) => debugLog("read image", error))
 		: undefined;
 	const s = window.screen as Screen & { availLeft?: number; availTop?: number };
 	const layout = {

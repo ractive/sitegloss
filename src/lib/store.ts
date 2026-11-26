@@ -5,6 +5,7 @@
  */
 
 import { type Case, findingsAsComments, imageKey } from "./case.ts";
+import { debugLog } from "./debug.ts";
 
 /**
  * The database's version. 1: the stores. 2 (DEC-051): the case format
@@ -35,7 +36,8 @@ export function upgradedCase(stored: unknown): unknown {
 	try {
 		const next = findingsAsComments(stored);
 		return next === stored ? undefined : next;
-	} catch {
+	} catch (error) {
+		debugLog("case upgrade", error);
 		return undefined;
 	}
 }

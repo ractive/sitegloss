@@ -5,6 +5,7 @@
  */
 
 import { PANEL } from "../lib/browser.ts";
+import { debugLog } from "../lib/debug.ts";
 import { handedCase } from "../lib/messages.ts";
 import { NoAccessError, sendToTab } from "../lib/tabs.ts";
 import type { TabBridge } from "./tools.ts";
@@ -25,7 +26,7 @@ export type Capture = (tabId: number, windowId: number) => Promise<string>;
 export async function tabInFront(): Promise<chrome.tabs.Tab | undefined> {
 	const win = await chrome.windows
 		.getLastFocused({ windowTypes: ["normal"] })
-		.catch(() => undefined);
+		.catch((error: unknown) => debugLog("front window", error));
 	if (win?.id === undefined) return undefined;
 	const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
 	return tab;
@@ -51,7 +52,9 @@ export function workerTab(
 		async send(tabId, request) {
 			const caseId = handedCase(request);
 			if (caseId !== undefined)
-				await handed?.(tabId, caseId).catch(() => undefined);
+				await handed?.(tabId, caseId).catch((error: unknown) =>
+					debugLog("hand case to worker", error),
+				);
 			try {
 				return await sendToTab(tabId, request);
 			} catch (error) {

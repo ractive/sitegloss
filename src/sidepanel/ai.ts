@@ -100,6 +100,7 @@ export function keepOnAnswered(): boolean {
 	try {
 		return localStorage.getItem(KEEP_ON_ASKED) !== null;
 	} catch {
+		// No storage (a private window that refuses it): not answered.
 		return false;
 	}
 }

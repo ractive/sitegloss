@@ -35,6 +35,7 @@ import {
 	notificationOptions,
 	PANEL,
 } from "../lib/browser.ts";
+import { debugLog } from "../lib/debug.ts";
 import { cropImages, scaleImage, toWebp } from "../lib/images.ts";
 import {
 	type Broadcast,
@@ -168,6 +169,7 @@ async function tellTabs(news: ContentRequest): Promise<void> {
 	try {
 		for (const { id } of await chrome.tabs.query({}))
 			if (id !== undefined)
+				// A tab without the content script does not answer.
 				chrome.tabs.sendMessage(id, news).catch(() => undefined);
 	} catch {
 		// No tabs to tell.
@@ -454,7 +456,9 @@ export class Connection {
 		// A record shows only while AI access is off: not with the session on or
 		// Keep AI access on (a failed removal may have left one), and not a
 		// stale one (a week); those are removed.
-		const stored = await kv.get(WENT_OFF_KEY).catch(() => undefined);
+		const stored = await kv
+			.get(WENT_OFF_KEY)
+			.catch((error: unknown) => debugLog("AI access record", error));
 		const keptOn = !stopped && settings.keepOn;
 		let wentOff = sessionOn || keptOn ? undefined : wentOffOf(stored);
 		if (stored !== undefined && wentOff === undefined)
@@ -464,7 +468,11 @@ export class Connection {
 					console.warn("Sitegloss: forgetting why AI access is off", error),
 				);
 		const restarted = wentOffAtStart({
-			wasOn: (await kv.get(WAS_ON_KEY).catch(() => undefined)) === true,
+			wasOn:
+				(await kv
+					.get(WAS_ON_KEY)
+					.catch((error: unknown) => debugLog("AI access record", error))) ===
+				true,
 			sessionOn,
 			stopped,
 			keepOn: settings.keepOn,
@@ -585,7 +593,9 @@ export class Connection {
 						...(this.#deps.team ? { team: this.#deps.team } : {}),
 						...(this.#deps.handOver ? { handOver: this.#deps.handOver } : {}),
 					});
-					const front = await tabInFront().catch(() => undefined);
+					const front = await tabInFront().catch((error: unknown) =>
+						debugLog("tab in front", error),
+					);
 					// No answer in time is "timeout": `decide` tells the library
 					// "unanswered", which the AI app hears as such, not as a no.
 					return this.#questions.ask(r, lines, front?.id);
@@ -706,7 +716,10 @@ export class Connection {
 	 */
 	async #consented(): Promise<boolean> {
 		if (!FIREFOX) return true;
-		const yes = await dataConsent().catch(() => false);
+		const yes = await dataConsent().catch((error: unknown) => {
+			debugLog("data consent", error);
+			return false;
+		});
 		if (!yes) {
 			this.#problem = NO_CONSENT;
 			this.#changed();
@@ -724,7 +737,10 @@ export class Connection {
 	async consentChanged(): Promise<void> {
 		const on = this.#mcp.state !== "disconnected" || this.#keep.retrying;
 		if (!FIREFOX || !on) return;
-		const consented = await dataConsent().catch(() => false);
+		const consented = await dataConsent().catch((error: unknown) => {
+			debugLog("data consent", error);
+			return false;
+		});
 		if (!consentGoneEnds(FIREFOX, on, consented)) return;
 		this.#keep.stop();
 		this.#mcp.disconnect();
@@ -1107,7 +1123,9 @@ export class Connection {
 			// The secret changed, and only connecting with it failed (the
 			// library connects itself after a takeover it saw).
 			if ((error as { secretChanged?: unknown }).secretChanged === true)
-				await this.#setReplaced(undefined).catch(() => {});
+				await this.#setReplaced(undefined).catch((error: unknown) =>
+					debugLog("replaced flag", error),
+				);
 		}
 		this.#changed();
 	}
@@ -1230,7 +1248,9 @@ export class Connection {
 	/** The question as a notification, while no panel is on screen. */
 	#fillNotice(view: FillView | undefined): void {
 		if (view === undefined) {
-			void chrome.notifications.clear(FILL_NOTIFICATION).catch(() => {});
+			void chrome.notifications
+				.clear(FILL_NOTIFICATION)
+				.catch((error: unknown) => debugLog("fill notification", error));
 			return;
 		}
 		if ([...this.#panels].some((p) => p.visible)) return;
@@ -1245,7 +1265,7 @@ export class Connection {
 					priority: 2,
 				}),
 			)
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("fill notification", error));
 	}
 
 	/**
@@ -1270,6 +1290,7 @@ export class Connection {
 		try {
 			parsed = new URL(url);
 		} catch {
+			// Not an address.
 			return;
 		}
 		if (parsed.origin !== origin || parsed.pathname !== PAIRING_PATH) return;
@@ -1278,7 +1299,7 @@ export class Connection {
 				target: { tabId, frameIds: [0] },
 				files: [PAIRING_SCRIPT],
 			})
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("pairing script", error));
 	}
 
 	/**
@@ -1319,6 +1340,7 @@ export class Connection {
 				try {
 					return (await chrome.tabs.get(tabId)).windowId;
 				} catch {
+					// The tab is gone.
 					return undefined;
 				}
 			},
@@ -1346,7 +1368,10 @@ export class Connection {
 					}),
 				);
 			},
-			clear: (id) => void chrome.notifications.clear(id).catch(() => {}),
+			clear: (id) =>
+				void chrome.notifications
+					.clear(id)
+					.catch((error: unknown) => debugLog("clear notification", error)),
 			changed: () => this.#changed(),
 			now: () => Date.now(),
 		};

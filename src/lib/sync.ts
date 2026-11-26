@@ -17,6 +17,7 @@
 
 import { BROWSER, FIREFOX } from "./browser.ts";
 import { CASE_FORMAT, type Case } from "./case.ts";
+import { debugLog } from "./debug.ts";
 import { EXPORT_SUFFIX, exportCase, exportFileName } from "./export.ts";
 import type { Kv } from "./kv.ts";
 import type { CaseStore } from "./store.ts";
@@ -277,7 +278,12 @@ export async function chooseFolder(
 	const before = current === undefined ? known : [current, ...known];
 	let id: string | undefined;
 	for (const f of before)
-		if (await handle.isSameEntry(f.handle).catch(() => false)) {
+		if (
+			await handle.isSameEntry(f.handle).catch((error: unknown) => {
+				debugLog("same folder check", error);
+				return false;
+			})
+		) {
 			id = f.id;
 			break;
 		}
@@ -387,7 +393,8 @@ export function folderTarget(
 				return (
 					(await folder.queryPermission({ mode: "readwrite" })) === "granted"
 				);
-			} catch {
+			} catch (error) {
+				debugLog("folder permission", error);
 				return false;
 			}
 		},
@@ -496,17 +503,25 @@ function downloadProblem(error: string, file: string): string {
 export function downloadsTarget(api: DownloadsApi): SyncTarget {
 	/** The newest entry stays in Chrome's list, for Show in folder; the one before goes. */
 	const keepNewest = async (id: number) => {
-		const before = await api.last().catch(() => undefined);
+		const before = await api
+			.last()
+			.catch((error: unknown) => debugLog("last download", error));
 		// The one before goes first: a worker stopped in between still has it
 		// recorded, and the next run erases it again.
 		if (before !== undefined && before !== id)
-			await api.erase(before).catch(() => undefined);
+			await api
+				.erase(before)
+				.catch((error: unknown) => debugLog("erase download", error));
 		await api.setLast(id);
 	};
 	return {
 		id: DOWNLOADS_ID,
 		kind: "downloads",
-		permission: () => api.granted().catch(() => false),
+		permission: () =>
+			api.granted().catch((error: unknown) => {
+				debugLog("downloads permission", error);
+				return false;
+			}),
 		// Nothing there can be looked at: a file of the name is overwritten. The
 		// folder is shared by every profile and browser syncing to Downloads
 		// (the README says so).
@@ -514,7 +529,13 @@ export function downloadsTarget(api: DownloadsApi): SyncTarget {
 		async write(name, c) {
 			if (api.apiMissing?.()) {
 				// Taken back meanwhile: paused, as at the run's start.
-				if (!(await api.granted().catch(() => false))) throw new SyncPaused();
+				if (
+					!(await api.granted().catch((error: unknown) => {
+						debugLog("downloads permission", error);
+						return false;
+					}))
+				)
+					throw new SyncPaused();
 				throw new TargetFailed(
 					`${BROWSER} allowed Sitegloss to save to your downloads, but Sitegloss's background part does not see it yet. It starts writing once ${BROWSER} restarts that part, by itself after a while without use; now, turn Sitegloss off and on in ${FIREFOX ? "Add-ons and themes (in Firefox's menu)" : "chrome://extensions"}.`,
 				);
@@ -532,7 +553,13 @@ export function downloadsTarget(api: DownloadsApi): SyncTarget {
 						saveAs: false,
 					});
 				} catch (error) {
-					if (!(await api.granted().catch(() => false))) throw new SyncPaused();
+					if (
+						!(await api.granted().catch((error: unknown) => {
+							debugLog("downloads permission", error);
+							return false;
+						}))
+					)
+						throw new SyncPaused();
 					// Refused for this case (its name, say): the others go on.
 					throw new Error(
 						`${BROWSER} would not save it to your downloads: ${message(error)}`,
@@ -549,15 +576,21 @@ export function downloadsTarget(api: DownloadsApi): SyncTarget {
 				});
 				end = await api.finished(id, DOWNLOAD_TIMEOUT_MS);
 				if (end.state === "timeout") {
-					await api.cancel(id).catch(() => undefined);
-					await api.erase(id).catch(() => undefined);
+					await api
+						.cancel(id)
+						.catch((error: unknown) => debugLog("cancel download", error));
+					await api
+						.erase(id)
+						.catch((error: unknown) => debugLog("erase download", error));
 					throw new TargetFailed(
 						`${BROWSER} did not finish saving “${name}” to your downloads within a minute. Sitegloss tries again at the next change, or click Try again.`,
 					);
 				}
 				if (end.state === "interrupted") {
 					// A failed write leaves no entry in Chrome's list.
-					await api.erase(id).catch(() => undefined);
+					await api
+						.erase(id)
+						.catch((error: unknown) => debugLog("erase download", error));
 					throw new TargetFailed(
 						downloadProblem(end.error, name),
 						end.error === "USER_CANCELED",
@@ -566,7 +599,9 @@ export function downloadsTarget(api: DownloadsApi): SyncTarget {
 				// Saved somewhere else: the user chose another place in Chrome's
 				// Save dialog, or another extension or a setting moved it.
 				if (!savedAs(end.filename, name)) {
-					await api.erase(id).catch(() => undefined);
+					await api
+						.erase(id)
+						.catch((error: unknown) => debugLog("erase download", error));
 					throw new TargetFailed(
 						FIREFOX
 							? `Firefox saved “${name}” as “${end.filename}”, not in Downloads/${DOWNLOADS_FOLDER}: another extension may have moved it. Click Try again.`
@@ -576,19 +611,26 @@ export function downloadsTarget(api: DownloadsApi): SyncTarget {
 				}
 				await keepNewest(id);
 			} finally {
-				await api.revoke(url).catch(() => undefined);
-				await api.setPending(undefined).catch(() => undefined);
+				await api
+					.revoke(url)
+					.catch((error: unknown) => debugLog("revoke download url", error));
+				await api
+					.setPending(undefined)
+					.catch((error: unknown) => debugLog("clear pending download", error));
 			}
 		},
 		async settle() {
-			const p = await api.pending().catch(() => undefined);
+			const p = await api
+				.pending()
+				.catch((error: unknown) => debugLog("pending download", error));
 			if (p === undefined) return undefined;
 			let end: DownloadEnd | undefined;
 			try {
 				end = await api.finished(p.id, DOWNLOAD_TIMEOUT_MS);
 				if (end.state === "timeout")
 					await api.cancel(p.id).catch(() => undefined);
-			} catch {
+			} catch (error) {
+				debugLog("download wait", error);
 				end = undefined;
 			}
 			// Settled once its entry is kept or erased, not before: a worker
@@ -599,10 +641,14 @@ export function downloadsTarget(api: DownloadsApi): SyncTarget {
 					return { caseId: p.caseId, version: p.version, file: p.file };
 				}
 				// Not written: the run writes the case again.
-				await api.erase(p.id).catch(() => undefined);
+				await api
+					.erase(p.id)
+					.catch((error: unknown) => debugLog("erase download", error));
 				return undefined;
 			} finally {
-				await api.setPending(undefined).catch(() => undefined);
+				await api
+					.setPending(undefined)
+					.catch((error: unknown) => debugLog("clear pending download", error));
 			}
 		},
 		end: async () => api.end?.(),
@@ -667,8 +713,11 @@ export class Sync {
 				// Downloads only: each write there is a download Chrome shows; a
 				// folder is written at once.
 				const quiet =
-					(await this.#deps.store.choice().catch(() => undefined))?.target ===
-					"downloads"
+					(
+						await this.#deps.store
+							.choice()
+							.catch((error: unknown) => debugLog("sync choice", error))
+					)?.target === "downloads"
 						? (this.#deps.quietMs ?? 0)
 						: 0;
 				for (;;) {
@@ -715,7 +764,9 @@ export class Sync {
 		const choice = await store.choice();
 		// Not to Downloads (any more): a document a stopped worker left open goes.
 		if (choice?.target !== "downloads")
-			await this.#deps.downloads?.end?.().catch(() => undefined);
+			await this.#deps.downloads
+				?.end?.()
+				.catch((error: unknown) => debugLog("end downloads", error));
 		if (choice === undefined) {
 			// Not syncing: no status, no "!" on the icon.
 			if ((await store.status()) !== undefined)
@@ -733,7 +784,9 @@ export class Sync {
 		try {
 			await this.#run(target, force);
 		} finally {
-			await target.end?.().catch(() => undefined);
+			await target
+				.end?.()
+				.catch((error: unknown) => debugLog("end target", error));
 		}
 	}
 
@@ -766,7 +819,9 @@ export class Sync {
 			record?.folderId === target.id ? { ...record.byCase } : {};
 		const files = (): SyncedFiles => ({ folderId: target.id, byCase });
 		// A write a stopped worker left under way.
-		const settled = await target.settle?.().catch(() => undefined);
+		const settled = await target
+			.settle?.()
+			.catch((error: unknown) => debugLog("settle target", error));
 		if (settled !== undefined)
 			byCase[settled.caseId] = {
 				version: settled.version,
@@ -804,7 +859,9 @@ export class Sync {
 				// The same case under its new title: its old file goes, where it can.
 				if (old !== undefined && old !== name) {
 					if (target.remove !== undefined)
-						await target.remove(old).catch(() => undefined);
+						await target
+							.remove(old)
+							.catch((error: unknown) => debugLog("remove old file", error));
 					owner.delete(old);
 				}
 				owner.set(name, c.id);
@@ -927,7 +984,9 @@ async function write(
 		);
 		await stream.close();
 	} catch (error) {
-		await stream.abort().catch(() => undefined);
+		await stream
+			.abort()
+			.catch((error: unknown) => debugLog("abort stream", error));
 		throw error;
 	}
 }

@@ -426,6 +426,7 @@ export function placeOf(
 				),
 			];
 		} catch {
+			// A selector this browser does not know: the next shorter one.
 			continue;
 		}
 		if (

@@ -44,6 +44,7 @@ function siteRule(address: string): string | null {
 	try {
 		url = new URL(address);
 	} catch {
+		// Not an address.
 		return null;
 	}
 	if (url.protocol !== "http:" && url.protocol !== "https:") return null;

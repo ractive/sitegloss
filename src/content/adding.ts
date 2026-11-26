@@ -41,6 +41,7 @@ import {
 	translateShape,
 } from "../lib/case.ts";
 import { clipMark, union } from "../lib/clip.ts";
+import { debugLog } from "../lib/debug.ts";
 import {
 	createContext,
 	describeElement,
@@ -1639,7 +1640,9 @@ export class MarkAdder {
 	#discard(shotIds: string[]): void {
 		if (shotIds.length === 0) return;
 		const caseId = this.#pendingId();
-		ask({ type: "images:discard", caseId, shotIds }).catch(() => undefined);
+		ask({ type: "images:discard", caseId, shotIds }).catch((error: unknown) =>
+			debugLog("discard images", error),
+		);
 	}
 
 	/**

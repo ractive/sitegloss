@@ -33,6 +33,7 @@ export async function readBody(
 	const declared = Number(response.headers.get("content-length") ?? "");
 	const reader = response.body?.getReader();
 	if (Number.isFinite(declared) && declared > max) {
+		// Best effort: the body is dropped anyway.
 		await reader?.cancel().catch(() => undefined);
 		throw new TooLarge();
 	}
@@ -46,6 +47,7 @@ export async function readBody(
 		if (piece.done) break;
 		size += piece.value.byteLength;
 		if (size > max) {
+			// Best effort: the body is dropped anyway.
 			await reader.cancel().catch(() => undefined);
 			throw new TooLarge();
 		}
@@ -69,6 +71,7 @@ export async function readJson(
 	try {
 		return JSON.parse(new TextDecoder().decode(bytes));
 	} catch {
+		// Not JSON.
 		return undefined;
 	}
 }

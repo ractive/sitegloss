@@ -11,6 +11,7 @@
  * "Actual size" only where it changes something.
  */
 
+import { debugLog } from "../lib/debug.ts";
 import { askWorker } from "../lib/messages.ts";
 import { IdbStore } from "../lib/store.ts";
 import { offersNavigation, PICTURE_PAD, sizeChoice } from "./layout.ts";
@@ -87,6 +88,7 @@ async function show(index: number): Promise<void> {
 	img.hidden = true;
 	img.src = url;
 	img.alt = picture.alt;
+	// A picture that does not decode is shown as it is.
 	await img.decode().catch(() => undefined);
 	if (index !== at) return;
 	fit(true);
@@ -147,7 +149,8 @@ function toggleSize(): void {
 function closeViewer(): void {
 	if (where === "window") {
 		const back = Number.isInteger(from)
-			? chrome.windows.update(from, { focused: true }).catch(() => undefined)
+			? // The window may be closed already.
+				chrome.windows.update(from, { focused: true }).catch(() => undefined)
 			: Promise.resolve();
 		void back.then(() => window.close());
 		return;
@@ -157,7 +160,10 @@ function closeViewer(): void {
 		.then((tab) =>
 			tab?.id === undefined ? window.close() : chrome.tabs.remove(tab.id),
 		)
-		.catch(() => window.close());
+		.catch((error: unknown) => {
+			debugLog("close viewer tab", error);
+			window.close();
+		});
 }
 
 inTab.hidden = where === "tab";
@@ -192,7 +198,9 @@ addEventListener("pagehide", () => {
 });
 
 fit(true);
-const c = await store.getCase(caseId).catch(() => undefined);
+const c = await store
+	.getCase(caseId)
+	.catch((error: unknown) => debugLog("read case", error));
 if (c === undefined) say("This case is not in this browser's Sitegloss.");
 else {
 	pictures = markPictures(c, markId);
@@ -206,5 +214,5 @@ if (where === "window") {
 	void askWorker({
 		type: "viewer:frame",
 		height: outerHeight - innerHeight,
-	}).catch(() => undefined);
+	}).catch((error: unknown) => debugLog("viewer frame message", error));
 }

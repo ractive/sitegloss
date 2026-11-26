@@ -496,6 +496,7 @@ function url(value: string, el: Element): URL | undefined {
 	try {
 		return new URL(value, el.ownerDocument.baseURI);
 	} catch {
+		// Not an address.
 		return undefined;
 	}
 }
@@ -517,6 +518,7 @@ function placeOnPage(u: URL, base: URL | undefined, el: Element): string {
 	try {
 		id = decodeURIComponent(u.hash.slice(1));
 	} catch {
+		// A malformed escape: no id.
 		return "";
 	}
 	return el.ownerDocument.getElementById(id) === null ? "" : u.hash;
@@ -591,6 +593,7 @@ function findsOnly(el: Element, selector: string): boolean {
 		const all = el.ownerDocument.querySelectorAll(selector);
 		return all.length === 1 && all[0] === el;
 	} catch {
+		// Not a valid selector.
 		return false;
 	}
 }

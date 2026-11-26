@@ -34,6 +34,7 @@ import {
 } from "./lib/browser.ts";
 import { isSafeId, pendingImage } from "./lib/case.ts";
 import { CLOUD_DATABASE } from "./lib/cloud/book.ts";
+import { debugLog } from "./lib/debug.ts";
 import {
 	cropImages,
 	drawMarks,
@@ -117,7 +118,7 @@ if (typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD) {
 					[key]: [...((stored[key] as string[] | undefined) ?? []), line],
 				}),
 			)
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("debug log store", error));
 	};
 	globalThis.addEventListener("error", (e) =>
 		log("error", [(e as ErrorEvent).error ?? (e as ErrorEvent).message]),
@@ -202,6 +203,7 @@ const cloud = new Cloud({
 	news: () => void tell({ type: "cloud:changed" }),
 	redirect: signInRedirect,
 	alarms: chrome.alarms,
+	// A keep-alive ping: nothing to do when it fails.
 	keepAlive: () => void chrome.runtime.getPlatformInfo().catch(() => {}),
 });
 cloud.start();
@@ -248,7 +250,9 @@ void store
 
 // A tab that closes was handed nothing any more.
 chrome.tabs.onRemoved.addListener((tabId) => {
-	void tabCases.forget(tabId).catch(() => undefined);
+	void tabCases
+		.forget(tabId)
+		.catch((error: unknown) => debugLog("forget tab case", error));
 });
 
 // A browser window that closes takes its picture viewer with it (DEC-064).
@@ -315,6 +319,7 @@ function capture(tabId: number, windowId: number): Promise<string> {
 		}
 	};
 	const next = captureQueue.then(run, run);
+	// The caller of `next` gets the failure; the queue only waits for it.
 	captureQueue = next.catch(() => undefined);
 	return next;
 }
@@ -348,6 +353,7 @@ async function handle(
 			const png = await capture(tab.id, tab.windowId);
 			// Encoding takes a while; the page need not stay blurred for it.
 			const taken: ContentRequest = { type: "page:captured" };
+			// The page may be gone already.
 			void chrome.tabs.sendMessage(tab.id, taken).catch(() => undefined);
 			const image = await screenshotToWebp(png, PENDING_QUALITY);
 			await store.putImage(request.caseId, pendingImage(request.shotId), {
@@ -461,6 +467,7 @@ async function handle(
 			// it starts.
 			chrome.runtime
 				.sendMessage({ type: "panel:images" } satisfies Broadcast)
+				// No panel open: it asks for the images as it starts.
 				.catch(() => undefined);
 			// Not opened (no gesture left, or another browser's rule): the
 			// panel opened later still asks for the images.
@@ -578,10 +585,22 @@ const ready = Connection.start({
 	},
 	// Whose comments are this app's own, and what deleting a case means,
 	// in a case synced with a team (DEC-039).
-	me: () => cloud.me().catch(() => undefined),
-	team: (caseId) => cloud.teamOf(caseId).catch(() => undefined),
+	me: () =>
+		cloud.me().catch((error: unknown) => {
+			debugLog("cloud me", error);
+			return undefined;
+		}),
+	team: (caseId) =>
+		cloud.teamOf(caseId).catch((error: unknown) => {
+			debugLog("cloud team", error);
+			return undefined;
+		}),
 	// Who has a case and whose turn it is (DEC-071).
-	handOver: () => cloud.handOver().catch(() => undefined),
+	handOver: () =>
+		cloud.handOver().catch((error: unknown) => {
+			debugLog("cloud hand over", error);
+			return undefined;
+		}),
 });
 ready.catch((error: unknown) =>
 	console.error("Sitegloss: AI connection", error),
@@ -687,6 +706,7 @@ if (FIREFOX)
 			if (windowId !== undefined)
 				void chrome.windows
 					.update(windowId, { focused: true })
+					// The window may be closed meanwhile.
 					.catch(() => undefined);
 		}),
 	);
@@ -709,6 +729,7 @@ if (FIREFOX)
 	setInterval(
 		() =>
 			withConnection((c) => {
+				// A keep-alive ping: nothing to do when it fails.
 				if (c.active) void chrome.runtime.getPlatformInfo().catch(() => {});
 			}),
 		FIREFOX_KEEPALIVE_MS,

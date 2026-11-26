@@ -8,6 +8,7 @@
  */
 
 import { PANEL } from "../lib/browser.ts";
+import { debugLog } from "../lib/debug.ts";
 import type { SyncStatus } from "../lib/sync.ts";
 import { showSpark } from "./icon.ts";
 
@@ -124,15 +125,19 @@ export function badgeOf(deps: BadgeDeps) {
 export const badge = badgeOf({
 	apply(b) {
 		void showSpark(b.spark);
-		void chrome.action.setBadgeText({ text: b.text }).catch(() => {});
+		void chrome.action
+			.setBadgeText({ text: b.text })
+			.catch((error: unknown) => debugLog("badge text", error));
 		void chrome.action
 			.setBadgeBackgroundColor({ color: b.color })
-			.catch(() => {});
+			.catch((error: unknown) => debugLog("badge color", error));
 		// Chrome 110 and later.
 		if (typeof chrome.action.setBadgeTextColor === "function")
 			void chrome.action
 				.setBadgeTextColor({ color: b.textColor })
-				.catch(() => {});
-		void chrome.action.setTitle({ title: b.title }).catch(() => {});
+				.catch((error: unknown) => debugLog("badge text color", error));
+		void chrome.action
+			.setTitle({ title: b.title })
+			.catch((error: unknown) => debugLog("badge title", error));
 	},
 });

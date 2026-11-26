@@ -43,6 +43,7 @@ export class TabCases {
 				await this.#area.set({ [KEY]: done.handed });
 			return done.result;
 		});
+		// The caller of `next` gets the failure; the queue only waits for it.
 		this.#queue = next.catch(() => undefined);
 		return next;
 	}
