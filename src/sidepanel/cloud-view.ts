@@ -73,9 +73,9 @@ export const HAND_OVER_NOTE =
 
 export const SIGN_IN_TITLE =
 	"Sign in at the server in a window of the browser; Sitegloss then syncs your cases with your team, both ways";
-const SIGN_OUT_TITLE =
+export const SIGN_OUT_TITLE =
 	"Stop syncing in this browser: the cases stay here, on this device only, and the team keeps its copies";
-const SYNC_NOW_TITLE =
+export const SYNC_NOW_TITLE =
 	"Send what changed here and fetch what the team changed, now; also tries again what the server refused";
 const SYNC_THEM_TITLE =
 	"Send these cases to the team: its members see them, with their screenshots, and what anyone changes syncs";

@@ -237,6 +237,13 @@ export interface PanelState {
 	 */
 	copied: (Copied & { caseId: string; at: number }) | undefined;
 	/**
+	 * What a mark's "Copy for your AI app" did, said at that mark for a few
+	 * seconds (`COPIED_MS` in main.ts), or until the next copy.
+	 */
+	markCopied:
+		| { caseId: string; markId: string; ok: boolean; text: string; at: number }
+		| undefined;
+	/**
 	 * "My cases" in the list of cases (DEC-071): only the cases where it is
 	 * the person's turn. Kept for the browser's session.
 	 */
@@ -403,6 +410,7 @@ export const initialState = (): PanelState => ({
 	picked: undefined,
 	verifyOnOpen: undefined,
 	copied: undefined,
+	markCopied: undefined,
 	mine: false,
 	markDeleteArmed: undefined,
 	imageDeleteArmed: undefined,

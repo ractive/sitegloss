@@ -471,7 +471,7 @@ inBothSets("adding marks to a case", () => {
 			expect(renamed.c.marks.map((a) => a.comment)).toEqual(["Too pale"]);
 			// A link is stored at once too (DEC-028).
 			const ticket = "https://tickets.example.com/browse/ABC-123";
-			await panel.eval(`document.getElementById("case-link-edit").click()`);
+			await panel.eval(`document.getElementById("case-link-menu").click()`);
 			await panel.waitFor(`document.activeElement?.id === "case-link-field"`);
 			await panel.eval(`(() => {
 				const f = document.getElementById("case-link-field");

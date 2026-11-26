@@ -91,6 +91,8 @@
 	--r-pill: 999px;
 	/* The top bar's height: what sticks under it starts there. */
 	--bar: 44px;
+	/* The open case's own bar under it (its title): none on the other views. */
+	--case-bar: 0px;
 	/* The warning sign, as a mask: drawn in the colour of what it stands on. */
 	--warning-sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 15 14H1z' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M8 6v3.5' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3Ccircle cx='8' cy='11.75' r='.95'/%3E%3C/svg%3E");
 }
@@ -141,7 +143,7 @@
 
 /* A click on a control scrolled into view lands beside the top bar. */
 html {
-	scroll-padding-top: calc(var(--bar) + var(--s2));
+	scroll-padding-top: calc(var(--bar) + var(--case-bar) + var(--s2));
 }
 
 body {
@@ -737,7 +739,8 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 #bar {
 	position: sticky;
 	top: 0;
-	z-index: 3;
+	/* Above the open case's bar, which its account menu hangs over. */
+	z-index: 4;
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
@@ -785,6 +788,158 @@ button.chip[aria-pressed="true"]:hover:not(:disabled) {
 #copy-case-id[data-copied] .done {
 	display: inline;
 	color: var(--st-verified);
+}
+
+/*
+ * The account (account-menu.ts): a person at the bar's right end, as the web
+ * app has it, with a dot for what the sync is at.
+ */
+#account {
+	position: relative;
+	justify-content: center;
+	width: 28px;
+	min-height: 28px;
+	padding: 0;
+	border-radius: 50%;
+}
+
+#account > .icon {
+	width: 20px;
+	height: 20px;
+}
+
+#account > .dot {
+	position: absolute;
+	right: -1px;
+	bottom: -1px;
+	width: 9px;
+	height: 9px;
+	border: 2px solid var(--paper);
+	border-radius: 50%;
+	background: var(--st-verified);
+}
+
+#account[data-state="none"] > .dot {
+	display: none;
+}
+
+#account[data-state="none"] {
+	color: var(--ink-2);
+}
+
+#account[data-state="warn"] > .dot {
+	background: var(--warn-edge);
+}
+
+/* Its menu: who it is, then what can be done, under the button. */
+.account-pop {
+	position: absolute;
+	top: calc(100% - 4px);
+	right: var(--s2);
+	display: grid;
+	width: min(288px, calc(100vw - 2 * var(--s2)));
+	max-height: calc(100vh - var(--bar) - var(--s2));
+	overflow-y: auto;
+	border: 1px solid var(--rule);
+	border-radius: var(--r-card);
+	background: var(--field);
+	box-shadow: var(--shadow-card);
+}
+
+.account-pop[hidden] {
+	display: none;
+}
+
+.account-who {
+	display: grid;
+	gap: 2px;
+	padding: var(--s3) var(--s3) 10px;
+	border-bottom: 1px solid var(--rule);
+	overflow-wrap: anywhere;
+}
+
+.account-who > * {
+	margin: 0;
+}
+
+.account-who > strong {
+	font-family: var(--font-head);
+	font-size: 14px;
+}
+
+.account-who > .account-team,
+.account-who > .sync-line {
+	margin-top: 6px;
+}
+
+.account-who > .account-team + .sync-line {
+	margin-top: 0;
+}
+
+.account-pop [role="menu"] {
+	display: grid;
+	padding: var(--s1);
+}
+
+.account-pop .menu-label {
+	margin: 0;
+	padding: 6px var(--s2) var(--s1);
+	font-size: 12px;
+	line-height: 17px;
+	color: var(--ink-2);
+}
+
+.account-pop [role="group"] {
+	display: grid;
+}
+
+.account-pop hr {
+	width: 100%;
+	height: 0;
+	margin: var(--s1) 0;
+	border: 0;
+	border-top: 1px solid var(--rule);
+}
+
+.account-pop :is([role="menuitem"], [role="menuitemradio"]) {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--s2);
+	min-height: 32px;
+	padding: 0 var(--s2);
+	border: 0;
+	border-radius: var(--r-control);
+	background: none;
+	color: var(--ink);
+	font: inherit;
+	font-weight: 400;
+	text-align: left;
+	text-decoration: none;
+}
+
+.account-pop
+	:is([role="menuitem"], [role="menuitemradio"]):hover:not(:disabled),
+.account-pop :is([role="menuitem"], [role="menuitemradio"]):focus-visible {
+	background: var(--wash);
+}
+
+.account-pop [role="menuitem"] > .icon,
+.account-pop [role="menuitemradio"] .icon {
+	flex: none;
+	width: 16px;
+	height: 16px;
+}
+
+.account-pop [role="menuitemradio"] > .check {
+	display: inline-flex;
+	flex: none;
+	width: 16px;
+	color: var(--link);
+}
+
+.account-pop [role="menuitemradio"][aria-checked="true"] {
+	font-weight: 600;
 }
 
 /* The id to copy by hand, where the browser refused: one press selects it all. */
@@ -1642,12 +1797,53 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 
 /* --- the open case ------------------------------------------------------------ */
 
-/* What the whole case is and what can be done with it, on paper. */
+/*
+ * The case's own bar: its title and its menu, in view under the top bar
+ * while the case scrolls; the marks' and the comments' headings stick under
+ * it in turn (the owner). One line, so the bars under it know its height.
+ */
+:root:has(#case-view:not([hidden]) > .case-bar) {
+	--case-bar: 44px;
+}
+
+/* Renamed: the form is as high as it needs, and nothing sticks to it. */
+:root:has(#case-view:not([hidden]) > .case-bar > .rename:not([hidden])) {
+	--case-bar: 0px;
+}
+
+.case-bar {
+	position: sticky;
+	top: var(--bar);
+	z-index: 3;
+	display: grid;
+	align-content: center;
+	min-height: 44px;
+	padding: 0 var(--s4);
+	border-bottom: 1px solid var(--rule);
+	background: var(--paper);
+}
+
+.case-bar:has(> .rename:not([hidden])) {
+	position: static;
+	padding: var(--s3) var(--s4);
+}
+
+.case-bar > * {
+	margin: 0;
+	min-width: 0;
+}
+
+/* What can be done with the case and what it has, on paper: only what is there. */
 .case-header {
 	display: grid;
-	gap: var(--s3);
-	padding: var(--s4);
+	gap: var(--s2);
+	padding: var(--s3) var(--s4);
 	border-bottom: 1px solid var(--rule);
+}
+
+/* Nothing to say under the title: no empty band. */
+.case-header:not(:has(> :not([hidden], .visually-hidden))) {
+	display: none;
 }
 
 .case-header > * {
@@ -1655,22 +1851,21 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 	min-width: 0;
 }
 
+/* One line in its bar; the whole of a long title is its tooltip. */
 .case-title {
-	display: -webkit-box;
 	overflow: hidden;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	font-size: 18px;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 16px;
 	line-height: 24px;
 	font-weight: 700;
 	letter-spacing: -0.01em;
-	overflow-wrap: anywhere;
 }
 
-/* The title, and Rename beside it at its first line (DEC-026). */
+/* The title, and the case's menu beside it (DEC-026, DEC-061). */
 .case-title-row {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: var(--s2);
 }
 
@@ -1730,11 +1925,6 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 /* An item without an icon: its words where the others' begin. */
 #case-menu > button:not(:has(> .icon)) {
 	padding-inline-start: calc(var(--s3) + 22px);
-}
-
-/* The status counts under the title. */
-.case-counts {
-	margin-top: -6px;
 }
 
 /*
@@ -1800,12 +1990,22 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 .case-facts {
 	display: grid;
 	grid-template-columns: max-content minmax(0, 1fr);
-	gap: var(--s2) var(--s3);
+	gap: var(--s1) var(--s3);
 	margin: 0;
-	padding: var(--s3) 0 0;
-	border-top: 1px solid var(--rule);
 	font-size: 12px;
 	line-height: 17px;
+}
+
+/* None of its rows is there: no block. */
+.case-facts:not(:has(> .fact:not([hidden]))) {
+	display: none;
+}
+
+/* At the case's end: where and when it was made, beside Close case. */
+.case-about {
+	flex: 1;
+	min-width: 0;
+	color: var(--ink-2);
 }
 
 .case-facts > .fact {
@@ -1839,8 +2039,6 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 .pages-section {
 	display: grid;
 	gap: var(--s2);
-	padding-top: var(--s2);
-	border-top: 1px solid var(--rule);
 }
 
 .pages-section > h2 {
@@ -1871,24 +2069,40 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 
 .site-head .pages-toggle {
 	max-width: 100%;
+	min-height: 28px;
 }
 
-/* The page in front, above the heading: there while the list is closed. */
-.current-page {
-	display: grid;
-	gap: 2px;
+/* A site's heading is the panel's text, not a section's title: several are a list. */
+.site-head {
+	font: inherit;
 }
 
-.current-page > .label {
-	margin: 0;
-	font-size: 12px;
-	line-height: 17px;
+.site-head .site-name {
+	font-weight: 600;
+}
+
+/*
+ * The page in front, on its site's heading while the list is closed: the
+ * marks start right under the head, and the page is still named. An open
+ * list says it on its row.
+ */
+.site-head .site-here {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-weight: 400;
 	color: var(--ink-2);
 }
 
-/* Under the shown section, whose heading has its own height, the facts sit closer to their rule. */
-.pages-section:not([hidden]) + .case-facts {
-	padding-top: var(--s2);
+.site-head .pages-toggle[aria-expanded="true"] .site-here {
+	display: none;
+}
+
+/* The page in front in its list: a tint across the row, beside its bar. */
+.case-pages li[data-here] {
+	border-radius: var(--r-control);
+	background: var(--wash);
 }
 
 /* The title as a field while it is renamed. */
@@ -2306,11 +2520,23 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 }
 
 /* The summary for the developer: the case's, above its marks. */
-.verdict {
+.verdict,
+.verdict-body {
 	display: grid;
 	gap: 6px;
-	padding-top: var(--s3);
-	border-top: 1px solid var(--rule);
+}
+
+.verdict-body[hidden] {
+	display: none;
+}
+
+/* No summary yet: one line that opens the field. */
+.summary-add {
+	display: inline-flex;
+	align-items: center;
+	justify-self: start;
+	gap: 6px;
+	min-height: 28px;
 }
 
 .verdict-head {
@@ -2364,7 +2590,7 @@ ul.cases [data-case]:not(:has(> .progress.band)) {
 /* Stays in view, under the top bar, while the list scrolls under it. */
 .marks-bar {
 	position: sticky;
-	top: var(--bar);
+	top: calc(var(--bar) + var(--case-bar));
 	z-index: 2;
 	display: flex;
 	flex-wrap: wrap;
@@ -2509,7 +2735,7 @@ ol.marks {
 
 /* Brought into view (its pin was clicked on the page): below the bars. */
 .mark {
-	scroll-margin-top: calc(var(--bar) + 48px);
+	scroll-margin-top: calc(var(--bar) + var(--case-bar) + 48px);
 }
 
 /* Its pin was clicked on the page (DEC-027): the row says "this one" a moment. */
@@ -2879,7 +3105,7 @@ ol.marks {
 
 /* Focus moving up the list stops below the bars, not under them. */
 .mark :is(button, input, textarea) {
-	scroll-margin-top: calc(var(--bar) + 48px);
+	scroll-margin-top: calc(var(--bar) + var(--case-bar) + 48px);
 }
 
 /*
@@ -3179,6 +3405,20 @@ button.tile-add:hover:not(:disabled) {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
+}
+
+/* With the copy for an AI app: the row, and the line that says what it did. */
+.mark-actions-box {
+	display: grid;
+	gap: var(--s1);
+}
+
+.mark-actions-box > .mark-copied {
+	margin: 0;
+}
+
+.mark-actions [data-mark-action="copy-ai"][data-copied] > .icon {
+	color: var(--st-verified);
 }
 
 /* Resolving or reopening a mark, or its comment being edited. */
@@ -3617,7 +3857,6 @@ button.copy {
 
 /* The case's thread (DEC-046): after the marks, before the screenshots. */
 .thread {
-	padding: var(--s4);
 	border-top: 1px solid var(--rule);
 }
 
@@ -3715,8 +3954,19 @@ ol.comments {
 }
 
 /* "Comments 4" opens and closes the case's thread (DEC-063): the whole heading is the control. */
+/* It stays in view under the case's bar while its comments scroll, as "Marks" does. */
 .thread > h2 {
+	position: sticky;
+	top: calc(var(--bar) + var(--case-bar));
+	z-index: 2;
 	margin: 0;
+	padding: 6px var(--s4);
+	border-bottom: 1px solid var(--rule);
+	background: var(--paper);
+}
+
+.thread:has(> .thread-body[hidden]) > h2 {
+	border-bottom: 0;
 }
 
 .thread-toggle {
@@ -3737,7 +3987,7 @@ ol.comments {
 }
 
 .thread-body {
-	margin-top: var(--s3);
+	padding: var(--s3) var(--s4) var(--s4);
 }
 
 /* A disclosure's arrow: right when closed, down when open. */

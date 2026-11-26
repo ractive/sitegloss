@@ -168,12 +168,11 @@ describe.skipIf(
 		for (const a of stored.marks)
 			expect(keys).toContain(`${stored.id}/${a.crop}`);
 		await openCase(panel, demo);
+		// The team's case says nothing of the team: the account's menu names it.
+		expect(await panel.eval<boolean>(`${id("case-team")}.hidden`)).toBe(true);
 		expect(
-			await panel.eval<string>(
-				`${id("case-team")}.firstElementChild.textContent`,
-			),
-		).toBe("Synced with “Pedal & Pine web”");
-		expect(await panel.eval<boolean>(`${id("share-case")}.hidden`)).toBe(true);
+			await panel.eval<string>(`${id("account")}.getAttribute("aria-label")`),
+		).toContain("team “Pedal & Pine web”");
 		// Two pages, each with its marks; who settled a mark.
 		expect(
 			await panel.eval<number>(

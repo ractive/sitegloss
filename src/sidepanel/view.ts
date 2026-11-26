@@ -69,6 +69,7 @@ import {
 	verifyHereWay,
 	type Words,
 } from "./access.ts";
+import { renderAccount } from "./account-menu.ts";
 import { pageCases } from "./closed.ts";
 import {
 	type CloudActions,
@@ -104,7 +105,12 @@ import {
 	waitsText,
 	waitsToVerify,
 } from "./my-cases.ts";
-import { nextStep, type StepAction, whereIs } from "./next-step.ts";
+import {
+	mayCopyMark,
+	nextStep,
+	type StepAction,
+	whereIs,
+} from "./next-step.ts";
 import {
 	nextStepParts,
 	renderNextStep,
@@ -144,6 +150,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	copyCaseLink(c: Case): void;
 	/** The next step's "Copy for your AI app": the instructions for the case. */
 	copyForAiApp(c: Case): void;
+	/** A mark's "Copy for your AI app": the instructions for that one mark. */
+	copyMarkForAiApp(c: Case, a: Mark): void;
 	/** The next step's "Start verifying": the marks to verify, the first one open. */
 	startVerifying(c: Case): void;
 	/** "This page"'s Start verifying (DEC-079): the case opens, then Start verifying. */
@@ -1582,10 +1590,9 @@ interface CaseParts {
 	more: HTMLButtonElement;
 	menu: HTMLElement;
 	linkMenu: HTMLButtonElement;
-	/** The status counts under the title. */
-	counts: HTMLElement;
 	/** The facts' rows that come and go with what they hold. */
 	teamRow: HTMLElement;
+	linkFact: HTMLElement;
 	/**
 	 * The pages of a case that has several, under the heading "Site" or
 	 * "Sites", each site a heading that opens and closes its own list
@@ -1606,9 +1613,6 @@ interface CaseParts {
 	siteRow: HTMLElement;
 	siteLabel: HTMLElement;
 	siteText: HTMLElement;
-	/** "Current page" and its row, above the heading: also there while the list is closed. */
-	currentPage: HTMLElement;
-	currentRow: HTMLUListElement;
 	rename: HTMLElement;
 	renameField: HTMLInputElement;
 	renameSave: HTMLButtonElement;
@@ -1686,6 +1690,14 @@ interface CaseParts {
 	verdict: HTMLTextAreaElement;
 	verdictStatus: HTMLSpanElement;
 	saveVerdict: HTMLButtonElement;
+	/**
+	 * The summary's one line while the case has none: it opens the field.
+	 * `summaryOpen`: the field shows, and stays for as long as the case is
+	 * open (nothing folds away under the keyboard, DEC-060).
+	 */
+	summaryAdd: HTMLButtonElement;
+	summaryBody: HTMLElement;
+	summaryOpen: boolean;
 	marks: HTMLElement;
 	marksKey: string;
 	/** The click on a mark's pin on the page that was last shown in the list. */
@@ -1735,6 +1747,8 @@ interface GroupParts {
 	head: HTMLElement;
 	toggle: HTMLButtonElement;
 	count: HTMLElement;
+	/** "This tab: Help": the page in front, said on the heading while its list is closed. */
+	here: HTMLElement;
 	list: HTMLUListElement;
 }
 
@@ -1751,7 +1765,10 @@ const siteChoice = (caseId: string, name: string): string =>
 
 /**
  * Each site's list under its heading, open or closed as "Comments" and
- * "Screenshots" are (DEC-065, DEC-067).
+ * "Screenshots" are (DEC-065, DEC-067). Closed at first while the tab shows
+ * one of the case's pages: the heading names that page, and the marks start
+ * right under the head. Open at first (`openAtFirst`) while the tab shows
+ * none of them: the list is then the way to one.
  */
 function foldPages(p: CaseParts): void {
 	const several = p.groups.length > 0;
@@ -1760,7 +1777,8 @@ function foldPages(p: CaseParts): void {
 	const first = openAtFirst(p.siteGroups, p.front);
 	p.groups.forEach((g, i) => {
 		const open =
-			openSites.get(siteChoice(p.current.id, g.name)) ?? first[i] ?? true;
+			openSites.get(siteChoice(p.current.id, g.name)) ??
+			(p.front === undefined ? (first[i] ?? true) : false);
 		// Closed by itself with the focus in it: the focus goes to its heading.
 		if (!open && g.list.contains(document.activeElement)) g.toggle.focus();
 		g.list.hidden = !open;
@@ -1768,7 +1786,10 @@ function foldPages(p: CaseParts): void {
 	});
 }
 
-/** A site's heading and its list: "› sitegloss.dev 12", the same control as "Comments 4". */
+/**
+ * A site's heading and its list: "› sitegloss.dev 12 pages", the same
+ * control as "Comments 4"; and, while the tab shows one of its pages, which.
+ */
 function groupParts(p: CaseParts, name: string, index: number): GroupParts {
 	const list: HTMLUListElement = h("ul", {
 		class: "case-pages",
@@ -1776,6 +1797,7 @@ function groupParts(p: CaseParts, name: string, index: number): GroupParts {
 		hidden: true,
 	});
 	const count = h("span", { class: "count" });
+	const here = h("span", { class: "site-here", hidden: true });
 	const toggle: HTMLButtonElement = h(
 		"button",
 		{
@@ -1794,12 +1816,15 @@ function groupParts(p: CaseParts, name: string, index: number): GroupParts {
 		h("bdi", { class: "site-name" }, name),
 		" ",
 		count,
+		" ",
+		here,
 	);
 	return {
 		name,
 		head: h("h3", { class: "site-head" }, toggle),
 		toggle,
 		count,
+		here,
 		list,
 	};
 }
@@ -1828,6 +1853,13 @@ export function sizeMatters(tab: Size, made: Size): boolean {
 		Math.abs(tab.width - made.width) >= 24 ||
 		Math.abs(tab.height - made.height) >= 100
 	);
+}
+
+/** The summary's field, or its one line while the case has none and nobody asked for the field. */
+function showSummary(p: CaseParts): void {
+	p.summaryAdd.hidden = p.summaryOpen;
+	p.summaryAdd.setAttribute("aria-expanded", String(p.summaryOpen));
+	p.summaryBody.hidden = !p.summaryOpen;
 }
 
 function createParts(c: Case, actions: Actions): CaseParts {
@@ -2085,16 +2117,21 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		more,
 		menu,
 		linkMenu,
-		counts: h("p", { class: "meta case-counts", id: "case-counts" }),
 		teamRow: h("div", { class: "fact", hidden: true }),
+		linkFact: h("div", { class: "fact", hidden: true }),
 		pagesSection: h("section", {
 			class: "pages-section",
 			id: "case-pages-section",
 			"aria-labelledby": "case-sites-heading",
 			hidden: true,
 		}),
-		// "Site" or "Sites": the section's name, not a control (DEC-067).
-		sitesHeading: h("h2", { id: "case-sites-heading" }, "Site"),
+		// "Site" or "Sites": the section's name, not a control (DEC-067). Out
+		// of sight: a site's own heading says what it is ("sitegloss.dev 3 pages").
+		sitesHeading: h(
+			"h2",
+			{ id: "case-sites-heading", class: "visually-hidden" },
+			"Site",
+		),
 		groups: [],
 		groupsBox: h("div", { class: "site-groups", id: "case-pages" }),
 		groupSeq: 0,
@@ -2104,12 +2141,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		siteRow: h("div", { class: "fact", id: "case-site", hidden: true }),
 		siteLabel: h("dt", {}, "Site"),
 		siteText: h("dd", {}),
-		currentPage: h("div", { class: "current-page", hidden: true }),
-		currentRow: h("ul", {
-			class: "case-pages",
-			id: "case-current-page",
-			"aria-labelledby": "case-current-label",
-		}),
 		rename: h(
 			"div",
 			{ class: "rename", id: "rename", hidden: true },
@@ -2175,6 +2206,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 				"button",
 				{
 					type: "button",
+					class: "small",
 					id: "match-size",
 					title:
 						"Resize the browser window so this tab is as large as it was when the marks were made",
@@ -2268,6 +2300,26 @@ function createParts(c: Case, actions: Actions): CaseParts {
 			},
 			"Save summary",
 		),
+		summaryAdd: h(
+			"button",
+			{
+				type: "button",
+				class: "link summary-add",
+				id: "summary-add",
+				"aria-expanded": "false",
+				"aria-controls": "summary-body",
+				title:
+					"What should change, as agreed. Whoever loads this case sees it first.",
+				onclick: () => {
+					created.summaryOpen = true;
+					showSummary(created);
+					verdict.focus();
+				},
+			},
+			...withIcon("add", "Summary for the developer"),
+		),
+		summaryBody: h("div", { class: "verdict-body", id: "summary-body" }),
+		summaryOpen: false,
 		marks: h("section"),
 		marksKey: "",
 		pickedAt: undefined,
@@ -2294,63 +2346,61 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	created.teamRow.append(h("dt", {}, "Team"), h("dd", {}, created.team));
 	created.pageRow.append(h("dt", {}, "Page"), h("dd", {}, created.meta));
 	created.siteRow.append(created.siteLabel, created.siteText);
-	created.currentPage.append(
-		h("p", { class: "label", id: "case-current-label" }, "Current page"),
-		created.currentRow,
-	);
-	created.pagesSection.append(
-		created.currentPage,
-		created.sitesHeading,
-		created.groupsBox,
-	);
+	created.linkFact.append(h("dt", {}, "Link"), h("dd", {}, created.linkRow));
+	created.pagesSection.append(created.sitesHeading, created.groupsBox);
 	const fact = (label: string, ...value: (Node | string)[]) =>
 		h("div", { class: "fact" }, h("dt", {}, label), h("dd", {}, ...value));
+	// The case's own bar: its title and its menu stay in view under the top
+	// bar while the case scrolls, as the marks' heading does under it (the
+	// owner). Not while it is renamed: the form is as high as it needs.
+	const caseBar = h(
+		"div",
+		{ class: "case-bar", id: "case-bar" },
+		created.titleRow,
+		created.rename,
+	);
+	created.summaryBody.append(
+		h(
+			"div",
+			{ class: "verdict-head" },
+			h("label", { for: "verdict" }, "Summary for the developer"),
+			verdictStatus,
+			created.saveVerdict,
+		),
+		h(
+			"p",
+			{ class: "meta field-help", id: "verdict-help" },
+			"What should change, as agreed. Whoever loads this case sees it first.",
+		),
+		verdict,
+		created.summaryBy,
+	);
+	// The head under the title: what comes next, then only what the case
+	// has (the owner: "a lot of things before the actual marks start").
 	const header = h(
 		"section",
 		{ class: "case-header" },
-		// The head: the title, its counts, one action (DEC-061).
-		created.titleRow,
-		created.rename,
 		created.closedLine,
-		created.counts,
 		created.next.el,
 		created.leaving,
 		created.saved,
-		// A case's several pages under "Site" or "Sites": each site a heading
-		// that opens and closes its list, at the panel's full width (DEC-065,
-		// DEC-067).
+		// A case's several pages (DEC-065, DEC-067): each site a heading
+		// that opens and closes its list, at the panel's full width.
 		created.pagesSection,
-		// The case's facts, one quiet block of label and value.
+		// What the case has of these, a label and its value per row: the
+		// one page of a case that has one; its link, once it has one ("Add
+		// a link…" is in the menu); "On this device only" beside a team.
 		h(
 			"dl",
 			{ class: "case-facts", id: "case-facts" },
 			created.pageRow,
-			created.siteRow,
+			created.linkFact,
 			created.teamRow,
-			fact("Link", created.linkRow),
-			fact("Made at", h("span", {}, created.madeAt, ", ", created.madeOn)),
 		),
 		created.origin,
 		// What the whole case comes to: the case's, not a mark's. Stored as
-		// verdict, its name before (DEC-019).
-		h(
-			"div",
-			{ class: "verdict" },
-			h(
-				"div",
-				{ class: "verdict-head" },
-				h("label", { for: "verdict" }, "Summary for the developer"),
-				verdictStatus,
-				created.saveVerdict,
-			),
-			h(
-				"p",
-				{ class: "meta field-help", id: "verdict-help" },
-				"What should change, as agreed. Whoever loads this case sees it first.",
-			),
-			verdict,
-			created.summaryBy,
-		),
+		// verdict, its name before (DEC-019). One line while there is none.
+		h("div", { class: "verdict" }, created.summaryAdd, created.summaryBody),
 	);
 	// What the tab in front shows of the case (DEC-022, DEC-023): under the
 	// head, where the marks start, so the head does not move with the tab.
@@ -2363,14 +2413,28 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.size,
 	);
 	caseView.replaceChildren(
+		caseBar,
 		header,
 		created.accessPointer,
 		thisTab,
 		created.marks,
 		created.thread,
 		created.shots,
-		// Closing files the case away: at the end; Delete case is in the menu.
-		h("section", { class: "case-footer" }, created.closeButton),
+		// What is true of the case from its start, last: where and when it
+		// was made (the size shows again above the marks while the tab's
+		// differs). Closing files the case away: at the end; Delete case is
+		// in the menu.
+		h(
+			"section",
+			{ class: "case-footer", "aria-label": "About this case" },
+			h(
+				"dl",
+				{ class: "case-facts case-about", id: "case-about" },
+				created.siteRow,
+				fact("Made at", h("span", {}, created.madeAt, ", ", created.madeOn)),
+			),
+			created.closeButton,
+		),
 		// Always in reach while a case is open (DEC-063): adding marks, and
 		// the marks shown or not on the tab. Sticky at the panel's bottom, it
 		// rests after the content, so it never covers the last row. On a tab
@@ -2498,6 +2562,8 @@ export function lostMarksText(title: string | undefined, lost: number): string {
 /** Draw the title, or the rename form in its place (DEC-026). */
 function renderTitle(state: PanelState, p: CaseParts, c: Case): void {
 	p.title.textContent = c.title;
+	// One line in the case's bar: the whole of a long title is its tooltip.
+	p.title.title = c.title;
 	const renaming = state.renaming?.caseId === c.id ? state.renaming : undefined;
 	p.titleRow.hidden = renaming !== undefined;
 	p.rename.hidden = renaming === undefined;
@@ -2532,6 +2598,9 @@ function renderTitle(state: PanelState, p: CaseParts, c: Case): void {
 function renderLink(state: PanelState, p: CaseParts, c: Case): void {
 	const editing = state.linking?.caseId === c.id ? state.linking : undefined;
 	const link = c.link;
+	// The row is there once the case has a link, and while one is typed:
+	// "Add a link…" is in the case's menu.
+	p.linkFact.hidden = editing === undefined && link === undefined;
 	p.linkOpen.hidden = editing !== undefined || link === undefined;
 	if (link === undefined) {
 		p.linkOpen.removeAttribute("href");
@@ -2543,20 +2612,18 @@ function renderLink(state: PanelState, p: CaseParts, c: Case): void {
 		p.linkOpen.title = link;
 		p.linkOpen.textContent = shortUrl(link);
 	}
-	p.linkEdit.hidden = editing !== undefined;
-	p.linkEdit.textContent = link === undefined ? "Add a link" : "Edit";
-	p.linkEdit.setAttribute(
-		"aria-label",
-		link === undefined ? "Add a link to this case" : "Edit this case's link",
-	);
+	p.linkEdit.hidden = editing !== undefined || link === undefined;
+	p.linkEdit.textContent = "Edit";
+	p.linkEdit.setAttribute("aria-label", "Edit this case's link");
 	p.linkForm.hidden = editing === undefined;
 	if (editing === undefined) {
 		if (!p.linkFormOpen) return;
 		p.linkFormOpen = false;
-		// The keyboard is back where the edit started.
+		// The keyboard is back where the edit started: the link's Edit, or
+		// the menu that has "Add a link…".
 		const at = document.activeElement;
 		if (at === null || at === document.body || p.linkForm.contains(at))
-			queueMicrotask(() => p.linkEdit.focus());
+			queueMicrotask(() => (p.linkEdit.hidden ? p.more : p.linkEdit).focus());
 		return;
 	}
 	if (p.linkField.value !== editing.text) p.linkField.value = editing.text;
@@ -3285,9 +3352,17 @@ function markActions(
 		linkTab: string | undefined;
 		unread: string | undefined;
 	} | null = null,
+	/**
+	 * The copy for an AI app: offered (`may`), and what the last one did
+	 * (`said`), while that is said.
+	 */
+	copy: { may: boolean; said?: { ok: boolean; text: string } | undefined } = {
+		may: false,
+	},
 ): HTMLElement {
 	const status = markStatus(a);
-	return h(
+	const copied = copy.said?.ok === true;
+	const row = h(
 		"div",
 		{ class: "mark-actions" },
 		status === "open"
@@ -3339,6 +3414,41 @@ function markActions(
 				onclick: () => actions.deleteMark(c, a),
 			},
 			...withIcon("delete", armed ? "Really delete?" : "Delete mark"),
+		),
+	);
+	if (!copy.may) return row;
+	// The web app's "Copy mark N for your AI app": after the status change,
+	// before the comment's edit and Delete. Its words stay, so the row does
+	// not move: the icon turns to a tick and the line under the row says it.
+	row.querySelector('[data-mark-action="comment"]')?.before(
+		h(
+			"button",
+			{
+				type: "button",
+				class: "small",
+				"data-mark-action": "copy-ai",
+				"aria-label": `Copy mark ${a.number} for your AI app`,
+				title:
+					"Instructions for your AI app to fix this mark: the tools it needs and what to do",
+				...(copied ? { "data-copied": true } : {}),
+				onclick: () => actions.copyMarkForAiApp(c, a),
+			},
+			...withIcon(copied ? "check" : "copy", "Copy for your AI app"),
+		),
+	);
+	// Always there while the copy is: a status line that is filled is said.
+	return h(
+		"div",
+		{ class: "mark-actions-box" },
+		row,
+		h(
+			"p",
+			{
+				class: `meta mark-copied${copy.said ? "" : " visually-hidden"}`,
+				role: "status",
+				"data-mark-copied": "",
+			},
+			copy.said?.text ?? "",
 		),
 	);
 }
@@ -3769,9 +3879,9 @@ function renderPages(
 	// A count pressed is drawn anew: the keyboard's focus stays on it (or on
 	// the title it was on), in the same row.
 	const at = document.activeElement as HTMLElement | null;
-	const list = [...p.groups.map((g) => g.list), p.currentRow].find(
-		(ul) => at !== null && ul.contains(at),
-	);
+	const list = p.groups
+		.map((g) => g.list)
+		.find((ul) => at !== null && ul.contains(at));
 	const focused =
 		at !== null && list !== undefined
 			? {
@@ -3808,13 +3918,8 @@ function renderPages(
 			return undefined;
 		return shown.map((o) => hostOf(o)).join(", ");
 	};
-	// `current`: the row above the heading, which its label names; `group`:
-	// the heading a row is under.
-	const row = (
-		page: (typeof pages)[number],
-		current = false,
-		group?: string,
-	) => {
+	// `group`: the heading a row is under.
+	const row = (page: (typeof pages)[number], group?: string) => {
 		const marks = marksOn(page.url);
 		const front = here !== undefined && here.url === page.url;
 		const title = page.title.trim();
@@ -3833,7 +3938,7 @@ function renderPages(
 			: whole;
 		const nameClass = `page-name${title ? "" : " cut-start"}`;
 		const filtered = byPage.page?.url === page.url;
-		const sayCurrent = front && !current && !said;
+		const sayCurrent = front && !said;
 		if (sayCurrent) said = true;
 		const marked = hostLine(hosts, group);
 		return h(
@@ -3879,26 +3984,25 @@ function renderPages(
 	groups.forEach((g, i) => {
 		const parts = p.groups[i];
 		if (parts === undefined) return;
-		parts.count.textContent = String(g.pages.length);
-		parts.list.replaceChildren(
-			...g.pages.map((page) => row(page, false, g.name)),
-		);
+		const n = g.pages.length;
+		parts.count.textContent = `${n} page${n === 1 ? "" : "s"}`;
+		// The page in front, on its site's heading: there while the list is
+		// closed (the style sheet takes it off an open one, whose row says it).
+		const front = g.pages.find((page) => page.url === here?.url);
+		parts.here.hidden = front === undefined;
+		parts.here.textContent =
+			front === undefined ? "" : `This tab: ${pageLabel(front)}`;
+		parts.list.replaceChildren(...g.pages.map((page) => row(page, g.name)));
 	});
-	// The page in front, said above the heading: there while the list is closed.
-	const current = pages.find((page) => page.url === here?.url);
-	p.currentPage.hidden = current === undefined;
-	p.currentRow.replaceChildren(...(current ? [row(current, true)] : []));
 	// Moved or made again, a focused element loses the focus: it goes back to
 	// the same heading, or to the same row, in its list or, where that list
 	// is gone (its site left the case), in the first that has the page.
 	if (at !== null && at.isConnected && document.activeElement !== at)
 		at.focus();
 	if (focused?.page !== undefined) {
-		const lists = [
-			focused.list,
-			...p.groups.map((g) => g.list),
-			p.currentRow,
-		].filter((ul) => ul.isConnected);
+		const lists = [focused.list, ...p.groups.map((g) => g.list)].filter(
+			(ul) => ul.isConnected,
+		);
 		for (const ul of lists) {
 			const li = [...ul.children].find(
 				(x) => (x as HTMLElement).dataset["page"] === focused.page,
@@ -3932,6 +4036,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 		state.verdictStatus ?? (draft === undefined ? "" : "Not saved yet");
 	// Only while the text differs from what is stored.
 	p.saveVerdict.hidden = draft === undefined;
+	// The field once the case has a summary or one is being typed; it then
+	// stays, also when emptied.
+	if (verdict !== "") p.summaryOpen = true;
+	showSummary(p);
 	const summaryWho = c.summaryBy
 		? byline(c.summaryBy.user, c.summaryBy.app)
 		: undefined;
@@ -3973,12 +4081,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.siteRow.hidden = sites.length === 0;
 	p.siteLabel.textContent = sites.length > 1 ? "Sites" : "Site";
 	p.siteText.textContent = sites.join(", ");
-	// The status counts under the title, as the bar and chips count them.
-	const n = c.marks.length;
-	p.counts.textContent =
-		n === 0
-			? "No marks yet"
-			: `${n} mark${n === 1 ? "" : "s"}: ${marksText(c)}`;
 	p.linkMenu.textContent =
 		c.link === undefined ? "Add a link…" : "Change link…";
 	// The window the marks of the page in front were made in (DEC-038).
@@ -3990,7 +4092,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.size.hidden =
 		size === undefined || sameSize(size, madeAt) || !sizeMatters(size, madeAt);
 	p.sizeText.textContent = size
-		? `This tab is ${sizeOf(size)}; the marks were made at ${sizeOf(madeAt)}. `
+		? `This tab: ${sizeOf(size)}. Marks made at ${sizeOf(madeAt)}. `
 		: "";
 	setHint(
 		p.origin,
@@ -4075,15 +4177,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 	// With a team (DEC-039): whether the case is the team's, and what a
 	// delete then means.
 	const sync = caseSync(state.cloud, c.id);
-	p.team.hidden = sync.kind === "off";
+	// Said only of a case the team does not have: which team the cases sync
+	// with is the account's, in the top bar (`account-menu.ts`).
+	p.team.hidden = sync.kind !== "local";
 	p.teamRow.hidden = p.team.hidden;
 	p.team.dataset["sync"] = sync.kind;
-	p.teamText.textContent =
-		sync.kind === "synced"
-			? `Synced with “${sync.team}”`
-			: sync.kind === "local"
-				? "On this device only. "
-				: "";
+	p.teamText.textContent = sync.kind === "local" ? "On this device only. " : "";
 	p.share.hidden = !sync.mayShare;
 	// Closed: filed away, not frozen (DEC-046). Whoever may change the case
 	// may close it; in a team, the role says.
@@ -4244,6 +4343,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 	if (edit === undefined) focusedForm = undefined;
 	const markArmed = state.markDeleteArmed?.markId;
 	const imageArmed = state.imageDeleteArmed;
+	// A mark's copy for an AI app, where the case's is offered: the server has it.
+	const mayCopy = mayCopyMark(c, whereIs(state.cloud, c));
 	// Images added here the team does not have, and why (DEC-058).
 	const notSent = state.cloud.status?.notSent?.[c.id];
 	// A mark's pin was clicked on the page (DEC-027): its row opens, once.
@@ -4275,6 +4376,8 @@ function renderCase(state: PanelState, actions: Actions): void {
 		// A mark's comments: one in edit, a Delete asked once, earlier ones shown.
 		threadStateKey(c.id),
 		threadContext,
+		mayCopy,
+		state.markCopied?.caseId === c.id ? state.markCopied : null,
 	]);
 	if (marksKey !== p.marksKey) {
 		const sorted = [...onPage.marks]
@@ -4326,6 +4429,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 					mayLoadAndShow(c, a, state.tab?.url, true) &&
 					!(a.shape.kind === "unknown" && a.element === null),
 				changed: () => syncToggleAll(),
+				mayCopy,
+				copied:
+					state.markCopied?.caseId === c.id && state.markCopied.markId === a.id
+						? { ok: state.markCopied.ok, text: state.markCopied.text }
+						: undefined,
 			});
 		});
 		const toggleAll: HTMLButtonElement = h("button", {
@@ -4759,6 +4867,10 @@ interface MarkContext {
 	busy: boolean;
 	/** A mark opened or closed by its own head. */
 	changed: () => void;
+	/** Its instructions for an AI app can be copied: the server has the case. */
+	mayCopy: boolean;
+	/** What this mark's last copy did, while that is said. */
+	copied: { ok: boolean; text: string } | undefined;
 	/** Who may write a mark's comments (DEC-061). */
 	thread: ThreadContext;
 }
@@ -4888,6 +5000,9 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 					x.armed,
 					actions,
 					away ? { linkTab: x.linkTab, unread: x.unread } : null,
+					// On an open mark, the one there is work to do on (where the
+					// web app has it as a button).
+					{ may: x.mayCopy && status === "open", said: x.copied },
 				),
 		// Its comments, at the mark, after what can be done with it (DEC-061).
 		markThreadView(c, a, x.thread, actions),
@@ -5404,6 +5519,7 @@ function renderViews(state: PanelState, actions: Actions): void {
 	renderSyncBanner(state, actions);
 	renderCloudBanner(state, actions);
 	renderAi(state);
+	renderAccount(state, actions);
 	renderPaired(state, actions);
 	renderBack(state, actions);
 	allSites.checked = state.allSites;
