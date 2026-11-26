@@ -155,16 +155,13 @@ inFullSet("the worker refuses", () => {
 		// Handed by the extension's page: the save goes past that check.
 		await h.control.eval(HAND_CASE(a.tabId, "c_not_handed"));
 		expect((await fromPage(save)).error ?? "").not.toContain("not given");
-		// Nor does it ask about the case's numbers.
-		expect(
-			(
-				await fromPage({
-					type: "case:number",
-					caseId: "c_not_handed_either",
-					number: 1,
-				})
-			).error,
-		).toContain("not given that case");
+		// Nor does it ask about the case's numbers, or have the panel open
+		// one of its marks.
+		for (const message of [
+			{ type: "case:number", caseId: "c_not_handed_either", number: 1 },
+			{ type: "panel:images", caseId: "c_not_handed_either", number: 1 },
+		])
+			expect((await fromPage(message)).error).toContain("not given that case");
 		// Another tab was not handed it.
 		expect(
 			(
