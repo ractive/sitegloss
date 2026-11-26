@@ -409,9 +409,6 @@ describe("build", () => {
 			expect(worker).not.toContain("siteglossTestLog");
 			// Nor the waits a test may shorten for itself (DEC-053).
 			expect(worker).not.toContain("siteglossTestWaits");
-			// Nor the debug log of handled failures (debug.ts).
-			for (const text of [content, worker])
-				expect(text).not.toContain("console.debug");
 			// Nor the side panel's way to take a folder without the picker (DEC-021).
 			const panel = new Bun.Glob("sidepanel/**/*.js");
 			let scripts = 0;
@@ -423,6 +420,11 @@ describe("build", () => {
 				expect(text).not.toContain("SITEGLOSS_TEST_BUILD");
 			}
 			expect(scripts).toBeGreaterThan(0);
+			// Nor the debug log of handled failures (debug.ts), in any script.
+			for (const file of new Bun.Glob("**/*.js").scanSync({ cwd: outdir }))
+				expect(await Bun.file(join(outdir, file)).text()).not.toContain(
+					"console.debug",
+				);
 		} finally {
 			rmSync(outdir, { recursive: true, force: true });
 		}
@@ -475,6 +477,9 @@ describe("build", () => {
 			// The panel's page in a tab is no panel there (`window.ts`).
 			if (file.startsWith("sidepanel/"))
 				expect(text).not.toContain("location.search");
+			// The debug log of handled failures is there, readable, and off.
+			if (text.includes("console.debug(`Sitegloss: "))
+				expect(text).toContain("var ON = false;");
 		}
 		const target = join(tempDir(), "x.zip");
 		await zipBuild(outdir, target);

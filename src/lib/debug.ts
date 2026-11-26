@@ -1,8 +1,10 @@
 /**
  * A failure that is handled, or does not matter, said in a development build
  * (and the test build) and nowhere in a build that goes to people (`--store`,
- * `--zip`): there the build's define makes it nothing, and the bundler drops
- * the call's body. The unit tests, without the define, stay quiet.
+ * `--zip`): there the build's define turns it off. The minified Chrome
+ * packages drop the code with it; Firefox's store package, which is not
+ * minified (its reviewers read it), keeps it, switched off. The unit tests,
+ * without the define, stay quiet.
  *
  * Only the place and the error's name and message, with anything like an
  * e-mail address or a token taken out: no log line carries either.
