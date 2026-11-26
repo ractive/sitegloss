@@ -5380,9 +5380,9 @@ from the list" on the first row's "1040".
 
 2026-11-26. On `panel-case-header`, a draft for the owner to look at on their own machine; not
 settled. The owner, with a case of 46 marks open: "This is a lot of things before the actual marks
-start." The marks' heading stood about 815 px down a 950 px panel; in the draft it stands at about
-310 px with a tab of another size (the Match size line), 270 px without. Nothing the head could do
-is gone; what moved, and why:
+start." The marks' heading stood about 815 px down a 950 px panel (420 px wide, one AI app
+connected); in the draft it stands at about 370 px with a tab of another size (the Match size
+line), 295 px without. Nothing the head could do is gone; what moved, and why:
 
 - **The title is the case's own bar** (`#case-bar`), sticky under the top bar, with the "…" menu:
   "You already have the sticky header for Marks. Why not having it also for the title here and for
