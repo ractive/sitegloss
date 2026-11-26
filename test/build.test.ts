@@ -409,6 +409,9 @@ describe("build", () => {
 			expect(worker).not.toContain("siteglossTestLog");
 			// Nor the waits a test may shorten for itself (DEC-053).
 			expect(worker).not.toContain("siteglossTestWaits");
+			// Nor the debug log of handled failures (debug.ts).
+			for (const text of [content, worker])
+				expect(text).not.toContain("console.debug");
 			// Nor the side panel's way to take a folder without the picker (DEC-021).
 			const panel = new Bun.Glob("sidepanel/**/*.js");
 			let scripts = 0;
