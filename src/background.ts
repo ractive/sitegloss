@@ -474,6 +474,14 @@ async function handle(
 				throw new Error("invalid request");
 			// Before any await: the click's gesture opens the panel.
 			const opened = openPanel({ tabId: tab.id, windowId: tab.windowId });
+			// Not opened (no gesture left, or another browser's rule): the
+			// panel opened later still asks for the images.
+			const settled = opened.catch((error: unknown) =>
+				console.warn("Sitegloss: side panel", error),
+			);
+			// The panel opens either way; it is asked about a mark of a case
+			// the tab was handed only.
+			await mayAddTo(sender, request.caseId);
 			await chrome.storage.session.set({
 				[IMAGES_FOR_KEY]: {
 					caseId: request.caseId,
@@ -489,11 +497,7 @@ async function handle(
 				.sendMessage({ type: "panel:images" } satisfies Broadcast)
 				// No panel open: it asks for the images as it starts.
 				.catch(() => undefined);
-			// Not opened (no gesture left, or another browser's rule): the
-			// panel opened later still asks for the images.
-			await opened.catch((error: unknown) =>
-				console.warn("Sitegloss: side panel", error),
-			);
+			await settled;
 			return {};
 		}
 		case "viewer:open": {
