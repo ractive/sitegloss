@@ -1,0 +1,15 @@
+{
+	"about": "The SHA-256 of each copy of a file of sitegloss.dev's packages/api (its vectors/manifest.json): the shared test vectors and the OpenAPI document. Written by bun scripts/sync-vectors.ts; test/vectors.test.ts fails on a copy whose bytes are not these.",
+	"files": {
+		"test/agent-instructions.json": "4863acac65d57357724a2a3131c6d0e59178fabcaa5954651d3284e8763ca6bf",
+		"test/case-file.json": "e98a8ae5a1e7c349aee1feb713d103e3d7eabe2a53ed24b05e78eb9c4225b586",
+		"test/case-md.json": "61c4196fbb0345a1e0bd3e05120d5da6af0ad49a441ba0d6f28e628dfcce397a",
+		"test/case-state.json": "e9c733e52c47c58d72e0af41c7ff0682c7353e8c48aea50effab42ba9b66716f",
+		"test/finding-comment-id.json": "f68b4c6f71666eed6269baee15e11160bee596a18c3c755425694e2ac21548f4",
+		"test/kept-query.json": "bcd21d69b140a0401ffe7a97f1a3b8e943514443dbf14f12c7c61464081de265",
+		"test/mark-overview.json": "908f28cb81999a4f1ac79d854fb80e9dd1e14ecc5504ed8321caee74c2768d23",
+		"test/page-key.json": "6ab2e4a715bf128bc13de21e234a330f031e0837ea367638fd4592943f49419d",
+		"test/site.json": "a73de2adbceafb5da468d5b9a0d16a81dfcba72c2a1b89db6b0a49a3839eab5c",
+		"src/lib/cloud/openapi-v1.json": "3aeeba82efb384fb31110f975584aa4591a70161215293897bbe8dd3dd807ecf"
+	}
+}
