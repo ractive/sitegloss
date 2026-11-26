@@ -450,6 +450,7 @@ export async function startAi(
 				problem: problemOf(a),
 				connected,
 				apps: connected ? a.grants.length : 0,
+				allowAll: connected ? a.grants.filter((g) => g.allowAll).length : 0,
 				active: a.state !== "disconnected" || a.retrying,
 				keepOn: a.keepOn,
 				lastCall: a.lastCall,
@@ -468,7 +469,6 @@ export async function startAi(
 			relayInput.setCustomValidity("");
 		}
 		showCard(a);
-		showAllows(a);
 		showFill(a);
 		showQuestions(a.questions);
 	}
@@ -797,19 +797,12 @@ export async function startAi(
 
 	/**
 	 * An AI app's "Allow all changes" switch (DEC-018), and while it is on the
-	 * line that says what that means. In the card it is under the app's name;
-	 * under the top bar (DEC-036) `named` puts the name beside it.
+	 * line that says what that means: in the card, under the app's name. Only
+	 * there (DEC-084; DEC-036 had it under the top bar too): while it is on,
+	 * the top bar's pill says so (`aiPill` in view.ts).
 	 */
-	function allowAll(
-		grant: AiState["grants"][number],
-		named: boolean,
-	): HTMLElement[] {
-		// Under the top bar the name the app gave itself stands with its
-		// verified host, as in the card's head: two apps may give the same name.
-		const app =
-			named && grant.name
-				? `${grant.name} (${grant.host})`
-				: grant.name || grant.host;
+	function allowAll(grant: AiState["grants"][number]): HTMLElement[] {
+		const app = grant.name || grant.host;
 		const parts: HTMLElement[] = [
 			h(
 				"label",
@@ -840,19 +833,7 @@ export async function startAi(
 						});
 					},
 				}),
-				h(
-					"span",
-					{},
-					"Allow all changes",
-					named
-						? h(
-								"span",
-								{ class: "meta" },
-								` · ${grant.name || grant.host}`,
-								grant.name ? ` ${grant.host}` : null,
-							)
-						: null,
-				),
+				h("span", {}, "Allow all changes"),
 			),
 		];
 		if (grant.allowAll)
@@ -872,7 +853,7 @@ export async function startAi(
 	 */
 	function grantAllows(grant: AiState["grants"][number]): HTMLElement[] {
 		const app = grant.name || grant.host;
-		const parts = allowAll(grant, false);
+		const parts = allowAll(grant);
 		if (grant.always.length > 0)
 			parts.push(
 				h(
@@ -903,34 +884,6 @@ export async function startAi(
 				),
 			);
 		return parts;
-	}
-
-	/**
-	 * Under the top bar, on Home and in a case (DEC-036): each connected AI
-	 * app's "Allow all changes", where the user is while the app asks, not
-	 * only in the card behind the pill. Settings hides it (style.css): the
-	 * card there has the same switch. Nothing while no app can reach
-	 * Sitegloss.
-	 */
-	function showAllows(a: AiState): void {
-		const box = byId("ai-allow");
-		const grants = a.state === "connected" ? a.grants : [];
-		// Redrawn on every state: a switch that had the keyboard's focus keeps it.
-		const focused = (
-			document.activeElement as HTMLElement | null
-		)?.closest<HTMLElement>("#ai-allow [data-grant]")?.dataset["grant"];
-		box.replaceChildren(
-			...grants.map((grant) =>
-				h("div", { "data-grant": grant.grantId }, ...allowAll(grant, true)),
-			),
-		);
-		box.hidden = grants.length === 0;
-		if (focused !== undefined)
-			box
-				.querySelector<HTMLElement>(
-					`[data-grant="${CSS.escape(focused)}"] [data-focus="allow-all"]`,
-				)
-				?.focus();
 	}
 
 	function showCard(a: AiState): void {
@@ -1115,15 +1068,15 @@ export async function startAi(
 	}
 
 	/**
-	 * Where the focus is, if it is on a control of an AI app in the card or
-	 * under the top bar: how to find that control again once it is redrawn.
+	 * Where the focus is, if it is on a control of an AI app in the card: how
+	 * to find that control again once it is redrawn.
 	 */
 	let returnTo: (() => HTMLElement | null) | undefined;
 	function focusedControl(): (() => HTMLElement | null) | undefined {
 		const active = document.activeElement as HTMLElement | null;
 		const control = active?.dataset["focus"];
 		const item = active?.closest<HTMLElement>("[data-grant]");
-		const box = item?.closest<HTMLElement>("#pair-grants, #ai-allow");
+		const box = item?.closest<HTMLElement>("#pair-grants");
 		const grant = item?.dataset["grant"];
 		if (control === undefined || grant === undefined || !box) return undefined;
 		return () =>

@@ -5707,6 +5707,35 @@ describe("the AI app", () => {
 			"connected",
 			expect.stringContaining("manage them"),
 		]);
+		expect(el("ai-button").hasAttribute("data-allow-all")).toBe(false);
+		// An app's "Allow all changes" is on: its switch is in the card behind
+		// the pill, so the pill says that changes run without asking, in its
+		// words, its tooltip and its name for a reader (DEC-084).
+		render(
+			caseState(c, (s) => {
+				ai({
+					status: "Connected: Claude, ChatGPT",
+					connected: true,
+					active: true,
+					apps: 2,
+				})(s);
+				s.ai.allowAll = 1;
+			}),
+			noActions,
+		);
+		expect(pill()).toEqual([
+			"AI · all allowed",
+			"connected",
+			expect.stringContaining(
+				"every change 1 of them asks for runs without asking you",
+			),
+		]);
+		expect(el("ai-button").hasAttribute("data-allow-all")).toBe(true);
+		expect(el("ai-status").textContent).toBe(
+			"Connected: Claude, ChatGPT. Allow all changes is on: every change 1 of them asks for runs without asking you, deleting a case too.",
+		);
+		// No row of its own under the top bar any more.
+		expect(window.document.getElementById("ai-allow")).toBeNull();
 		render(
 			caseState(c, ai({ status: "Connecting…", active: true })),
 			noActions,

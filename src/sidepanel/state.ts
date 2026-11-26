@@ -351,6 +351,11 @@ export interface PanelState {
 		connected: boolean;
 		/** How many AI apps are paired, while connected. */
 		apps: number;
+		/**
+		 * How many of them have "Allow all changes" on: their changes run
+		 * without asking, which the top bar's pill says (DEC-084).
+		 */
+		allowAll: number;
 		/** Connected, or on the way there: something "Stop AI access" can end. */
 		active: boolean;
 		/**
@@ -447,6 +452,7 @@ export const initialState = (): PanelState => ({
 		status: "Not connected",
 		connected: false,
 		apps: 0,
+		allowAll: 0,
 		active: false,
 		problem: undefined,
 		keepOn: false,
