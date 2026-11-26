@@ -19,6 +19,7 @@ import {
 	quoteIn,
 	type Source,
 	type Span,
+	sourceAt,
 	type TextPiece,
 } from "../lib/highlight.ts";
 
@@ -119,8 +120,8 @@ function sourceOf(text: ElementText, node: Node, offset: number): Source {
 
 /** The DOM range of `start`..`end` of an element's flat text. */
 function rangeOf(text: ElementText, start: number, end: number): Range {
-	const a = text.flat.at[start] as Source;
-	const b = text.flat.at[end - 1] as Source;
+	const a = sourceAt(text.flat, start) as Source;
+	const b = sourceAt(text.flat, end - 1) as Source;
 	const range = (text.nodes[0]?.ownerDocument ?? document).createRange();
 	range.setStart(text.nodes[a.piece] as Text, a.offset);
 	range.setEnd(text.nodes[b.piece] as Text, b.offset + 1);
