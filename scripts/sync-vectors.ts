@@ -1,7 +1,7 @@
 /**
  * Copies the server's shared test vectors and its OpenAPI document from a
  * checkout of sitegloss.dev into this repository, byte for byte, and records
- * their hashes in `test/vectors.json`:
+ * their hashes and the commit they come from in `test/vectors.json`:
  *
  *   bun scripts/sync-vectors.ts [<sitegloss.dev checkout>]   (default ../sitegloss.dev)
  *
@@ -15,6 +15,7 @@
  * ones: a copy is never edited by hand, only synced.
  */
 
+import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { SPEC, TYPES, typesOf } from "./api-types.ts";
 
@@ -40,6 +41,8 @@ export async function sha256Of(file: string): Promise<string> {
 
 export interface VectorRecord {
 	about: string;
+	/** The commit of sitegloss.dev the files were copied from (`git rev-parse HEAD` there). */
+	commit: string;
 	/** Each copy's path in this repository, with the SHA-256 of its bytes (the server's manifest's). */
 	files: { [path: string]: string };
 }
@@ -52,6 +55,28 @@ if (import.meta.main) {
 	).json()) as {
 		files: { [path: string]: string };
 	};
+	const git = (...args: string[]) =>
+		Bun.spawnSync(["git", "-C", service, ...args], { stderr: "ignore" })
+			.stdout.toString()
+			.trim();
+	const commit = git("rev-parse", "HEAD");
+	if (commit === "") {
+		console.error(`${service} is not a git checkout of sitegloss.dev.`);
+		process.exit(1);
+	}
+	// Copied from changes not committed there, the record names a commit that does not have them.
+	if (
+		git(
+			"status",
+			"--porcelain",
+			"--",
+			"packages/api/vectors",
+			"packages/api/openapi",
+		) !== ""
+	)
+		console.warn(
+			`Warning: ${service} has uncommitted changes in packages/api/vectors or openapi; commit them there, then sync again.`,
+		);
 	const files: { [path: string]: string } = {};
 	const stale: string[] = [];
 	for (const [path, sha] of Object.entries(manifest.files)) {
@@ -66,9 +91,17 @@ if (import.meta.main) {
 	}
 	for (const path of Object.keys(manifest.files))
 		await Bun.write(join(ROOT, placeOf(path)), Bun.file(join(api, path)));
+	// A copy of a file the server no longer lists goes (its vectors only grow, so rarely).
+	const before = Bun.file(join(ROOT, RECORD));
+	if (await before.exists())
+		for (const path of Object.keys(
+			((await before.json()) as VectorRecord).files,
+		))
+			if (!(path in files)) await rm(join(ROOT, path), { force: true });
 	const record: VectorRecord = {
 		about:
 			"The SHA-256 of each copy of a file of sitegloss.dev's packages/api (its vectors/manifest.json): the shared test vectors and the OpenAPI document. Written by bun scripts/sync-vectors.ts; test/vectors.test.ts fails on a copy whose bytes are not these.",
+		commit,
 		files,
 	};
 	await Bun.write(

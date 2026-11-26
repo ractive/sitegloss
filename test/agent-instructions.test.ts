@@ -12,6 +12,16 @@ test("the text for a case is the web app's, word for word", () => {
 	expect(instructions.caseInstructions({ id, url })).toBe(vector.case.text);
 });
 
+test("the case's id and address are the ref's, not the vector's", () => {
+	const text = instructions.caseInstructions({
+		id: "c_dev",
+		url: "https://app.dev.example/t/acme/cases/c_dev",
+	});
+	expect(text).toContain("Case id: c_dev\n");
+	expect(text).toEndWith("\nhttps://app.dev.example/t/acme/cases/c_dev");
+	expect(text).not.toContain("c_shop");
+});
+
 // The panel has no text for one mark yet; once it has `markInstructions`, it is held to the vector too.
 const markInstructions = (instructions as Record<string, unknown>)[
 	"markInstructions"
@@ -19,12 +29,12 @@ const markInstructions = (instructions as Record<string, unknown>)[
 	| ((ref: { id: string; url: string }, mark: { number: number }) => string)
 	| undefined;
 
-test.skipIf(markInstructions === undefined)(
-	"the text for one mark is the web app's, word for word",
-	() => {
+const forOneMark = "the text for one mark is the web app's, word for word";
+if (markInstructions === undefined) test.todo(forOneMark);
+else
+	test(forOneMark, () => {
 		const { id, url } = vector.mark.ref;
-		expect(markInstructions?.({ id, url }, vector.mark.mark)).toBe(
+		expect(markInstructions({ id, url }, vector.mark.mark)).toBe(
 			vector.mark.text,
 		);
-	},
-);
+	});

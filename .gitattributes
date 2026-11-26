@@ -1,0 +1,4 @@
+# Copies of sitegloss.dev's packages/api files, held to their SHA-256 in test/vectors.json
+# (scripts/sync-vectors.ts): checked out as committed, never with converted line ends.
+test/*.json -text
+src/lib/cloud/openapi-v1.json -text
