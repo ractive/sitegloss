@@ -20,6 +20,10 @@
 			<!-- The pill says the state in two or three words; the whole of it and what a
 			     click does are in its name and tooltip (view.ts). -->
 			<button id="ai-button" type="button" class="ai-pill"><span class="dot" aria-hidden="true"></span><span id="ai-label">AI off</span><span id="ai-status" class="visually-hidden">Not connected</span><span id="ai-action" class="visually-hidden">Turn on</span></button>
+			<!-- The account, as the web app has it at the top right: who is signed in, the team,
+			     signing in and out (account-menu.ts). -->
+			<button id="account" type="button" class="bar-icon account" aria-haspopup="menu" aria-expanded="false" aria-controls="account-pop" aria-label="Account"></button>
+			<div id="account-pop" class="account-pop" hidden></div>
 		</header>
 		<!-- What is wrong with the AI connection, in words, on every view (DEC-024). -->
 		<div id="ai-problem" class="ai-problem" role="status" hidden><p id="ai-problem-text"></p></div>

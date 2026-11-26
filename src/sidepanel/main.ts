@@ -122,7 +122,13 @@ import {
 	tryShow,
 	verifiesHere,
 } from "./mark-link.ts";
-import { type Copied, copyStep, firstToVerify, whereIs } from "./next-step.ts";
+import {
+	type Copied,
+	copyMark,
+	copyStep,
+	firstToVerify,
+	whereIs,
+} from "./next-step.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
@@ -1370,6 +1376,32 @@ async function copyFromStep(c: Case, what: Copied["what"]): Promise<void> {
 	}, COPIED_MS);
 }
 
+/**
+ * A mark's "Copy for your AI app": the instructions for that one mark on the
+ * clipboard; what it did is said at the mark for `COPIED_MS`.
+ */
+async function copyMarkFor(c: Case, a: Mark): Promise<void> {
+	const done = await copyMark(c, whereIs(state.cloud, c), a, (text) =>
+		navigator.clipboard.writeText(text),
+	);
+	const at = Date.now();
+	update(
+		(s) =>
+			(s.markCopied = {
+				caseId: c.id,
+				markId: a.id,
+				at,
+				...(done ?? {
+					ok: false,
+					text: "Nothing was copied: as far as this browser knows now, the team does not have this case.",
+				}),
+			}),
+	);
+	setTimeout(() => {
+		if (state.markCopied?.at === at) update((s) => (s.markCopied = undefined));
+	}, COPIED_MS);
+}
+
 /** The loaded case's results no longer describe the tab: drop them (and the marks). */
 async function forgetLoaded(
 	options: { hint?: string; clearTab?: boolean } = {},
@@ -2253,6 +2285,7 @@ const actions: Actions = {
 
 	copyCaseLink: (c) => void copyFromStep(c, "copy-link"),
 	copyForAiApp: (c) => void copyFromStep(c, "copy-ai"),
+	copyMarkForAiApp: (c, a) => void copyMarkFor(c, a),
 
 	startVerifying: (c) => startVerifying(c, false),
 

@@ -5375,3 +5375,55 @@ from the list" on the first row's "1040".
   `textChanged` then says "The highlighted text is not where it was any more: textFound says what
   was found instead.", with `textFound` in a sentence, `textNow` and `textAt`.
 - **Not done**: a search of the whole page, and a fuzzy match of reworded text without both sides.
+
+## DEC-084: The open case's head, a draft for the owner to judge: the marks start right under the title; the account in the top bar; a mark's copy for an AI app
+
+2026-11-26. On `panel-case-header`, a draft for the owner to look at on their own machine; not
+settled. The owner, with a case of 46 marks open: "This is a lot of things before the actual marks
+start." The marks' heading stood about 815 px down a 950 px panel; in the draft it stands at about
+310 px with a tab of another size (the Match size line), 270 px without. Nothing the head could do
+is gone; what moved, and why:
+
+- **The title is the case's own bar** (`#case-bar`), sticky under the top bar, with the "…" menu:
+  "You already have the sticky header for Marks. Why not having it also for the title here and for
+  the comments down below?" One line (16 px; a long title is cut, whole in its tooltip), so the bars
+  under it know its height (`--case-bar`): "Marks" and "Comments" stick under it in turn. While the
+  title is renamed the bar does not stick: the form is as high as it needs.
+- **The counts line is gone** ("46 marks: 3 open, 42 verified, 1 dismissed"): the marks' heading
+  and its chips say the same numbers a few lines below. This replaces DEC-061's "the counts under
+  the title".
+- **No "Current page" block** (DEC-067 had it): "The current page could be just highlighted in the
+  list below." The row of the page in front has a tint beside its bar. The heading "Site" is out of
+  sight (kept for readers); a site's own heading says what it is, "sitegloss.dev 3 pages".
+- **A site's list is closed at first while the tab shows one of the case's pages**, and its heading
+  names that page ("This tab: Help"); it is open at first, as before (`openAtFirst`), while the tab
+  shows none of them, when the list is the way to one. A choice by hand holds as before. This
+  changes DEC-067's "the only one always open": with three pages the list alone was 150 px above
+  the marks.
+- **The facts in the head hold only what the case has**: the page of a case of one page; the link
+  once there is one ("Add a link…" was in the menu already, and is the only place for it now); "On
+  this device only" with Share beside a team. "Made at" and the site of a one-page case are at the
+  case's end, beside Close case: "Made at 1308×998 … Below is the same info about the screen size."
+  The size shows above the marks only while the tab's differs (as before), in one line with Match
+  size ("This tab: 1284×953. Marks made at 1308×998.").
+- **"Synced with «team»" is not said in the case any more**: "Can we also have a person icon like
+  on the webpage on the top right where you can log in and out?" The top bar has the account on
+  every view (`account-menu.ts`): who is signed in and the address, the team (several: a choice of
+  one, as Home's select), what the sync is at (Home's line), Sync now where it helps, the account's
+  page in the web app, Sign out; signed out, what signing in sends where (the same sentence as on
+  Home, before the click) and Sign in. A dot on the button: green while signed in and syncing,
+  amber where something waits (the sign-in ran out, no team chosen, offline, a problem). Home's
+  Team section stays whole: the server to sign in to and what the server refused are only there.
+- **The summary is one line while the case has none** ("+ Summary for the developer"), which opens
+  the field; a case with a summary, or one being typed, shows the field as before, and an opened
+  field stays for as long as the case is open (DEC-060).
+- **A mark's "Copy for your AI app"**: "Also add a button to copy AI instruction for one mark like
+  on the web app." `markInstructions` is the web app's text for one mark, copied beside
+  `caseInstructions` with the lines they share (`src/lib/agent-instructions.ts`, kept in step by
+  hand, DEC-080's rules: the mark's number and the case's id and address, nothing the mark holds).
+  On an open mark, where the web app has it as a button, and only where the case's copy is offered
+  (the server has the case). What it did is said at the mark, in the web app's words.
+
+Not done, for the owner to say: "Allow all changes" still has its row under the top bar (DEC-036);
+a settled mark has no copy (the web app has it in the mark's "…" there); Home's Team section is as
+it was.

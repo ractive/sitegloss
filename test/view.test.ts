@@ -3157,7 +3157,7 @@ describe("the case's page and size", () => {
 		render(tab({ width: width - 300, height }), noActions);
 		expect(el("case-size").hidden).toBe(false);
 		expect(el("case-size").textContent).toContain(
-			`This tab is ${width - 300}×${height}`,
+			`This tab: ${width - 300}×${height}`,
 		);
 		expect(el("match-size").textContent).toBe("Match size");
 		render(tab({ width: width + 1, height }), noActions);
@@ -3395,20 +3395,34 @@ describe("a case of several pages (DEC-038)", () => {
 		);
 		// The one link of a case of one page gives way to the list.
 		expect(el("open-page").hidden).toBe(true);
-		// The list is under "Site" and its site's heading, which opens and
-		// closes it, and not in a column of the facts (DEC-065, DEC-067); one
-		// site: open.
+		// The list is under its site's heading, which opens and closes it, and
+		// not in a column of the facts (DEC-065, DEC-067). The tab shows one of
+		// the case's pages: closed at first, so the marks start right under
+		// the head, and the heading names that page.
 		expect(el("case-pages-section").hidden).toBe(false);
 		expect(el("case-sites-heading").textContent).toBe("Site");
-		expect(el("case-site-toggle-0").textContent).toBe("shop.example 2");
-		expect(el("case-site-toggle-0").getAttribute("aria-expanded")).toBe("true");
+		expect(el("case-site-toggle-0").textContent).toBe(
+			"shop.example 2 pages This tab: Payment",
+		);
+		expect(el("case-site-toggle-0").getAttribute("aria-expanded")).toBe(
+			"false",
+		);
+		expect(el("case-site-pages-0").hidden).toBe(true);
+		el<HTMLButtonElement>("case-site-toggle-0").click();
 		expect(el("case-site-pages-0").hidden).toBe(false);
 		expect(el("case-pages").closest(".case-facts")).toBeNull();
+		// The head's facts hold only what the case has: no link, no row. Where
+		// and when it was made is at the case's end.
 		expect(
 			[...el("case-facts").querySelectorAll(".fact")]
 				.filter((f) => !(f as unknown as HTMLElement).hidden)
 				.map((f) => f.querySelector("dt")?.textContent),
-		).toEqual(["Link", "Made at"]);
+		).toEqual([]);
+		expect(
+			[...el("case-about").querySelectorAll(".fact")]
+				.filter((f) => !(f as unknown as HTMLElement).hidden)
+				.map((f) => f.querySelector("dt")?.textContent),
+		).toEqual(["Made at"]);
 		const links = el("case-pages").querySelectorAll(".page-name");
 		(links[1] as unknown as HTMLButtonElement).click();
 		(links[0] as unknown as HTMLButtonElement).click();
@@ -3436,7 +3450,7 @@ describe("a case of several pages (DEC-038)", () => {
 		).toBe(`${PAY}\nOpens in a new tab; the case's marks are drawn there`);
 	});
 
-	test("one site: its list starts open however many pages it has; the choice is remembered, also where the tab shows none (DEC-065, DEC-067)", () => {
+	test("one site: closed at first while the tab shows one of its pages, which the heading names; the choice is remembered, also where the tab shows none (DEC-065, DEC-067)", () => {
 		const base = flow("c_many");
 		const urls = ["a", "b", "c", "d", "e"].map(
 			(x) => `https://shop.example/${x}`,
@@ -3456,40 +3470,42 @@ describe("a case of several pages (DEC-038)", () => {
 				s.tab = { id: 1, url, title: "", size: undefined };
 			});
 		const toggle = () => el<HTMLButtonElement>("case-site-toggle-0");
+		const here = () =>
+			toggle().querySelector<HTMLElement>(".site-here") as HTMLElement;
 		render(at("http://localhost:3000/c"), noActions);
-		expect(toggle().textContent).toBe("shop.example 5");
-		expect(toggle().getAttribute("aria-expanded")).toBe("true");
+		// Closed as "Comments" is: no row of it shows. The page in front is
+		// said on the heading, and in the list by its row alone (no block of
+		// its own above the list).
+		expect(toggle().textContent).toBe("shop.example 5 pages This tab: Page 3");
+		expect(toggle().getAttribute("aria-expanded")).toBe("false");
+		expect(el("case-site-pages-0").hidden).toBe(true);
 		expect(el("case-site-pages-0").querySelectorAll("li").length).toBe(5);
-		// The page in front is said above the heading too, named by its label
-		// and not by a second aria-current.
-		const current = () =>
-			[...el("case-current-page").querySelectorAll(".page-name")].map(
-				(x) => x.textContent,
-			);
-		expect(current()).toEqual(["Page 3"]);
-		expect(el("case-current-page").parentElement?.hidden).toBe(false);
-		expect(el("case-current-page").querySelector("[aria-current]")).toBeNull();
-		// Closed as "Comments" is: no row of it shows.
+		expect(window.document.getElementById("case-current-page")).toBeNull();
 		toggle().click();
-		expect(toggle().getAttribute("aria-expanded")).toBe("false");
-		expect(el("case-site-pages-0").hidden).toBe(true);
-		// Remembered for the case and site, also when the tab moves on, and
-		// where the tab shows none of the case's pages, render after render.
+		expect(toggle().getAttribute("aria-expanded")).toBe("true");
+		expect(
+			el("case-site-pages-0").querySelector("li[data-here] [aria-current]")
+				?.textContent,
+		).toBe("Page 3");
+		// Remembered for the case and site when the tab moves on.
 		render(at("http://localhost:3000/d"), noActions);
-		expect(el("case-site-pages-0").hidden).toBe(true);
-		expect(current()).toEqual(["Page 4"]);
+		expect(el("case-site-pages-0").hidden).toBe(false);
+		expect(here().textContent).toBe("This tab: Page 4");
+		// And where the tab shows none of the case's pages, render after
+		// render: a list closed by hand does not open by itself there.
+		toggle().click();
 		render(at("https://shop.example/elsewhere"), noActions);
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
 		render(at("https://shop.example/elsewhere"), noActions);
 		expect(toggle().getAttribute("aria-expanded")).toBe("false");
-		// None of the case's pages in front: no current page to say.
-		expect(el("case-current-page").parentElement?.hidden).toBe(true);
+		// None of the case's pages in front: no page to name.
+		expect(here().hidden).toBe(true);
 		expect(el("none-found").textContent).toBe(
 			"None of this case's pages is in this tab.",
 		);
 	});
 
-	test("several sites: each a heading of its own, the page in front's open, all where the tab shows none; local pages apart (DEC-067)", () => {
+	test("several sites: each a heading of its own, all open where the tab shows none, closed where it shows one; local pages apart (DEC-067)", () => {
 		const base = flow("c_sites");
 		const urls = [
 			"https://www.comparis.ch/a",
@@ -3526,10 +3542,10 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(el("case-sites-heading").textContent).toBe("Sites");
 		// Most pages first, then by name; the local page in a group of its own.
 		expect(heads()).toEqual([
-			["comparis.ch 3", "true"],
-			["ractive.ch 1", "true"],
-			["shop.example 1", "true"],
-			["Local addresses 1", "true"],
+			["comparis.ch 3 pages ", "true"],
+			["ractive.ch 1 page ", "true"],
+			["shop.example 1 page ", "true"],
+			["Local addresses 1 page ", "true"],
 		]);
 		const rows = (i: number) =>
 			[...el(`case-site-pages-${i}`).querySelectorAll(".page-name")].map(
@@ -3538,15 +3554,15 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(rows(0)).toEqual(["Page 1", "Page 2", "Page 3"]);
 		expect(rows(1)).toEqual(["Page 3"]);
 		expect(rows(3)).toEqual(["Page 5"]);
-		// The tab on /x: the sites it is under are open, the others closed;
+		// The tab on /x: the lists close, and the sites it is under name it;
 		// it is said once to a screen reader, though it is in two lists.
 		el("case-site-pages-2").querySelector<HTMLElement>(".page-name")?.focus();
 		render(at("https://ractive.ch/x"), noActions);
-		expect(heads().map(([, open]) => open)).toEqual([
-			"true",
-			"true",
-			"false",
-			"false",
+		expect(heads()).toEqual([
+			["comparis.ch 3 pages This tab: Page 3", "false"],
+			["ractive.ch 1 page This tab: Page 3", "false"],
+			["shop.example 1 page ", "false"],
+			["Local addresses 1 page ", "false"],
 		]);
 		expect(el("case-pages").querySelectorAll("[aria-current]").length).toBe(1);
 		// A list that closed by itself hands the focus to its heading.
@@ -3558,7 +3574,7 @@ describe("a case of several pages (DEC-038)", () => {
 		el<HTMLButtonElement>("case-site-toggle-3").click();
 		render(at("https://www.comparis.ch/a"), noActions);
 		expect(heads().map(([, open]) => open)).toEqual([
-			"true",
+			"false",
 			"false",
 			"false",
 			"true",
@@ -3591,7 +3607,7 @@ describe("a case of several pages (DEC-038)", () => {
 			),
 			noActions,
 		);
-		expect(heads()[0]?.[0]).toBe("ractive.ch 4");
+		expect(heads()[0]?.[0]).toBe("ractive.ch 4 pages ");
 		expect(document.activeElement?.id).toBe("case-site-toggle-1");
 	});
 
@@ -3679,6 +3695,7 @@ describe("a case of several pages (DEC-038)", () => {
 
 		// The list of pages: a count sets the filter to its page, said so.
 		render(at(cart), actions);
+		el<HTMLButtonElement>("case-site-toggle-0").click();
 		const count = el("case-pages").querySelector(
 			'[data-page="https://shop.example/cart"] .page-count-button',
 		) as unknown as HTMLButtonElement;
@@ -3818,11 +3835,11 @@ describe("a case of several pages (DEC-038)", () => {
 			});
 		render(on("http://localhost:3000/cart"), noActions);
 		expect(el("case-size").textContent).toContain(
-			"This tab is 1000×800; the marks were made at 1280×800.",
+			"This tab: 1000×800. Marks made at 1280×800.",
 		);
 		render(on("http://localhost:3000/checkout/pay"), noActions);
 		expect(el("case-size").textContent).toContain(
-			"This tab is 1000×800; the marks were made at 390×800.",
+			"This tab: 1000×800. Marks made at 390×800.",
 		);
 	});
 
@@ -4489,7 +4506,122 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		expect(button("cloud-sync-now")).toBeNull();
 	});
 
-	test("a case says whether the team has it; one on this device only can be shared, and is tagged in the list", () => {
+	test("the account in the top bar, on every view: who is signed in, the teams to switch to, Sign out; signed out, what signing in sends, and Sign in", () => {
+		const done: string[] = [];
+		const actions = actionsWith({
+			cloudSignIn: () => void done.push("in"),
+			cloudSignOut: () => void done.push("out"),
+			cloudTeam: (id) => void done.push(`team ${id}`),
+			cloudSyncNow: () => void done.push("sync"),
+		});
+		const other = { id: "t_2", name: "Docs", slug: "docs", permissions: [] };
+		const pop = () => el("account-pop");
+		const item = (id: string) => el<HTMLButtonElement>(id);
+		const cloud: Partial<Cloud> = {
+			account: account({ teams: [{ ...TEAM, slug: "web" }, other] }),
+			status: { state: "synced", problems: [], undecided: 0 },
+			live: true,
+		};
+		// In an open case too: the case itself no longer names the team.
+		render(
+			caseState(sampleCase("c_account"), (s) => Object.assign(s.cloud, cloud)),
+			actions,
+		);
+		expect(el("account").getAttribute("aria-label")).toBe(
+			"Account: Tess Tester, team “Pedal & Pine web”",
+		);
+		expect(el("account").dataset["state"]).toBe("ok");
+		expect(pop().hidden).toBe(true);
+		el("account").click();
+		expect(pop().hidden).toBe(false);
+		expect(el("account").getAttribute("aria-expanded")).toBe("true");
+		expect(el("account-name").textContent).toBe("Tess Tester");
+		expect(el("account-email").textContent).toBe("tess@example.com");
+		// The teams as a choice of one, the chosen one checked and first to
+		// have the focus.
+		const teams = [...pop().querySelectorAll('[role="menuitemradio"]')];
+		expect(
+			teams.map((t) => [t.textContent, t.getAttribute("aria-checked")]),
+		).toEqual([
+			["Pedal & Pine web", "true"],
+			["Docs", "false"],
+		]);
+		expect(window.document.activeElement === (teams[0] as unknown)).toBe(true);
+		// Everything is sent and the stream is open: no Sync now. The
+		// account's own page is the web app's.
+		expect(window.document.getElementById("account-sync-now")).toBeNull();
+		expect(el("account-open").getAttribute("href")).toBe(
+			"https://app.sitegloss.dev/account?from=web",
+		);
+		(teams[1] as unknown as HTMLButtonElement).click();
+		expect(done).toEqual(["team t_2"]);
+		// An action closes the menu; the button has the focus again.
+		expect(pop().hidden).toBe(true);
+		expect(window.document.activeElement?.id).toBe("account");
+		el("account").click();
+		item("account-sign-out").click();
+		expect(done).toEqual(["team t_2", "out"]);
+
+		// One team: said, not offered. Something waits: Sync now, and the dot.
+		home(
+			{
+				account: account(),
+				status: { state: "offline", problems: [], undecided: 0 },
+			},
+			actions,
+		);
+		expect(el("account-team").textContent).toBe("Team: Pedal & Pine web");
+		expect(pop().querySelector('[role="menuitemradio"]')).toBeNull();
+		expect(el("account").dataset["state"]).toBe("warn");
+		item("account-sync-now").click();
+		expect(done.at(-1)).toBe("sync");
+
+		// Nobody signed in: what signing in sends where, before the click.
+		home({ account: undefined, status: undefined }, actions);
+		expect(el("account").getAttribute("aria-label")).toBe(
+			"Account: not signed in",
+		);
+		expect(el("account").dataset["state"]).toBe("none");
+		expect(el("account-who").textContent).toContain(
+			"your cases go to app.sitegloss.dev",
+		);
+		item("account-sign-in").click();
+		expect(done.at(-1)).toBe("in");
+		// The sign-in ran out: Sign in again.
+		home({ account: account({ expired: true }) }, actions);
+		expect(item("account-sign-in").textContent).toBe("Sign in again");
+		expect(el("account").dataset["state"]).toBe("warn");
+	});
+
+	test("the account's menu: the arrow keys go round its items, Escape closes it with the focus back on its button, and a render leaves it open", () => {
+		const press = (key: string) =>
+			window.document.activeElement?.dispatchEvent(
+				new window.KeyboardEvent("keydown", {
+					key,
+					bubbles: true,
+					cancelable: true,
+				}) as never,
+			);
+		const cloud = { account: account() };
+		home(cloud);
+		el("account").click();
+		expect(window.document.activeElement?.id).toBe("account-sync-now");
+		press("ArrowDown");
+		expect(window.document.activeElement?.id).toBe("account-open");
+		press("ArrowUp");
+		press("ArrowUp");
+		expect(window.document.activeElement?.id).toBe("account-sign-out");
+		// Drawn again with nothing of it changed: open, the focus where it was.
+		home(cloud);
+		expect(el("account-pop").hidden).toBe(false);
+		expect(window.document.activeElement?.id).toBe("account-sign-out");
+		press("Escape");
+		expect(el("account-pop").hidden).toBe(true);
+		expect(el("account").getAttribute("aria-expanded")).toBe("false");
+		expect(window.document.activeElement?.id).toBe("account");
+	});
+
+	test("a case the team does not have says so and can be shared, and is tagged in the list; the team's own says nothing (the account's menu names the team)", () => {
 		const shared: string[] = [];
 		const c = sampleCase("c_local");
 		const cloud: Partial<Cloud> = {
@@ -4511,10 +4643,11 @@ describe("the account and the sync with a team (DEC-039)", () => {
 				Object.assign(s.cloud, cloud),
 			);
 			render(team, noActions);
-			expect(el("case-team").firstElementChild?.textContent).toBe(
-				"Synced with “Pedal & Pine web”",
+			expect(el("case-team").hidden).toBe(true);
+			expect(el("case-team").closest<HTMLElement>(".fact")?.hidden).toBe(true);
+			expect(el("account").getAttribute("aria-label")).toBe(
+				"Account: Tess Tester, team “Pedal & Pine web”",
 			);
-			expect(el("share-case").hidden).toBe(true);
 		}
 		// Nobody signed in: nothing about a team anywhere.
 		render(caseState(sampleCase("c_local")), noActions);
@@ -5078,6 +5211,33 @@ describe("what stays between renders", () => {
 describe("the summary for the developer", () => {
 	const value = () => el<HTMLTextAreaElement>("verdict").value;
 
+	test("none yet: one line that opens the field; with one, or one being typed, the field", () => {
+		const c = sampleCase("c_s_none");
+		render(caseState(c), noActions);
+		const add = el<HTMLButtonElement>("summary-add");
+		expect(add.hidden).toBe(false);
+		expect(add.textContent).toBe("Summary for the developer");
+		expect(add.getAttribute("aria-expanded")).toBe("false");
+		expect(el("summary-body").hidden).toBe(true);
+		add.click();
+		expect(add.hidden).toBe(true);
+		expect(el("summary-body").hidden).toBe(false);
+		expect(window.document.activeElement?.id).toBe("verdict");
+		// It stays for as long as the case is open: nothing folds under the keyboard.
+		render(caseState(c), noActions);
+		expect(el("summary-body").hidden).toBe(false);
+		// A case that has one, and a draft: the field from the start.
+		render(caseState({ ...sampleCase("c_s_has"), verdict: "x" }), noActions);
+		expect(el("summary-body").hidden).toBe(false);
+		const typed = sampleCase("c_s_draft");
+		render(
+			caseState(typed, (s) => s.verdictDrafts.set(typed.id, "Dar")),
+			noActions,
+		);
+		expect(el("summary-body").hidden).toBe(false);
+		expect(el("summary-add").hidden).toBe(true);
+	});
+
 	test("is labelled so and says what it is for", () => {
 		const c = { ...sampleCase("c_s"), verdict: "Darker button" };
 		render(caseState(c), noActions);
@@ -5347,8 +5507,13 @@ describe("the AI app", () => {
 		expect(el("ai-status").textContent).toBe("Connected: Claude");
 		// The owner: Stop goes; the switch in the AI view stops AI access.
 		expect(el("stop-ai")).toBeNull();
-		// Back, the case's id to copy, and the AI pill: no Stop among them.
-		expect(el("bar").querySelectorAll("button").length).toBe(3);
+		// Back, the case's id to copy, the AI pill and the account: no Stop
+		// among them.
+		expect(
+			[...el("bar").children]
+				.filter((x) => x.tagName === "BUTTON")
+				.map((x) => x.id),
+		).toEqual(["back", "copy-case-id", "ai-button", "account"]);
 		expect(el("ai-switch").closest("label")?.title).toContain(
 			"stops that at once",
 		);
@@ -5862,23 +6027,30 @@ describe("a case's link (DEC-028)", () => {
 	const open = () => el<HTMLAnchorElement>("case-link-open");
 	const edit = () => el<HTMLButtonElement>("case-link-edit");
 
-	test("no link: only a quiet Add a link, in the facts' Link row", () => {
+	test("no link: no row in the head; Add a link… is in the case's menu", () => {
 		const c = sampleCase("c_link_none");
 		const called: string[] = [];
 		render(
 			caseState(c),
 			actionsWith({ startLink: (x) => void called.push(x.id) }),
 		);
-		// Its row in the facts, labelled (DEC-061).
-		expect(
-			el("case-link").closest(".fact")?.querySelector("dt")?.textContent,
-		).toBe("Link");
-		expect(shown("case-link-open")).toBe(false);
-		expect(edit().textContent).toBe("Add a link");
-		expect(edit().className).toContain("link");
-		expect(shown("case-link-form")).toBe(false);
-		edit().click();
+		// Its row in the facts, labelled (DEC-061), is there once there is a
+		// link or one is being typed: an empty row is not above the marks.
+		const row = el("case-link").closest<HTMLElement>(".fact");
+		expect(row?.querySelector("dt")?.textContent).toBe("Link");
+		expect(row?.hidden).toBe(true);
+		expect(el("case-link-menu").textContent).toBe("Add a link…");
+		el("case-link-menu").click();
 		expect(called).toEqual(["c_link_none"]);
+		// While it is typed, the row holds its field.
+		render(
+			caseState(c, (s) => {
+				s.linking = { caseId: c.id, text: "" };
+			}),
+			noActions,
+		);
+		expect(row?.hidden).toBe(false);
+		expect(shown("case-link-form")).toBe(true);
 	});
 
 	test("a link: an anchor to it in a new tab, its short text, and Edit", () => {
@@ -5891,11 +6063,12 @@ describe("a case's link (DEC-028)", () => {
 		expect(open().textContent).toBe("tickets.example.com/browse/ABC-123");
 		expect(open().title).toBe(TICKET);
 		expect(edit().textContent).toBe("Edit");
-		// Removed again: Add a link, no address left in the anchor.
+		expect(el("case-link").closest<HTMLElement>(".fact")?.hidden).toBe(false);
+		// Removed again: no row, no address left in the anchor.
 		render(caseState({ ...sampleCase("c_link_one") }), noActions);
 		expect(shown("case-link-open")).toBe(false);
 		expect(open().hasAttribute("href")).toBe(false);
-		expect(edit().textContent).toBe("Add a link");
+		expect(el("case-link").closest<HTMLElement>(".fact")?.hidden).toBe(true);
 	});
 
 	test("editing: the field with the stored link", () => {
@@ -5974,7 +6147,8 @@ describe.each([
 		field: "case-link-field",
 		save: "case-link-save",
 		cancel: "case-link-cancel",
-		edit: "case-link-edit",
+		// A case without a link has its way to the form in the menu.
+		edit: "case-link-menu",
 		saveAction: "saveLink",
 		cancelAction: "cancelLink",
 		typeAction: "typeLink",
@@ -6053,10 +6227,12 @@ describe("the top bar and Settings (DEC-023)", () => {
 		);
 		// In the top bar, before the AI pill.
 		expect(el("back").parentElement).toBe(el("bar"));
-		// Then the case's id to copy and its spoken word, then the AI pill.
+		// Then the case's id to copy and its spoken word, then the AI pill,
+		// and last the account with its menu.
 		// (Compared as booleans: a failed comparison of two elements prints the whole page.)
 		expect(el("back").nextElementSibling === el("copy-case-id")).toBe(true);
-		expect(el("bar").lastElementChild === el("ai-button")).toBe(true);
+		expect(el("ai-button").nextElementSibling === el("account")).toBe(true);
+		expect(el("bar").lastElementChild === el("account-pop")).toBe(true);
 		// The open case's id is there to copy, named with it; not on Home.
 		expect(el("copy-case-id").hidden).toBe(false);
 		expect(el("copy-case-id").title).toContain("c_");
@@ -6358,10 +6534,13 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		expect(el("load-case").textContent).toBe("Hide marks");
 	});
 
-	test("the facts: one quiet block of label and value, the counts under the title (DEC-061)", () => {
+	test("the facts: a label and its value; in the head only what the case has, where and when it was made at its end (DEC-061)", () => {
 		const c = withOneMark(sampleCase("c_meta"));
 		render(caseState(c), noActions);
-		const facts = [...el("case-facts").querySelectorAll(".fact")]
+		const facts = [
+			...el("case-facts").querySelectorAll(".fact"),
+			...el("case-about").querySelectorAll(".fact"),
+		]
 			.filter((f) => !(f as unknown as HTMLElement).hidden)
 			.map((f) => {
 				// The label as shown; one page is a fact, several a list (DEC-065).
@@ -6376,20 +6555,23 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 					f.querySelector("dd")?.textContent,
 				];
 			});
-		// A case of one page: its site beside its address (DEC-067).
-		expect(facts.map(([label]) => label)).toEqual([
-			"Page",
-			"Site",
-			"Link",
-			"Made at",
-		]);
+		// A case of one page: its address in the head; its site (DEC-067) and
+		// the size and time it was made at after the marks.
+		expect(facts.map(([label]) => label)).toEqual(["Page", "Site", "Made at"]);
 		expect(el("case-pages-section").hidden).toBe(true);
 		expect(facts[0]?.[1]).toContain("www.example.com/kk");
 		expect(facts[1]?.[1]).toBe("example.com");
-		expect(facts[3]?.[1]).toContain(
+		expect(facts[2]?.[1]).toContain(
 			`${c.page.viewport.width}×${c.page.viewport.height}, `,
 		);
-		expect(el("case-counts").textContent).toBe("1 mark: 1 open");
+		expect(el("case-about").closest("section")?.className).toBe("case-footer");
+		// The counts are the marks' own: their heading and its chips, once.
+		expect(window.document.getElementById("case-counts")).toBeNull();
+		// The title and the menu are the case's own bar, the first thing in
+		// the view, which stays in view (style.css).
+		expect(el("case-view").firstElementChild?.id).toBe("case-bar");
+		expect(el("case-bar").querySelector("h2")?.textContent).toBe(c.title);
+		expect(el("case-bar").contains(el("case-more"))).toBe(true);
 		// A size that matters offers Match size; a few pixels do not.
 		const sized = (w: number, hgt: number) =>
 			caseState(c, (s) => {
@@ -7207,7 +7389,7 @@ describe("what comes next on the open case (DEC-069)", () => {
 			`[data-step="${action}"]`,
 		) as unknown as HTMLButtonElement | null;
 
-	test("a named region under the counts, whose buttons are the panel's own actions", () => {
+	test("a named region, first under the title, whose buttons are the panel's own actions", () => {
 		const done: string[] = [];
 		const actions = actionsWith({
 			addMarks: (c) => void done.push(`add ${c.id}`),
@@ -7218,7 +7400,11 @@ describe("what comes next on the open case (DEC-069)", () => {
 		const empty = sampleCase();
 		render(caseState(empty), actions);
 		expect(el("next-step").getAttribute("aria-label")).toBe("Next step");
-		expect(el("case-counts").nextElementSibling?.id).toBe("next-step");
+		expect(
+			[...(el("next-step").parentElement?.children ?? [])].find(
+				(x) => !(x as unknown as HTMLElement).hidden,
+			)?.id,
+		).toBe("next-step");
 		step("add-marks")?.click();
 
 		const marked = withOneMark(sampleCase());
@@ -7321,6 +7507,71 @@ describe("what comes next on the open case (DEC-069)", () => {
 		state.cloud.atTeam = {};
 		render(state, noActions);
 		expect(el("next-step-note").textContent).toBe("");
+	});
+
+	test("an open mark of a case the server has: the copy for an AI app for that one mark, and what it did said at the mark", () => {
+		const done: string[] = [];
+		const base = withOneMark(sampleCase());
+		const one = base.marks[0] as Mark;
+		const c = {
+			...base,
+			marks: [
+				one,
+				{
+					...one,
+					id: "m2",
+					number: 2,
+					resolution: { kind: "fixed" as const, at: AT },
+				},
+			],
+		};
+		const copy = (id: string) =>
+			window.document.querySelector(
+				`li.mark[data-mark="${id}"] [data-mark-action="copy-ai"]`,
+			) as unknown as HTMLButtonElement | null;
+		const state = caseState(c, (s) => {
+			signedIn(s, { c_1: "synced" });
+			s.cloud.atTeam = { c_1: "t_1" };
+		});
+		const actions = actionsWith({
+			copyMarkForAiApp: (x, a) => void done.push(`${x.id} ${a.number}`),
+		});
+		render(state, actions);
+		// Named with its number, which tells it from the case's copy; after
+		// the status change, before the comment's edit. Not on a settled mark.
+		expect(copy("m1")?.textContent).toBe("Copy for your AI app");
+		expect(copy("m1")?.getAttribute("aria-label")).toBe(
+			"Copy mark 1 for your AI app",
+		);
+		expect(copy("m1")?.previousElementSibling?.textContent).toBe("Resolve…");
+		expect(copy("m2")).toBeNull();
+		copy("m1")?.click();
+		expect(done).toEqual(["c_1 1"]);
+		const said = () =>
+			window.document.querySelector(
+				'li.mark[data-mark="m1"] [data-mark-copied]',
+			) as unknown as HTMLElement | null;
+		expect(said()?.getAttribute("role")).toBe("status");
+		expect(said()?.textContent).toBe("");
+		state.markCopied = {
+			caseId: "c_1",
+			markId: "m1",
+			ok: true,
+			text: "Instructions for mark 1 copied. Paste them into your AI app.",
+			at: 1,
+		};
+		render(state, actions);
+		expect(said()?.textContent).toBe(
+			"Instructions for mark 1 copied. Paste them into your AI app.",
+		);
+		expect(said()?.classList.contains("visually-hidden")).toBe(false);
+		expect(copy("m1")?.querySelector("svg")?.getAttribute("data-icon")).toBe(
+			"check",
+		);
+		// The server does not have the case (yet): nothing to copy for.
+		state.cloud.atTeam = {};
+		render(state, actions);
+		expect(copy("m1")).toBeNull();
 	});
 });
 

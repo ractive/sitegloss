@@ -210,7 +210,7 @@ inFullSet("the look", () => {
 		// A long link (DEC-028): cut in its line, never wider than the panel,
 		// its form too.
 		const link = `https://tickets.example.com/browse/ABC-123/${"averyverylongpathsegment".repeat(8)}`;
-		await panel.eval(`${id("case-link-edit")}.click()`);
+		await panel.eval(`${id("case-link-menu")}.click()`);
 		await panel.waitFor(`!${id("case-link-form")}.hidden`);
 		await panel.eval(`(() => {
 			const f = ${id("case-link-field")};

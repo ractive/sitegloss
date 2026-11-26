@@ -18,7 +18,10 @@
  * `apps/app/src/lib/next-step.ts`), kept in step by hand.
  */
 
-import { caseInstructions } from "../lib/agent-instructions.ts";
+import {
+	caseInstructions,
+	markInstructions,
+} from "../lib/agent-instructions.ts";
 import {
 	assigneeOf,
 	type Case,
@@ -435,4 +438,39 @@ export async function copyStep(
 		what,
 		text: what === "copy-link" ? linkCopied(where.team) : AI_COPIED,
 	};
+}
+
+/** What a mark's "Copy for your AI app" says it did: the web app's words. */
+export const markCopied = (number: number): string =>
+	`Instructions for mark ${number} copied. Paste them into your AI app.`;
+
+/**
+ * Whether a mark's instructions for an AI app can be copied: where the
+ * case's can (`copyStep`), since they name the same case at the same server.
+ */
+export function mayCopyMark(c: Case, where: Where): boolean {
+	return where.kind === "team" && where.link !== undefined && isSafeId(c.id);
+}
+
+/**
+ * A mark's copy (the web app's "Copy mark N for your AI app"): the
+ * instructions for an AI app to work on this one mark, given to `write`.
+ * `undefined`: nothing to copy (`mayCopyMark`).
+ */
+export async function copyMark(
+	c: Case,
+	where: Where,
+	mark: Pick<Mark, "number">,
+	write: (text: string) => Promise<void>,
+): Promise<{ ok: boolean; text: string } | undefined> {
+	if (where.kind !== "team" || where.link === undefined || !isSafeId(c.id))
+		return undefined;
+	try {
+		await write(
+			markInstructions({ id: c.id, url: where.link }, { number: mark.number }),
+		);
+	} catch {
+		return { ok: false, text: COPY_FAILED };
+	}
+	return { ok: true, text: markCopied(mark.number) };
 }
