@@ -74,6 +74,11 @@ export interface CaseImages {
 	caseId: string;
 	version: string;
 	urls: Map<string, string>;
+	/**
+	 * What the image under each path is (`imageKeys`): its URL is reused
+	 * while that stays. None: none is reused.
+	 */
+	keys?: Map<string, string>;
 }
 
 /** Where the last export went, as Chrome told (DEC-020). */

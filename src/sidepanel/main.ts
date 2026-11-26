@@ -13,9 +13,7 @@ import {
 import {
 	addedImage,
 	type Case,
-	caseImages,
 	cleanTitle,
-	heldImagesOf,
 	MARK_CHANGED,
 	MAX_MARK_IMAGES,
 	type Mark,
@@ -91,6 +89,7 @@ import {
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
+import { droppedUrls, reuseImages } from "./case-images.ts";
 import { linkFromField } from "./case-link.ts";
 import { closedSaid } from "./closed";
 import { cloudActions, startCloud } from "./cloud.ts";
@@ -1021,20 +1020,22 @@ async function refreshCase(): Promise<void> {
 	if (state.images?.caseId === c.id && state.images.version === c.updatedAt)
 		return;
 	const images = imagesWork.start();
-	const urls = new Map<string, string>();
 	// Its screenshots, the marks' crops and the images added to them, those
-	// held back here too (DEC-058).
-	for (const path of [...caseImages(c), ...heldImagesOf(c)]) {
+	// held back here too (DEC-058): only the new or changed ones are read.
+	const { keys, kept, read } = reuseImages(state.images, c);
+	const made = new Map<string, string>();
+	for (const path of read) {
 		const image = await store.getImage(c.id, path);
-		if (image !== undefined) urls.set(path, URL.createObjectURL(image.blob));
+		if (image !== undefined) made.set(path, URL.createObjectURL(image.blob));
 	}
 	if (!images.current()) {
-		for (const url of urls.values()) URL.revokeObjectURL(url);
+		for (const url of made.values()) URL.revokeObjectURL(url);
 		return;
 	}
+	const urls = new Map([...kept, ...made]);
 	update((s) => {
-		releaseImages(s);
-		s.images = { caseId: c.id, version: c.updatedAt, urls };
+		for (const url of droppedUrls(s.images, urls)) URL.revokeObjectURL(url);
+		s.images = { caseId: c.id, version: c.updatedAt, urls, keys };
 	});
 }
 
@@ -1079,6 +1080,7 @@ function openCase(id: string): void {
 		if (other) {
 			s.current = undefined;
 			s.verdictStatus = undefined;
+			imagesWork.cancel();
 			releaseImages(s);
 		}
 		s.view = { kind: "case", id };
