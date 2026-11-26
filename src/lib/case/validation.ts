@@ -13,7 +13,6 @@ import {
 	CaseError,
 	type CasePage,
 	cropImage,
-	cutText,
 	ELEMENT_ATTRIBUTES,
 	type ElementDetails,
 	type FindingApp,
@@ -27,8 +26,6 @@ import {
 	MAX_EXTRA,
 	MAX_EXTRA_KEYS,
 	MAX_EXTRAS,
-	MAX_FINDING,
-	MAX_FINDINGS,
 	MAX_LINK,
 	MAX_MARK_IMAGES,
 	MAX_MARKS,
@@ -47,7 +44,6 @@ import {
 	type MarkImage,
 	markIdOf,
 	OLD_CASE_FORMAT,
-	type OldFinding,
 	type Point,
 	RESOLUTION_KINDS,
 	type Rect,
@@ -64,6 +60,12 @@ import {
 	type Verification,
 	type Viewport,
 } from "./format.ts";
+import {
+	cutWas,
+	MAX_FINDING,
+	MAX_FINDINGS,
+	type OldFinding,
+} from "./internal.ts";
 import { queryField } from "./pages.ts";
 
 // --- validation (imports, iteration 3) ---------------------------------------
@@ -732,17 +734,6 @@ function appOf(value: unknown, path: string): { app?: FindingApp } {
 			host: str(app["host"], `${path}.host`, 255),
 		},
 	};
-}
-
-/**
- * The resolution a reopen ended, its note cut to a reopen note's length:
- * twenty of them stay per mark, and a mark's history is bounded, or a case
- * outgrows what a file may hold.
- */
-export function cutWas(was: Resolution): Resolution {
-	return was.note && was.note.length > MAX_REOPEN_NOTE
-		? { ...was, note: cutText(was.note, MAX_REOPEN_NOTE) }
-		: was;
 }
 
 /** A mark's reopens, the newest `MAX_REOPENS`; none or an empty list: none. */

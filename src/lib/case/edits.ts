@@ -30,8 +30,9 @@ import {
 	textLength,
 	type UserRef,
 } from "./format.ts";
+import { cutWas } from "./internal.ts";
 import { withPagesOfShots } from "./pages.ts";
-import { cutWas, isSafeId } from "./validation.ts";
+import { isSafeId } from "./validation.ts";
 
 // --- changes to one mark ------------------------------------------------------
 

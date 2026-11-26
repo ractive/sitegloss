@@ -41,13 +41,6 @@ export const MAX_VERDICT = 50_000;
 export const MAX_COMMENT = 20_000;
 
 /**
- * The longest finding and the most a mark had (DEC-019), for reading the
- * findings of a stored case or a file: they become comments (DEC-081).
- */
-export const MAX_FINDING = 5000;
-export const MAX_FINDINGS = 20;
-
-/**
  * The most images a mark holds (DEC-058): here, in a file and at the team's
  * server alike. What was added here and does not fit beside the team's is
  * held back apart (`Mark.heldImages`), never in `images`.
@@ -652,24 +645,6 @@ export interface FindingApp {
 	name?: string;
 	/** The host of its client id: the verified part. */
 	host: string;
-}
-
-/**
- * A finding of an AI app on a mark, as a stored case or a file from before
- * DEC-081 holds it (DEC-019): it is read only to become a comment on the
- * mark (`findingsAsComments`).
- */
-export interface OldFinding {
-	id: string;
-	text: string;
-	app: FindingApp;
-	at: string;
-	/** When its app last changed its text. */
-	editedAt?: string;
-	/** Came in from a file: no app's own, whichever app it names. */
-	imported?: true;
-	/** Whose AI app wrote it, in a case synced with a team (DEC-039). */
-	user?: UserRef;
 }
 
 /** An AI app as the panel and the questions name it: its name beside its host. */
