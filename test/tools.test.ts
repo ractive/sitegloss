@@ -629,6 +629,66 @@ describe("tools", () => {
 		);
 	});
 
+	test("get_mark with marks: in the order asked, each mark's text then its crop, a number that is no mark named in its place; marks: [n] is mark: n", async () => {
+		await seed();
+		const several = await call("get_mark", {
+			caseId: "c_1",
+			marks: [2, 9, 1, 2],
+		});
+		expect(
+			several.content.map((c) =>
+				c.type === "image" ? "image" : c.text?.split("\n")[0],
+			),
+		).toEqual([
+			"Marks 2, 9, 1 of case c_1, in this order: each mark's text, then its crop.",
+			"Mark #2 of case c_1, on p1, made at https://www.example.com/kk.",
+			"Its crop, crops/m2.webp (10 × 10):",
+			"image",
+			"The case has no mark 9.",
+			"Mark #1 of case c_1, on p1, made at https://www.example.com/kk.",
+			"Its crop, crops/m1.webp (10 × 10):",
+			"image",
+		]);
+		expect(await call("get_mark", { caseId: "c_1", marks: [1] })).toEqual(
+			await call("get_mark", { caseId: "c_1", mark: 1 }),
+		);
+	});
+
+	test("get_mark with marks stops at a whole mark within the answer's budget, with the get_mark call for the rest", async () => {
+		await seed(10, "x".repeat(3000), 10);
+		const read = await call("get_mark", {
+			caseId: "c_1",
+			marks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+		});
+		const said = textOf(read);
+		expect(said.length).toBeLessThanOrEqual(20_000);
+		const shown = said.match(/^Mark #\d+ /gm) ?? [];
+		expect(shown.length).toBeGreaterThan(1);
+		expect(shown.length).toBeLessThan(10);
+		// Each mark shown is whole: its comment is never cut.
+		expect(said.split(`"${"x".repeat(3000)}"`).length - 1).toBe(shown.length);
+		const rest = Array.from(
+			{ length: 10 - shown.length },
+			(_, i) => shown.length + 1 + i,
+		);
+		expect(read.content.at(-1)?.text).toBe(
+			`Marks ${rest.join(", ")} do not fit this answer: get_mark("c_1", marks: [${rest.join(", ")}]).`,
+		);
+	});
+
+	test("get_mark refuses neither and both of mark and marks, and marks of which none is a mark", async () => {
+		await seed();
+		const read = (input: Record<string, unknown>) =>
+			call("get_mark", { caseId: "c_1", ...input });
+		const either =
+			"Give mark (one mark's number) or marks (up to 10 numbers), one of the two.";
+		await expect(read({})).rejects.toThrow(either);
+		await expect(read({ mark: 1, marks: [2] })).rejects.toThrow(either);
+		await expect(read({ marks: [9, 8] })).rejects.toThrow(
+			"The case has no marks 9, 8. It has: 1, 2.",
+		);
+	});
+
 	test("get_case and list_marks stop at about 20,000 characters, at a mark, with the next call; a comment is never cut", async () => {
 		await seed(10, "x".repeat(3000), 20);
 		const first = textOf(await call("get_case", { caseId: "c_1" }));

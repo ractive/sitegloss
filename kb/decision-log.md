@@ -5382,3 +5382,36 @@ from the list" on the first row's "1040".
   `textChanged` then says "The highlighted text is not where it was any more: textFound says what
   was found instead.", with `textFound` in a sentence, `textNow` and `textAt`.
 - **Not done**: a search of the whole page, and a fuzzy match of reworded text without both sides.
+
+## DEC-085: `get_mark` reads up to ten marks in one call, as the server's (owner, 27 November 2026)
+
+2026-11-27. The server's `get_mark` took `marks` (sitegloss.dev DEC-056, its pull request 85);
+the extension's tool answers the same input the same way, so an AI app reads a case's open marks
+with their pictures in one call through either connection.
+
+- **One path.** The extension's `get_mark` reads only this browser's store: a case kept here and a
+  case synced with a team alike (the sync keeps the team's cases in it, DEC-039); it calls no
+  server. So nothing depends on the server's version, and no fallback for an older server is
+  needed.
+- **The input, as the server's.** `mark` (one number) answers exactly as before; `marks`: 1 to 10
+  numbers (`MARKS_A_READ`), repeats dropped, answered in the order given, each mark's text, then
+  its crop, after a head line that names the marks. The schema has both optional; the tool refuses
+  neither and both in words. `marks: [n]` answers as `mark: n`. A number that is no mark is said
+  in its place; the call is refused only when none is a mark.
+- **One answer budget, two passes**, as the server's: first the marks that fit
+  `ANSWER_BUDGET`, each at its least (the mark whole, no comment or reopen) with the line of its
+  crop; the answer stops before the first that does not, at a whole mark, and its last line is the
+  `get_mark` call for the rest. Then what is left goes to the marks' comments and reopens, in
+  order, what one leaves unused to the next. One margin of 400 characters for the whole answer. A
+  crop's line is reckoned at 320 characters (the server's 250), since here a crop's name and a
+  case id may each be 64 characters.
+- **Pictures.** The crops share what the relay's message has left once the texts are in it (as
+  for one mark: 75 % of the message limit, less the texts and 400 bytes), sent in order while it
+  lasts; one that does not fit is listed with its `get_image` call ("the pictures before it fill
+  this answer"). The crops are read and scaled two at a time (`SCALING_AT_ONCE`, the server's
+  number), so that one call does not hold up the scaling of the others.
+- The description, the line about it in `get_case`'s and the instructions say so, in the server's
+  words where they fit. Tests (`test/tools.test.ts`): the order with an unknown number and a
+  repeat, `marks: [n]` equal to `mark: n`, the stop at a whole mark with the call for the rest,
+  the refusals. Not tested: a crop left out because the crops before it filled the message, and
+  the two at a time.
