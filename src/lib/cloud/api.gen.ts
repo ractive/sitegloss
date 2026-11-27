@@ -371,7 +371,7 @@ export interface components {
 		ElementStyles: {
 			[key: string]: string;
 		};
-		/** @description What an AI app found out about a mark. */
+		/** @description What an AI app found out about a mark, as a server before DEC-053 kept it apart from the comments. Kept for older clients (the extension up to 0.4.0): a server sends none, and one it is sent becomes a comment on its mark (a CaseComment with markId). */
 		Finding: {
 			id: components["schemas"]["Id"];
 			text: string;
@@ -414,6 +414,7 @@ export interface components {
 			highlight?: components["schemas"]["Highlight"];
 			resolution: components["schemas"]["Resolution"] | null;
 			reopens: components["schemas"]["Reopen"][];
+			/** @description Kept for older clients (the extension up to 0.4.0), always sent and always [], an empty list. What an AI app wrote about the mark is a comment on it: a CaseComment whose markId is this mark's id (DEC-053). */
 			findings: components["schemas"]["Finding"][];
 			/** @description Images a person added to the mark, in the order they were added, at most 6. Always sent by a server that keeps images, `[]` for none; absent from a server from before this (DEC-032), which a client reads as "not told", not as "none". */
 			images?: components["schemas"]["MarkImage"][];
@@ -552,6 +553,7 @@ export interface components {
 						highlight?: components["schemas"]["Highlight"];
 						resolution?: components["schemas"]["Resolution"] | null;
 						reopens?: components["schemas"]["Reopen"][];
+						/** @description Kept for older clients (the extension up to 0.4.0), still taken and never stored as findings: each becomes a comment on the new mark (DEC-053), with the finding's text and time (never later than now), by the caller and the app the finding names (the caller's own app when it is one); in a case from a file, a finding marked imported keeps its time and names no person. Its comment's id is made from the mark's and the finding's ids, so the same finding sent again makes no second comment. A finding without words, one past the case's limit of comments, or one from a caller who may not write comments (comment:create) makes none; nothing here refuses the operation. */
 						findings?: components["schemas"]["Finding"][];
 						images?: components["schemas"]["NewMarkImage"][];
 						createdAt?: components["schemas"]["Timestamp"];
@@ -570,6 +572,7 @@ export interface components {
 						resolution: components["schemas"]["Resolution"] | null;
 						reopens: components["schemas"]["Reopen"][];
 					};
+					/** @description Kept for older clients (the extension up to 0.4.0), still taken and never stored as findings (DEC-053). upsert: each finding becomes a comment on the mark, as in mark.create; the same finding id again makes no second comment, and with another text edits that comment. remove: deletes the comment that finding became. Each only where the comment's own rules let the caller, who also needs comment:create: an edit by the comment's writer through the app the finding names; a delete by its writer through the operation's via app, or by hand by its writer or by someone with comment:moderate. Otherwise the comment stays as it is. A comment that was deleted stays deleted. Nothing here refuses the operation, and the mark's findings stay []. */
 					findings?: {
 						upsert?: components["schemas"]["Finding"][];
 						remove?: components["schemas"]["Id"][];

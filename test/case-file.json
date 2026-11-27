@@ -1,5 +1,5 @@
 {
-	"about": "A case as the server holds it (GET /api/v1/teams/{teamId}/cases/{caseId}) and the case.json of its download (GET …/export) in the extension's format sitegloss/2 (DEC-022, DEC-024). The server's caseFileOf (apps/app/src/server/case-file.ts) gives caseJson for server; the extension's mapping of a server case (mergeCase in src/lib/cloud/wire.ts) has to give the same, and its validateCase has to keep it as it is. Mark 1's element and mark 3's start carry a look (DEC-021), with entries the extension's lookOf drops: a custom property, a value that names a URL, a backdrop's false image and out-of-range depth, a sibling at offset 0. caseMdLookLines: the \"- Look:\" lines the extension's caseMarkdown writes in case.md for caseJson, in order. Screenshot sh_cart has a query (DEC-023): the file's s1 carries it as shots[].query, as the server sends it; sh_pay has none and s2 has no query key. caseMdQueryLines: the lines of case.md that name an address with its query (a mark's \"- Page:\" and the screenshot's \"is of\" line, with the query put back before any hash), in order. singlePageServer, singlePageCaseJson, singlePageCaseMdPageLines: a case with one page and two screenshots of it, sh_results with a query and sh_plain without. The server's caseFileOf gives singlePageCaseJson for singlePageServer, as above. singlePageCaseMdPageLines: every line of its case.md that starts with \"- Page:\" or \"Screenshot \", in order: the case's page, plain; mark 1's page with its screenshot's query; the screenshot with a query and what it is of. Mark 2 and screenshot s2, without a query, name no page, as in a single-page case today (DEC-023). Mark 3 (m_total) has one image a person added (DEC-032): on the server marks[].images [{ id, image: ImageRef, added: Stamp }], in the file marks[].images [{ id, image: \"images/<id>.webp\", added }]; the other marks carry no images key, as from a server before DEC-032, and the file has none for them. caseMdImageLines: every line of case.md for caseJson that starts with \"- Images added:\" or \"![Mark 3, added image\", in order.",
+	"about": "A case as the server holds it (GET /api/v1/teams/{teamId}/cases/{caseId}) and the case.json of its download (GET …/export) in the extension's format sitegloss/2 (DEC-022, DEC-024). The server's caseFileOf (apps/app/src/server/case-file.ts) gives caseJson for server; the extension's mapping of a server case (mergeCase in src/lib/cloud/wire.ts) has to give the same, and its validateCase has to keep it as it is. Mark 1's element and mark 3's start carry a look (DEC-021), with entries the extension's lookOf drops: a custom property, a value that names a URL, a backdrop's false image and out-of-range depth, a sibling at offset 0. caseMdLookLines: the \"- Look:\" lines the extension's caseMarkdown writes in case.md for caseJson, in order. Screenshot sh_cart has a query (DEC-023): the file's s1 carries it as shots[].query, as the server sends it; sh_pay has none and s2 has no query key. caseMdQueryLines: the lines of case.md that name an address with its query (a mark's \"- Page:\" and the screenshot's \"is of\" line, with the query put back before any hash), in order. singlePageServer, singlePageCaseJson, singlePageCaseMdPageLines: a case with one page and two screenshots of it, sh_results with a query and sh_plain without. The server's caseFileOf gives singlePageCaseJson for singlePageServer, as above. singlePageCaseMdPageLines: every line of its case.md that starts with \"- Page:\" or \"Screenshot \", in order: the case's page, plain; mark 1's page with its screenshot's query; the screenshot with a query and what it is of. Mark 2 and screenshot s2, without a query, name no page, as in a single-page case today (DEC-023). Mark 3 (m_total) has one image a person added (DEC-032): on the server marks[].images [{ id, image: ImageRef, added: Stamp }], in the file marks[].images [{ id, image: \"images/<id>.webp\", added }]; the other marks carry no images key, as from a server before DEC-032, and the file has none for them. caseMdImageLines: every line of case.md for caseJson that starts with \"- Images added:\" or \"![Mark 3, added image\", in order. Every mark's findings is [], as a server since DEC-053 sends it (what an AI app wrote is a comment on the mark), and the file's marks have no findings key.",
 	"server": {
 		"id": "c_vector",
 		"teamId": "t_vector",
@@ -221,23 +221,7 @@
 					}
 				},
 				"reopens": [],
-				"findings": [
-					{
-						"id": "f_1",
-						"text": "`.Button_primary` overrides `--button-text`.",
-						"app": {
-							"id": "https://claude.ai/oauth/claude-code",
-							"name": "Claude Code",
-							"host": "claude.ai",
-							"verified": true
-						},
-						"at": "2026-11-20T09:50:00.000Z",
-						"user": {
-							"id": "u_dana",
-							"name": "Dana Developer"
-						}
-					}
-				],
+				"findings": [],
 				"status": "verified",
 				"createdBy": {
 					"id": "u_tess",
@@ -629,23 +613,7 @@
 						"id": "u_dana",
 						"name": "Dana Developer"
 					}
-				},
-				"findings": [
-					{
-						"id": "f_1",
-						"text": "`.Button_primary` overrides `--button-text`.",
-						"app": {
-							"id": "https://claude.ai/oauth/claude-code",
-							"name": "Claude Code",
-							"host": "claude.ai"
-						},
-						"at": "2026-11-20T09:50:00.000Z",
-						"user": {
-							"id": "u_dana",
-							"name": "Dana Developer"
-						}
-					}
-				]
+				}
 			},
 			{
 				"id": "m3",

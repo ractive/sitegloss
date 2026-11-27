@@ -9,8 +9,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	type Case,
 	exactPage,
-	findingCommentId,
-	findingsAsComments,
 	isOfferedOn,
 	type Mark,
 	markAddress,
@@ -47,6 +45,7 @@ import {
 } from "../src/sidepanel/mark-link.ts";
 import { pageView } from "../src/worker/tools.ts";
 import caseFile from "./case-file.json" with { type: "json" };
+import caseMd from "./case-md.json" with { type: "json" };
 import { putCase, sampleCase, withOneMark } from "./fixtures.ts";
 
 const HOME = "https://shop.example/";
@@ -441,32 +440,24 @@ describe("a mark's link", () => {
 	});
 });
 
-describe("the server's member download (its vectors/case-file.json)", () => {
-	// test/case-file.json is sitegloss.dev's packages/api/vectors/case-file.json.
+describe("the server's member download (its vectors/case-file.json, case-md.json)", () => {
+	// test/case-file.json and test/case-md.json are sitegloss.dev's packages/api/vectors/ files.
 	const lines = (c: Case, pick: (line: string) => boolean) =>
 		caseMarkdown(validateCase(c)).split("\n").filter(pick);
 	const pageLine = (l: string) =>
 		l.startsWith("- Page:") || l.startsWith("Screenshot ");
 
-	test("validateCase keeps the server's case.json as it is, the query too, but for its findings, which are comments on their mark", () => {
-		const read = validateCase(caseFile.caseJson);
-		expect(read).toEqual(findingsAsComments(caseFile.caseJson) as never);
-		const [m1] = caseFile.caseJson.marks;
-		const [f1] = m1?.findings ?? [];
-		expect(read.marks[0]).not.toHaveProperty("findings");
-		expect(
-			read.comments?.find((k) => k.id === findingCommentId("m1", "f_1")),
-		).toEqual({
-			id: findingCommentId("m1", "f_1"),
-			mark: "m1",
-			text: f1?.text as string,
-			at: f1?.at as string,
-			user: f1?.user as never,
-			app: f1?.app as never,
-		});
+	test("validateCase keeps the server's case.json as it is, the query too", () => {
+		// Since its DEC-053 the server's marks have no findings; a file's findings becoming comments
+		// is findings-to-comments.test.ts.
+		expect(validateCase(caseFile.caseJson)).toEqual(caseFile.caseJson as never);
 		expect(validateCase(caseFile.singlePageCaseJson)).toEqual(
 			caseFile.singlePageCaseJson as never,
 		);
+	});
+
+	test("case.md is the server's, byte for byte, a highlight included (its vectors/case-md.json)", () => {
+		expect(caseMarkdown(validateCase(caseMd.caseJson))).toBe(caseMd.caseMd);
 	});
 
 	test("case.md names an address with its query, and a mark's added images, as the server's does", () => {

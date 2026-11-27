@@ -511,8 +511,12 @@ before the commit. `SITEGLOSS_E2E=full` is the switch (`test/e2e/mode.ts`).
 
 `bun scripts/api-types.ts` writes the types of the sitegloss.dev API
 (`src/lib/cloud/api.gen.ts`) from the copy of its OpenAPI document in
-`src/lib/cloud/openapi-v1.json`; with a path, it takes a new copy first. Both files are
-committed, and a test fails when they disagree.
+`src/lib/cloud/openapi-v1.json`. Both files are committed, and a test fails when they
+disagree. A new copy of the document comes with the server's test vectors:
+`bun scripts/sync-vectors.ts [../sitegloss.dev]` copies them all byte for byte from a
+checkout of sitegloss.dev, checks each against its `packages/api/vectors/manifest.json`,
+records their hashes in `test/vectors.json` (a test fails on a copy that differs) and
+writes the types again.
 
 Three tests run only against a real sitegloss.dev server, named in `SITEGLOSS_SERVER`
 (the server's `bun scripts/serve-local.ts 3200 --demo` and

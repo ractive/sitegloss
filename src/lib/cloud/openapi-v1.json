@@ -17,7 +17,9 @@
 				"summary": "The caller, their teams and what they may do in each",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"responses": {
@@ -51,7 +53,9 @@
 				"description": "Each case with its marks counted, where it stands (state) and whose turn it is (turn). With mine=true only the caller's cases (DEC-042): the open ones where it is their turn, that is, those assigned to them that are new or in progress, and those they started that are empty, to verify or settled, or that have open marks and nobody assigned. The rule is isMine in the API package, its cases vectors/case-state.json. A server from before ignores mine and lists every case.",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"parameters": [
@@ -123,7 +127,9 @@
 				"description": "Every member of the team, the longest-standing first: the id case.patch's assignee takes and the name they go by. No e-mail address. Any member may read it (DEC-042).",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"parameters": [
@@ -186,7 +192,9 @@
 				"summary": "One case with its screenshots, marks and comments",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"parameters": [
@@ -258,7 +266,9 @@
 				"description": "The case in the extension's file format (`sitegloss/2`): `case.json`, `case.md`, the screenshots in `shots/`, the marks' crops in `crops/` and the images people added to marks in `images/` (`images/<id>.webp`), as the extension's own export lays them out. An image gone from the server while the file is written is left out and named in `MISSING.txt`; its mark stays. The extension's Import a case… reads it; an AI agent reads it as files. Stored entries, no zip64: a case larger than 4 GiB is refused (413). Who may read the case may download it.",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"parameters": [
@@ -341,7 +351,9 @@
 				"description": "Up to 200 operations, applied in order. Each gets its own result: one refused operation does not stop the others. An operation whose opId was applied before is not applied again. An image an operation names must have been uploaded first.",
 				"security": [
 					{
-						"oauth": ["cases:write"]
+						"oauth": [
+							"cases:write"
+						]
 					}
 				],
 				"parameters": [
@@ -425,7 +437,9 @@
 				"description": "Without since: the team's whole state, without what was deleted. With since, 0 included: what changed after that revision, deletions too. Ask again with the returned cursor while more is true.",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"parameters": [
@@ -508,7 +522,9 @@
 				"description": "Server-sent events. `change` events carry a ChangeEvent as JSON: fetch the changes after your cursor. Comment lines keep the connection open. Reconnect when it ends.",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"parameters": [
@@ -590,7 +606,9 @@
 				"summary": "An image",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"responses": {
@@ -642,7 +660,9 @@
 				"summary": "Whether the team has this image",
 				"security": [
 					{
-						"oauth": ["cases:read"]
+						"oauth": [
+							"cases:read"
+						]
 					}
 				],
 				"responses": {
@@ -660,7 +680,9 @@
 				"description": "A WebP image of at most 31457280 bytes whose SHA-256 is the path's. Uploading one the team has is fine. Needs mark:create or mark:update: a screenshot, a crop or an image added to a mark (DEC-032).",
 				"security": [
 					{
-						"oauth": ["cases:write"]
+						"oauth": [
+							"cases:write"
+						]
 					}
 				],
 				"requestBody": {
@@ -754,10 +776,15 @@
 								"type": "string"
 							}
 						},
-						"required": ["code", "message"]
+						"required": [
+							"code",
+							"message"
+						]
 					}
 				},
-				"required": ["error"]
+				"required": [
+					"error"
+				]
 			},
 			"AppRef": {
 				"type": "object",
@@ -779,7 +806,10 @@
 						"const": true
 					}
 				},
-				"required": ["id", "host"],
+				"required": [
+					"id",
+					"host"
+				],
 				"description": "An AI app: its client id, the name it declares, and a host: of its id when that is an address, else of where its sign-in returns to."
 			},
 			"Backdrop": {
@@ -796,7 +826,9 @@
 						"type": "boolean"
 					}
 				},
-				"required": ["color"],
+				"required": [
+					"color"
+				],
 				"description": "The colour that shows behind the element: its own background colour or, while that is transparent or translucent, composited over its ancestors' until an opaque one. color: as computed. depth: how many steps up the opaque background is (0: the element itself), an integer of at most 1,000; with depth, an opaque background was found that many steps up. Without depth no contrast ratio holds: either no opaque background was found up to the page and color is the browser's default canvas for the page's colour scheme (not measured), or color is in a form that was not worked out (for instance oklch(...)) and is given as written, or a malformed depth was dropped. image: true when a background image or gradient on the way may show instead of the colour. The server drops the whole backdrop when color is empty, longer than 300 characters or names a URL (as a style value), and depth when it is not such an integer; not refused. Hard bound: color of at most 2,000 characters."
 			},
 			"BlobInfo": {
@@ -821,7 +853,12 @@
 						"maximum": 9007199254740991
 					}
 				},
-				"required": ["sha256", "bytes", "width", "height"]
+				"required": [
+					"sha256",
+					"bytes",
+					"width",
+					"height"
+				]
 			},
 			"Case": {
 				"type": "object",
@@ -1000,7 +1037,15 @@
 						"maximum": 9007199254740991
 					}
 				},
-				"required": ["id", "caseId", "markId", "text", "user", "at", "rev"],
+				"required": [
+					"id",
+					"caseId",
+					"markId",
+					"text",
+					"user",
+					"at",
+					"rev"
+				],
 				"description": "One comment in a case's thread: what someone (or an AI app for them) says about the case or one of its marks, beside the summary, which stays the reporter's."
 			},
 			"CaseCounts": {
@@ -1028,7 +1073,12 @@
 						"description": "The dismissed marks: won't fix or can't reproduce. The field keeps its first name; it says nothing about whether the case is closed (that is the case's `closed`)."
 					}
 				},
-				"required": ["open", "toVerify", "verified", "closed"],
+				"required": [
+					"open",
+					"toVerify",
+					"verified",
+					"closed"
+				],
 				"description": "A case's marks by status group."
 			},
 			"CaseDetail": {
@@ -1189,7 +1239,9 @@
 						}
 					}
 				},
-				"required": ["cases"]
+				"required": [
+					"cases"
+				]
 			},
 			"CaseState": {
 				"type": "string",
@@ -1342,7 +1394,11 @@
 			},
 			"CaseTurn": {
 				"type": "string",
-				"enum": ["assignee", "reporter", "nobody"],
+				"enum": [
+					"assignee",
+					"reporter",
+					"nobody"
+				],
 				"description": "Whose turn it is (DEC-042): assignee in new and in progress while the case has one (nobody while it has none: it is unassigned); reporter (who started the case) in empty, to verify and settled, while they are a member of the team (nobody once they left it, or when none is on record); nobody in closed."
 			},
 			"ChangeEvent": {
@@ -1354,7 +1410,9 @@
 						"maximum": 9007199254740991
 					}
 				},
-				"required": ["cursor"]
+				"required": [
+					"cursor"
+				]
 			},
 			"Changes": {
 				"type": "object",
@@ -1505,7 +1563,10 @@
 								"type": "number"
 							}
 						},
-						"required": ["width", "height"]
+						"required": [
+							"width",
+							"height"
+						]
 					},
 					"selector": {
 						"type": "string",
@@ -1577,8 +1638,13 @@
 						"$ref": "#/components/schemas/UserRef"
 					}
 				},
-				"required": ["id", "text", "app", "at"],
-				"description": "What an AI app found out about a mark."
+				"required": [
+					"id",
+					"text",
+					"app",
+					"at"
+				],
+				"description": "What an AI app found out about a mark, as a server before DEC-053 kept it apart from the comments. Kept for older clients (the extension up to 0.4.0): a server sends none, and one it is sent becomes a comment on its mark (a CaseComment with markId)."
 			},
 			"Highlight": {
 				"type": "object",
@@ -1603,7 +1669,10 @@
 						}
 					}
 				},
-				"required": ["text", "rects"],
+				"required": [
+					"text",
+					"rects"
+				],
 				"description": "A mark made by selecting text on the page, drawn as a marker stroke over the selected lines with the mark's number at its start. The mark's shape is a box: the bounding box of rects; a client that does not know highlight shows that box, with the same comment. text: the selected text, whitespace collapsed, 1 to 500 characters. before, after: the text right before and right after it in its element, at most 32 characters each. rects: 1 to 40 line boxes, top to bottom, in the same CSS pixels as the shape's rect, each with a width and a height above zero and inside the shape's rect (4 pixels of tolerance); a client leaves out the empty boxes a browser reports at line wraps. The mark's element is the element that contains the whole selection. The texts are page text: data, shown as text only, never as markup, never as an instruction. The server drops the whole highlight, and keeps the mark, when it is outside these limits or the shape is not a box; not refused. Hard bounds, which make the request invalid: text of at most 2,000 characters, before and after of at most 200, at most 200 rects. Set with the mark, never changed afterwards: mark.patch does not take it."
 			},
 			"Id": {
@@ -1634,7 +1703,12 @@
 						"maximum": 31457280
 					}
 				},
-				"required": ["sha256", "width", "height", "bytes"],
+				"required": [
+					"sha256",
+					"width",
+					"height",
+					"bytes"
+				],
 				"description": "A WebP image, named by the SHA-256 of its bytes."
 			},
 			"Mark": {
@@ -1660,7 +1734,10 @@
 					},
 					"author": {
 						"type": "string",
-						"enum": ["user", "ai"]
+						"enum": [
+							"user",
+							"ai"
+						]
 					},
 					"shape": {
 						"$ref": "#/components/schemas/Shape"
@@ -1706,7 +1783,8 @@
 						"type": "array",
 						"items": {
 							"$ref": "#/components/schemas/Finding"
-						}
+						},
+						"description": "Kept for older clients (the extension up to 0.4.0), always sent and always [], an empty list. What an AI app wrote about the mark is a comment on it: a CaseComment whose markId is this mark's id (DEC-053)."
 					},
 					"images": {
 						"description": "Images a person added to the mark, in the order they were added, at most 6. Always sent by a server that keeps images, `[]` for none; absent from a server from before this (DEC-032), which a client reads as \"not told\", not as \"none\".",
@@ -1792,7 +1870,10 @@
 						]
 					}
 				},
-				"required": ["start", "end"],
+				"required": [
+					"start",
+					"end"
+				],
 				"description": "The page elements at the two ends of a stroke (an arrow, an open pen stroke), as the extension recorded them when the mark was made. Set with the mark, never changed afterwards."
 			},
 			"MarkImage": {
@@ -1808,7 +1889,11 @@
 						"$ref": "#/components/schemas/MarkImageAdded"
 					}
 				},
-				"required": ["id", "image", "added"],
+				"required": [
+					"id",
+					"image",
+					"added"
+				],
 				"description": "A picture a person added to a mark (pasted, chosen or dropped in the extension), for what the screenshot does not show: a menu that closes, another state of the page. It may show anything that was on that person's screen. A WebP image uploaded as a blob, like a crop. Only ever added or removed, never changed."
 			},
 			"MarkImageAdded": {
@@ -1828,12 +1913,20 @@
 						"const": true
 					}
 				},
-				"required": ["at"],
+				"required": [
+					"at"
+				],
 				"description": "Who added an image to a mark, and when: a Stamp, set by the server from the caller. In a case that came in from a file (importedAt), an image the file brings keeps the file's time and says imported: true, with no user or app: the server cannot vouch for who added it there."
 			},
 			"MarkStatus": {
 				"type": "string",
-				"enum": ["open", "fixed", "verified", "wontfix", "cantreproduce"],
+				"enum": [
+					"open",
+					"fixed",
+					"verified",
+					"wontfix",
+					"cantreproduce"
+				],
 				"description": "Derived from the resolution, never stored."
 			},
 			"Me": {
@@ -1852,10 +1945,18 @@
 								"type": "string"
 							},
 							"image": {
-								"type": ["string", "null"]
+								"type": [
+									"string",
+									"null"
+								]
 							}
 						},
-						"required": ["id", "name", "email", "image"]
+						"required": [
+							"id",
+							"name",
+							"email",
+							"image"
+						]
 					},
 					"teams": {
 						"type": "array",
@@ -1864,7 +1965,10 @@
 						}
 					}
 				},
-				"required": ["user", "teams"]
+				"required": [
+					"user",
+					"teams"
+				]
 			},
 			"MemberList": {
 				"type": "object",
@@ -1876,7 +1980,9 @@
 						}
 					}
 				},
-				"required": ["members"]
+				"required": [
+					"members"
+				]
 			},
 			"NewMarkImage": {
 				"type": "object",
@@ -1891,7 +1997,10 @@
 						"$ref": "#/components/schemas/Timestamp"
 					}
 				},
-				"required": ["id", "image"],
+				"required": [
+					"id",
+					"image"
+				],
 				"description": "An image to add to a mark. id: the client's, unique in the case (the case file names it `images/<id>.webp`). image: a WebP uploaded first with PUT …/blobs/{sha256}; the server takes the size it measured at upload. at: when it was added, believed only in a case that came in from a file, where the image is then stored as imported, naming no person; otherwise the server's time and the caller."
 			},
 			"Op": {
@@ -1967,13 +2076,20 @@
 										]
 									}
 								},
-								"required": ["id", "title"]
+								"required": [
+									"id",
+									"title"
+								]
 							},
 							"via": {
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "case"]
+						"required": [
+							"opId",
+							"type",
+							"case"
+						]
 					},
 					{
 						"type": "object",
@@ -2041,7 +2157,11 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "caseId"]
+						"required": [
+							"opId",
+							"type",
+							"caseId"
+						]
 					},
 					{
 						"type": "object",
@@ -2057,7 +2177,11 @@
 								"$ref": "#/components/schemas/Id"
 							}
 						},
-						"required": ["opId", "type", "caseId"]
+						"required": [
+							"opId",
+							"type",
+							"caseId"
+						]
 					},
 					{
 						"type": "object",
@@ -2127,7 +2251,12 @@
 								}
 							}
 						},
-						"required": ["opId", "type", "caseId", "shot"]
+						"required": [
+							"opId",
+							"type",
+							"caseId",
+							"shot"
+						]
 					},
 					{
 						"type": "object",
@@ -2143,7 +2272,11 @@
 								"$ref": "#/components/schemas/Id"
 							}
 						},
-						"required": ["opId", "type", "shotId"]
+						"required": [
+							"opId",
+							"type",
+							"shotId"
+						]
 					},
 					{
 						"type": "object",
@@ -2178,7 +2311,10 @@
 									},
 									"author": {
 										"type": "string",
-										"enum": ["user", "ai"]
+										"enum": [
+											"user",
+											"ai"
+										]
 									},
 									"shape": {
 										"$ref": "#/components/schemas/Shape"
@@ -2220,6 +2356,7 @@
 										}
 									},
 									"findings": {
+										"description": "Kept for older clients (the extension up to 0.4.0), still taken and never stored as findings: each becomes a comment on the new mark (DEC-053), with the finding's text and time (never later than now), by the caller and the app the finding names (the caller's own app when it is one); in a case from a file, a finding marked imported keeps its time and names no person. Its comment's id is made from the mark's and the finding's ids, so the same finding sent again makes no second comment. A finding without words, one past the case's limit of comments, or one from a caller who may not write comments (comment:create) makes none; nothing here refuses the operation.",
 										"maxItems": 20,
 										"type": "array",
 										"items": {
@@ -2251,7 +2388,12 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "caseId", "mark"]
+						"required": [
+							"opId",
+							"type",
+							"caseId",
+							"mark"
+						]
 					},
 					{
 						"type": "object",
@@ -2272,7 +2414,10 @@
 							},
 							"author": {
 								"type": "string",
-								"enum": ["user", "ai"]
+								"enum": [
+									"user",
+									"ai"
+								]
 							},
 							"state": {
 								"type": "object",
@@ -2295,9 +2440,13 @@
 										}
 									}
 								},
-								"required": ["resolution", "reopens"]
+								"required": [
+									"resolution",
+									"reopens"
+								]
 							},
 							"findings": {
+								"description": "Kept for older clients (the extension up to 0.4.0), still taken and never stored as findings (DEC-053). upsert: each finding becomes a comment on the mark, as in mark.create; the same finding id again makes no second comment, and with another text edits that comment. remove: deletes the comment that finding became. Each only where the comment's own rules let the caller, who also needs comment:create: an edit by the comment's writer through the app the finding names; a delete by its writer through the operation's via app, or by hand by its writer or by someone with comment:moderate. Otherwise the comment stays as it is. A comment that was deleted stays deleted. Nothing here refuses the operation, and the mark's findings stay [].",
 								"type": "object",
 								"properties": {
 									"upsert": {
@@ -2340,7 +2489,11 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "markId"]
+						"required": [
+							"opId",
+							"type",
+							"markId"
+						]
 					},
 					{
 						"type": "object",
@@ -2356,7 +2509,11 @@
 								"$ref": "#/components/schemas/Id"
 							}
 						},
-						"required": ["opId", "type", "markId"]
+						"required": [
+							"opId",
+							"type",
+							"markId"
+						]
 					},
 					{
 						"type": "object",
@@ -2375,7 +2532,11 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "caseId"]
+						"required": [
+							"opId",
+							"type",
+							"caseId"
+						]
 					},
 					{
 						"type": "object",
@@ -2394,7 +2555,11 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "caseId"]
+						"required": [
+							"opId",
+							"type",
+							"caseId"
+						]
 					},
 					{
 						"type": "object",
@@ -2434,13 +2599,21 @@
 										"$ref": "#/components/schemas/Timestamp"
 									}
 								},
-								"required": ["id", "text"]
+								"required": [
+									"id",
+									"text"
+								]
 							},
 							"via": {
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "caseId", "comment"]
+						"required": [
+							"opId",
+							"type",
+							"caseId",
+							"comment"
+						]
 					},
 					{
 						"type": "object",
@@ -2464,7 +2637,12 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "commentId", "text"]
+						"required": [
+							"opId",
+							"type",
+							"commentId",
+							"text"
+						]
 					},
 					{
 						"type": "object",
@@ -2483,7 +2661,11 @@
 								"$ref": "#/components/schemas/AppRef"
 							}
 						},
-						"required": ["opId", "type", "commentId"]
+						"required": [
+							"opId",
+							"type",
+							"commentId"
+						]
 					}
 				],
 				"description": "One change to a case, a screenshot, a mark or a comment. A server that does not know an operation's type refuses the request; a client sends only the types it knows."
@@ -2508,7 +2690,11 @@
 					},
 					"status": {
 						"type": "string",
-						"enum": ["applied", "duplicate", "rejected"]
+						"enum": [
+							"applied",
+							"duplicate",
+							"rejected"
+						]
 					},
 					"error": {
 						"type": "object",
@@ -2520,7 +2706,10 @@
 								"type": "string"
 							}
 						},
-						"required": ["code", "message"]
+						"required": [
+							"code",
+							"message"
+						]
 					},
 					"number": {
 						"type": "integer",
@@ -2533,7 +2722,10 @@
 						"maximum": 9007199254740991
 					}
 				},
-				"required": ["opId", "status"]
+				"required": [
+					"opId",
+					"status"
+				]
 			},
 			"OpsRequest": {
 				"type": "object",
@@ -2547,7 +2739,9 @@
 						}
 					}
 				},
-				"required": ["ops"]
+				"required": [
+					"ops"
+				]
 			},
 			"OpsResponse": {
 				"type": "object",
@@ -2564,7 +2758,10 @@
 						"maximum": 9007199254740991
 					}
 				},
-				"required": ["results", "cursor"]
+				"required": [
+					"results",
+					"cursor"
+				]
 			},
 			"Page": {
 				"type": "object",
@@ -2582,7 +2779,10 @@
 						"maxLength": 35
 					}
 				},
-				"required": ["url", "title"],
+				"required": [
+					"url",
+					"title"
+				],
 				"description": "A page of the case: origin, path and hash route, no query. A case lists a page once, and a page is its path in whatever environment: `https://shop.example/cart` and `http://localhost:3000/cart/` are one page, two sites' home pages are two (the rule and its test cases: `pageKey` and `vectors/page-key.json` in the API package). The server keeps the list: a screenshot of a page the case does not have adds it, and a page leaves with its last screenshot, except the last page of all."
 			},
 			"Point": {
@@ -2595,7 +2795,10 @@
 						"type": "number"
 					}
 				},
-				"required": ["x", "y"]
+				"required": [
+					"x",
+					"y"
+				]
 			},
 			"Rect": {
 				"type": "object",
@@ -2613,14 +2816,24 @@
 						"type": "number"
 					}
 				},
-				"required": ["x", "y", "width", "height"]
+				"required": [
+					"x",
+					"y",
+					"width",
+					"height"
+				]
 			},
 			"Removed": {
 				"type": "object",
 				"properties": {
 					"type": {
 						"type": "string",
-						"enum": ["case", "shot", "mark", "comment"]
+						"enum": [
+							"case",
+							"shot",
+							"mark",
+							"comment"
+						]
 					},
 					"id": {
 						"$ref": "#/components/schemas/Id"
@@ -2634,7 +2847,11 @@
 						"maximum": 9007199254740991
 					}
 				},
-				"required": ["type", "id", "rev"]
+				"required": [
+					"type",
+					"id",
+					"rev"
+				]
 			},
 			"Reopen": {
 				"type": "object",
@@ -2660,7 +2877,10 @@
 						"$ref": "#/components/schemas/UserRef"
 					}
 				},
-				"required": ["at", "was"],
+				"required": [
+					"at",
+					"was"
+				],
 				"description": "One time a settled mark was opened again, with the resolution it ended."
 			},
 			"Resolution": {
@@ -2690,12 +2910,19 @@
 						"$ref": "#/components/schemas/UserRef"
 					}
 				},
-				"required": ["kind", "at"],
+				"required": [
+					"kind",
+					"at"
+				],
 				"description": "How a mark was settled. verified only with kind fixed."
 			},
 			"ResolutionKind": {
 				"type": "string",
-				"enum": ["fixed", "wontfix", "cantreproduce"]
+				"enum": [
+					"fixed",
+					"wontfix",
+					"cantreproduce"
+				]
 			},
 			"Shape": {
 				"oneOf": [
@@ -2710,7 +2937,10 @@
 								"$ref": "#/components/schemas/Rect"
 							}
 						},
-						"required": ["kind", "rect"]
+						"required": [
+							"kind",
+							"rect"
+						]
 					},
 					{
 						"type": "object",
@@ -2723,7 +2953,10 @@
 								"$ref": "#/components/schemas/Rect"
 							}
 						},
-						"required": ["kind", "rect"]
+						"required": [
+							"kind",
+							"rect"
+						]
 					},
 					{
 						"type": "object",
@@ -2739,7 +2972,11 @@
 								"$ref": "#/components/schemas/Point"
 							}
 						},
-						"required": ["kind", "from", "to"]
+						"required": [
+							"kind",
+							"from",
+							"to"
+						]
 					},
 					{
 						"type": "object",
@@ -2756,7 +2993,10 @@
 								}
 							}
 						},
-						"required": ["kind", "points"]
+						"required": [
+							"kind",
+							"points"
+						]
 					},
 					{
 						"type": "object",
@@ -2769,7 +3009,10 @@
 								"$ref": "#/components/schemas/Point"
 							}
 						},
-						"required": ["kind", "at"]
+						"required": [
+							"kind",
+							"at"
+						]
 					}
 				],
 				"description": "A mark's drawing, in CSS pixels of its screenshot."
@@ -2840,7 +3083,11 @@
 						"$ref": "#/components/schemas/Rect"
 					}
 				},
-				"required": ["offset", "tag", "rect"],
+				"required": [
+					"offset",
+					"tag",
+					"rect"
+				],
 				"description": "The box of one of the element's nearest element siblings. offset: its place relative to the element, an integer from -100 to 100, never 0 (-1 the sibling right before it, 1 the one right after). tag: the element's name (a letter, then letters, digits, -, _, . or :; at most 100). rect: in the same document CSS pixels as the element's rect. The server drops a sibling whose offset or tag is not so, and keeps the first 6; not refused."
 			},
 			"Stamp": {
@@ -2856,7 +3103,9 @@
 						"$ref": "#/components/schemas/AppRef"
 					}
 				},
-				"required": ["at"],
+				"required": [
+					"at"
+				],
 				"description": "Who did something, and when: the person (set by the server from the caller's login, never taken from a client) and the AI app they acted through. Written in words: `Dana via Claude Code`."
 			},
 			"TeamMember": {
@@ -2869,7 +3118,10 @@
 						"type": "string"
 					}
 				},
-				"required": ["id", "name"],
+				"required": [
+					"id",
+					"name"
+				],
 				"description": "A member of the team: the user id a case is assigned with (case.patch's assignee) and the name they go by. Never an e-mail address."
 			},
 			"TeamMembership": {
@@ -2894,7 +3146,13 @@
 						}
 					}
 				},
-				"required": ["id", "name", "slug", "role", "permissions"]
+				"required": [
+					"id",
+					"name",
+					"slug",
+					"role",
+					"permissions"
+				]
 			},
 			"Timestamp": {
 				"type": "string",
@@ -2914,7 +3172,10 @@
 						"maxLength": 200
 					}
 				},
-				"required": ["id", "name"],
+				"required": [
+					"id",
+					"name"
+				],
 				"description": "A person. Set by the server from the caller's login, never taken from a client."
 			},
 			"Verification": {
@@ -2934,7 +3195,9 @@
 						"$ref": "#/components/schemas/UserRef"
 					}
 				},
-				"required": ["at"]
+				"required": [
+					"at"
+				]
 			},
 			"Viewport": {
 				"type": "object",
@@ -2949,7 +3212,11 @@
 						"type": "number"
 					}
 				},
-				"required": ["width", "height", "dpr"],
+				"required": [
+					"width",
+					"height",
+					"dpr"
+				],
 				"description": "The window in CSS pixels; dpr: screenshot pixels per CSS pixel."
 			}
 		},

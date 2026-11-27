@@ -5,10 +5,12 @@
  * build and CI need neither the server's repository nor the network.
  *
  *   bun scripts/api-types.ts                 the types, from the copy here
- *   bun scripts/api-types.ts <v1.json>       take a new copy first (the
- *                                            server's packages/api/openapi/v1.json)
  *   bun scripts/api-types.ts --check         fail when the types are not what
  *                                            the copy gives (the tests run it)
+ *
+ * A new copy of the server's packages/api/openapi/v1.json comes with
+ * `bun scripts/sync-vectors.ts`, byte for byte (Biome leaves it as it is),
+ * which writes the types too.
  *
  * openapi-typescript is a dev dependency only: nothing of it is in the
  * extension, which has the types and no code from them.
@@ -84,15 +86,6 @@ export async function typesOf(spec: string): Promise<string> {
 if (import.meta.main) {
 	const args = process.argv.slice(2);
 	const check = args.includes("--check");
-	const from = args.find((arg) => !arg.startsWith("--"));
-	if (from !== undefined && !check) {
-		const json: unknown = await Bun.file(from).json();
-		await Bun.write(
-			SPEC,
-			await formatted(SPEC, `${JSON.stringify(json, null, "\t")}\n`),
-		);
-		console.log(`Copied ${from}`);
-	}
 	const types = await typesOf(SPEC);
 	if (check) {
 		if ((await Bun.file(TYPES).text()) !== types) {
