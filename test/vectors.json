@@ -1,8 +1,8 @@
 {
 	"about": "The SHA-256 of each copy of a file of sitegloss.dev's packages/api (its vectors/manifest.json): the shared test vectors and the OpenAPI document. Written by bun scripts/sync-vectors.ts; test/vectors.test.ts fails on a copy whose bytes are not these.",
-	"commit": "434a761e5f207597be8677b5aa160f4042a265fd",
+	"commit": "956c1bbfd54784fad199bfef8f38c82546269d32",
 	"files": {
-		"test/agent-instructions.json": "4863acac65d57357724a2a3131c6d0e59178fabcaa5954651d3284e8763ca6bf",
+		"test/agent-instructions.json": "347c24475774bfaae8599822374a22871aa5bd11494a5550543220df2186eb73",
 		"test/case-file.json": "e98a8ae5a1e7c349aee1feb713d103e3d7eabe2a53ed24b05e78eb9c4225b586",
 		"test/case-md.json": "61c4196fbb0345a1e0bd3e05120d5da6af0ad49a441ba0d6f28e628dfcce397a",
 		"test/case-state.json": "e9c733e52c47c58d72e0af41c7ff0682c7353e8c48aea50effab42ba9b66716f",

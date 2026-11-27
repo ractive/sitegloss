@@ -17,8 +17,12 @@ test("the case's id and address are the ref's, not the vector's", () => {
 		id: "c_dev",
 		url: "https://app.dev.example/t/acme/cases/c_dev",
 	});
-	expect(text).toContain("Case id: c_dev\n");
-	expect(text).toEndWith("\nhttps://app.dev.example/t/acme/cases/c_dev");
+	expect(text).toStartWith(
+		"Fix the open marks of Sitegloss case c_dev in this repository.\n",
+	);
+	expect(text).toEndWith(
+		"\nThe case for people: https://app.dev.example/t/acme/cases/c_dev",
+	);
 	expect(text).not.toContain("c_shop");
 });
 
@@ -26,15 +30,17 @@ test("the case's id and address are the ref's, not the vector's", () => {
 const markInstructions = (instructions as Record<string, unknown>)[
 	"markInstructions"
 ] as
-	| ((ref: { id: string; url: string }, mark: { number: number }) => string)
+	| ((
+			ref: { id: string; url: string },
+			mark: { number: number; reopened?: boolean },
+	  ) => string)
 	| undefined;
 
-const forOneMark = "the text for one mark is the web app's, word for word";
+const forOneMark =
+	"the text for one mark, and for one open again after a reopen, is the web app's, word for word";
 if (markInstructions === undefined) test.todo(forOneMark);
 else
 	test(forOneMark, () => {
-		const { id, url } = vector.mark.ref;
-		expect(markInstructions({ id, url }, vector.mark.mark)).toBe(
-			vector.mark.text,
-		);
+		for (const { ref, mark, text } of [vector.mark, vector.markReopened])
+			expect(markInstructions({ id: ref.id, url: ref.url }, mark)).toBe(text);
 	});
