@@ -5070,7 +5070,8 @@ hand. It reaches users with the next release: 0.4.0 is in the stores' review wit
 old text, and the version is not changed here.
 
 Shortened on 27 November 2026 (owner, sitegloss.dev DEC-050): the same rules in fewer
-words and the case id in the first line. get_mark stays optional (step 1 reads a mark
+words and the case id in the first line; the stop rule, browser ban included, sits in
+the tools paragraph. get_mark stays optional (step 1 reads a mark
 with it "if there is one", and it is not among the tools the text requires): 0.4.0 relays
 no get_mark, and an AI app connected only through it must not stop. The copy is held to
 the server's vector (`test/agent-instructions.json`).
@@ -5263,8 +5264,8 @@ they were: its `get_case` answers with the whole case as JSON, findings included
 `add_finding` writes one. Its findings of a team's case go to the service, which makes
 them comments; the service answers with no findings, so on the next sync they leave that
 extension's marks and come back as comments in its thread. The copied text's step 1 says
-"if you have that tool", so an AI app on an older extension reads the case with
-`get_case` alone.
+"if you have that tool" (now "if there is one", DEC-080, 27 November), so an AI app on an
+older extension reads the case with `get_case` alone.
 
 Decided here, not by the owner:
 
