@@ -5070,10 +5070,10 @@ hand. It reaches users with the next release: 0.4.0 is in the stores' review wit
 old text, and the version is not changed here.
 
 Shortened on 27 November 2026 (owner, sitegloss.dev DEC-050): the same rules in fewer
-words, the case id in the first line, and get_mark among the tools without "if you have
-that tool". The copy is held to the server's vector (`test/agent-instructions.json`).
-DEC-081's "if you have that tool" no longer holds: an AI app whose only connection is an
-extension without get_mark (0.4.0 and older) is told to stop and say so.
+words and the case id in the first line. get_mark stays optional (step 1 reads a mark
+with it "if there is one", and it is not among the tools the text requires): 0.4.0 relays
+no get_mark, and an AI app connected only through it must not stop. The copy is held to
+the server's vector (`test/agent-instructions.json`).
 
 ## DEC-081: The tools for an AI app as the server's: a case read in three steps, findings are comments (owner, 25 November 2026)
 
