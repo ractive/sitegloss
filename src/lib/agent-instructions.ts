@@ -28,23 +28,25 @@ export interface CaseRef {
 /** The mark the instructions are about. */
 export interface MarkRef {
 	number: number;
-	/** The mark is open and was reopened at least once: its reopen note says what is still wrong. */
+	/** The mark is open after a reopen whose note says something: that note says what is still wrong. */
 	reopened?: boolean;
 }
 
-/** A mark as the instructions need it: its number, and whether it is open again after a reopen. */
+/** A mark as the instructions need it: its number, and whether it is open again after a reopen with a note (a reopen's note is optional; without one there is nothing to point at). */
 export const markRef = (
 	mark: Pick<Mark, "number" | "resolution" | "reopens">,
 ): MarkRef => ({
 	number: mark.number,
-	reopened: mark.resolution === undefined && (mark.reopens?.length ?? 0) > 0,
+	reopened:
+		mark.resolution === undefined &&
+		(mark.reopens?.at(-1)?.note?.trim() ?? "") !== "",
 });
 
 /** Where the public help page says how to connect an AI app. */
 const HELP_MCP_URL = "https://sitegloss.dev/help/#mcp";
 
 /** The tools, when to stop, and where to set them up. */
-const TOOLS = `Use the Sitegloss tools get_case, add_comment and set_mark_status. If they are missing or ask you to sign in, stop and tell me; do not read the case any other way. Setup: ${HELP_MCP_URL}`;
+const TOOLS = `Use the Sitegloss tools get_case, add_comment and set_mark_status. If they are missing or ask you to sign in, stop and tell me; do not open the case in a browser or read it any other way. Setup: ${HELP_MCP_URL}`;
 
 const VERIFIED = 'Never set a mark to "verified": the reporter does that.';
 
