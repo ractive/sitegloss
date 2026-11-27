@@ -5406,12 +5406,15 @@ with their pictures in one call through either connection.
   crop's line is reckoned at 320 characters (the server's 250), since here a crop's name and a
   case id may each be 64 characters.
 - **Pictures.** The crops share what the relay's message has left once the texts are in it (as
-  for one mark: 75 % of the message limit, less the texts and 400 bytes), sent in order while it
-  lasts; one that does not fit is listed with its `get_image` call ("the pictures before it fill
-  this answer"). The crops are read and scaled two at a time (`SCALING_AT_ONCE`, the server's
+  for one mark: 75 % of the message limit, less the texts and 400 bytes): in order, each crop that still
+  fits is sent (a small one after one that did not fit too, as on the server); one that does not
+  fit is listed with its `get_image` call ("the pictures before it fill this answer"). A crop that
+  cannot be read or scaled is listed the same way ("it could not be read or scaled now":
+  `get_image` may try it again) and the other marks are answered, as the server's `smallCopy`
+  does; a call for one mark fails as before. The crops are read and scaled two at a time (`SCALING_AT_ONCE`, the server's
   number), so that one call does not hold up the scaling of the others.
 - The description, the line about it in `get_case`'s and the instructions say so, in the server's
   words where they fit. Tests (`test/tools.test.ts`): the order with an unknown number and a
   repeat, `marks: [n]` equal to `mark: n`, the stop at a whole mark with the call for the rest,
-  the refusals. Not tested: a crop left out because the crops before it filled the message, and
+  the refusals, a crop that cannot be scaled among several. Not tested: a crop left out because the crops before it filled the message, and
   the two at a time.

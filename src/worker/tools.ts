@@ -1436,20 +1436,35 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 		return { fixed: [...lines, ...tail].join("\n").length, text };
 	}
 
-	/** A mark's crop as get_mark sends it: as stored when small, else scaled; none when not in this browser. */
+	/**
+	 * A mark's crop as get_mark sends it: as stored when small, else scaled;
+	 * none when not in this browser. One that cannot be read or scaled is
+	 * `failed` when `alone` is false: the other marks of the call are still
+	 * answered (the server's smallCopy gives null); a call for one mark fails
+	 * as it always did.
+	 */
 	async function cropCopy(
 		c: Case,
 		a: Mark,
+		alone: boolean,
 	): Promise<
-		{ stored: StoredImage; small: boolean; block: Content } | undefined
+		| { stored: StoredImage; small: boolean; block: Content }
+		| "failed"
+		| undefined
 	> {
-		const stored = await store.getImage(c.id, a.crop);
-		if (stored === undefined) return undefined;
-		const small = Math.max(stored.width, stored.height) <= CROP_SIDE;
-		const block = await image(
-			small ? stored : await images.scale(stored.blob, CROP_SIDE),
-		);
-		return { stored, small, block };
+		try {
+			const stored = await store.getImage(c.id, a.crop);
+			if (stored === undefined) return undefined;
+			const small = Math.max(stored.width, stored.height) <= CROP_SIDE;
+			const block = await image(
+				small ? stored : await images.scale(stored.blob, CROP_SIDE),
+			);
+			return { stored, small, block };
+		} catch (error) {
+			if (alone) throw error;
+			debugLog("crop", error);
+			return "failed";
+		}
 	}
 
 	const getMark: ModelContextTool<{
@@ -1592,9 +1607,9 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			}
 
 			// The crops, a few at a time, so that one call does not hold up the
-			// scaling of others; sent in order while the relay's message lasts.
+			// scaling of others; each sent, in order, while it still fits.
 			const copies = await inTurns(marks, SCALING_AT_ONCE, (a) =>
-				cropCopy(c, a),
+				cropCopy(c, a, numbers.length === 1),
 			);
 			const content: Content[] = head ? [text(head)] : [];
 			// What the relay's message has left for pictures once the texts and
@@ -1622,13 +1637,19 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 				const body = bodies.get(a.number);
 				if (body) content.push(body);
 				const copy = copies[marks.indexOf(a)];
-				if (copy === undefined || sizeOf(copy.block) > left) {
+				if (
+					copy === undefined ||
+					copy === "failed" ||
+					sizeOf(copy.block) > left
+				) {
 					const why =
 						copy === undefined
 							? "the picture is not in this browser"
-							: sent > 0
-								? "the pictures before it fill this answer"
-								: "too large for this answer";
+							: copy === "failed"
+								? "it could not be read or scaled now"
+								: sent > 0
+									? "the pictures before it fill this answer"
+									: "too large for this answer";
 					content.push(
 						text(
 							`Its crop (not sent here: ${why}): ${plainLine(a.crop)}: ${getImageCall(c.id, a.crop)}`,

@@ -676,6 +676,39 @@ describe("tools", () => {
 		);
 	});
 
+	test("get_mark with marks: a crop that cannot be scaled is listed with its get_image call, the other marks answered; for one mark the call fails", async () => {
+		await seed(2000);
+		await store.putImage("c_1", "crops/m2.webp", {
+			blob: webp(123),
+			width: 2000,
+			height: 10,
+		});
+		build({
+			images: {
+				...images,
+				scale: async (blob, side) => {
+					if (blob.size === 123) throw new Error("no canvas");
+					return images.scale(blob, side);
+				},
+			},
+		});
+		const read = await call("get_mark", { caseId: "c_1", marks: [1, 2] });
+		expect(read.content.map((c) => c.type)).toEqual([
+			"text",
+			"text",
+			"text",
+			"image",
+			"text",
+			"text",
+		]);
+		expect(read.content.at(-1)?.text).toBe(
+			'Its crop (not sent here: it could not be read or scaled now): crops/m2.webp: get_image("c_1", path: "crops/m2.webp")',
+		);
+		await expect(call("get_mark", { caseId: "c_1", mark: 2 })).rejects.toThrow(
+			"no canvas",
+		);
+	});
+
 	test("get_mark refuses neither and both of mark and marks, and marks of which none is a mark", async () => {
 		await seed();
 		const read = (input: Record<string, unknown>) =>
