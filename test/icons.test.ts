@@ -44,4 +44,16 @@ describe("icons", () => {
 		expect(button.childElementCount).toBe(0);
 		expect(button.textContent).toBe("Done");
 	});
+
+	test("an icon-only Copy shows its icon alone, the check once copied", () => {
+		const doc = window.document as unknown as Document;
+		const button = doc.createElement("button");
+		button.className = "copy icon-only";
+		icons.setCopyLabel(button, "Copy");
+		expect(button.textContent).toBe("");
+		expect(button.firstElementChild?.getAttribute("data-icon")).toBe("copy");
+		icons.setCopyLabel(button, "Copied");
+		expect(button.childElementCount).toBe(1);
+		expect(button.firstElementChild?.getAttribute("data-icon")).toBe("check");
+	});
 });

@@ -131,15 +131,21 @@ export function withIcon(
 /**
  * A Copy button's content in either state: its icon, and its words in a box
  * as wide as "Copied", so the button keeps its width when it says so and
- * nothing beside it moves (style.css, `.copy-words`).
+ * nothing beside it moves (style.css, `.copy-words`). An `icon-only` button
+ * (the pairing box's two) shows the icon alone: the check says "Copied".
  */
 export function setCopyLabel(el: HTMLElement, what: "Copy" | "Copied"): void {
 	const doc = el.ownerDocument;
+	const glyph = icon(what === "Copied" ? "check" : "copy", doc);
+	if (el.classList.contains("icon-only")) {
+		el.replaceChildren(glyph);
+		return;
+	}
 	const words = doc.createElement("span");
 	words.className = "copy-words";
 	words.setAttribute("data-wide", "Copied");
 	words.textContent = what;
-	el.replaceChildren(icon(what === "Copied" ? "check" : "copy", doc), words);
+	el.replaceChildren(glyph, words);
 }
 
 /**

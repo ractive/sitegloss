@@ -3721,6 +3721,11 @@ button.copy {
 	flex: none;
 }
 
+/* The pairing box's Copy buttons: the icon alone, square (icon-only). */
+button.copy.icon-only {
+	min-width: 0;
+}
+
 /* A Copy's words (icons.ts, `setCopyLabel`): as wide as "Copied", the
    wider of its two, under them a line of no height; centred. */
 .copy-words {
