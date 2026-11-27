@@ -13,9 +13,7 @@ import {
 import {
 	addedImage,
 	type Case,
-	caseImages,
 	cleanTitle,
-	heldImagesOf,
 	MARK_CHANGED,
 	MAX_MARK_IMAGES,
 	type Mark,
@@ -43,6 +41,7 @@ import {
 	withVerified,
 } from "../lib/case.ts";
 import { sha256Of } from "../lib/cloud/api.ts";
+import { debugLog } from "../lib/debug.ts";
 import {
 	type CheckedExport,
 	exportAllCases,
@@ -56,23 +55,20 @@ import {
 } from "../lib/export.ts";
 import { toAddedImage } from "../lib/images.ts";
 import {
+	askWorker,
 	type Broadcast,
 	type ImagesFor,
-	type ImagesForAnswer,
 	isMarkRequest,
 	isOpenCaseRequest,
-	type LoadReplacedAnswer,
 	type LoadResult,
 	type MarkAnswer,
-	type MarkMatch,
 	type MarkRequest,
 	type OpenCaseAnswer,
 	type OpenCaseRequest,
 	type OverlayState,
-	type WorkerRequest,
 } from "../lib/messages.ts";
 import { IdbStore, type StoredImage } from "../lib/store.ts";
-import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
+import { askTab, inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { markPictures } from "../viewer/pictures.ts";
 import {
@@ -91,6 +87,7 @@ import {
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
+import { droppedUrls, reuseImages } from "./case-images.ts";
 import { linkFromField } from "./case-link.ts";
 import { closedSaid } from "./closed";
 import { cloudActions, startCloud } from "./cloud.ts";
@@ -273,7 +270,10 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 /** The tab's size in CSS pixels, as a case records its viewport. */
 async function tabSize(tab: chrome.tabs.Tab): Promise<Size | undefined> {
 	if (tab.id === undefined || !tab.width || !tab.height) return undefined;
-	const zoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+	const zoom = await chrome.tabs.getZoom(tab.id).catch((error: unknown) => {
+		debugLog("tab zoom", error);
+		return 1;
+	});
 	return cssSize({ width: tab.width, height: tab.height }, zoom);
 }
 
@@ -392,7 +392,7 @@ const SHOW_WAIT_MS = 120_000;
 async function showPending(): Promise<void> {
 	const p = pendingShow;
 	const { keep, shown } = await tryShow(p, state.loaded, Date.now(), (q) =>
-		chrome.tabs.sendMessage(q.tabId, {
+		askTab(q.tabId, {
 			type: "case:show",
 			caseId: q.caseId,
 			markId: q.markId,
@@ -430,9 +430,11 @@ async function loadInto(
 	const here = { tabId, caseId: c.id };
 	try {
 		loadsUnderWay++;
-		const result = await sendToTab<
-			LoadResult | LoadReplacedAnswer | { error: string; busy?: true }
-		>(tabId, {
+		// Not told: a mark from the page's own Add marks is refused later.
+		await handCase(tabId, c.id).catch((error: unknown) =>
+			debugLog("hand case to worker", error),
+		);
+		const result = await sendToTab(tabId, {
 			type: "case:load",
 			case: c,
 		}).finally(() => loadsUnderWay--);
@@ -538,9 +540,10 @@ async function readMatches(
 	hint: ReturnType<typeof followHint>,
 	again: boolean,
 ): Promise<void> {
-	const result = (await chrome.tabs
-		.sendMessage(tabId, { type: "case:matches", caseId: c.id })
-		.catch(() => null)) as LoadResult | null;
+	const result = await askTab(tabId, {
+		type: "case:matches",
+		caseId: c.id,
+	}).catch(() => null);
 	// Not for what another draw put there meanwhile.
 	if (
 		result === null ||
@@ -583,9 +586,9 @@ async function readMatches(
  */
 async function readLoaded(c: Case, tabId: number): Promise<void> {
 	const hint = followHint();
-	const result = (await chrome.tabs
-		.sendMessage(tabId, { type: "case:update", case: c })
-		.catch(() => null)) as LoadResult | null;
+	const result = await askTab(tabId, { type: "case:update", case: c }).catch(
+		() => null,
+	);
 	if (result === null || !showing(c.id) || state.loaded !== undefined) return;
 	update((s) => {
 		s.loaded = {
@@ -774,12 +777,29 @@ async function settledSize(tabId: number): Promise<void> {
 	}
 }
 
+/**
+ * The tab's page may add marks to the case (tab-cases.ts): the worker is
+ * told before the page gets it; `adding`: for the page's toolbar.
+ */
+async function handCase(
+	tabId: number,
+	caseId: string,
+	adding = false,
+): Promise<void> {
+	const answer = await askWorker({
+		type: "tab:case",
+		tabId,
+		caseId,
+		...(adding ? { adding: true as const } : {}),
+	});
+	if (answer === undefined) throw new Error("Sitegloss did not answer.");
+	if (!answer.ok) throw new Error(answer.error);
+}
+
 /** The overlay's state on the tab, or `undefined` where it is not injected. */
 async function overlayState(tabId: number): Promise<OverlayState | undefined> {
 	try {
-		return (await chrome.tabs.sendMessage(tabId, {
-			type: "overlay:state",
-		})) as OverlayState;
+		return await askTab(tabId, { type: "overlay:state" });
 	} catch {
 		return undefined;
 	}
@@ -1021,20 +1041,22 @@ async function refreshCase(): Promise<void> {
 	if (state.images?.caseId === c.id && state.images.version === c.updatedAt)
 		return;
 	const images = imagesWork.start();
-	const urls = new Map<string, string>();
 	// Its screenshots, the marks' crops and the images added to them, those
-	// held back here too (DEC-058).
-	for (const path of [...caseImages(c), ...heldImagesOf(c)]) {
+	// held back here too (DEC-058): only the new or changed ones are read.
+	const { keys, kept, read } = reuseImages(state.images, c);
+	const made = new Map<string, string>();
+	for (const path of read) {
 		const image = await store.getImage(c.id, path);
-		if (image !== undefined) urls.set(path, URL.createObjectURL(image.blob));
+		if (image !== undefined) made.set(path, URL.createObjectURL(image.blob));
 	}
 	if (!images.current()) {
-		for (const url of urls.values()) URL.revokeObjectURL(url);
+		for (const url of made.values()) URL.revokeObjectURL(url);
 		return;
 	}
+	const urls = new Map([...kept, ...made]);
 	update((s) => {
-		releaseImages(s);
-		s.images = { caseId: c.id, version: c.updatedAt, urls };
+		for (const url of droppedUrls(s.images, urls)) URL.revokeObjectURL(url);
+		s.images = { caseId: c.id, version: c.updatedAt, urls, keys };
 	});
 }
 
@@ -1079,6 +1101,7 @@ function openCase(id: string): void {
 		if (other) {
 			s.current = undefined;
 			s.verdictStatus = undefined;
+			imagesWork.cancel();
 			releaseImages(s);
 		}
 		s.view = { kind: "case", id };
@@ -1129,15 +1152,15 @@ async function endToolbars(
 	let timedOut = false;
 	const answers = await Promise.all(
 		[...tabs].map(async (tabId) => {
-			const answer = (await Promise.race([
-				chrome.tabs
-					.sendMessage(tabId, { type: "overlay:end", caseId, ...how })
-					.catch(() => undefined),
+			const answer = await Promise.race([
+				askTab(tabId, { type: "overlay:end", caseId, ...how }).catch(
+					() => undefined,
+				),
 				sleep(testWait("endMs", END_TIMEOUT_MS)).then(() => {
 					timedOut = true;
 					return undefined;
 				}),
-			])) as OverlayState | undefined;
+			]);
 			return { tabId, answer };
 		}),
 	);
@@ -1165,15 +1188,19 @@ async function askAllTabs(): Promise<TabAnswer[]> {
 
 /** `askAllTabs`, by tab id. */
 async function askTabsById(): Promise<Map<number, TabAnswer>> {
-	const tabs = await chrome.tabs.query({}).catch(() => []);
+	const tabs = await chrome.tabs.query({}).catch((error: unknown) => {
+		debugLog("tabs query", error);
+		return [];
+	});
 	const answers = await Promise.all(
 		tabs.map(async ({ id }): Promise<[number, TabAnswer]> => {
 			if (id === undefined) return [-1, "none"];
 			return [
 				id,
 				await Promise.race([
-					chrome.tabs.sendMessage(id, { type: "overlay:state" }).then(
-						(s) => (s as OverlayState | undefined) ?? "unsure",
+					askTab(id, { type: "overlay:state" }).then(
+						// A content script of another build may not answer it.
+						(s): TabAnswer => s ?? "unsure",
 						() => "none" as const,
 					),
 					sleep(ASK_TAB_MS).then(() => "unsure" as const),
@@ -1267,7 +1294,9 @@ async function closeFromPanel(caseId: string): Promise<void> {
 	);
 	if (!left) return;
 	// Read again: another writer may have reopened it meanwhile.
-	const saved = await store.getCase(caseId).catch(() => undefined);
+	const saved = await store
+		.getCase(caseId)
+		.catch((error: unknown) => debugLog("read case", error));
 	if (saved?.closed === undefined || state.view.kind !== "home") return;
 	update((s) => {
 		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
@@ -1412,7 +1441,10 @@ async function endDeleted(
 	caseId: string,
 	title: string | undefined,
 ): Promise<void> {
-	const tabs = await chrome.tabs.query({}).catch(() => []);
+	const tabs = await chrome.tabs.query({}).catch((error: unknown) => {
+		debugLog("tabs query", error);
+		return [];
+	});
 	let lost = 0;
 	await Promise.all(
 		tabs.map(async ({ id }) => {
@@ -1451,7 +1483,10 @@ async function forgetUntouched(caseId: string): Promise<boolean> {
 	const link = typedLink(caseId);
 	const gone = await store
 		.deleteCaseIf(caseId, (c) => isUntouched(c, typed, title, link))
-		.catch(() => false);
+		.catch((error: unknown) => {
+			debugLog("delete untouched case", error);
+			return false;
+		});
 	if (!gone) return false;
 	update((s) => {
 		s.verdictDrafts.delete(caseId);
@@ -1515,7 +1550,9 @@ async function startAddingMarks(
 	const tab = { id };
 	tabWork.cancel(); // a refresh still running must not overwrite this
 	try {
-		const overlay = await sendToTab<OverlayState>(tab.id, {
+		// Not told, the toolbar's marks would be refused: it does not come up.
+		await handCase(tab.id, target.id, true);
+		const overlay = await sendToTab(tab.id, {
 			type: "overlay:show",
 			blurForms: await blurFormsNow(),
 			target: {
@@ -1661,19 +1698,20 @@ async function linkCase(caseId: string, text: string): Promise<void> {
  * A toolbar adding to another case ignores it.
  */
 async function retitleToolbars(c: Case): Promise<void> {
-	const tabs = (await chrome.tabs.query({}).catch(() => [])).flatMap((t) =>
-		t.id === undefined ? [] : [t.id],
-	);
+	const tabs = (
+		await chrome.tabs.query({}).catch((error: unknown) => {
+			debugLog("tabs query", error);
+			return [];
+		})
+	).flatMap((t) => (t.id === undefined ? [] : [t.id]));
 	// Each on its own: a tab that does not answer holds up no other.
 	await Promise.all(
 		tabs.map(async (tabId) => {
-			const now = (await chrome.tabs
-				.sendMessage(tabId, {
-					type: "overlay:title",
-					caseId: c.id,
-					title: c.title,
-				})
-				.catch(() => undefined)) as OverlayState | undefined;
+			const now = await askTab(tabId, {
+				type: "overlay:title",
+				caseId: c.id,
+				title: c.title,
+			}).catch(() => undefined);
 			if (now !== undefined)
 				update((s) => {
 					if (s.tab?.id === tabId) s.overlay = now;
@@ -1694,8 +1732,7 @@ const PAGE_ANSWER_MS = 5000;
 
 /** What the page is, from its content script (injected if need be). */
 async function askPage(tabId: number): Promise<PageInfo | undefined> {
-	const ask = () =>
-		sendToTab<PageInfo | undefined>(tabId, { type: "page:info" });
+	const ask = () => sendToTab(tabId, { type: "page:info" });
 	const page = await ask();
 	if (page !== undefined) return page;
 	// Something there that does not answer it (not this build's content
@@ -2065,14 +2102,12 @@ const actions: Actions = {
 			);
 			if (step === "show") {
 				const p = pendingShow;
-				const shown = (await chrome.tabs
-					.sendMessage(tabId, {
-						type: "case:show",
-						caseId: c.id,
-						markId: a.id,
-						mark: p.mark,
-					})
-					.catch(() => null)) as MarkMatch | { error: string } | null;
+				const shown = await askTab(tabId, {
+					type: "case:show",
+					caseId: c.id,
+					markId: a.id,
+					mark: p.mark,
+				}).catch(() => null);
 				if (shown !== null && !("error" in shown) && pendingShow === p)
 					pendingShow = undefined;
 				return;
@@ -2119,7 +2154,12 @@ const actions: Actions = {
 						win.height === undefined
 					)
 						break;
-					const zoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+					const zoom = await chrome.tabs
+						.getZoom(tab.id)
+						.catch((error: unknown) => {
+							debugLog("tab zoom", error);
+							return 1;
+						});
 					const bigger = windowFor(
 						want,
 						{ width: tab.width, height: tab.height },
@@ -2273,7 +2313,7 @@ const actions: Actions = {
 			tabWork.cancel();
 			try {
 				// As the toolbar's Done: a mark not in the case keeps it up.
-				const overlay = await sendToTab<OverlayState>(tab.id, {
+				const overlay = await sendToTab(tab.id, {
 					type: "overlay:end",
 					caseId: c.id,
 				});
@@ -2552,12 +2592,12 @@ const actions: Actions = {
 		const hint = caseHintWriter();
 		void (async () => {
 			try {
-				const m = (await chrome.tabs.sendMessage(loaded.tabId, {
+				const m = await askTab(loaded.tabId, {
 					type: "case:show",
 					caseId,
 					markId: a.id,
 					candidate,
-				})) as MarkMatch | { error: string } | null;
+				});
 				if (m === null) {
 					await forgetLoaded({
 						hint: "The case is no longer loaded on that tab. Load it again to see its marks there.",
@@ -2688,7 +2728,10 @@ async function refreshAllSites(): Promise<void> {
 
 /** The icon's shortcut, as the browser has it now (the person may change it). */
 async function refreshShortcut(): Promise<void> {
-	const all = await chrome.commands.getAll().catch(() => []);
+	const all = await chrome.commands.getAll().catch((error: unknown) => {
+		debugLog("commands", error);
+		return [];
+	});
 	const shortcut = all.find((c) => c.name === "_execute_action")?.shortcut;
 	update((s) => (s.shortcut = shortcut || undefined));
 }
@@ -2855,9 +2898,9 @@ async function redrawLoaded(c: Case): Promise<void> {
 	if (state.overlay?.loadedCase === c.id && state.tab !== undefined)
 		tabs.add(state.tab.id);
 	for (const tabId of tabs) {
-		const result = (await chrome.tabs
-			.sendMessage(tabId, { type: "case:update", case: c })
-			.catch(() => null)) as LoadResult | null;
+		const result = await askTab(tabId, { type: "case:update", case: c }).catch(
+			() => null,
+		);
 		if (result === null) continue;
 		update((s) => {
 			if (s.loaded?.caseId === c.id && s.loaded.tabId === tabId)
@@ -2916,12 +2959,9 @@ function takeImagesFor(value: unknown): void {
 function takeImages(tabId: number | undefined): void {
 	imagesAskedFor = tabId;
 	if (tabId === undefined) return;
-	void chrome.runtime
-		.sendMessage({ type: "panel:images-take", tabId } satisfies WorkerRequest)
-		.then((answer: ImagesForAnswer | undefined) =>
-			takeImagesFor(answer?.images),
-		)
-		.catch(() => undefined);
+	void askWorker({ type: "panel:images-take", tabId })
+		.then((answer) => takeImagesFor(answer?.ok ? answer.images : undefined))
+		.catch((error: unknown) => debugLog("panel images", error));
 }
 
 function askImages(s: PanelState): void {
@@ -2967,7 +3007,9 @@ async function showPicture(
 		? markPictures(c, markId).find((p) => p.id === pictureId)?.path
 		: undefined;
 	const stored = path
-		? await store.getImage(caseId, path).catch(() => undefined)
+		? await store
+				.getImage(caseId, path)
+				.catch((error: unknown) => debugLog("read image", error))
 		: undefined;
 	const s = window.screen as Screen & { availLeft?: number; availTop?: number };
 	const layout = {
@@ -2987,20 +3029,16 @@ async function showPicture(
 			height: s.availHeight,
 		},
 	};
-	const answer = (await chrome.runtime.sendMessage({
+	const answer = await askWorker({
 		type: "viewer:open",
 		caseId,
 		markId,
 		pictureId,
 		windowId: browser.id,
 		layout,
-	} satisfies WorkerRequest)) as {
-		ok?: boolean;
-		viewerWindowId?: number;
-		error?: string;
-	};
-	if (answer?.ok !== true || answer.viewerWindowId === undefined)
-		throw new Error(answer?.error ?? "no window");
+	});
+	if (answer === undefined) throw new Error("no window");
+	if (!answer.ok) throw new Error(answer.error);
 	viewerOn = {
 		windowId: answer.viewerWindowId,
 		caseId,

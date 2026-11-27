@@ -179,6 +179,7 @@ export function panelAsker(
 			const answer = (await send(request)) as MarkAnswer | undefined;
 			return answer ?? { ok: false, error: NO_PANEL };
 		} catch {
+			// No panel answered.
 			return { ok: false, error: NO_PANEL };
 		}
 	};
@@ -504,6 +505,7 @@ export class Reviewer {
 			.finally(() => {
 				if (this.#latest?.run === run) this.#latest = undefined;
 			})
+			// The caller of `run` gets the failure.
 			.catch(() => undefined);
 		return run;
 	}

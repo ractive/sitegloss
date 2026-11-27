@@ -51,6 +51,7 @@ export function canDrawOn(url: string): boolean {
 			protocol === "https:" || protocol === "http:" || protocol === "file:"
 		);
 	} catch {
+		// Not an address.
 		return false;
 	}
 }

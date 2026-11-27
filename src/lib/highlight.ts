@@ -21,45 +21,92 @@ export interface Source {
 
 /**
  * An element's text with its whitespace collapsed: every run of white space
- * (a block's edge counts as one) is one space, none at the ends. `at[i]` is
- * where its `i`-th code unit comes from; a space put in for a block's edge
- * comes from the start of the piece after it.
+ * (a block's edge counts as one) is one space, none at the ends. Its `i`-th
+ * code unit comes from piece `pieces[i]` at offset `offsets[i]`
+ * (`sourceAt`); a space put in for a block's edge comes from the start of
+ * the piece after it. Two numbers a character, not an object: a page's text
+ * can be long.
  */
 export interface FlatText {
 	text: string;
-	at: Source[];
+	pieces: Uint32Array;
+	offsets: Uint32Array;
+}
+
+/** Where the flat text's `i`-th code unit comes from; none past its end. */
+export function sourceAt(flat: FlatText, i: number): Source | undefined {
+	const piece = flat.pieces[i];
+	const offset = flat.offsets[i];
+	return piece === undefined || offset === undefined
+		? undefined
+		: { piece, offset };
 }
 
 const SPACE = /\s/;
 
+/** Which of the first 128 code units `\s` matches. */
+const ASCII_SPACE = Array.from({ length: 128 }, (_, c) =>
+	SPACE.test(String.fromCharCode(c)),
+);
+
+/** Whether the code unit is white space as `\s` has it. */
+const isSpace = (text: string, i: number): boolean => {
+	const c = text.charCodeAt(i);
+	return c < 128 ? (ASCII_SPACE[c] as boolean) : SPACE.test(text[i] as string);
+};
+
 export function flatten(pieces: readonly TextPiece[]): FlatText {
-	let text = "";
-	const at: Source[] = [];
+	// A character of the text is one of the pieces', or a space for a
+	// block's edge, at most one a piece.
+	const most = pieces.reduce((n, p) => n + p.text.length + 1, 0);
+	const from = new Uint32Array(most);
+	const offsets = new Uint32Array(most);
+	const parts: string[] = [];
+	let n = 0;
 	/** A space is owed before the next character that is none. */
 	let space: Source | undefined;
 	pieces.forEach((p, piece) => {
-		if (p.gap && text !== "") space ??= { piece, offset: 0 };
-		for (let offset = 0; offset < p.text.length; offset++) {
-			const ch = p.text[offset] as string;
-			if (SPACE.test(ch)) {
-				if (text !== "") space ??= { piece, offset };
+		if (p.gap && n > 0) space ??= { piece, offset: 0 };
+		const t = p.text;
+		/** Where the run of characters not yet in `parts` starts. */
+		let run = 0;
+		for (let offset = 0; offset < t.length; offset++) {
+			if (isSpace(t, offset)) {
+				if (run < offset) parts.push(t.slice(run, offset));
+				run = offset + 1;
+				if (n > 0) space ??= { piece, offset };
 				continue;
 			}
 			if (space !== undefined) {
-				text += " ";
-				at.push(space);
+				if (run < offset) parts.push(t.slice(run, offset));
+				run = offset;
+				parts.push(" ");
+				from[n] = space.piece;
+				offsets[n] = space.offset;
+				n++;
 				space = undefined;
 			}
-			text += ch;
-			at.push({ piece, offset });
+			from[n] = piece;
+			offsets[n] = offset;
+			n++;
 		}
+		if (run < t.length) parts.push(t.slice(run));
 	});
-	return { text, at };
+	return {
+		text: parts.join(""),
+		pieces: from.slice(0, n),
+		offsets: offsets.slice(0, n),
+	};
 }
 
-/** Whether source position `a` comes before `b`. */
-const before = (a: Source, b: Source) =>
-	a.piece < b.piece || (a.piece === b.piece && a.offset < b.offset);
+/** Whether the flat text's `i`-th code unit comes from before `b`. */
+const atBefore = (flat: FlatText, i: number, b: Source) => {
+	const piece = flat.pieces[i] as number;
+	return (
+		piece < b.piece ||
+		(piece === b.piece && (flat.offsets[i] as number) < b.offset)
+	);
+};
 
 /**
  * The flat text's part between two places in its pieces (`start` inclusive,
@@ -71,10 +118,12 @@ export function flatSpan(
 	start: Source,
 	end: Source,
 ): { start: number; end: number } | undefined {
-	let s = flat.at.findIndex((p) => !before(p, start));
-	if (s === -1) return undefined;
+	const length = flat.pieces.length;
+	let s = 0;
+	while (s < length && atBefore(flat, s, start)) s++;
+	if (s === length) return undefined;
 	let e = s;
-	while (e < flat.at.length && before(flat.at[e] as Source, end)) e++;
+	while (e < length && atBefore(flat, e, end)) e++;
 	while (s < e && flat.text[s] === " ") s++;
 	while (e > s && flat.text[e - 1] === " ") e--;
 	return e > s ? { start: s, end: e } : undefined;

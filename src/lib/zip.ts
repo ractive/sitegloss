@@ -4,6 +4,8 @@
  * browsers and Bun both have.
  */
 
+import { debugLog } from "./debug.ts";
+
 export interface ZipEntry {
 	/** Path inside the archive, `/`-separated. */
 	name: string;
@@ -82,7 +84,8 @@ async function inflate(
 	const chunks: Uint8Array[] = [];
 	let length = 0;
 	for (;;) {
-		const { done, value } = await reader.read().catch(() => {
+		const { done, value } = await reader.read().catch((error: unknown) => {
+			debugLog("zip entry read", error);
 			throw new ZipError(`damaged entry: ${name}`);
 		});
 		if (done) break;

@@ -9,6 +9,7 @@
 
 import { BROWSER, FIREFOX, PANEL } from "../lib/browser.ts";
 import { newId } from "../lib/case.ts";
+import { debugLog } from "../lib/debug.ts";
 import { type Kv, kvWhenOpen, openKv } from "../lib/kv.ts";
 import type { Broadcast } from "../lib/messages.ts";
 import {
@@ -66,7 +67,9 @@ export interface PanelSync extends SyncActions {
  */
 function run(force = false): void {
 	const news: Broadcast = { type: "sync:run", ...(force ? { force } : {}) };
-	chrome.runtime.sendMessage(news).catch(() => undefined);
+	chrome.runtime
+		.sendMessage(news)
+		.catch((error: unknown) => debugLog("sync run message", error));
 }
 
 /** The actions, for `Actions`, before the panel's sync is started. */
@@ -186,7 +189,10 @@ export function startSync(
 		// Asked before the prompt: whether Export had the permission already.
 		const had = Promise.resolve()
 			.then(() => chrome.permissions.contains(DOWNLOADS))
-			.catch(() => true);
+			.catch((error: unknown) => {
+				debugLog("downloads permission", error);
+				return true;
+			});
 		const allowed = askForDownloads();
 		update((s) => {
 			s.sync.asking = true;
@@ -236,7 +242,9 @@ export function startSync(
 							await kv.set({ [ASKED_KEY]: undefined });
 							await chrome.permissions.remove(DOWNLOADS);
 						})
-						.catch(() => undefined);
+						.catch((error: unknown) =>
+							debugLog("forget downloads permission", error),
+						);
 				update((s) => {
 					s.sync.problem = undefined;
 					s.sync.changing = false;
@@ -286,7 +294,9 @@ export function startSync(
 	/** The newest file the sync saved, in the system's file manager. */
 	function syncShow(): void {
 		void (async () => {
-			const id = await kv.get(LAST_DOWNLOAD_KEY).catch(() => undefined);
+			const id = await kv
+				.get(LAST_DOWNLOAD_KEY)
+				.catch((error: unknown) => debugLog("last download", error));
 			if (typeof id === "number") {
 				const [item] = await chrome.downloads.search({ id });
 				if (item?.exists && isSyncDownload(item, chrome.runtime.id)) {

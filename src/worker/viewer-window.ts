@@ -6,6 +6,7 @@
  * in session storage: the worker may sleep between a picture and the next.
  */
 
+import { debugLog } from "../lib/debug.ts";
 import { viewerBounds } from "../viewer/layout.ts";
 import { viewerPath } from "../viewer/pictures.ts";
 
@@ -81,7 +82,12 @@ export async function rememberFrame(height: number): Promise<void> {
 
 /** The window's bounds for a layout: `viewerBounds` with the frame last measured. */
 export async function boundsFor(layout: ViewerLayout): Promise<ViewerBounds> {
-	const kept = await chrome.storage.local.get(FRAME_KEY).catch(() => ({}));
+	const kept = await chrome.storage.local
+		.get(FRAME_KEY)
+		.catch((error: unknown) => {
+			debugLog("viewer frame", error);
+			return {};
+		});
 	const frame = (kept as Record<string, unknown>)[FRAME_KEY];
 	return viewerBounds(
 		layout.picture,
@@ -104,6 +110,7 @@ export function openViewer(
 ): Promise<number> {
 	const before = queues.get(from) ?? Promise.resolve();
 	const next = before
+		// The caller of `next` gets the failure; the queue only waits for it.
 		.catch(() => undefined)
 		.then(() => showInViewer(caseId, markId, pictureId, from, bounds));
 	queues.set(from, next);
@@ -129,6 +136,7 @@ async function showInViewer(
 	if (open !== undefined) {
 		// Only the tab still in the viewer's window: one moved out of it (to a
 		// window of its own) is the person's now, not navigated.
+		// The tab is gone.
 		const tab = await chrome.tabs.get(open.tabId).catch(() => undefined);
 		const shown =
 			tab?.windowId === open.windowId &&
@@ -142,6 +150,7 @@ async function showInViewer(
 				}),
 			])
 				.then(() => true)
+				// The tab or window is gone: a new one opens.
 				.catch(() => false));
 		if (shown) return open.windowId;
 	}
@@ -186,6 +195,7 @@ export async function windowClosed(windowId: number): Promise<void> {
 	let changed = false;
 	for (const [from, viewer] of Object.entries(all)) {
 		if (Number(from) === windowId) {
+			// The window is gone already.
 			await chrome.windows.remove(viewer.windowId).catch(() => undefined);
 			delete all[from];
 			changed = true;

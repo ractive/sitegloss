@@ -46,6 +46,7 @@ export class AddLedger {
 			if (done.marks !== undefined) await this.#area.set({ [KEY]: done.marks });
 			return done.result;
 		});
+		// The caller of `next` gets the failure; the queue only waits for it.
 		this.#queue = next.catch(() => undefined);
 		return next;
 	}

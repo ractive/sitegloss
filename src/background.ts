@@ -34,6 +34,7 @@ import {
 } from "./lib/browser.ts";
 import { isSafeId, pendingImage } from "./lib/case.ts";
 import { CLOUD_DATABASE } from "./lib/cloud/book.ts";
+import { debugLog } from "./lib/debug.ts";
 import {
 	cropImages,
 	drawMarks,
@@ -83,6 +84,7 @@ import {
 	PANEL_PORT,
 	type WorkerMessage,
 } from "./worker/protocol.ts";
+import { TabCases } from "./worker/tab-cases.ts";
 import {
 	boundsFor,
 	openViewer,
@@ -116,7 +118,7 @@ if (typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD) {
 					[key]: [...((stored[key] as string[] | undefined) ?? []), line],
 				}),
 			)
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("debug log store", error));
 	};
 	globalThis.addEventListener("error", (e) =>
 		log("error", [(e as ErrorEvent).error ?? (e as ErrorEvent).message]),
@@ -138,6 +140,8 @@ if (typeof SITEGLOSS_TEST_BUILD !== "undefined" && SITEGLOSS_TEST_BUILD) {
 
 const store = new IdbStore();
 const added = new AddLedger(chrome.storage.session);
+/** The cases each tab's page was handed: a save adds to no other. */
+const tabCases = new TabCases(chrome.storage.session);
 
 /**
  * The one writer of the sync (DEC-021, DEC-025). To Downloads it writes
@@ -199,6 +203,7 @@ const cloud = new Cloud({
 	news: () => void tell({ type: "cloud:changed" }),
 	redirect: signInRedirect,
 	alarms: chrome.alarms,
+	// A keep-alive ping: nothing to do when it fails.
 	keepAlive: () => void chrome.runtime.getPlatformInfo().catch(() => {}),
 });
 cloud.start();
@@ -242,6 +247,13 @@ chrome.permissions.onAdded.addListener(() => {
 void store
 	.sweepPending(Date.now() - PENDING_MAX_AGE_MS)
 	.catch((error: unknown) => console.warn("Sitegloss: sweep", error));
+
+// A tab that closes was handed nothing any more.
+chrome.tabs.onRemoved.addListener((tabId) => {
+	void tabCases
+		.forget(tabId)
+		.catch((error: unknown) => debugLog("forget tab case", error));
+});
 
 // A browser window that closes takes its picture viewer with it (DEC-064).
 chrome.windows.onRemoved.addListener((windowId) => {
@@ -307,6 +319,7 @@ function capture(tabId: number, windowId: number): Promise<string> {
 		}
 	};
 	const next = captureQueue.then(run, run);
+	// The caller of `next` gets the failure; the queue only waits for it.
 	captureQueue = next.catch(() => undefined);
 	return next;
 }
@@ -327,6 +340,23 @@ async function broadcast(message: Broadcast): Promise<void> {
 	await tell(message);
 }
 
+/**
+ * Refuses a page's request about a case its tab was not handed (only the
+ * panel, or an AI app's tool, gives a page a case, tab-cases.ts); else the
+ * tab's id.
+ */
+async function mayAddTo(
+	sender: chrome.runtime.MessageSender,
+	caseId: string,
+): Promise<number> {
+	const tabId = sender.tab?.id;
+	if (tabId === undefined || !(await tabCases.has(tabId, caseId)))
+		throw new Error(
+			`this page was not given that case; click Add marks for it in the ${PANEL}.`,
+		);
+	return tabId;
+}
+
 async function handle(
 	request: WorkerRequest,
 	sender: chrome.runtime.MessageSender,
@@ -337,9 +367,13 @@ async function handle(
 			if (tab?.id === undefined) throw new Error("not sent from a tab");
 			if (!isSafeId(request.caseId) || !isSafeId(request.shotId))
 				throw new Error("invalid id");
+			// The id its screenshots wait under is this tab's, no other's.
+			if (!(await tabCases.claimPending(tab.id, request.caseId)))
+				throw new Error("those are another page's screenshots");
 			const png = await capture(tab.id, tab.windowId);
 			// Encoding takes a while; the page need not stay blurred for it.
 			const taken: ContentRequest = { type: "page:captured" };
+			// The page may be gone already.
 			void chrome.tabs.sendMessage(tab.id, taken).catch(() => undefined);
 			const image = await screenshotToWebp(png, PENDING_QUALITY);
 			await store.putImage(request.caseId, pendingImage(request.shotId), {
@@ -354,6 +388,10 @@ async function handle(
 		case "case:save": {
 			const from = request.request.imagesFrom;
 			if (from !== undefined && !isSafeId(from)) throw new Error("invalid id");
+			const tabId = await mayAddTo(sender, request.request.caseId);
+			// Its screenshots: this tab's own.
+			if (from !== undefined && !(await tabCases.ownsPending(tabId, from)))
+				throw new Error("those are another page's screenshots");
 			const saved = await saveCase(
 				store,
 				fromPage(request.request),
@@ -362,12 +400,7 @@ async function handle(
 				drawMarks,
 			);
 			// Marks added one by one: the page that added them may undo them.
-			const tabId = sender.tab?.id;
-			if (
-				request.request.keepPending &&
-				tabId !== undefined &&
-				sender.documentId !== undefined
-			)
+			if (request.request.keepPending && sender.documentId !== undefined)
 				for (const draft of request.request.marks) {
 					const a = saved.marks.find((x) => x.number === draft.number);
 					if (a !== undefined)
@@ -389,6 +422,7 @@ async function handle(
 		}
 		case "case:number":
 			if (!isSafeId(request.caseId)) throw new Error("invalid id");
+			await mayAddTo(sender, request.caseId);
 			return (await numberFree(
 				store,
 				request.caseId,
@@ -397,6 +431,7 @@ async function handle(
 		case "case:undo-add": {
 			if (!isSafeId(request.caseId) || !isSafeId(request.markId))
 				throw new Error("invalid id");
+			await mayAddTo(sender, request.caseId);
 			const mark = await added.find(
 				request.caseId,
 				request.markId,
@@ -413,13 +448,20 @@ async function handle(
 				await broadcast({ type: "cases:changed", caseId: request.caseId });
 			return result satisfies UndoResult;
 		}
-		case "images:discard":
+		case "images:discard": {
 			if (!isSafeId(request.caseId)) throw new Error("invalid id");
+			const tabId = sender.tab?.id;
+			if (
+				tabId === undefined ||
+				!(await tabCases.ownsPending(tabId, request.caseId))
+			)
+				throw new Error("those are another page's screenshots");
 			await store.deleteImages(
 				request.caseId,
 				request.shotIds.filter(isSafeId).map(pendingImage),
 			);
 			return {};
+		}
 		case "panel:images": {
 			const tab = sender.tab;
 			if (
@@ -432,6 +474,14 @@ async function handle(
 				throw new Error("invalid request");
 			// Before any await: the click's gesture opens the panel.
 			const opened = openPanel({ tabId: tab.id, windowId: tab.windowId });
+			// Not opened (no gesture left, or another browser's rule): the
+			// panel opened later still asks for the images.
+			const settled = opened.catch((error: unknown) =>
+				console.warn("Sitegloss: side panel", error),
+			);
+			// The panel opens either way; it is asked about a mark of a case
+			// the tab was handed only.
+			await mayAddTo(sender, request.caseId);
 			await chrome.storage.session.set({
 				[IMAGES_FOR_KEY]: {
 					caseId: request.caseId,
@@ -445,12 +495,9 @@ async function handle(
 			// it starts.
 			chrome.runtime
 				.sendMessage({ type: "panel:images" } satisfies Broadcast)
+				// No panel open: it asks for the images as it starts.
 				.catch(() => undefined);
-			// Not opened (no gesture left, or another browser's rule): the
-			// panel opened later still asks for the images.
-			await opened.catch((error: unknown) =>
-				console.warn("Sitegloss: side panel", error),
-			);
+			await settled;
 			return {};
 		}
 		case "viewer:open": {
@@ -472,6 +519,18 @@ async function handle(
 				request.layout && (await boundsFor(request.layout)),
 			);
 			return { viewerWindowId };
+		}
+		case "tab:case": {
+			// The panel's own: a page may not hand itself a case.
+			if (!fromExtensionPage(sender)) throw new Error("not from the panel");
+			if (!Number.isInteger(request.tabId) || !isSafeId(request.caseId))
+				throw new Error("invalid request");
+			await tabCases.record(
+				request.tabId,
+				request.caseId,
+				request.adding === true,
+			);
+			return {};
 		}
 		case "viewer:frame": {
 			if (!fromExtensionPage(sender)) throw new Error("not from the viewer");
@@ -547,16 +606,29 @@ chrome.runtime.onMessage.addListener(
 const ready = Connection.start({
 	store,
 	capture,
+	handed: (tabId, caseId, adding) => tabCases.record(tabId, caseId, adding),
 	changed: () => {
 		void sync.request();
 		cloud.request();
 	},
 	// Whose comments are this app's own, and what deleting a case means,
 	// in a case synced with a team (DEC-039).
-	me: () => cloud.me().catch(() => undefined),
-	team: (caseId) => cloud.teamOf(caseId).catch(() => undefined),
+	me: () =>
+		cloud.me().catch((error: unknown) => {
+			debugLog("cloud me", error);
+			return undefined;
+		}),
+	team: (caseId) =>
+		cloud.teamOf(caseId).catch((error: unknown) => {
+			debugLog("cloud team", error);
+			return undefined;
+		}),
 	// Who has a case and whose turn it is (DEC-071).
-	handOver: () => cloud.handOver().catch(() => undefined),
+	handOver: () =>
+		cloud.handOver().catch((error: unknown) => {
+			debugLog("cloud hand over", error);
+			return undefined;
+		}),
 });
 ready.catch((error: unknown) =>
 	console.error("Sitegloss: AI connection", error),
@@ -662,6 +734,7 @@ if (FIREFOX)
 			if (windowId !== undefined)
 				void chrome.windows
 					.update(windowId, { focused: true })
+					// The window may be closed meanwhile.
 					.catch(() => undefined);
 		}),
 	);
@@ -684,6 +757,7 @@ if (FIREFOX)
 	setInterval(
 		() =>
 			withConnection((c) => {
+				// A keep-alive ping: nothing to do when it fails.
 				if (c.active) void chrome.runtime.getPlatformInfo().catch(() => {});
 			}),
 		FIREFOX_KEEPALIVE_MS,

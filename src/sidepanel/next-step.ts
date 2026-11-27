@@ -28,6 +28,7 @@ import {
 	markStatus,
 	type UserRef,
 } from "../lib/case.ts";
+import { debugLog } from "../lib/debug.ts";
 import { caseSync, teamOf } from "./cloud-view.ts";
 import type { PanelState } from "./state.ts";
 
@@ -428,7 +429,8 @@ export async function copyStep(
 			: caseInstructions({ id: c.id, url: where.link });
 	try {
 		await write(text);
-	} catch {
+	} catch (error) {
+		debugLog("copy to clipboard", error);
 		return { what, text: COPY_FAILED };
 	}
 	return {

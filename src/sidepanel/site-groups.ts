@@ -30,6 +30,7 @@ const hostOf = (url: string): string => {
 	try {
 		return new URL(url).host;
 	} catch {
+		// Not an address.
 		return "";
 	}
 };

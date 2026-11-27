@@ -55,6 +55,7 @@ import {
 	serverOrigin,
 	serverProblem,
 } from "../lib/cloud/servers.ts";
+import { debugLog } from "../lib/debug.ts";
 import { cropImages } from "../lib/images.ts";
 import type { Kv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
@@ -277,8 +278,12 @@ export class Cloud {
 		void (async () => {
 			const { kv } = await this.current();
 			const [status, queue] = await Promise.all([
-				kv.get(KEYS.status).catch(() => undefined),
-				kv.get(KEYS.queue).catch(() => undefined),
+				kv
+					.get(KEYS.status)
+					.catch((error: unknown) => debugLog("cloud status read", error)),
+				kv
+					.get(KEYS.queue)
+					.catch((error: unknown) => debugLog("cloud queue read", error)),
 			]);
 			const last = Date.parse(
 				(status as CloudStatus | undefined)?.lastSyncedAt ?? "",
@@ -379,7 +384,9 @@ export class Cloud {
 		const told =
 			tokens === undefined
 				? Promise.resolve()
-				: session.revoke(server, tokens).catch(() => undefined);
+				: session
+						.revoke(server, tokens)
+						.catch((error: unknown) => debugLog("token revoke", error));
 		await kv.remove(PENDING_KEY);
 		await engine.signOut();
 		await told;
@@ -492,7 +499,9 @@ export class Cloud {
 					// account have no "Sign out" to end them, so they are ended
 					// now, here and at the server.
 					await session.forget();
-					await session.revoke(server, tokens).catch(() => undefined);
+					await session
+						.revoke(server, tokens)
+						.catch((error: unknown) => debugLog("token revoke", error));
 					await over();
 					throw error;
 				}

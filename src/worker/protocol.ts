@@ -221,6 +221,7 @@ export function isPanelSender(
 			url.pathname === PANEL_PATH
 		);
 	} catch {
+		// Not an address.
 		return false;
 	}
 }

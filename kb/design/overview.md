@@ -230,7 +230,7 @@ W3C Web Annotation `CssSelector`; a full W3C export is a follow-up if a consumer
 (DEC-002).
 
 `page.url` is the origin and the path, with a hash route (`#/path`) if the page has one:
-`plainUrl` in `src/lib/case.ts`. A case that came from a file also has `importedAt`, set
+`plainUrl` in `src/lib/case/format.ts`. A case that came from a file also has `importedAt`, set
 on import whatever the file says.
 
 A case spans pages (DEC-038): a tester goes through a flow and marks each page of it in

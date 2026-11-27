@@ -4,6 +4,7 @@
  */
 
 import { LANGUAGE, nextNumbers } from "../lib/case.ts";
+import { debugLog } from "../lib/debug.ts";
 import { cssSelector, describeElement } from "../lib/element.ts";
 import { boundsOfRects } from "../lib/highlight.ts";
 import {
@@ -16,16 +17,15 @@ import {
 } from "../lib/inspect.ts";
 import { withLook } from "../lib/look.ts";
 import { isDarkGround } from "../lib/marks.ts";
-import type {
-	BarPlaceAnswer,
-	BlurResult,
-	Broadcast,
-	ContentRequest,
-	DescribedElement,
-	InspectResult,
-	LoadReplacedAnswer,
-	Released,
-	WorkerRequest,
+import {
+	askWorker,
+	type BlurResult,
+	type Broadcast,
+	type ContentRequest,
+	type DescribedElement,
+	type InspectResult,
+	type LoadReplacedAnswer,
+	type Released,
 } from "../lib/messages.ts";
 import { PageActivity } from "./activity.ts";
 import { MarkAdder, pageInfo } from "./adding.ts";
@@ -245,14 +245,12 @@ function start(): void {
 	const adder = new MarkAdder(overlay, pageBlur, activity);
 	const reviewer = new Reviewer(overlay);
 	adder.onAddImages = (caseId, number, what) => {
-		chrome.runtime
-			.sendMessage({
-				type: "panel:images",
-				caseId,
-				number,
-				...(what === undefined ? {} : { what }),
-			} satisfies WorkerRequest)
-			.catch(() => undefined);
+		askWorker({
+			type: "panel:images",
+			caseId,
+			number,
+			...(what === undefined ? {} : { what }),
+		}).catch((error: unknown) => debugLog("panel images message", error));
 	};
 	// A loaded mark's dialog whose field the page refused: the panel's form.
 	reviewer.onPanel = (caseId, number, what) =>
@@ -282,16 +280,15 @@ function start(): void {
 	// The bar is where the person left it, in every tab of this profile.
 	// The worker keeps it: this profile's storage is not a page's to reach.
 	overlay.onBarMoved = (place) =>
-		void chrome.runtime
-			.sendMessage({ type: "bar:place", place } satisfies WorkerRequest)
-			.catch(() => undefined);
-	void chrome.runtime
-		.sendMessage({ type: "bar:place" } satisfies WorkerRequest)
-		.then((answer: { ok?: boolean } & BarPlaceAnswer) => {
-			const place = storedBarPlace(answer?.place);
+		void askWorker({ type: "bar:place", place }).catch((error: unknown) =>
+			debugLog("bar place message", error),
+		);
+	void askWorker({ type: "bar:place" })
+		.then((answer) => {
+			const place = storedBarPlace(answer?.ok ? answer.place : undefined);
 			if (place !== undefined) overlay.setBarPlace(place);
 		})
-		.catch(() => undefined);
+		.catch((error: unknown) => debugLog("bar place read", error));
 	overlay.onChange = () => {
 		const message: Broadcast = { type: "overlay:changed", state: state() };
 		// Nobody may be listening (side panel closed): that is fine.

@@ -21,6 +21,7 @@ import {
 	validateCase,
 	withPagesAgreed,
 } from "./case.ts";
+import { debugLog } from "./debug.ts";
 import { webpSize } from "./image-size.ts";
 import { caseMarkdown } from "./markdown.ts";
 import { queryOf } from "./query.ts";
@@ -286,6 +287,7 @@ async function readCaseJson(
 	try {
 		parsed = JSON.parse(new TextDecoder().decode(json));
 	} catch {
+		// Not JSON: said below.
 		throw new CaseError("case.json is not valid JSON.");
 	}
 	return { c: validateCase(parsed), bytes: json.length };
@@ -474,7 +476,8 @@ export async function storeImport(
 			if (!path.startsWith("images/")) continue;
 			try {
 				images.set(path, await options.reencode(image.blob));
-			} catch {
+			} catch (error) {
+				debugLog("re-encode image", error);
 				throw new CaseError(`${path} is not an image Sitegloss can read.`);
 			}
 		}

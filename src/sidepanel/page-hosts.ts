@@ -23,6 +23,7 @@ const originOf = (url: string): string | undefined => {
 	try {
 		return isWebPage(url) ? new URL(url).origin : undefined;
 	} catch {
+		// Not an address.
 		return undefined;
 	}
 };
@@ -70,6 +71,7 @@ export function openAt(
 		const u = new URL(pageUrl);
 		return `${origin}${u.pathname}${u.search}${u.hash}`;
 	} catch {
+		// Not an address.
 		return pageUrl;
 	}
 }

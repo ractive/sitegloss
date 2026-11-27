@@ -69,6 +69,7 @@ import {
 	stateOf,
 	turnOf,
 } from "../lib/case-state.ts";
+import { debugLog } from "../lib/debug.ts";
 
 import {
 	backdropLine,
@@ -79,16 +80,12 @@ import {
 } from "../lib/element.ts";
 import type { Relation } from "../lib/inspect.ts";
 import type {
-	BlurResult,
+	ContentAnswer,
 	ContentRequest,
-	DescribedElement,
 	InspectResult,
-	LoadReplacedAnswer,
 	LoadResult,
 	MarkMatch,
 	OpenCaseAnswer,
-	OverlayState,
-	Released,
 } from "../lib/messages.ts";
 import {
 	jsonText,
@@ -104,9 +101,9 @@ import {
 } from "../lib/overview.ts";
 import { queryOf, withQuery } from "../lib/query.ts";
 import { type Crop, cropRectFor, SaveError, saveCase } from "../lib/save.ts";
+import { shortUrl } from "../lib/short-url.ts";
 import { caseSites } from "../lib/site.ts";
 import type { CaseStore, StoredImage } from "../lib/store.ts";
-import { shortUrl } from "../sidepanel/dom.ts";
 
 export interface CurrentTab {
 	id: number;
@@ -119,7 +116,10 @@ export interface CurrentTab {
 export interface TabBridge {
 	current(): Promise<CurrentTab>;
 	/** Send to the tab's content script, injecting it when needed. */
-	send<T>(tabId: number, request: ContentRequest): Promise<T>;
+	send<R extends ContentRequest>(
+		tabId: number,
+		request: R,
+	): Promise<ContentAnswer<R>>;
 	/** A screenshot of `tab`, which must still be in front of its window (PNG). */
 	capture(tab: CurrentTab): Promise<Blob>;
 }
@@ -970,6 +970,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			return run();
 		};
 		const next = queue.then(start, start);
+		// The caller of `next` gets the failure; the queue only waits for it.
 		queue = next.catch(() => undefined);
 		return next;
 	}
@@ -982,9 +983,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 	}
 
 	async function load(current: CurrentTab, c: Case): Promise<LoadResult> {
-		const result = await tab.send<
-			LoadResult | LoadReplacedAnswer | { error: string }
-		>(current.id, {
+		const result = await tab.send(current.id, {
 			type: "case:load",
 			case: c,
 		});
@@ -1010,15 +1009,15 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			await settle();
 			png = await tab.capture(current);
 		} catch (error) {
-			await tab.send(current.id, { type: end }).catch(() => undefined);
+			await tab
+				.send(current.id, { type: end })
+				.catch((error: unknown) => debugLog("end capture", error));
 			throw error;
 		}
-		const held = await tab
-			.send<Released | undefined>(current.id, { type: end })
-			.then(
-				(answer) => answer?.held === true,
-				() => false,
-			);
+		const held = await tab.send(current.id, { type: end }).then(
+			(answer) => answer?.held === true,
+			() => false,
+		);
 		if (!held)
 			throw new CaseError(
 				"The page changed while the screenshot was taken, so it was thrown away. Try again.",
@@ -1331,7 +1330,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			const front = await deps.tab
 				.current()
 				.then((tab) => tab.url)
-				.catch(() => undefined);
+				.catch((error: unknown) => debugLog("front tab", error));
 			const status = markStatus(a);
 			// Always sent, whole: the mark, the person's comment and how it was settled.
 			const lines: string[] = [
@@ -1563,7 +1562,10 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 								tabId: current.id,
 								windowId: current.windowId,
 							})
-							.catch(() => ({ opened: false, reason: "no-panel" }) as const)
+							.catch((error: unknown) => {
+								debugLog("open panel", error);
+								return { opened: false, reason: "no-panel" } as const;
+							})
 					: { opened: false, reason: "no-panel" };
 				const panel = panelWord(answer);
 				// The panel stays on another case: nothing is drawn over it.
@@ -1621,33 +1623,30 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 					throw new CaseError(`The case has no mark ${mark}.`);
 				const current = await tab.current();
 				const show = async () => {
-					const m = await tab.send<MarkMatch | { error: string } | null>(
-						current.id,
-						{
-							type: "case:show",
-							caseId: c.id,
-							markId: found.id,
-							// The mark meant: the page's copy may predate a renumbering.
-							mark: markKey(c, found),
-							...(candidate !== undefined ? { candidate } : {}),
-						},
-					);
+					const m = await tab.send(current.id, {
+						type: "case:show",
+						caseId: c.id,
+						markId: found.id,
+						// The mark meant: the page's copy may predate a renumbering.
+						mark: markKey(c, found),
+						...(candidate !== undefined ? { candidate } : {}),
+					});
 					if (m !== null && "error" in m) throw new CaseError(m.error);
 					return m;
 				};
-				const state = await tab.send<OverlayState>(current.id, {
+				const state = await tab.send(current.id, {
 					type: "overlay:state",
 				});
-				// null: another case is loaded, or the loaded copy predates the
-				// mark; load this case again.
-				let m = state.loadedCase === c.id ? await show() : null;
+				// Another case is loaded, the loaded copy predates the mark, or
+				// a script of another build gave no answer: load this case again.
+				let m = state?.loadedCase === c.id ? await show() : null;
 				if (m === null) {
 					await load(current, c);
 					m = await show();
 				}
 				if (m === null) throw new CaseError(`Mark ${mark} could not be shown.`);
 				// The page's own word for its address (it may have changed within the page).
-				const front = state.url || current.url;
+				const front = state?.url || current.url;
 				return {
 					content: [text({ ...matchView(m), ...pageView(c, found, front) })],
 				};
@@ -1692,7 +1691,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 					throw new CaseError(`The case has no mark ${mark}.`);
 				const current = await tab.current();
 				const ask = () =>
-					tab.send<InspectResult | null>(current.id, {
+					tab.send(current.id, {
 						type: "element:inspect",
 						caseId: c.id,
 						markId: found.id,
@@ -1701,12 +1700,12 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 						casePage: markUrl(c, found),
 						...(selector !== undefined ? { selector } : {}),
 					});
-				const state = await tab.send<OverlayState>(current.id, {
+				const state = await tab.send(current.id, {
 					type: "overlay:state",
 				});
-				// null: another case is loaded, or the loaded copy predates the
-				// mark; load this case again.
-				let result = state.loadedCase === c.id ? await ask() : null;
+				// Another case is loaded, the loaded copy predates the mark, or
+				// a script of another build gave no answer: load this case again.
+				let result = state?.loadedCase === c.id ? await ask() : null;
 				if (result === null) {
 					await load(current, c);
 					result = await ask();
@@ -1757,7 +1756,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 				const current = await tab.current();
 				// Password fields (and form fields, if the user says so) blurred,
 				// as in the user's own screenshots.
-				const blurred = await tab.send<BlurResult>(current.id, {
+				const blurred = await tab.send(current.id, {
 					type: "page:blur",
 					blurForms: await blurForms(),
 				});
@@ -1795,7 +1794,7 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			throw new CaseError(
 				`The page in front changed since the user allowed this (it was ${plainLine(plainUrl(allowed.url))}); ask again.`,
 			);
-		const described = await tab.send<DescribedElement>(current.id, {
+		const described = await tab.send(current.id, {
 			type: "element:mark",
 			selector: input.selector,
 			number: next.mark,
@@ -1872,7 +1871,9 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 			);
 		} catch (error) {
 			// A failed save keeps its screenshots for another try; this one has none.
-			await store.deleteImages(c.id, [shot.image]).catch(() => undefined);
+			await store
+				.deleteImages(c.id, [shot.image])
+				.catch((error: unknown) => debugLog("delete image", error));
 			if (
 				error instanceof SaveError &&
 				error.message.includes("exists in the case already")
@@ -2773,7 +2774,9 @@ export async function confirmLines(
 	const lines: string[] = [];
 	const caseId = request.arguments["caseId"];
 	if (typeof caseId === "string") {
-		const c = await store.getCase(caseId).catch(() => undefined);
+		const c = await store
+			.getCase(caseId)
+			.catch((error: unknown) => debugLog("read case", error));
 		const count = c?.marks.length ?? 0;
 		lines.push(
 			c === undefined
@@ -2789,9 +2792,14 @@ export async function confirmLines(
 		typeof caseId === "string" &&
 		(wanted === null || typeof wanted === "string")
 	) {
-		const hand = await cloud.handOver?.().catch(() => undefined);
+		const hand = await cloud.handOver?.().catch((error: unknown) => {
+			debugLog("hand over", error);
+			return undefined;
+		});
 		const exists =
-			(await store.getCase(caseId).catch(() => undefined)) !== undefined;
+			(await store
+				.getCase(caseId)
+				.catch((error: unknown) => debugLog("read case", error))) !== undefined;
 		const check = assignCheck(hand, caseId, wanted);
 		if (!exists) {
 			// Said by the case's line above.
@@ -2807,7 +2815,9 @@ export async function confirmLines(
 	/** A set_mark_status that will change a mark: only that is said to sync. */
 	let statusChanges = false;
 	if (MARK_TOOLS.has(request.tool.name) && typeof caseId === "string") {
-		const c = await store.getCase(caseId).catch(() => undefined);
+		const c = await store
+			.getCase(caseId)
+			.catch((error: unknown) => debugLog("read case", error));
 		// The marks the call names: set_mark_status's list (or its one mark, as
 		// before), add_comment's mark.
 		const given = request.arguments["marks"];
@@ -2864,7 +2874,9 @@ export async function confirmLines(
 	// A comment changed or deleted: which one, and whether it is the app's own (DEC-046).
 	const commentId = request.arguments["comment"];
 	if (typeof commentId === "string" && typeof caseId === "string") {
-		const c = await store.getCase(caseId).catch(() => undefined);
+		const c = await store
+			.getCase(caseId)
+			.catch((error: unknown) => debugLog("read case", error));
 		const k = c?.comments?.find((x) => x.id === commentId);
 		const self = ownerId(request.client);
 		const me = k === undefined ? undefined : await cloud.me?.();
@@ -2886,7 +2898,9 @@ export async function confirmLines(
 			(request.tool.name === "set_mark_status" && statusChanges)) &&
 		typeof caseId === "string"
 	) {
-		const team = await cloud.team?.(caseId).catch(() => undefined);
+		const team = await cloud
+			.team?.(caseId)
+			.catch((error: unknown) => debugLog("case team", error));
 		if (team !== undefined)
 			lines.push(
 				request.tool.name === "delete_comment"
@@ -2896,7 +2910,9 @@ export async function confirmLines(
 	}
 	// Deleting a case the team has deletes it for everyone: said before the answer.
 	if (request.tool.name === "delete_case" && typeof caseId === "string") {
-		const team = await cloud.team?.(caseId).catch(() => undefined);
+		const team = await cloud
+			.team?.(caseId)
+			.catch((error: unknown) => debugLog("case team", error));
 		if (team !== undefined && (await store.getCase(caseId)) !== undefined)
 			lines.push(
 				`It syncs with the team “${team}”: deleting it deletes it for everyone there.`,
@@ -2904,14 +2920,18 @@ export async function confirmLines(
 	}
 	// The page the case is opened on (DEC-050), as Sitegloss keeps an address.
 	if (request.tool.name === "open_case") {
-		const current = await tab.current().catch(() => undefined);
+		const current = await tab
+			.current()
+			.catch((error: unknown) => debugLog("current tab", error));
 		if (current !== undefined)
 			lines.push(
 				`Page: ${withQuery(plainUrl(current.url), queryOf(current.url))}`,
 			);
 	}
 	if (request.tool.name === "add_mark") {
-		const current = await tab.current().catch(() => undefined);
+		const current = await tab
+			.current()
+			.catch((error: unknown) => debugLog("current tab", error));
 		if (current !== undefined) {
 			lines.push(`Page: ${current.url}`);
 			confirmedPages.set(request.signal, { id: current.id, url: current.url });

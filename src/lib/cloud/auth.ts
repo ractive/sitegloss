@@ -11,6 +11,7 @@
  * worker), one refresh at a time.
  */
 
+import { debugLog } from "../debug.ts";
 import type { Kv } from "../kv.ts";
 import { MAX_SMALL_BYTES, readJson, TooLarge } from "./body.ts";
 
@@ -72,6 +73,7 @@ export async function discover(
 				? value
 				: undefined;
 		} catch {
+			// Not an address.
 			return undefined;
 		}
 	};
@@ -91,6 +93,7 @@ const hostOf = (server: string): string => {
 	try {
 		return new URL(server).host;
 	} catch {
+		// Not an address.
 		return server;
 	}
 };
@@ -198,6 +201,7 @@ export function codeFrom(
 	try {
 		url = new URL(ended);
 	} catch {
+		// Not an address: said below.
 		throw new AuthError("The sign-in did not come back with an address.");
 	}
 	if (now - pending.at > SIGN_IN_MAX_MS)
@@ -371,7 +375,8 @@ export async function revokeTokens(
 			}).toString(),
 		});
 		return response.ok;
-	} catch {
+	} catch (error) {
+		debugLog("token revoke", error);
 		return false;
 	}
 }
@@ -402,6 +407,7 @@ export function stateOf(address: string): string {
 	try {
 		return new URL(address).searchParams.get("state") ?? "";
 	} catch {
+		// Not an address.
 		return "";
 	}
 }
@@ -537,7 +543,9 @@ export class Session {
 
 	/** End the grant of `tokens` at the server, if it answers. */
 	async revoke(server: string, tokens: Tokens): Promise<void> {
-		const endpoints = await this.endpoints(server).catch(() => undefined);
+		const endpoints = await this.endpoints(server).catch((error: unknown) =>
+			debugLog("sign-in endpoints", error),
+		);
 		if (endpoints !== undefined)
 			await revokeTokens(this.fetcher, endpoints, tokens);
 	}

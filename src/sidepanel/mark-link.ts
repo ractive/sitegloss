@@ -64,6 +64,7 @@ export function shortAddress(address: string): string {
 		const bare = u.pathname === "/" && route === "" && u.search === "";
 		return `${u.host}${bare ? "" : u.pathname}${u.search}${route}`;
 	} catch {
+		// Not an address.
 		return address;
 	}
 }

@@ -116,6 +116,7 @@ function decoded(text: string): string | undefined {
 	try {
 		return decodeURIComponent(text.replaceAll("+", " "));
 	} catch {
+		// A malformed escape.
 		return undefined;
 	}
 }
@@ -232,6 +233,7 @@ export function keptQuery(search: string): string {
 			.join("&");
 		return codePoints(kept) > MAX_QUERY ? "" : kept;
 	} catch {
+		// Not an address.
 		return "";
 	}
 }
@@ -252,6 +254,7 @@ export function queryOf(href: string): string | undefined {
 	try {
 		search = new URL(href).search;
 	} catch {
+		// Not an address.
 		return undefined;
 	}
 	return storedQuery(search);
