@@ -17,8 +17,12 @@ test("the case's id and address are the ref's, not the vector's", () => {
 		id: "c_dev",
 		url: "https://app.dev.example/t/acme/cases/c_dev",
 	});
-	expect(text).toContain("Case id: c_dev\n");
-	expect(text).toEndWith("\nhttps://app.dev.example/t/acme/cases/c_dev");
+	expect(text).toStartWith(
+		"Fix the open marks of Sitegloss case c_dev in this repository.\n",
+	);
+	expect(text).toEndWith(
+		"\nThe case for people: https://app.dev.example/t/acme/cases/c_dev",
+	);
 	expect(text).not.toContain("c_shop");
 });
 

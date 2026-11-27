@@ -5069,6 +5069,12 @@ web app carries the same text (sitegloss.dev DEC-050); the two are still kept in
 hand. It reaches users with the next release: 0.4.0 is in the stores' review with the
 old text, and the version is not changed here.
 
+Shortened on 27 November 2026 (owner, sitegloss.dev DEC-050): the same rules in fewer
+words, the case id in the first line, and get_mark among the tools without "if you have
+that tool". The copy is held to the server's vector (`test/agent-instructions.json`).
+DEC-081's "if you have that tool" no longer holds: an AI app whose only connection is an
+extension without get_mark (0.4.0 and older) is told to stop and say so.
+
 ## DEC-081: The tools for an AI app as the server's: a case read in three steps, findings are comments (owner, 25 November 2026)
 
 2026-11-25. The service redesigned its MCP server's case tools (sitegloss.dev DEC-052):
