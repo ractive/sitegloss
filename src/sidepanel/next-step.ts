@@ -21,6 +21,7 @@
 import {
 	caseInstructions,
 	markInstructions,
+	markRef,
 } from "../lib/agent-instructions.ts";
 import {
 	assigneeOf,
@@ -462,15 +463,13 @@ export function mayCopyMark(c: Case, where: Where): boolean {
 export async function copyMark(
 	c: Case,
 	where: Where,
-	mark: Pick<Mark, "number">,
+	mark: Pick<Mark, "number" | "resolution" | "reopens">,
 	write: (text: string) => Promise<void>,
 ): Promise<{ ok: boolean; text: string } | undefined> {
 	if (where.kind !== "team" || where.link === undefined || !isSafeId(c.id))
 		return undefined;
 	try {
-		await write(
-			markInstructions({ id: c.id, url: where.link }, { number: mark.number }),
-		);
+		await write(markInstructions({ id: c.id, url: where.link }, markRef(mark)));
 	} catch {
 		return { ok: false, text: COPY_FAILED };
 	}
