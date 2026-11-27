@@ -939,7 +939,7 @@ const MARGIN = 400;
 const REST_ROOM = 300;
 /** The most a crop's line takes, with a case id and a crop's name of 64 characters each. */
 const CROP_LINE = 320;
-/** How many crops of one get_mark call are scaled at a time, as the server's SCALING_AT_ONCE. */
+/** How many crops of one get_mark call are read and scaled at a time: it bounds the pictures held in the service worker at once; the server's SCALING_AT_ONCE has the same width. */
 const SCALING_AT_ONCE = 2;
 
 /** `run` on each of `items`, at most `width` at a time, the next started when one ends; the results in order. */
@@ -1606,8 +1606,8 @@ export function createTools(deps: ToolDeps): ModelContextTool[] {
 				);
 			}
 
-			// The crops, a few at a time, so that one call does not hold up the
-			// scaling of others; each sent, in order, while it still fits.
+			// The crops, a few at a time, so that the service worker does not hold
+			// them all at once; each sent, in order, while it still fits.
 			const copies = await inTurns(marks, SCALING_AT_ONCE, (a) =>
 				cropCopy(c, a, numbers.length === 1),
 			);

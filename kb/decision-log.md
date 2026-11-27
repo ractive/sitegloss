@@ -5412,7 +5412,7 @@ with their pictures in one call through either connection.
   cannot be read or scaled is listed the same way ("it could not be read or scaled now":
   `get_image` may try it again) and the other marks are answered, as the server's `smallCopy`
   does; a call for one mark fails as before. The crops are read and scaled two at a time (`SCALING_AT_ONCE`, the server's
-  number), so that one call does not hold up the scaling of the others.
+  width), which bounds the pictures the service worker holds at once.
 - The description, the line about it in `get_case`'s and the instructions say so, in the server's
   words where they fit. Tests (`test/tools.test.ts`): the order with an unknown number and a
   repeat, `marks: [n]` equal to `mark: n`, the stop at a whole mark with the call for the rest,
