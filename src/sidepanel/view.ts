@@ -119,6 +119,7 @@ import {
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
 import { openAt, pageHosts } from "./page-hosts.ts";
 import { holdClickedInPlace } from "./scroll-anchor.ts";
+import { renderServerPointer } from "./server-mcp.ts";
 import {
 	openAtFirst,
 	type SiteGroup,
@@ -5549,6 +5550,7 @@ function renderViews(state: PanelState, actions: Actions): void {
 	renderCloudBanner(state, actions);
 	renderAi(state);
 	renderAccount(state, actions);
+	renderServerPointer(state);
 	renderPaired(state, actions);
 	renderBack(state, actions);
 	allSites.checked = state.allSites;

@@ -24,6 +24,7 @@ import {
 } from "./cloud-view.ts";
 import { byId, h } from "./dom.ts";
 import { type IconName, icon } from "./icons.ts";
+import { teamGuide } from "./server-mcp.ts";
 import type { PanelState } from "./state.ts";
 
 type Cloud = PanelState["cloud"];
@@ -200,6 +201,29 @@ function signedOut(cloud: Cloud): HTMLElement[] {
 	];
 }
 
+/** The way to the server's MCP for an AI app; none without a team's slug. */
+function guideItem(cloud: Cloud): HTMLElement[] {
+	const guide = teamGuide(cloud);
+	if (guide === undefined) return [];
+	return [
+		h(
+			"a",
+			{
+				role: "menuitem",
+				id: "account-ai",
+				"data-focus": "account-ai",
+				href: guide.href,
+				target: "_blank",
+				rel: "noopener noreferrer",
+				title: `How to connect an AI app to the MCP server at ${guide.host}, in a new tab`,
+				onclick: () => close(),
+			},
+			icon("link"),
+			"Connect an AI app",
+		),
+	];
+}
+
 function signedIn(cloud: Cloud): HTMLElement[] {
 	const account = cloud.account as NonNullable<Cloud["account"]>;
 	const team = teamOf(cloud);
@@ -294,6 +318,8 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 							a.cloudSyncNow(),
 						)
 					: null,
+			// The team's page on connecting an AI app to the server (server-mcp.ts).
+			...guideItem(cloud),
 			// The account's own page is the web app's: a link, as its menu has it.
 			h(
 				"a",
