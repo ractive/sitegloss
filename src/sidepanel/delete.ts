@@ -1,5 +1,5 @@
 /**
- * A Delete in the panel asks twice (a case, a mark, a finding): the first
+ * A Delete in the panel asks twice (a case, a mark, an image): the first
  * click arms it ("Really delete?"), a second click deletes. A double click's
  * second is no second thought, and a click long after the first only asks
  * again.

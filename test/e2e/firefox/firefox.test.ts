@@ -460,9 +460,11 @@ describe.skipIf(!firefoxReady || !E2E_FULL)("Firefox: the test build", () => {
 				name: "list_cases",
 				arguments: {},
 			});
-			const cases = JSON.parse(
-				(listed.content as { text: string }[])[0]?.text ?? "[]",
-			) as { caseId: string; title: string }[];
+			// One case per line, as JSON (DEC-081).
+			const cases = ((listed.content as { text: string }[])[0]?.text ?? "")
+				.split("\n")
+				.filter((line) => line.startsWith("{"))
+				.map((line) => JSON.parse(line)) as { caseId: string; title: string }[];
 			const target = cases.find((c) => c.title === `${TITLE} (copy)`);
 			expect(target).toBeDefined();
 
@@ -604,6 +606,33 @@ describe.skipIf(!firefoxReady || !E2E_FULL)(
 				})`,
 				),
 			).toBe("closed");
+		}, 60_000);
+
+		test("no host access at install: the offer of all sites first, the option on Home in Firefox's words (DEC-076)", async () => {
+			expect(
+				await h.rdp.eval<boolean>(
+					h.panel,
+					"chrome.permissions.contains({ origins: ['<all_urls>'] })",
+				),
+			).toBe(false);
+			await h.rdp.waitFor(
+				h.panel,
+				"!document.getElementById('all-sites-offer').hidden",
+				"the offer of all sites",
+			);
+			expect(
+				await h.rdp.eval<unknown>(
+					h.panel,
+					`(() => {
+						const box = document.getElementById("all-sites");
+						return {
+							home: box.closest("main").id,
+							checked: box.checked,
+							note: document.getElementById("all-sites-note").textContent.includes("“Access your data for all websites”"),
+						};
+					})()`,
+				),
+			).toEqual({ home: "home", checked: false, note: true });
 		}, 60_000);
 	},
 );

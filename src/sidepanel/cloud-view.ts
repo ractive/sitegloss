@@ -7,6 +7,7 @@
  */
 
 import {
+	DEV_SERVER_OFFERED,
 	DEVELOPMENT_SERVER,
 	PRODUCTION_SERVER,
 	serverKind,
@@ -14,6 +15,7 @@ import {
 	serverNote,
 } from "../lib/cloud/servers.ts";
 import { byId, formatDate, h } from "./dom.ts";
+import { type IconName, icon } from "./icons.ts";
 import type { PanelState } from "./state.ts";
 
 /** What the user can do about the account; `cloud.ts` carries it out. */
@@ -44,6 +46,7 @@ export function hostOf(server: string): string {
 	try {
 		return new URL(server).host;
 	} catch {
+		// Not an address.
 		return server;
 	}
 }
@@ -58,7 +61,15 @@ export function teamOf(cloud: Cloud) {
 
 /** What signing in sends where: said before the click, in one sentence. */
 export const SIGN_IN_NOTE = (server: string) =>
-	`Signed in, your cases go to ${hostOf(server)} and to the members of your team: their marks, comments, findings and screenshots, and the address of every page you marked (its query without what looks like a secret or an e-mail address). Without an account everything stays in this browser, as now.`;
+	`Signed in, your cases go to ${hostOf(server)} and to the members of your team: their marks, comments and screenshots, and the address of every page you marked (its query without what looks like a secret or an e-mail address). Without an account everything stays in this browser, as now.`;
+
+/**
+ * How a case goes from whoever finds what is wrong to whoever fixes it and
+ * back (DEC-071), where the panel explains itself: the empty list and the
+ * Team section before signing in.
+ */
+export const HAND_OVER_NOTE =
+	"With a team, a case is handed over. Assign it to whoever fixes its open marks: it is under My cases for them, and the case says what is theirs to do. When every open mark is fixed, it is back under My cases for whoever started it, to check the fixes, verify them and close the case.";
 
 export const SIGN_IN_TITLE =
 	"Sign in at the server in a window of the browser; Sitegloss then syncs your cases with your team, both ways";
@@ -178,7 +189,7 @@ function button(
 	label: string,
 	title: string,
 	onclick: () => void,
-	options: { strong?: boolean; disabled?: boolean } = {},
+	options: { strong?: boolean; disabled?: boolean; icon?: IconName } = {},
 ): HTMLButtonElement {
 	return h(
 		"button",
@@ -190,6 +201,7 @@ function button(
 			...(options.strong ? { class: "strong" } : {}),
 			...(options.disabled ? { disabled: true } : {}),
 		},
+		options.icon === undefined ? null : icon(options.icon),
 		label,
 	);
 }
@@ -200,7 +212,10 @@ function button(
  * field is left). Folded away: whoever never opens it signs in to the
  * service and is never asked. Only while nobody is signed in.
  */
-function serverChooser(cloud: Cloud): HTMLElement {
+export function serverChooser(
+	cloud: Cloud,
+	offerDevelopment: boolean = DEV_SERVER_OFFERED,
+): HTMLElement {
 	const kind = serverKind(cloud.server);
 	const input: HTMLInputElement = h("input", {
 		type: "url",
@@ -244,7 +259,11 @@ function serverChooser(cloud: Cloud): HTMLElement {
 			}),
 		},
 		option("production", serverLabel(PRODUCTION_SERVER)),
-		option("development", serverLabel(DEVELOPMENT_SERVER)),
+		// Not in a build that goes to people; whoever is set to it still sees
+		// it, so the choice shows what it is.
+		...(offerDevelopment || kind === "development"
+			? [option("development", serverLabel(DEVELOPMENT_SERVER))]
+			: []),
 		option("other", "Another address…"),
 	);
 	select.value = kind;
@@ -279,6 +298,7 @@ function signedOut(cloud: Cloud): HTMLElement[] {
 		h("p", { class: "sync-state" }, "Sign in to sync with your team."),
 		...serverLine(cloud.server),
 		h("p", { class: "meta" }, SIGN_IN_NOTE(cloud.server)),
+		h("p", { class: "meta", id: "cloud-hand-over" }, HAND_OVER_NOTE),
 		h(
 			"div",
 			{ class: "row" },
@@ -287,7 +307,7 @@ function signedOut(cloud: Cloud): HTMLElement[] {
 				cloud.signingIn ? "Signing in…" : "Sign in",
 				SIGN_IN_TITLE,
 				act((a) => a.cloudSignIn()),
-				{ strong: true, disabled: cloud.signingIn },
+				{ strong: true, disabled: cloud.signingIn, icon: "sign-in" },
 			),
 		),
 		serverChooser(cloud),
@@ -389,7 +409,7 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 							cloud.signingIn ? "Signing in…" : "Sign in again",
 							SIGN_IN_TITLE,
 							act((a) => a.cloudSignIn()),
-							{ strong: true, disabled: cloud.signingIn },
+							{ strong: true, disabled: cloud.signingIn, icon: "sign-in" },
 						),
 					]
 				: syncNowHelps(cloud)
@@ -399,6 +419,7 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 								"Sync now",
 								SYNC_NOW_TITLE,
 								act((a) => a.cloudSyncNow()),
+								{ icon: "sync" },
 							),
 						]
 					: []),
@@ -407,6 +428,7 @@ function signedIn(cloud: Cloud): HTMLElement[] {
 				"Sign out",
 				SIGN_OUT_TITLE,
 				act((a) => a.cloudSignOut()),
+				{ icon: "sign-out" },
 			),
 		),
 	);
@@ -544,7 +566,7 @@ export function renderCloudBanner(
 							cloud.signingIn ? "Signing in…" : "Sign in again",
 							SIGN_IN_TITLE,
 							act((a) => a.cloudSignIn()),
-							{ strong: true, disabled: cloud.signingIn },
+							{ strong: true, disabled: cloud.signingIn, icon: "sign-in" },
 						),
 					]
 				: [

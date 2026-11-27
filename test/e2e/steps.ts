@@ -190,6 +190,14 @@ export async function reachOverlay(page: Page): Promise<void> {
 	});
 }
 
+/**
+ * The worker hears from the extension's page that the tab's page may add
+ * marks to the case, as the side panel tells it before it hands the page a
+ * case (tab-cases.ts).
+ */
+export const HAND_CASE = (tabId: number, caseId: string) =>
+	`chrome.runtime.sendMessage(${JSON.stringify({ type: "tab:case", tabId, caseId })})`;
+
 /** A content request to the tab, injecting the content script first if needed. */
 const toTab = (tabId: number, message: object) =>
 	`chrome.tabs.sendMessage(${tabId}, ${JSON.stringify(message)}).catch(() => chrome.scripting.executeScript({ target: { tabId: ${tabId} }, files: ["content.js"] }).then(() => chrome.tabs.sendMessage(${tabId}, ${JSON.stringify(message)})))`;
@@ -235,6 +243,7 @@ export async function showToolbar(
 	);
 	const c = newCase(newId("c"), info, new Date().toISOString());
 	await h.control.eval(PUT_CASE(c));
+	await h.control.eval(HAND_CASE(tabId, c.id));
 	await h.control.eval(
 		toTab(tabId, {
 			type: "overlay:show",

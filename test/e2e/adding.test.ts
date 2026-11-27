@@ -213,9 +213,18 @@ inBothSets("adding marks to a case", () => {
 		// The case view follows.
 		await panel.waitFor(`document.querySelectorAll(".mark").length === 2`);
 
-		// A comment closed with Escape keeps its mark: it goes in too. Nothing
-		// moved: it shares the screenshot of mark 2, and its shot shows both.
+		// Escape with nothing written takes the mark back, as Cancel does: the
+		// dialog goes, no mark is drawn, and the case keeps its two.
 		await page.click(shadow('[data-action="tool-note"]'));
+		await page.click(`document.querySelector("[data-truth=tip]")`);
+		await dialogField(page);
+		await escapeTheField(h, page);
+		await page.waitFor(`${shadow(".popover")}.hidden`);
+		await drawnAre(page, { drafts: [], saved: ["1", "2"] });
+
+		// A comment with words closed with Escape keeps its mark: it goes in
+		// too. Nothing moved: it shares the screenshot of mark 2, and its shot
+		// shows both.
 		await page.click(`document.querySelector("[data-truth=tip]")`);
 		await typeInField(page, "Say how much");
 		await escapeTheField(h, page);
@@ -739,6 +748,37 @@ inBothSets("adding marks to a case", () => {
 			);
 			await drawnAre(page, { drafts: [], saved: [] });
 			expect((await caseTitled("Left behind")).c.marks).toHaveLength(1);
+			await page.send("Page.close");
+		},
+		90_000,
+	);
+
+	fullTest(
+		"Close case with a mark not in the case: nothing is closed, the panel stays and says so",
+		async () => {
+			const { page, tabId } = await savedCase("Close blocked");
+			const panel = await addMarks(page, "Close blocked");
+			const { c } = await caseTitled("Close blocked");
+			const stored = await takeOut(c.id);
+			await markElement(page, "[data-truth=submit]", "Not in it");
+			await page.waitFor(
+				`${alert}?.startsWith("Mark 2 was not added")`,
+				20_000,
+			);
+			await Bun.sleep(PAST_GUARD_MS);
+			await panel.eval(`document.getElementById("close-case").click()`);
+			await panel.waitFor(
+				`document.getElementById("leave-hint")?.textContent?.startsWith("1 mark is not in the case yet")`,
+				20_000,
+			);
+			expect(
+				await panel.eval<boolean>(
+					`document.getElementById("case-view").hidden`,
+				),
+			).toBe(false);
+			await putBack(stored);
+			expect("closed" in (await caseTitled("Close blocked")).c).toBe(false);
+			expect(await toolbarUp(tabId)).toBe(true);
 			await page.send("Page.close");
 		},
 		90_000,

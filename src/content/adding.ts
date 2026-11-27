@@ -40,6 +40,8 @@ import {
 	shapeBounds,
 	translateShape,
 } from "../lib/case.ts";
+import { clipMark, union } from "../lib/clip.ts";
+import { debugLog } from "../lib/debug.ts";
 import {
 	createContext,
 	describeElement,
@@ -48,17 +50,20 @@ import {
 } from "../lib/element.ts";
 import { boundsOfRects } from "../lib/highlight.ts";
 import { atShot, siblingsOf, withLook } from "../lib/look.ts";
-import { isDarkGround, type RenderedMark } from "../lib/marks.ts";
-import type {
-	CaptureResult,
-	MarkTarget,
-	NumberCheck,
-	OverlayState,
-	PanelMarkWhat,
-	SaveResult,
-	UndoResult,
-	WorkerRequest,
-	WorkerResponse,
+import {
+	badgeRadius,
+	isDarkGround,
+	pinPosition,
+	type RenderedMark,
+} from "../lib/marks.ts";
+import {
+	askWorker,
+	type CaptureResult,
+	type MarkTarget,
+	type OverlayState,
+	type PanelMarkWhat,
+	type WorkerAnswers,
+	type WorkerRequest,
 } from "../lib/messages.ts";
 import { cropRectFor, type MarkDraft } from "../lib/save.ts";
 import { parentOf, shadowTrees } from "../lib/shadow.ts";
@@ -79,6 +84,7 @@ import {
 } from "./anchor.ts";
 import type { PageBlur } from "./blur.ts";
 import {
+	type ClippedRendered,
 	type IconName,
 	icon,
 	type Overlay,
@@ -87,6 +93,7 @@ import {
 } from "./overlay.ts";
 import { PageField } from "./page-field.ts";
 import { ELEMENT, type NoText, selectedText } from "./text-range.ts";
+import { Visibility } from "./visible.ts";
 
 export type Tool = "element" | "box" | "arrow" | "pen" | "note" | "highlight";
 
@@ -206,10 +213,10 @@ interface Drag {
 	caret?: Caret;
 }
 
-async function ask<T extends object>(request: WorkerRequest): Promise<T> {
-	const response = (await chrome.runtime.sendMessage(request)) as
-		| WorkerResponse<T>
-		| undefined;
+async function ask<R extends WorkerRequest>(
+	request: R,
+): Promise<WorkerAnswers[R["type"]]> {
+	const response = await askWorker(request);
 	if (response === undefined) throw new Error("Sitegloss did not answer.");
 	if (!response.ok) throw new Error(response.error);
 	return response;
@@ -347,6 +354,9 @@ export class MarkAdder {
 
 	readonly #pageBlur: PageBlur;
 	readonly #activity: PageActivity;
+	/** Where the toolbar's finished marks show (DEC-075), and the page's DOM changes it counts. */
+	readonly #visibility: Visibility;
+	#changes = 0;
 	/** `STILL_MS` and `SHOT_GAP_MS`, unless a unit test gives its own. */
 	readonly #stillMs: number;
 	readonly #shotGapMs: number;
@@ -358,6 +368,7 @@ export class MarkAdder {
 		timing: { stillMs?: number; shotGapMs?: number } = {},
 	) {
 		this.overlay = overlay;
+		this.#visibility = new Visibility(overlay.doc, overlay.host);
 		this.#stillMs = timing.stillMs ?? STILL_MS;
 		this.#shotGapMs = timing.shotGapMs ?? SHOT_GAP_MS;
 		this.#pageBlur = blur;
@@ -420,8 +431,9 @@ export class MarkAdder {
 		win?.addEventListener(
 			"keydown",
 			(e) => {
-				if (!overlay.addingMarks || e.key !== "Escape") return;
-				if (this.#editing !== null) this.#commitComment();
+				// The person's own key: the page's scripts can send an Escape too.
+				if (!e.isTrusted || !overlay.addingMarks || e.key !== "Escape") return;
+				if (this.#editing !== null) this.#escapeComment();
 				else if (this.#tool !== null) this.setTool(null);
 				else return;
 				// It was for Sitegloss, not for a dialog the page has open.
@@ -441,6 +453,7 @@ export class MarkAdder {
 		if (win !== null && typeof win.MutationObserver === "function")
 			this.#observer = new win.MutationObserver(() => {
 				this.#mutated = true;
+				this.#changes++;
 			});
 		this.#renderToolbar();
 	}
@@ -1026,9 +1039,9 @@ export class MarkAdder {
 			this.onAddImages?.(caseId, draft.number, "comment");
 			this.#commitComment();
 		};
-		// Escape in the field, as on the page: the comment is done.
+		// Escape in the field, as on the page.
 		field.onEscape = () => {
-			if (this.#editing === draft) this.#commitComment();
+			if (this.#editing === draft) this.#escapeComment();
 		};
 		this.#field = field;
 		const done = doc.createElement("button");
@@ -1045,10 +1058,7 @@ export class MarkAdder {
 		// Cancel, not the deleting of a mark that was kept (the owner).
 		remove.textContent = "Cancel";
 		remove.title = "Take this mark back";
-		remove.addEventListener("click", () => {
-			this.#forget(draft);
-			this.#closeComment();
-		});
+		remove.addEventListener("click", () => this.#cancelDraft(draft));
 		const row = doc.createElement("div");
 		row.className = "row";
 		row.append(remove, done);
@@ -1079,6 +1089,28 @@ export class MarkAdder {
 
 	#placePopover(draft: Draft): void {
 		this.overlay.placePopover(shapeBounds(this.#onWindow(draft)));
+	}
+
+	/**
+	 * Escape in the dialog of a mark just drawn: with nothing written, the
+	 * mark is taken back, as Cancel does (the owner: the button says Cancel,
+	 * and Escape did the opposite); with something written, the mark is kept
+	 * with it, so that Escape never throws words away.
+	 */
+	#escapeComment(): void {
+		const draft = this.#editing;
+		if (draft !== null && (this.#field?.value.trim() ?? "") === "") {
+			this.#cancelDraft(draft);
+			return;
+		}
+		this.#commitComment();
+	}
+
+	/** Cancel, or Escape with nothing written: the mark just drawn goes, and the toolbar says so. */
+	#cancelDraft(draft: Draft): void {
+		this.#forget(draft);
+		this.#message = `Mark ${draft.number} taken back`;
+		this.#closeComment();
 	}
 
 	#commitComment(): void {
@@ -1198,8 +1230,14 @@ export class MarkAdder {
 			this.#tool === "element" && this.#hover !== null
 				? this.#hover.getBoundingClientRect()
 				: null;
+		this.#visibility.begin();
 		const rendered = (marks: Draft[]) =>
-			marks.filter((d) => this.#onPage(d)).map((d) => this.#drawnNow(d));
+			marks
+				.filter((d) => this.#onPage(d))
+				.flatMap((d) => {
+					const shown = this.#inView(d);
+					return shown === null ? [] : [shown];
+				});
 		this.overlay.render(
 			rendered(this.#drafts),
 			this.#preview === null ? null : toWindow(this.#preview),
@@ -1209,6 +1247,34 @@ export class MarkAdder {
 			rendered(this.#savedMarks),
 		);
 		if (this.#editing !== null) this.#placePopover(this.#editing);
+		if (this.#visibility.pending) this.#schedule();
+	}
+
+	/**
+	 * A mark as drawn now, cut to where its element shows (DEC-075), `null`
+	 * when nothing of it does: a finished mark of the toolbar's is drawn as
+	 * the loaded case's would be. The one whose comment is open stays whole
+	 * under the pointer, and so does a mark without an element.
+	 */
+	#inView(draft: Draft): ClippedRendered | null {
+		const drawn = this.#drawnNow(draft);
+		const el = draft.element;
+		if (draft === this.#editing || el === null || !el.isConnected) return drawn;
+		const r = el.getBoundingClientRect();
+		if (r.width === 0 && r.height === 0) return drawn;
+		const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
+		const bounds = shapeBounds(drawn.shape);
+		const pin = pinPosition(drawn);
+		const radius = badgeRadius(drawn.shape);
+		const reach = union(union(rect, bounds), {
+			x: pin.x - radius,
+			y: pin.y - radius,
+			width: 2 * radius,
+			height: 2 * radius,
+		});
+		const view = this.#visibility.viewOf(el, rect, reach, this.#changes);
+		const clipped = clipMark({ element: rect, bounds, pin, radius, view });
+		return clipped === null ? null : { ...drawn, ...clipped };
 	}
 
 	#button(
@@ -1574,7 +1640,9 @@ export class MarkAdder {
 	#discard(shotIds: string[]): void {
 		if (shotIds.length === 0) return;
 		const caseId = this.#pendingId();
-		ask({ type: "images:discard", caseId, shotIds }).catch(() => undefined);
+		ask({ type: "images:discard", caseId, shotIds }).catch((error: unknown) =>
+			debugLog("discard images", error),
+		);
 	}
 
 	/**
@@ -1693,7 +1761,7 @@ export class MarkAdder {
 				};
 				this.#scrolled = false;
 				this.#mutated = false;
-				image = await ask<CaptureResult>({
+				image = await ask({
 					type: "capture",
 					caseId: this.#pendingId(),
 					shotId,
@@ -2011,7 +2079,7 @@ export class MarkAdder {
 			this.#renderToolbar();
 			const { view } = draft.shot as NonNullable<Draft["shot"]>;
 			const isFree = async () => {
-				const check = await ask<NumberCheck>({
+				const check = await ask({
 					type: "case:number",
 					caseId: (target as MarkTarget).caseId,
 					number: draft.number,
@@ -2048,7 +2116,7 @@ export class MarkAdder {
 						: [],
 				);
 				try {
-					await ask<SaveResult>({
+					await ask({
 						type: "case:save",
 						request: {
 							caseId: target.caseId,
@@ -2115,7 +2183,7 @@ export class MarkAdder {
 			if (target === undefined || !this.#added.includes(draft)) return;
 			this.#message = `Deleting mark ${draft.number} from “${target.title}”…`;
 			this.#renderToolbar();
-			const result = await ask<UndoResult>({
+			const result = await ask({
 				type: "case:undo-add",
 				caseId: target.caseId,
 				markId: markIdOf(draft.number),

@@ -21,6 +21,7 @@ import {
 	type Db,
 	HOST,
 	markElement,
+	marksIn,
 	READ_DB,
 	resetPanel,
 	saveAs,
@@ -194,15 +195,50 @@ inFullSet("marks and their screenshots", () => {
 		const { page, tabId } = await open("app");
 		await showToolbar(h, page, tabId);
 		await markElement(page, "#near", "near");
-		const badgeY = () =>
-			page.eval<number>(
-				`${HOST}.shadowRoot.querySelector("[data-number] circle").getBoundingClientRect().y`,
-			);
-		const before = await badgeY();
+		// The mark's box: its pin stays whole in the pane while the element
+		// is cut by the pane's edge (DEC-075).
+		const box = `${HOST}.shadowRoot.querySelector("[data-number]").parentElement.querySelector("rect:not([data-casing])")`;
+		const before = await page.eval<number>(`${box}.getBoundingClientRect().y`);
 		await page.eval(`document.getElementById("scroller").scrollTop = 100`);
-		await page.waitFor(
-			`${HOST}.shadowRoot.querySelector("[data-number] circle").getBoundingClientRect().y < ${before - 90}`,
+		await page.waitFor(`${box}.getBoundingClientRect().y < ${before - 90}`);
+		await close(page);
+	}, 60_000);
+
+	test("a loaded mark shows only where its element does: never over the fixed head or the sticky band its pane scrolled it under", async () => {
+		const { page, tabId } = await open("pane");
+		await showToolbar(h, page, tabId);
+		await markElement(page, "#first", "first");
+		const caseId = await marksIn(page);
+		const db = await h.control.eval<Db>(READ_DB);
+		const c = db.cases.find((x) => x.id === caseId);
+		await sendToTab(tabId, { type: "case:load", case: c });
+		const mark = `${HOST}.shadowRoot.querySelector('svg.marks [data-review="1"]')`;
+		const pin = `${mark}?.querySelector("circle")`;
+		await page.waitFor(`!!${pin}`);
+		// 30 px of it under the band, which ends at 100 (the head's 60 and
+		// its own 40): nothing of the box or the pin above that. The cut is the
+		// clip's own box (its y), not getBoundingClientRect, which for a nested
+		// SVG is its content's box, uncut; and on a frame drawn after the
+		// scroll (its box where the element is now, at 70).
+		await page.eval(
+			`document.getElementById("pane").scrollTop += document.getElementById("first").getBoundingClientRect().top - 70`,
 		);
+		const cutAtBand = `(() => { const clip = ${mark}?.querySelector("[data-clip]"); const box = clip?.querySelector("rect:not([data-casing])"); return !!box && Math.abs(box.getBoundingClientRect().top - 70) < 1 && Number(clip.getAttribute("y")) >= 99.5 && ${pin}.getBoundingClientRect().top >= 99.5; })()`;
+		await page.waitFor(cutAtBand);
+		// Loaded again there (a sync, the panel opening, Show): its own draw,
+		// done when the load answers, has the same cut.
+		await sendToTab(tabId, { type: "case:load", case: c });
+		expect(await page.eval<boolean>(cutAtBand)).toBe(true);
+		// All of it under them: nothing drawn.
+		await page.eval(`document.getElementById("pane").scrollTop += 400`);
+		await page.waitFor(`${mark} === null`);
+		// Shown from the panel or the highlight tool: back in its pane, drawn.
+		await sendToTab(tabId, {
+			type: "case:show",
+			caseId,
+			markId: c?.marks[0]?.id,
+		});
+		await page.waitFor(`(${pin}?.getBoundingClientRect().top ?? 0) >= 99.5`);
 		await close(page);
 	}, 60_000);
 

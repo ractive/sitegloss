@@ -245,7 +245,6 @@ export function look(c: Case | undefined) {
 				note: a.resolution?.note ?? null,
 				by: a.resolution?.user?.name ?? null,
 				reopens: (a.reopens ?? []).map((r) => r.note ?? ""),
-				findings: (a.findings ?? []).map((f) => f.text),
 				page: markUrl(c, a),
 				shape: a.shape,
 			})),

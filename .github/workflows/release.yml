@@ -192,7 +192,7 @@ jobs:
     # not hold back the other. Each waits for the owner's approval in its own
     # environment.
     needs: release
-    uses: ractive/release-workflows/.github/workflows/edge-extension-publish.yml@f1fde0fc2dfb016201659084f5d9d4f2ad2cea5a # v0.7.0
+    uses: ractive/release-workflows/.github/workflows/edge-extension-publish.yml@e481d39debc964c304c97327982d28431bc9604a # v0.8.2
     # The environment edge-add-ons (required reviewer, tags v* only) holds
     # EDGE_CLIENT_ID and EDGE_API_KEY; inherit passes them on, as above.
     secrets: inherit
@@ -207,14 +207,23 @@ jobs:
       product-id: 5c87cd72-07f3-427a-a433-edcd7c08eff4
       attest-signer-workflow: .github/workflows/release.yml
       notes: >-
-        Open any web page and click the Sitegloss toolbar icon: the side panel opens. "New case
-        for this page" shows a toolbar on the page (Element, Box, Arrow, Pen, Note); each mark
-        takes a comment and is saved to the case with a screenshot. Clicking the case on the
-        same page later draws the marks on it again. Connecting an AI app is optional: the
-        side panel's AI section uses the hosted tab-mcp relay and shows an address and a
-        pairing code for an MCP client. Source: https://github.com/ractive/sitegloss; the
-        package is the release zip of tag ${{ github.ref_name }}, with GitHub build
-        provenance (gh attestation verify <zip> -R ractive/sitegloss).
+        Open any web page and click the Sitegloss icon (under the puzzle piece until
+        pinned) or press Alt+Shift+O: the side panel opens. "New case for this page" shows
+        a toolbar on the page (Element, Box, Arrow, Pen, Highlight, Note); each mark takes
+        a comment and is saved to the case with a screenshot. Opening the case on the same
+        page later draws the marks on it again. Access to all sites is optional: the panel
+        offers it and the browser asks in the click; without it Sitegloss runs on a tab
+        after the icon's click. Everything above works without an account. Optional:
+        signing in to a team ("Sign in" in the panel's Team section; it needs a free
+        account at app.sitegloss.dev/sign-up with a confirmed e-mail address), and
+        connecting an AI app through the hosted tab-mcp relay (an address and a pairing
+        code in the panel's AI section; every change the app wants is asked first, unless
+        the user chose Always allow or Allow all changes). Bundled: tab-mcp-client 0.24.0 with
+        its WebMCP mirror off, tldts 7.5.5 with the public suffix list as data, and two
+        font files (SIL OFL); licences in LICENSES.txt. No remote code, no analytics.
+        Source: https://github.com/ractive/sitegloss; the package is the release zip of
+        tag ${{ github.ref_name }}, with GitHub build provenance
+        (gh attestation verify <zip> -R ractive/sitegloss).
 
   publish-firefox:
     # Beside the other two, not after them: one store's failure does not hold
@@ -234,18 +243,21 @@ jobs:
       addon-id: sitegloss@ractive.ch
       attest-signer-workflow: .github/workflows/release.yml
       notes: >-
-        Open any web page and click the Sitegloss toolbar icon: the sidebar opens. "New case
-        for this page" shows a toolbar on the page (Element, Box, Arrow, Pen, Note); each mark
-        takes a comment and is saved to the case with a screenshot. Clicking the case on the
-        same page later draws the marks on it again. Connecting an AI app is optional: it is
-        off until the user turns it on in the sidebar's AI section and consents to the data
-        collection Firefox asks about; it then uses the hosted tab-mcp relay and shows an
-        address and a pairing code for an MCP client. The code is bundled with Bun and not
-        minified. To build the uploaded zip from the attached source: Bun 1.4.4
-        (https://bun.sh), then in the unpacked archive `bun install --frozen-lockfile` and
-        `bun scripts/build.ts --firefox --store --zip`, which makes
-        sitegloss-firefox-<version>-store.zip (the version is package.json's; the build is
-        reproducible, the zip has the same SHA-256). Source and the README's build section:
-        https://github.com/ractive/sitegloss; the package is the release zip of tag
-        ${{ github.ref_name }}, with GitHub build provenance
+        No account is needed to test: signing in to a team (app.sitegloss.dev) and
+        connecting an AI app are optional and off until the user turns them on. The code is
+        bundled with Bun and not minified. To build the uploaded zip from the attached
+        source: Bun 1.4.4 (https://bun.sh), then in the unpacked archive
+        `bun install --frozen-lockfile` and `bun scripts/build.ts --firefox --store --zip`,
+        which makes sitegloss-firefox-<version>-store.zip (the version is package.json's; the
+        build is reproducible, the zip has the same SHA-256). Generated:
+        src/lib/cloud/api.gen.ts, by bun scripts/api-types.ts from
+        src/lib/cloud/openapi-v1.json. Bundled: tab-mcp-client 0.24.0 with its WebMCP mirror
+        off (webmcp: false), tldts 7.5.5 with the public suffix list as data (no network),
+        two font files in fonts/ (SIL OFL 1.1); licences in LICENSES.txt. No remote code, no
+        analytics. On the validator's warnings: the package shares its code with the Chrome
+        and Edge build, so it contains calls to chrome.sidePanel, chrome.offscreen,
+        chrome.windows.onBoundsChanged and chrome.dom.openOrClosedShadowRoot; none of them
+        runs in Firefox, each sits behind the build constant SITEGLOSS_FIREFOX
+        (src/lib/browser.ts). Source: https://github.com/ractive/sitegloss; the package is
+        the release zip of tag ${{ github.ref_name }}, with GitHub build provenance
         (gh attestation verify <zip> -R ractive/sitegloss).

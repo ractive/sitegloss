@@ -35,6 +35,7 @@ import {
 	notificationOptions,
 	PANEL,
 } from "../lib/browser.ts";
+import { debugLog } from "../lib/debug.ts";
 import { cropImages, scaleImage, toWebp } from "../lib/images.ts";
 import {
 	type Broadcast,
@@ -85,9 +86,18 @@ import { type Capture, tabInFront, workerTab } from "./tab.ts";
 import {
 	confirmLines,
 	createTools,
+	type HandOver,
 	INSTRUCTIONS,
 	type TabBridge,
 } from "./tools.ts";
+import {
+	WAS_ON_KEY,
+	WENT_OFF_KEY,
+	type WentOff,
+	wentOffAfter,
+	wentOffAtStart,
+	wentOffOf,
+} from "./went-off.ts";
 
 /** Wakes the worker while AI access is on, should the connection be down. */
 export const ALARM = "sitegloss-ai";
@@ -110,12 +120,16 @@ interface Panel {
 export interface ConnectionDeps {
 	store: CaseStore;
 	capture: Capture;
+	/** A tool handed the case to the tab's page (`case:load`, tab-cases.ts). */
+	handed?: (tabId: number, caseId: string, adding: boolean) => Promise<void>;
 	/** A tool changed or deleted a case (the sync writes it, DEC-021). */
 	changed?: (caseId: string) => void;
 	/** Who is signed in to sitegloss.dev here, by id (DEC-039); none: nobody. */
 	me?: () => Promise<string | undefined>;
 	/** The team a case syncs with, by name; none: it is on this device only. */
 	team?: (caseId: string) => Promise<string | undefined>;
+	/** The hand-over in the team chosen (DEC-071), for list_cases, get_case and assign_case. */
+	handOver?: () => Promise<HandOver | undefined>;
 	/** The settings database: `openKv()` unless given (a memory one in tests). */
 	kv?: Kv;
 }
@@ -155,6 +169,7 @@ async function tellTabs(news: ContentRequest): Promise<void> {
 	try {
 		for (const { id } of await chrome.tabs.query({}))
 			if (id !== undefined)
+				// A tab without the content script does not answer.
 				chrome.tabs.sendMessage(id, news).catch(() => undefined);
 	} catch {
 		// No tabs to tell.
@@ -178,6 +193,20 @@ async function broadcast(news: Broadcast): Promise<void> {
  */
 export const NO_CONSENT =
 	"Firefox has not been allowed to let Sitegloss send the pages' content and addresses to the AI app. Turn on AI access to be asked again.";
+
+/**
+ * Whether a permission's removal ends AI access (`consentChanged`): only in
+ * Firefox, only while AI access is on or on its way, and only when the data
+ * collection consent is gone. With AI access off nothing is said: taking all
+ * sites back once showed "AI problem" (DEC-076).
+ */
+export function consentGoneEnds(
+	firefox: boolean,
+	aiOn: boolean,
+	consented: boolean,
+): boolean {
+	return firefox && aiOn && !consented;
+}
 
 /** The writes of "Stop AI access": the session's stop, Keep AI access on, the session's on. */
 type StopWrite = "stopped" | "keepOn" | "session";
@@ -312,6 +341,8 @@ export class Connection {
 	#settings: Settings;
 	/** AI access is on for this browser session (without "Keep AI access on"). */
 	#sessionOn: boolean;
+	/** Why AI access went off by itself, until it is on again (DEC-072). */
+	#wentOff: WentOff | undefined;
 	#relay: string;
 	#relayNote: string | undefined;
 	#mcp: TabMcp;
@@ -363,13 +394,15 @@ export class Connection {
 		storage: CachedSecretStorage,
 		settings: Settings,
 		sessionOn: boolean,
+		wentOff?: WentOff,
 	) {
 		this.#deps = deps;
 		this.#kv = kv;
-		this.#tab = workerTab(deps.capture);
+		this.#tab = workerTab(deps.capture, deps.handed);
 		this.#storage = storage;
 		this.#settings = settings;
 		this.#sessionOn = sessionOn;
+		this.#wentOff = wentOff;
 		this.#questions = new Questions(this.#questionsHost());
 		this.#keep = new KeepOn(
 			() => this.#settings.keepOn && this.#settings.replaced === undefined,
@@ -418,12 +451,48 @@ export class Connection {
 		]);
 		// A Stop in this browser session holds, whatever was stored before it.
 		const stopped = session[SESSION_STOPPED] === true;
+		const sessionOn = !stopped && session[SESSION_ON] === true;
+		// It was on, and the session's flag is gone: a restart ended it (DEC-072).
+		// A record shows only while AI access is off: not with the session on or
+		// Keep AI access on (a failed removal may have left one), and not a
+		// stale one (a week); those are removed.
+		const stored = await kv
+			.get(WENT_OFF_KEY)
+			.catch((error: unknown) => debugLog("AI access record", error));
+		const keptOn = !stopped && settings.keepOn;
+		let wentOff = sessionOn || keptOn ? undefined : wentOffOf(stored);
+		if (stored !== undefined && wentOff === undefined)
+			await kv
+				.remove(WENT_OFF_KEY)
+				.catch((error: unknown) =>
+					console.warn("Sitegloss: forgetting why AI access is off", error),
+				);
+		const restarted = wentOffAtStart({
+			wasOn:
+				(await kv
+					.get(WAS_ON_KEY)
+					.catch((error: unknown) => debugLog("AI access record", error))) ===
+				true,
+			sessionOn,
+			stopped,
+			keepOn: settings.keepOn,
+			replaced: settings.replaced !== undefined,
+		});
+		if (restarted) {
+			wentOff = { reason: "restart", at: Date.now() };
+			await kv
+				.set({ [WENT_OFF_KEY]: wentOff, [WAS_ON_KEY]: false })
+				.catch((error: unknown) =>
+					console.warn("Sitegloss: saving why AI access is off", error),
+				);
+		}
 		const connection = new Connection(
 			deps,
 			kv,
 			storage,
 			stopped ? { ...settings, keepOn: false } : settings,
-			!stopped && session[SESSION_ON] === true,
+			sessionOn,
+			wentOff,
 		);
 		connection.#showBadge();
 		connection.#watchTabs();
@@ -472,6 +541,7 @@ export class Connection {
 			blurForms: () => this.#settings.blurForms,
 			maxMessageBytes: () => mcp.session?.limits.maxMessageBytes,
 			...(this.#deps.me ? { me: this.#deps.me } : {}),
+			...(this.#deps.handOver ? { handOver: this.#deps.handOver } : {}),
 			// open_case (DEC-050): the panel of the tab's window answers; none
 			// open, nobody does.
 			openInPanel: (request) =>
@@ -521,8 +591,11 @@ export class Connection {
 					const lines = await confirmLines(this.#deps.store, this.#tab, r, {
 						...(this.#deps.me ? { me: this.#deps.me } : {}),
 						...(this.#deps.team ? { team: this.#deps.team } : {}),
+						...(this.#deps.handOver ? { handOver: this.#deps.handOver } : {}),
 					});
-					const front = await tabInFront().catch(() => undefined);
+					const front = await tabInFront().catch((error: unknown) =>
+						debugLog("tab in front", error),
+					);
 					// No answer in time is "timeout": `decide` tells the library
 					// "unanswered", which the AI app hears as such, not as a no.
 					return this.#questions.ask(r, lines, front?.id);
@@ -613,6 +686,12 @@ export class Connection {
 					void this.#setReplaced(undefined);
 				}
 				const on = sessionOnAfter(detail, this.#settings.keepOn);
+				const off = wentOffAfter(detail, this.#settings.keepOn);
+				if (off !== undefined)
+					void this.#setWentOff({ reason: off, at: Date.now() });
+				// On again, or the person's own stop: nothing to explain.
+				else if (detail.state === "connected" || detail.reason === "user")
+					void this.#setWentOff(undefined);
 				if (on !== undefined) void this.#setSessionOn(on);
 				this.#changed();
 			},
@@ -637,7 +716,10 @@ export class Connection {
 	 */
 	async #consented(): Promise<boolean> {
 		if (!FIREFOX) return true;
-		const yes = await dataConsent().catch(() => false);
+		const yes = await dataConsent().catch((error: unknown) => {
+			debugLog("data consent", error);
+			return false;
+		});
 		if (!yes) {
 			this.#problem = NO_CONSENT;
 			this.#changed();
@@ -648,10 +730,18 @@ export class Connection {
 	/**
 	 * The consent taken back (Firefox, in its add-on's permissions): AI
 	 * access ends now, as the user's Stop would, but nothing is saved: once
-	 * allowed again, the settings hold as they were.
+	 * allowed again, the settings hold as they were. Called on the removal of
+	 * any permission: with AI access off nothing ends, and nothing is said
+	 * (taking all sites back said "AI problem" before, DEC-076).
 	 */
 	async consentChanged(): Promise<void> {
-		if (!FIREFOX || (await dataConsent().catch(() => false))) return;
+		const on = this.#mcp.state !== "disconnected" || this.#keep.retrying;
+		if (!FIREFOX || !on) return;
+		const consented = await dataConsent().catch((error: unknown) => {
+			debugLog("data consent", error);
+			return false;
+		});
+		if (!consentGoneEnds(FIREFOX, on, consented)) return;
 		this.#keep.stop();
 		this.#mcp.disconnect();
 		this.#problem = NO_CONSENT;
@@ -689,9 +779,29 @@ export class Connection {
 		await chrome.storage.session.set({ [SESSION_STOPPED]: on });
 	}
 
+	/** Remember (or forget) why AI access went off by itself; the store may fail, the memory holds. */
+	async #setWentOff(wentOff: WentOff | undefined): Promise<void> {
+		if (wentOff === undefined && this.#wentOff === undefined) return;
+		this.#wentOff = wentOff;
+		this.#changed();
+		try {
+			if (wentOff === undefined) await this.#kv.remove(WENT_OFF_KEY);
+			else await this.#kv.set({ [WENT_OFF_KEY]: wentOff });
+		} catch (error) {
+			console.warn("Sitegloss: saving why AI access is off", error);
+		}
+	}
+
 	async #setSessionOn(on: boolean): Promise<void> {
 		this.#sessionOn = on;
 		await chrome.storage.session.set({ [SESSION_ON]: on });
+		// Kept beside the session's flag, which a restart clears: the two
+		// together tell a restart from a worker that was only stopped.
+		await this.#kv
+			.set({ [WAS_ON_KEY]: on })
+			.catch((error: unknown) =>
+				console.warn("Sitegloss: saving that AI access is on", error),
+			);
 		await this.#syncAlarm();
 	}
 
@@ -756,6 +866,8 @@ export class Connection {
 		// AI access was on for the relay before: this one connects with
 		// "Keep AI access on", or on the user's click.
 		await this.#setSessionOn(false);
+		// About the relay before.
+		await this.#setWentOff(undefined);
 		this.#mcp = next;
 		this.#watch(next);
 		// Its statechange is no longer heard: a question for the relay
@@ -865,6 +977,7 @@ export class Connection {
 				// access is on for the session once connected ("connected").
 				await this.#setReplaced(undefined);
 				await this.#setStopped(false);
+				await this.#setWentOff(undefined);
 				this.#connect();
 				this.#changed();
 				return;
@@ -875,6 +988,9 @@ export class Connection {
 				// remembers the stop over it, so a new worker keeps it too (CR-08).
 				const wasOn = this.#settings.keepOn;
 				this.#settings = { ...this.#settings, keepOn: false };
+				// Forgotten here at once; the store follows the disconnect.
+				const hadReason = this.#wentOff !== undefined;
+				this.#wentOff = undefined;
 				const failed = await stopFirst(
 					() => {
 						this.#keep.stop();
@@ -888,6 +1004,12 @@ export class Connection {
 						session: () => this.#setSessionOn(false),
 					},
 				);
+				if (hadReason)
+					await this.#kv
+						.remove(WENT_OFF_KEY)
+						.catch((error: unknown) =>
+							console.warn("Sitegloss: forgetting why AI access is off", error),
+						);
 				await this.#syncAlarm();
 				this.#changed();
 				const problem = stopProblem(failed);
@@ -898,6 +1020,7 @@ export class Connection {
 				if (FIREFOX && command.on && !(await this.#consented())) return;
 				await this.#setKeepOn(command.on);
 				if (command.on) await this.#setStopped(false);
+				if (command.on) await this.#setWentOff(undefined);
 				if (command.on) this.#keep.connect();
 				else this.#keep.stop();
 				this.#changed();
@@ -1000,7 +1123,9 @@ export class Connection {
 			// The secret changed, and only connecting with it failed (the
 			// library connects itself after a takeover it saw).
 			if ((error as { secretChanged?: unknown }).secretChanged === true)
-				await this.#setReplaced(undefined).catch(() => {});
+				await this.#setReplaced(undefined).catch((error: unknown) =>
+					debugLog("replaced flag", error),
+				);
 		}
 		this.#changed();
 	}
@@ -1123,7 +1248,9 @@ export class Connection {
 	/** The question as a notification, while no panel is on screen. */
 	#fillNotice(view: FillView | undefined): void {
 		if (view === undefined) {
-			void chrome.notifications.clear(FILL_NOTIFICATION).catch(() => {});
+			void chrome.notifications
+				.clear(FILL_NOTIFICATION)
+				.catch((error: unknown) => debugLog("fill notification", error));
 			return;
 		}
 		if ([...this.#panels].some((p) => p.visible)) return;
@@ -1138,7 +1265,7 @@ export class Connection {
 					priority: 2,
 				}),
 			)
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("fill notification", error));
 	}
 
 	/**
@@ -1163,6 +1290,7 @@ export class Connection {
 		try {
 			parsed = new URL(url);
 		} catch {
+			// Not an address.
 			return;
 		}
 		if (parsed.origin !== origin || parsed.pathname !== PAIRING_PATH) return;
@@ -1171,7 +1299,7 @@ export class Connection {
 				target: { tabId, frameIds: [0] },
 				files: [PAIRING_SCRIPT],
 			})
-			.catch(() => undefined);
+			.catch((error: unknown) => debugLog("pairing script", error));
 	}
 
 	/**
@@ -1212,6 +1340,7 @@ export class Connection {
 				try {
 					return (await chrome.tabs.get(tabId)).windowId;
 				} catch {
+					// The tab is gone.
 					return undefined;
 				}
 			},
@@ -1239,7 +1368,10 @@ export class Connection {
 					}),
 				);
 			},
-			clear: (id) => void chrome.notifications.clear(id).catch(() => {}),
+			clear: (id) =>
+				void chrome.notifications
+					.clear(id)
+					.catch((error: unknown) => debugLog("clear notification", error)),
 			changed: () => this.#changed(),
 			now: () => Date.now(),
 		};
@@ -1291,6 +1423,7 @@ export class Connection {
 			...(replaced !== undefined
 				? { replaced: { sibling: replaced.sibling } }
 				: {}),
+			...(this.#wentOff !== undefined ? { wentOff: this.#wentOff.reason } : {}),
 			...(this.#lastCall !== undefined ? { lastCall: this.#lastCall } : {}),
 			...(this.#running.size > 0 ? { running: this.#running.size } : {}),
 			questions: this.#questions.list,

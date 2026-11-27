@@ -11,6 +11,7 @@ import {
 } from "@ractive-ch/tab-mcp-client/setup";
 import { SERVER_NAME } from "../worker/protocol.ts";
 import { byId, h } from "./dom.ts";
+import { setCopyLabel } from "./icons.ts";
 
 /** How long a Copy button says "Copied". */
 export const COPIED_MS = 1500;
@@ -37,7 +38,7 @@ export function copyText(
 	announce: (message: string) => void,
 ): void {
 	const say = (what: "Copy" | "Copied") => {
-		button.textContent = what;
+		setCopyLabel(button, what);
 		button.setAttribute("aria-label", `${what} ${noun}`);
 	};
 	const refused = () => {
@@ -78,16 +79,13 @@ export function setupSteps(
 				const noun = `${app} command`;
 				// Its lines as they are: a one-line copy of Codex's two would run wrong.
 				const pre = h("pre", { dir: "ltr" }, command);
-				const copy = h(
-					"button",
-					{
-						type: "button",
-						class: "small copy",
-						"aria-label": `Copy ${noun}`,
-						onclick: () => copyText(copy, command, noun, pre, announce),
-					},
-					"Copy",
-				);
+				const copy = h("button", {
+					type: "button",
+					class: "small copy",
+					"aria-label": `Copy ${noun}`,
+					onclick: () => copyText(copy, command, noun, pre, announce),
+				});
+				setCopyLabel(copy, "Copy");
 				parts.push(h("div", { class: "command" }, pre, copy));
 			}
 			if (note !== undefined)

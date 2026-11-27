@@ -4,7 +4,9 @@
  *   bun scripts/build.ts            development build with the fixed key (DEC-006)
  *   bun scripts/build.ts --store    no `key`, for the Chrome Web Store
  *   bun scripts/build.ts --test     grants `<all_urls>` and `downloads` at install, for the end-to-end tests
- *   bun scripts/build.ts --zip      also packs sitegloss-<version>.zip
+ *   bun scripts/build.ts --zip      also packs sitegloss-<version>.zip; a zip goes to
+ *                                   people, so (as with --store) the panel's
+ *                                   server chooser has no "Development server"
  *   bun scripts/build.ts --firefox  the Firefox build into `dist-firefox/`
  *   bun scripts/build.ts --firefox --test
  *                                   the Firefox build with host access,
@@ -45,6 +47,11 @@ export interface BuildOptions {
 	 * `browser_specific_settings`.
 	 */
 	firefox?: boolean;
+	/**
+	 * The build goes to people (a zip of it is packed): with `store`, the
+	 * panel's server chooser does not offer the development server (DEC-041).
+	 */
+	forPeople?: boolean;
 	minify?: boolean;
 }
 
@@ -102,7 +109,31 @@ export function mitText(name: string, file: string): string {
 	throw new Error(`no MIT licence text for ${name}`);
 }
 
-/** Sitegloss's licence and those of `packages`; a package without one stops the build. */
+/**
+ * The web app's typefaces, bundled for the extension's own pages
+ * (`src/fonts/fonts.css`): the files the build copies to `fonts/`, and each
+ * family's licence (SIL OFL 1.1), from @fontsource-variable 5.3.0. Data, not
+ * code: copied as they are.
+ */
+export const FONTS: readonly (readonly [
+	family: string,
+	file: string,
+	licence: string,
+])[] = [
+	["Inter", "inter-latin-wght-normal.woff2", "OFL-Inter.txt"],
+	["Manrope", "manrope-latin-wght-normal.woff2", "OFL-Manrope.txt"],
+];
+
+/**
+ * The side panel's icons (`src/sidepanel/icons.ts`, DEC-078): paths copied
+ * from heroicons 2.2.0, the web app's icons, under their MIT licence.
+ */
+export const ICONS_NOTICE = [
+	"Heroicons (the side panel's icons, heroicons 2.2.0)",
+	"src/sidepanel/LICENSE-heroicons.txt",
+] as const;
+
+/** Sitegloss's licence, those of `packages` (a package without one stops the build), the fonts' and the icons'. */
 export async function notices(packages: Iterable<string>): Promise<string> {
 	const text = (path: string) => Bun.file(join(ROOT, path)).text();
 	const parts = [
@@ -114,6 +145,12 @@ export async function notices(packages: Iterable<string>): Promise<string> {
 			throw new Error(`no licence known for the bundled package ${name}`);
 		parts.push(`${name}\n\n${mitText(name, await text(path))}`);
 	}
+	for (const [family, , licence] of FONTS)
+		parts.push(
+			`The ${family} typeface (fonts/, @fontsource-variable 5.3.0)\n\n${await text(`src/fonts/${licence}`)}`,
+		);
+	const [what, path] = ICONS_NOTICE;
+	parts.push(`${what}\n\n${mitText(what, await text(path))}`);
 	return parts.join(`\n${"-".repeat(78)}\n\n`);
 }
 
@@ -274,6 +311,8 @@ interface BundleOptions {
 	sourcemap: "none" | "linked";
 	test: boolean;
 	firefox: boolean;
+	/** The panel's chooser offers the development server (DEC-041). */
+	devServer: boolean;
 }
 
 async function bundle(
@@ -294,8 +333,14 @@ async function bundle(
 		define: {
 			SITEGLOSS_TEST_BUILD: String(options.test),
 			SITEGLOSS_FIREFOX: String(options.firefox),
+			SITEGLOSS_DEV_SERVER: String(options.devServer),
+			// Handled failures said in the console (lib/debug.ts): not in a
+			// build that goes to people.
+			SITEGLOSS_DEBUG: String(options.devServer),
 		},
 		minify: options.minify,
+		// The fonts: one copy at the extension's root, not one per page.
+		external: ["/fonts/*"],
 		splitting: format === "esm" && entrypoint.endsWith(".html"),
 		sourcemap: options.sourcemap,
 		metafile: true,
@@ -358,6 +403,7 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 		sourcemap: firefox && options.store ? "none" : "linked",
 		test: options.test === true,
 		firefox,
+		devServer: !options.store && !options.forPeople,
 	};
 	const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as {
 		version: string;
@@ -413,6 +459,11 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
 				)),
 	]);
 	await Bun.write(join(outdir, NOTICES_FILE), await notices(packages));
+	for (const [, file] of FONTS)
+		await Bun.write(
+			join(outdir, "fonts", file),
+			Bun.file(join(ROOT, "src/fonts", file)),
+		);
 	for (const size of ICON_SIZES) {
 		const name = `icon-${size}.png`;
 		await Bun.write(
@@ -499,6 +550,7 @@ if (import.meta.main) {
 		...(values.store ? { store: true } : {}),
 		...(values.test ? { test: true } : {}),
 		...(values.firefox ? { firefox: true } : {}),
+		...(values.zip ? { forPeople: true } : {}),
 	});
 	const where = relative(process.cwd(), result.outdir) || ".";
 	console.log(

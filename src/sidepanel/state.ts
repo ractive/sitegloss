@@ -15,6 +15,7 @@ import type { CloudStatus, SyncMode } from "../lib/cloud/book.ts";
 import type { CheckedExport } from "../lib/export.ts";
 import type { MarkMatch, OverlayState } from "../lib/messages.ts";
 import type { SyncStatus, SyncTargetKind } from "../lib/sync.ts";
+import type { Copied } from "./next-step.ts";
 import type { ChosenPage } from "./page-filter.ts";
 import type { Size } from "./size.ts";
 
@@ -41,6 +42,13 @@ export interface TabInfo {
 	size: Size | undefined;
 	/** Still loading: an address not known yet says nothing about access. */
 	loading?: boolean;
+	/**
+	 * A page no extension may run on (DEC-076): the browser's refusal said
+	 * so (`page`: a store, a page of its own, a PDF's viewer), or it is a
+	 * file and files are not allowed (`file`, Firefox, which tells the
+	 * address). No click and no all sites helps.
+	 */
+	cannotRun?: "page" | "file";
 }
 
 /** The case loaded onto a tab, and where its marks were found there. */
@@ -66,6 +74,11 @@ export interface CaseImages {
 	caseId: string;
 	version: string;
 	urls: Map<string, string>;
+	/**
+	 * What the image under each path is (`imageKeys`): its URL is reused
+	 * while that stays (none for a path: not reused). None: none is reused.
+	 */
+	keys?: Map<string, string | undefined>;
 }
 
 /** Where the last export went, as Chrome told (DEC-020). */
@@ -104,10 +117,16 @@ export interface PanelState {
 	overlay: OverlayState | undefined;
 	/** Under "This page". */
 	hint: string | undefined;
+	/**
+	 * The list takes the focus once per `seq` (a case the person's own press
+	 * closed): on the case's card if it is on screen, else on the list's
+	 * heading.
+	 */
+	homeFocus: { seq: number; caseId: string | undefined };
 	cases: Case[];
 	view: { kind: "home" } | { kind: "case"; id: string };
 	/**
-	 * The Settings view (the AI app card, the options) is drawn instead of
+	 * The Settings view (the AI app card) is drawn instead of
 	 * the view underneath, which stays as it is: an open case stays open.
 	 */
 	settings: boolean;
@@ -128,6 +147,8 @@ export interface PanelState {
 	hiddenOn: Set<number>;
 	/** The panel is drawing the open case's marks on this tab now. */
 	drawing: number | undefined;
+	/** A mark's Show is drawing the case's marks first: that mark's button is busy. */
+	showingMark: { caseId: string; markId: string } | undefined;
 	/** The open case, once read. */
 	current: Case | undefined;
 	images: CaseImages | undefined;
@@ -196,16 +217,32 @@ export interface PanelState {
 	 * The mark whose pin was clicked on the page (DEC-027): the list opens it
 	 * and brings it into view, once per click (`at`).
 	 */
-	picked: { caseId: string; markId: string; at: number } | undefined;
+	picked:
+		| {
+				caseId: string;
+				markId: string;
+				at: number;
+				/** Its head takes the focus: the button that asked went (This page's Start verifying). */
+				focus?: true;
+		  }
+		| undefined;
+	/**
+	 * "Start verifying" pressed on This page (DEC-079): the case it opens,
+	 * until that case is read; then the next step's Start verifying runs.
+	 */
+	verifyOnOpen: string | undefined;
+	/**
+	 * What the next step's last copy did (DEC-069), said in its block for
+	 * a few seconds (`COPIED_MS` in main.ts), or until the next copy.
+	 */
+	copied: (Copied & { caseId: string; at: number }) | undefined;
+	/**
+	 * "My cases" in the list of cases (DEC-071): only the cases where it is
+	 * the person's turn. Kept for the browser's session.
+	 */
+	mine: boolean;
 	/** A mark's Delete, clicked once: the second click deletes. */
 	markDeleteArmed: { markId: string; mark: string; at: number } | undefined;
-	/**
-	 * A finding's Delete, clicked once: the second click deletes. A finding's
-	 * id is unique on its mark only (a case from a file).
-	 */
-	findingDeleteArmed:
-		| { markId: string; mark: string; findingId: string; at: number }
-		| undefined;
 	/** An added image's Remove, clicked once: the second click removes it (DEC-058). */
 	imageDeleteArmed:
 		| { markId: string; mark: string; imageId: string; at: number }
@@ -219,6 +256,15 @@ export interface PanelState {
 	verdictDrafts: Map<string, string>;
 	/** Sitegloss may run on every site ("Allow on all sites"). */
 	allSites: boolean;
+	/**
+	 * The person said "Not now" to the offer of all sites, or took all sites
+	 * back: the offer does not come again (DEC-076). Kept in this browser.
+	 */
+	allSitesDeclined: boolean;
+	/** The browser has answered whether Sitegloss may run on all sites. */
+	allSitesKnown: boolean;
+	/** The shortcut that clicks the icon, as the browser has it (`commands.getAll`). */
+	shortcut: string | undefined;
 	/** Sitegloss may read file:// pages ("Allow access to file URLs"); unknown at first. */
 	fileAccess: boolean | undefined;
 	/** The sync to Downloads or a folder (DEC-021, DEC-025). */
@@ -253,7 +299,13 @@ export interface PanelState {
 					/** Where they are signed in. */
 					server: string;
 					/** Their teams, with what they may do in each (`case:create`, …). */
-					teams: { id: string; name: string; permissions: string[] }[];
+					teams: {
+						id: string;
+						name: string;
+						/** Its part of the web app's addresses (`/t/<slug>/…`); none from a server before it. */
+						slug?: string;
+						permissions: string[];
+					}[];
 					/** The team the cases sync with; none chosen yet: `undefined`. */
 					teamId: string | undefined;
 					/** The server refused the sign-in: sign in again. */
@@ -264,6 +316,16 @@ export interface PanelState {
 		status: CloudStatus | undefined;
 		/** How each case syncs, by its id; one not named was made since. */
 		modes: Record<string, SyncMode>;
+		/**
+		 * The cases the server has, as the sync last knew it, by id: the
+		 * team's id (DEC-069). None named: not known to be there.
+		 */
+		atTeam: Record<string, string>;
+		/**
+		 * The chosen team's members, to assign a case to (DEC-071), as the
+		 * server last listed them; none: not known, or the server lists none.
+		 */
+		members: { id: string; name: string }[] | undefined;
 		/** The browser's sign-in window is open. */
 		signingIn: boolean;
 		/** What the panel itself could not do (the sign-in, the address). */
@@ -311,12 +373,14 @@ export const initialState = (): PanelState => ({
 	tab: undefined,
 	overlay: undefined,
 	hint: undefined,
+	homeFocus: { seq: 0, caseId: undefined },
 	cases: [],
 	view: { kind: "home" },
 	settings: false,
 	leaving: undefined,
 	hiddenOn: new Set(),
 	drawing: undefined,
+	showingMark: undefined,
 	current: undefined,
 	images: undefined,
 	caseHint: undefined,
@@ -337,12 +401,17 @@ export const initialState = (): PanelState => ({
 	markFilter: undefined,
 	markPage: undefined,
 	picked: undefined,
+	verifyOnOpen: undefined,
+	copied: undefined,
+	mine: false,
 	markDeleteArmed: undefined,
-	findingDeleteArmed: undefined,
 	imageDeleteArmed: undefined,
 	verdictStatus: undefined,
 	verdictDrafts: new Map(),
 	allSites: false,
+	allSitesDeclined: false,
+	allSitesKnown: false,
+	shortcut: undefined,
 	fileAccess: undefined,
 	sync: {
 		target: undefined,
@@ -359,6 +428,8 @@ export const initialState = (): PanelState => ({
 		account: undefined,
 		status: undefined,
 		modes: {},
+		atTeam: {},
+		members: undefined,
 		signingIn: false,
 		problem: undefined,
 		live: undefined,
@@ -417,7 +488,7 @@ export function editAfter(
 }
 
 /**
- * What is held on a mark by its id (a delete asked once, a finding's) after
+ * What is held on a mark by its id (a delete asked once, an image's) after
  * the case changed: still on its mark, under the id the mark has now; gone
  * when the mark is, or cannot be told from another. A "Really delete?" must
  * not be waiting on a teammate's mark that got the id.

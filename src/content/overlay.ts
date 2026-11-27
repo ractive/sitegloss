@@ -9,6 +9,7 @@
 import {
 	GROUP_OF,
 	type MarkStatus,
+	type Point,
 	type Rect,
 	type Shape,
 	type StatusGroup,
@@ -50,7 +51,9 @@ export const RESOLVED_OPACITY = 0.35;
 export const CASING_EXTRA = 3;
 /**
  * How the toolbar is laid out, from the roomiest to the tightest: one row
- * with the status beside the tools; the status on a second, centred row;
+ * with the status beside the tools; the same with the buttons, logo and status
+ * closer (the eight tools' words and a long case title need 975 to 990 px otherwise);
+ * the status on a second, centred row;
  * the tools as icons; every button with an icon as an icon; the buttons
  * closer. `fitToolbar` takes the first that fits the page, measured, so no
  * font's width and no scrollbar decides it, and the tools never wrap in the
@@ -58,6 +61,7 @@ export const CASING_EXTRA = 3;
  */
 export const TOOLBAR_FITS = [
 	"",
+	"snug",
 	"rows",
 	"rows icons",
 	"rows icons all",
@@ -113,7 +117,7 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 }
 .toolbar.top { top: 16px; bottom: auto; }
 /* The logo's loop is thinner in the icon; at 20 px this weighs about what the old ring did (BAR_LOOP lifts its end, so the two ends stay apart). */
-.ring { flex: none; width: 20px; height: 20px; margin: 0 6px; fill: none; stroke: ${L.amber}; stroke-width: ${RING_WIDTH}; stroke-linecap: round; stroke-linejoin: round; }
+.ring { flex: none; width: 20px; height: 20px; margin: 0 6px; fill: none; stroke: ${L.logo}; stroke-width: ${RING_WIDTH}; stroke-linecap: round; stroke-linejoin: round; }
 /* Beside the tools it keeps its width (and wraps inside it): what does not fit shows as overflow, which fitToolbar reads. */
 .toolbar .status {
 	flex: none; max-width: 300px; padding: 0 8px;
@@ -131,9 +135,9 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 	stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
 }
 .toolbar button:hover, .toolbar button:focus-visible { background: ${L.barHover}; }
-.toolbar button[aria-pressed="true"] { background: ${L.amber}; color: ${L.bar}; }
-.toolbar button.primary { background: ${L.amber}; color: ${L.bar}; font-weight: 600; padding-inline: 12px; }
-.toolbar button.primary:hover, .toolbar button.primary:focus-visible { background: ${L.amberHover}; }
+.toolbar button[aria-pressed="true"] { background: ${L.action}; color: ${L.bar}; }
+.toolbar button.primary { background: ${L.action}; color: ${L.bar}; font-weight: 600; padding-inline: 12px; }
+.toolbar button.primary:hover, .toolbar button.primary:focus-visible { background: ${L.actionHover}; }
 /* Not opacity alone: muted, and nothing answers the pointer. */
 .toolbar button:disabled { color: ${L.barMuted}; opacity: 0.6; cursor: default; background: none; }
 .toolbar button:focus-visible, .reviewbar button:focus-visible { outline: 2px solid ${L.barText}; outline-offset: 1px; }
@@ -146,9 +150,10 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 }
 .toolbar[data-fit~="icons"] button[aria-pressed] .word { ${NO_WORD} }
 .toolbar[data-fit~="all"] button:has(.icon) .word { ${NO_WORD} }
-.toolbar[data-fit~="tight"] button { padding-inline: 6px; }
-.toolbar[data-fit~="tight"] button.primary { padding-inline: 9px; }
-.toolbar[data-fit~="tight"] .ring { margin: 0 2px; }
+.toolbar[data-fit~="snug"] button, .toolbar[data-fit~="tight"] button { padding-inline: 6px; }
+.toolbar[data-fit~="snug"] button.primary, .toolbar[data-fit~="tight"] button.primary { padding-inline: 9px; }
+.toolbar[data-fit~="snug"] .ring, .toolbar[data-fit~="tight"] .ring { margin: 0 2px; }
+.toolbar[data-fit~="snug"] .status { padding-inline: 4px; }
 .toolbar[data-fit~="tight"] .sep { display: none; }
 .popover {
 	box-sizing: border-box; position: fixed; width: 296px; padding: 10px; border-radius: 10px;
@@ -175,11 +180,11 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 .popover button {
 	box-sizing: border-box; min-height: 28px; font: inherit; font-weight: 600;
 	padding: 3px 12px; border-radius: 6px; cursor: pointer;
-	border: 1px solid ${L.popoverEdge}; background: ${L.popover}; color: ${L.popoverText};
+	border: 1px solid ${L.popoverEdge}; background: ${L.popoverControl}; color: ${L.popoverText};
 }
-.popover button:hover { background: #eef0f4; }
-.popover button.primary { background: ${L.amber}; border-color: ${L.amberEdge}; }
-.popover button.primary:hover { background: ${L.amberHover}; }
+.popover button:hover { background: ${L.popoverControlHover}; }
+.popover button.primary { background: ${L.popoverAction}; border-color: ${L.popoverAction}; color: ${L.popoverActionText}; }
+.popover button.primary:hover { background: ${L.popoverActionHover}; border-color: ${L.popoverActionHover}; }
 /* The key that presses it, quieter by weight only: the label's colour keeps its contrast. */
 .popover button .keys { margin-inline-start: 6px; font-weight: 400; }
 .popover .label { display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 8px; }
@@ -242,9 +247,9 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 	color: ${L.barText}; font: inherit; font-weight: 600;
 }
 .reviewbar button:hover, .reviewbar button:focus-visible { background: ${L.barHover}; border-color: ${L.barText}; }
-/* Add marks is the bar's main action (DEC-063): amber, as the toolbar's own. */
-.reviewbar button[data-action="review-add"] { background: ${L.amber}; border-color: ${L.amber}; color: ${L.bar}; }
-.reviewbar button[data-action="review-add"]:hover, .reviewbar button[data-action="review-add"]:focus-visible { background: ${L.amberHover}; border-color: ${L.amberHover}; color: ${L.bar}; }
+/* Add marks is the bar's main action (DEC-063): the action's green, as the toolbar's own. */
+.reviewbar button[data-action="review-add"] { background: ${L.action}; border-color: ${L.action}; color: ${L.bar}; }
+.reviewbar button[data-action="review-add"]:hover, .reviewbar button[data-action="review-add"]:focus-visible { background: ${L.actionHover}; border-color: ${L.actionHover}; color: ${L.bar}; }
 /* The user's own colours: the system's, with every edge drawn. */
 @media (forced-colors: active) {
 	.toolbar, .reviewbar, .popover {
@@ -255,7 +260,7 @@ svg.marks, svg.strokes { position: fixed; inset: 0; width: 100%; height: 100%; o
 	.toolbar button, .reviewbar button, .popover button {
 		border: 1px solid CanvasText; background: Canvas; color: CanvasText;
 	}
-	/* Also hovered and focused: no state brings amber back under the system's text colour. */
+	/* Also hovered and focused: no state brings the green back under the system's text colour. */
 	.toolbar button[aria-pressed="true"], .toolbar button[aria-pressed="true"]:hover, .toolbar button[aria-pressed="true"]:focus-visible,
 	.toolbar button.primary, .toolbar button.primary:hover, .toolbar button.primary:focus-visible,
 	.popover button.primary, .popover button.primary:hover, .popover button.primary:focus-visible,
@@ -389,7 +394,17 @@ export interface ReviewItem {
 	lines?: Rect[];
 	/** Its text is on a dark ground (`HIGHLIGHT_LOOK`). */
 	dark?: boolean;
+	/**
+	 * Where its element shows (DEC-075): the mark's drawing, strokes and pin
+	 * are cut to this box of the window. None: drawn whole.
+	 */
+	clip?: Rect;
+	/** Where its pin goes, when not where its shape puts it (DEC-075). */
+	pin?: Point;
 }
+
+/** A mark the toolbar draws, cut to where its element shows (DEC-075), when `clip` is set. */
+export type ClippedRendered = RenderedMark & { clip?: Rect; pin?: Point };
 
 /** Drawn faded: nothing more to do about it. */
 export const isSettled = (status: MarkStatus): boolean =>
@@ -575,7 +590,16 @@ export class Overlay {
 			);
 		doc.addEventListener("fullscreenchange", () => this.#place());
 		// The page's width changed (a resize, the side panel, zoom).
-		doc.defaultView?.addEventListener("resize", () => this.fitToolbar());
+		// One fit per frame, however many resize events come.
+		let fitting = 0;
+		doc.defaultView?.addEventListener("resize", () => {
+			const win = doc.defaultView;
+			if (!win || fitting) return;
+			fitting = win.requestAnimationFrame(() => {
+				fitting = 0;
+				this.fitToolbar();
+			});
+		});
 		doc.documentElement.append(this.host);
 		this.#update();
 	}
@@ -926,7 +950,7 @@ export class Overlay {
 		if (this.layer.hidden || bar.hidden) return;
 		for (const fit of TOOLBAR_FITS) {
 			bar.dataset["fit"] = fit;
-			if (this.#toolbarFits(fit === "")) break;
+			if (this.#toolbarFits(!fit.includes("rows"))) break;
 		}
 	}
 
@@ -985,12 +1009,17 @@ export class Overlay {
 		this.ink.classList.toggle("capturing", on);
 	}
 
-	/** Draw the marks (saved ones fainter), the one being drawn and the hovered element's outline. */
+	/**
+	 * Draw the marks (saved ones fainter), the one being drawn and the hovered
+	 * element's outline. A mark with a clip is cut to it, its pin where `pin`
+	 * says (DEC-075): the toolbar's finished marks show only where their
+	 * element does, as the loaded case's.
+	 */
 	render(
-		marks: readonly RenderedMark[],
+		marks: readonly ClippedRendered[],
 		preview: Shape | null,
 		hover: Rect | null,
-		saved: readonly RenderedMark[] = [],
+		saved: readonly ClippedRendered[] = [],
 	): void {
 		const doc = this.doc;
 		const children: SVGElement[] = [];
@@ -1020,24 +1049,36 @@ export class Overlay {
 			);
 		}
 		const ink: SVGElement[] = [];
+		/** One mark's parts into `plain` and `strokes`, cut to its clip. */
+		const draw = (
+			mark: ClippedRendered,
+			strokes: SVGElement[],
+			plain: SVGElement[],
+		) => {
+			const s: SVGElement[] = [];
+			const p: SVGElement[] = [];
+			this.#drawn(mark, MARK_COLOUR, {}, s, p);
+			p.push(this.#badge(mark, MARK_COLOUR, mark.pin));
+			if (mark.clip === undefined) {
+				strokes.push(...s);
+				plain.push(...p);
+				return;
+			}
+			if (s.length > 0) strokes.push(this.#clipped(mark.clip, s));
+			plain.push(this.#clipped(mark.clip, p));
+		};
 		if (saved.length > 0) {
 			const group = svg(doc, "g", { class: "saved", opacity: 0.5 });
 			const inkGroup = svg(doc, "g", { class: "saved-strokes", opacity: 0.5 });
 			const strokes: SVGElement[] = [];
 			const parts: SVGElement[] = [];
-			for (const mark of saved) {
-				this.#drawn(mark, MARK_COLOUR, {}, strokes, parts);
-				parts.push(this.#badge(mark));
-			}
+			for (const mark of saved) draw(mark, strokes, parts);
 			group.append(...parts);
 			inkGroup.append(...strokes);
 			children.push(group);
 			ink.push(inkGroup);
 		}
-		for (const mark of marks) {
-			this.#drawn(mark, MARK_COLOUR, {}, ink, children);
-			children.push(this.#badge(mark));
-		}
+		for (const mark of marks) draw(mark, ink, children);
 		if (preview !== null) children.push(...this.#shape(preview));
 		this.#drafts.replaceChildren(...children);
 		this.#inkDrafts.replaceChildren(...ink);
@@ -1100,7 +1141,8 @@ export class Overlay {
 			.filter((item) => item.shape.kind !== "unknown")
 			.map((item) => ({
 				number: item.number,
-				...pinPosition(item),
+				// Where it is drawn: moved into what shows of its element (DEC-075).
+				...(item.pin ?? pinPosition(item)),
 				r: badgeRadius(item.shape),
 			}));
 		const inkGroups: SVGElement[] = [];
@@ -1156,11 +1198,17 @@ export class Overlay {
 					"data-review": item.number,
 					...(fade ? { "data-faded": "", opacity: RESOLVED_OPACITY } : {}),
 				});
-				inkGroup.append(...strokes);
+				inkGroup.append(
+					...(item.clip === undefined
+						? strokes
+						: [this.#clipped(item.clip, strokes)]),
+				);
 				inkGroups.push(inkGroup);
 			}
 			if (item.shape.kind !== "unknown")
-				group.append(this.#badge(item, colour));
+				group.append(this.#badge(item, colour, item.pin));
+			if (item.clip !== undefined)
+				group.replaceChildren(this.#clipped(item.clip, [...group.childNodes]));
 			return group;
 		});
 		this.#review.replaceChildren(...groups);
@@ -1238,9 +1286,32 @@ export class Overlay {
 		}
 	}
 
-	#badge(mark: RenderedMark, colour: string = MARK_COLOUR): SVGElement {
+	/**
+	 * `parts` cut to `clip` (DEC-075): a nested SVG viewport, whose view box
+	 * keeps the window's coordinates. A viewport rather than a `clipPath`,
+	 * which an `url(#…)` would have to find in the shadow root.
+	 */
+	#clipped(clip: Rect, parts: readonly Node[]): SVGElement {
+		const box = svg(this.doc, "svg", {
+			"data-clip": "",
+			x: clip.x,
+			y: clip.y,
+			width: clip.width,
+			height: clip.height,
+			viewBox: `${clip.x} ${clip.y} ${clip.width} ${clip.height}`,
+			preserveAspectRatio: "none",
+			overflow: "hidden",
+		});
+		box.append(...parts);
+		return box;
+	}
+
+	#badge(
+		mark: RenderedMark,
+		colour: string = MARK_COLOUR,
+		at: Point = pinPosition(mark),
+	): SVGElement {
 		const doc = this.doc;
-		const at = pinPosition(mark);
 		const g = svg(doc, "g", { "data-number": mark.number });
 		g.append(
 			svg(doc, "circle", {

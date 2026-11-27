@@ -41,6 +41,7 @@ export function firefoxShadowOf(el: Element): ShadowRoot | null {
 			) ?? asShadowRoot(el.shadowRoot)
 		);
 	} catch {
+		// Not an element that can have one.
 		return null;
 	}
 }

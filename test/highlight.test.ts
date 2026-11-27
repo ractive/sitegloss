@@ -19,7 +19,11 @@ import {
 	flatSpan,
 	flatten,
 	lineBoxes,
+	nearPlaces,
 	quoteIn,
+	replacedPlaces,
+	sourceAt,
+	wordBounded,
 } from "../src/lib/highlight.ts";
 import { caseMarkdown } from "../src/lib/markdown.ts";
 import {
@@ -40,11 +44,11 @@ describe("an element's text as one line", () => {
 		]);
 		expect(flat.text).toBe("Ride the forest trails this wekend");
 		// Each character says where it is in its text node.
-		expect(flat.at[0]).toEqual({ piece: 0, offset: 2 });
+		expect(sourceAt(flat, 0)).toEqual({ piece: 0, offset: 2 });
 		const t = flat.text.indexOf("trails");
-		expect(flat.at[t]).toEqual({ piece: 1, offset: 0 });
+		expect(sourceAt(flat, t)).toEqual({ piece: 1, offset: 0 });
 		// The space for the block's edge is at the start of the next node.
-		expect(flat.at[t + 6]).toEqual({ piece: 2, offset: 0 });
+		expect(sourceAt(flat, t + 6)).toEqual({ piece: 2, offset: 0 });
 	});
 
 	test("a span between two places, without spaces at its ends", () => {
@@ -102,6 +106,90 @@ describe("where a quote is in an element's text", () => {
 		expect(end).toBeLessThanOrEqual(500);
 		expect(words.slice(0, end).endsWith(" ")).toBe(false);
 		expect(cutSpan("short", 0, 5)).toBe(5);
+	});
+});
+
+describe("where a highlight's text is around its element (DEC-083)", () => {
+	const old = {
+		text: "localhost:3000",
+		before: "The developer opens the case on ",
+		after: " and finds the marks drawn again.",
+	};
+	const texts = (text: string, spans: { start: number; end: number }[]) =>
+		spans.map((p) => text.slice(p.start, p.end));
+
+	test("new text between the same text before and after it: the text changed in place", () => {
+		const now =
+			"Mail. The developer opens the case on localhost and finds the marks drawn again.";
+		expect(texts(now, nearPlaces(now, old).reworded)).toEqual(["localhost"]);
+	});
+
+	test("one side alone, a side that is too short, nothing or too much between: no place", () => {
+		// The text after it was reworded too.
+		expect(
+			replacedPlaces(
+				"The developer opens the case on localhost, then fixes.",
+				old,
+			),
+		).toEqual([]);
+		// "on " and "." are found anywhere.
+		const short = { text: "localhost:3000", before: "on ", after: "." };
+		expect(nearPlaces("It runs on localhost.", short)).toEqual({
+			moved: [],
+			reworded: [],
+			alone: [],
+		});
+		// The text was taken out (a fix that deletes it); or what is between is
+		// longer than twice it and 20.
+		expect(replacedPlaces(`${old.before}${old.after}`, old)).toEqual([]);
+		const at = (n: number) => `${old.before}${"x".repeat(n)}${old.after}`;
+		expect(replacedPlaces(at(2 * old.text.length + 21), old)).toEqual([]);
+		expect(replacedPlaces(at(2 * old.text.length + 20), old)).toHaveLength(1);
+	});
+
+	test("several rows with the same text before and after: every one is a place, so the page takes none", () => {
+		const rows =
+			"Delete invoice 1040 from the list. Delete invoice 1041 from the list. Delete invoice INV-42 from the list.";
+		const h = {
+			text: "1042",
+			before: "Delete invoice ",
+			after: " from the list",
+		};
+		expect(texts(rows, nearPlaces(rows, h).reworded)).toEqual([
+			"1040",
+			"1041",
+			"INV-42",
+		]);
+	});
+
+	test("the sentence moved: the same text with all of its text before and after it", () => {
+		const text = `A card. ${old.before}localhost:3000${old.after}`;
+		expect(texts(text, nearPlaces(text, old).moved)).toEqual([
+			"localhost:3000",
+		]);
+	});
+
+	test("the same text alone: whole words, at least 4 characters and a letter", () => {
+		// Inside a longer word or number it is no place.
+		expect(
+			texts("Saved drafts", nearPlaces("Saved drafts", { text: "Save" }).alone),
+		).toEqual([]);
+		expect(wordBounded("Saved drafts", 0, 4)).toBe(false);
+		expect(wordBounded("Run it on localhost:3000.", 10, 19)).toBe(true);
+		// Too short, or no letter.
+		expect(nearPlaces("Year 2023", { text: "3" }).alone).toEqual([]);
+		expect(nearPlaces("About the team", { text: "the" }).alone).toEqual([]);
+		expect(nearPlaces("Code 1234 here", { text: "1234" }).alone).toEqual([]);
+		// Each whole-word place.
+		// More than 1,000 places: no evidence of any one.
+		expect(nearPlaces("word ".repeat(1001), { text: "word" }).alone).toEqual(
+			[],
+		);
+		const text = "Open localhost. Not localhosts. Then localhost again.";
+		expect(texts(text, nearPlaces(text, { text: "localhost" }).alone)).toEqual([
+			"localhost",
+			"localhost",
+		]);
 	});
 });
 

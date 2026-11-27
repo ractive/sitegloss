@@ -15,6 +15,7 @@ import {
 	MAX_CASE_COMMENT,
 } from "../lib/case.ts";
 import { formatDate, h } from "./dom.ts";
+import { withIcon } from "./icons.ts";
 
 /** What the user can do in the thread; `main.ts` carries it out. */
 export interface ThreadActions {
@@ -383,7 +384,7 @@ function item(
 							again();
 						},
 					},
-					"Edit",
+					...withIcon("edit", "Edit"),
 				),
 				h(
 					"button",
@@ -418,7 +419,7 @@ function item(
 							}, ARMED_MS);
 						},
 					},
-					isArmed ? "Really delete?" : "Delete comment",
+					...withIcon("delete", isArmed ? "Really delete?" : "Delete comment"),
 				),
 			)
 		: undefined;
@@ -558,7 +559,7 @@ export function markThreadView(
 								redrawAll?.();
 							},
 						},
-						"Add comment",
+						...withIcon("comment", "Add comment"),
 					)
 				: h(
 						"div",

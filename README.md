@@ -15,7 +15,24 @@ own environment. After the rollout the PO loads it onto the dev and prod sites a
 fix. An AI app such as Claude reads and extends cases through a
 [tab-mcp](https://github.com/ractive/tab-mcp) relay, or a case travels as a zip file.
 
-Status: in development. The plan is in [kb/](kb/index.md).
+Status: early, and changing quickly. Decisions and plans are in [kb/](kb/index.md).
+Sharing cases with a team needs an account at [sitegloss.dev](https://sitegloss.dev);
+everything else works without one.
+
+## Install
+
+- **Chrome:** [Chrome Web Store](https://chromewebstore.google.com/detail/sitegloss/ldmcfigcnobhnbaigehcaodheklibeon).
+  **Edge:** [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/odheabckckkaclenpbbdkpkjjfmbnalo).
+  A store has a release only once its review is over, so the version on the
+  [latest release](https://github.com/ractive/sitegloss/releases/latest) may be newer.
+  Signing in to a team needs 0.3.0 or later: until the store has it, take the release
+  below.
+- **The latest release, unpacked** (0.4.0 and later need Chrome or Edge 130 or later):
+  download `sitegloss-<version>.zip` from
+  [Releases](https://github.com/ractive/sitegloss/releases/latest) and unzip it; in
+  `chrome://extensions` (or `edge://extensions`) turn on Developer mode, click "Load
+  unpacked" and choose the folder. It does not update itself.
+- **Firefox:** not on addons.mozilla.org yet; see [In Firefox](#in-firefox).
 
 ## Install for development
 
@@ -31,7 +48,8 @@ choose `dist/`. Click the Sitegloss icon on a tab (or press Alt+Shift+O) to open
 panel there.
 
 `bun run zip` packs `sitegloss-<version>.zip` for sharing; unzip it and load the folder
-the same way.
+the same way. A zip, like a store build, leaves "Development server" out of the
+server chooser.
 
 For Firefox (see [In Firefox](#in-firefox)), `bun scripts/build.ts --firefox` builds
 `dist-firefox/`; in Firefox open `about:debugging`, This Firefox, "Load Temporary Add-on…"
@@ -87,7 +105,27 @@ user agent. What differs from Chrome and Edge:
 
 ## Use
 
-1. Click the Sitegloss icon on a tab. The side panel opens there.
+1. Click the Sitegloss icon on a tab (in the toolbar's Extensions menu, the puzzle piece,
+   until you pin it). The side panel opens there. Sitegloss installs without access to
+   any site: until you allow it on all sites, it may run only on a tab where you clicked
+   its icon (Chrome keeps that while the tab stays on the same origin; Firefox only until the
+   tab goes to another page). So the side panel's main view first offers "Allow on all sites",
+   with "Not now"; the same setting is under Options, last on the main view, as "Allow on
+   all sites (highly recommended)", with what it means under it: Sitegloss can then read
+   the page in front whenever you use it and, while AI access is on, whenever a connected
+   AI app asks (a screenshot, an element's details), on any site; it sends nothing
+   anywhere by itself; the browser asks first. After "Not now" the offer does not come
+   again, nor after you take all sites back, here or in the browser's settings (the panel
+   follows that, and remembers that it was allowed, so a take-back while no panel was
+   open counts too). The panel keeps this in its own storage in this browser: Firefox
+   may clear it with the site data, and then the offer comes once more. On a page the
+   panel can tell no extension may run on (the browser's own pages, and its store's and
+   restricted sites where the address shows: the Chrome Web Store in Chrome and Edge,
+   Edge Add-ons in Edge, addons.mozilla.org and Mozilla's account and support sites in
+   Firefox) it says that Sitegloss cannot work there, and offers no way. Where an action is
+   refused although the ways cannot help (all sites is allowed, or the icon's click is in:
+   an error page, a PDF in Firefox's viewer), the hint says only that Sitegloss could not
+   reach the page and to reload it; nothing of it is remembered.
 2. "New case for this page" creates a case at once, named after the page's title, opens it
    in the side panel and shows the toolbar on the page: Element (click one), Box, Arrow,
    Pen, Note and Highlight (select text on the page, or choose it with text selected; it
@@ -106,7 +144,8 @@ user agent. What differs from Chrome and Edge:
    "New case for this page", and whenever the toolbar was started with "Add marks" in a
    case, the toolbar says "Adding to “<case>”" ("Done adding" in the side panel stops
    it), and each mark goes into that case as soon as its
-   comment is done (Done, or the comment closed with Escape or a click elsewhere); the
+   comment is done (Done, a click elsewhere, or Escape once something is written; Escape
+   with nothing written takes the mark back, as Cancel does); the
    case in the side panel shows it at once. Marks in the case stay on the page,
    fainter. Undo deletes the last
    mark added since the toolbar was shown from the case again, while nobody has
@@ -145,12 +184,19 @@ user agent. What differs from Chrome and Edge:
    until "Show marks" or the case is opened again. When the case has no mark of the page
    in front, the case says where its marks are and offers to open the case's page; when
    none of the page's own marks is found, it says so. Home lists a case of several
-   pages under "This page" on each of its pages on the site they were marked on. On a tab Sitegloss may not run on yet (after reloading the extension, say),
-   Chrome hides the address, and the side panel says so with a warning: click the
-   Sitegloss icon there (or press Alt+Shift+O) and the marks are drawn, or press "Allow
-   on all sites" in that notice; until then what needs the page is off. The case's
+   pages under "This page" on each of its pages on the site they were marked on. On a
+   tab Sitegloss may not run on yet (another tab, the site's next page in Firefox, after
+   reloading the extension), the browser hides the address, and the side panel says so
+   with a warning where something is missing: "Sitegloss has no access to this tab yet",
+   with "Allow on all sites (recommended)" and the way for this tab only (click the
+   Sitegloss icon there, or press its shortcut, as the browser has it: Alt+Shift+O, ⌥⇧O
+   on a Mac, unless you changed it). On Home it stands in place of "New case
+   for this page"; in an open case it is in the tool bar at the bottom, in place of Add
+   marks and Show/Hide marks, and no mark has Show. With a click or all sites allowed,
+   the marks are drawn and the buttons are back. The case's
    address opens its page in a new tab (Chrome asks whether Sitegloss may run on that
-   site from then on) and draws the marks there (marks a script draws late are looked
+   site from then on; Firefox would take that prompt away as the tab opens, so it is not
+   asked there) and draws the marks there (marks a script draws late are looked
    for again for a few seconds), and when the
    tab's size is not the one the marks were made at, Match size resizes the window to it
    (as far as the screen allows; page zoom is counted). Sitegloss looks for each mark's element and draws the mark on it again,
@@ -165,7 +211,10 @@ user agent. What differs from Chrome and Edge:
 5. Each mark in the side panel has a status: open, fixed and to verify, verified, won't
    fix or can't reproduce. Resolve… sets it (Fixed, to verify; Fixed and verified; Won't
    fix; Can't reproduce; with an optional note). The tester, where the fix is deployed, then
-   clicks Verify on a fix that holds, or Reopen… with a note on what is still wrong;
+   clicks Verify on a fix that holds, or Reopen… with a note on what is still wrong
+   (Verify is offered for the marks of the page in front; a mark to verify of another
+   page names that page and opens it, or, checked elsewhere, takes "Verify anyway" in its
+   open row; after a Verify the next mark to verify opens);
    the claimed fix and its note stay in the mark's history. The status chips under the
    case's bar (Open, To verify, Verified, Dismissed) count the marks and filter the list:
    the developer works through Open, the tester through To verify. On a loaded page a
@@ -173,10 +222,9 @@ user agent. What differs from Chrome and Edge:
    one grey, both faded, and no longer counted. A mark can also have its comment
    edited, or be deleted. A deleted mark's number is not given again, and its pin
    stays on screenshots that other marks share.
-   Under the comment a mark shows its AI findings: what a connected AI app found out
-   about it, each with the app's name and when it was written. An AI app never changes
-   your comment, and changes only its own findings; you can delete any finding (click
-   Delete twice).
+   What a connected AI app finds out about a mark it writes as a comment on that mark,
+   in the case's thread, with the app's name. An AI app never changes your comment on
+   the mark.
 6. The case's "Summary for the developer" says what should change overall, as agreed;
    whoever loads the case sees it first. You or the AI app write it.
    Under the marks, Comments is the case's thread: what was done (a fix, a pull request),
@@ -240,9 +288,11 @@ The tools:
 
 | Tool | What it does |
 |---|---|
-| `list_cases` | The saved cases, with their pages and their marks by status |
-| `get_case` | A case's pages, its summary for the developer, its marks with their page (and the address with its query where it had one), comments, statuses, reopens, AI findings, element details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes) and crops, the newest 20 comments of its thread, and whether it is closed |
-| `get_image` | One screenshot or crop |
+| `list_cases` | The saved cases, one per line, with their pages, their marks by status and where each stands; in a team's case whose turn it is, who it is assigned to and who started it; `mine` lists only yours; a long list comes a page at a time |
+| `get_case` | A case: its link, where it stands, in a team's case whose turn it is and who it is assigned to, whether it is closed, its summary for the developer, its pages, its marks by status and the newest comments of its thread; then the overview of its open and fixed marks, one line per mark |
+| `list_marks` | More of the overview of a case's marks, a page at a time: by status (the open and fixed ones unless asked), by page, after a mark's number |
+| `get_mark` | One mark in full: how it was settled and who made it, its comment, its page and the address it was made at, whether the tab in front shows that page, its element's details (with how the element looked when marked: computed styles, the colour behind it and the contrast, its neighbours' boxes), the comments on it, its reopens, and its crop as a picture; the screenshot and the images added to it are named for `get_image` |
+| `get_image` | One screenshot, crop or added image |
 | `load_case` | Finds the marks' elements on the tab in front and draws the marks there |
 | `open_case` | Opens a case in the side panel, as a click on it there would, and draws its marks on the tab in front (the case made on production, the tab on `localhost:3000`), leaving the case shown as a click would and never while something is being typed there; navigates nowhere; asks first |
 | `highlight` | Scrolls to one mark's element (or another candidate) |
@@ -250,15 +300,13 @@ The tools:
 | `capture` | A screenshot of the tab in front |
 | `add_mark` | Adds a mark on an element (by CSS selector); asks first |
 | `set_summary` | Records the summary for the developer: what should change overall, as agreed; asks first |
-| `set_mark_status` | Sets a mark fixed, verified (a fixed one, when you say so), won't fix or can't reproduce, or reopens it with a note; asks first |
-| `add_finding` | Adds a finding of the AI app to a mark, apart from your comment; asks first |
-| `edit_finding` | Changes one of the app's own findings; asks first |
-| `delete_finding` | Deletes one of the app's own findings; asks first |
-| `list_comments` | A case's thread, oldest first, 50 at a time, each comment with who wrote it and whether it is the app's own |
-| `add_comment` | Adds a comment to the case's thread, about the case or one mark; asks first |
+| `set_mark_status` | Sets one or more marks fixed, verified (a fixed one, when you say so), won't fix or can't reproduce, or reopens them with a note; asks first |
+| `list_comments` | A case's thread or one mark's comments, oldest first, 50 at a time, each comment with who wrote it and whether it is the app's own |
+| `add_comment` | Adds a comment to the case's thread, about the case or one mark: what the app did, what it found out about a mark, or a question; asks first |
 | `edit_comment` | Changes one of the app's own comments; asks first |
 | `delete_comment` | Deletes one of the app's own comments; asks first |
 | `set_case_status` | Closes a case or opens it again; asks first |
+| `assign_case` | Assigns a team's case to a member (`me`, an id or a name) or to nobody; asks first |
 | `delete_case` | Deletes a case; asks first |
 
 What an AI app changes through these tools carries its name: in a team the change says
@@ -397,12 +445,22 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
 - Two people who change different things of one mark both keep their change; for the
   same thing the later one wins. Two who add a mark at once: the later one gets the next
   number (its pin in the screenshot keeps the number it was drawn with).
-- A resolution, a verification, a reopen, a finding, a comment, a close and the summary
+- A resolution, a verification, a reopen, a comment, a close and the summary
   say who made them ("by Dana"), and a mark who added it and who last changed its
   comment; "by Dana via Claude" when an AI app connected to Sitegloss did it for Dana.
 - The thread and closing sync like the rest: a comment written offline waits and is
   sent. A Sitegloss before 0.3.1 on the same team keeps syncing its marks and does not
   see the comments or that a case is closed; a mark it adds opens a closed case again.
+- A case is handed over: "Assign" in the open case gives it to a member of the team
+  (whoever may change the team's cases), "Nobody" takes it back. The case says whose
+  turn it is: the open marks are the assignee's to fix, the fixed ones are back with
+  whoever started the case to check and verify, and a settled case is theirs to close.
+  "My cases" above the list shows only the cases where it is your turn, with their
+  number, and each card says where its case stands and who has its open marks. An
+  assignment made offline waits and is sent, as every change. The website mails the
+  assignee, and the reporter when the case is ready to check. All of this shows only
+  where the team's server assigns cases. Sitegloss 0.3.1 and older show no assignee and
+  leave it as it is.
 - Deleting a case the team has deletes it for the team; the button says so. A case
   deleted for the team goes here too. What you delete while signed out is not deleted
   for the team: at the next sign-in the team's marks are back, and Sitegloss says so.
@@ -422,7 +480,8 @@ Sitegloss works without an account, and nothing in it asks for one. If your team
   and "Sign out" always. Signing out stops the sync and keeps the cases, on this device
   only.
 - "Server" there chooses where to sign in, while nobody is signed in: Sitegloss
-  itself (app.sitegloss.dev, unless you choose otherwise), its development server, or
+  itself (app.sitegloss.dev, unless you choose otherwise), its development server (only in
+  the development build loaded unpacked, not in the store builds or the release's zips), or
   another address (https, or plain http on this computer). When it is not Sitegloss
   itself, the Team section says so. Each server has its own account, team and
   sync: a case synced with one is on this device only as far as another goes, until
@@ -452,8 +511,12 @@ before the commit. `SITEGLOSS_E2E=full` is the switch (`test/e2e/mode.ts`).
 
 `bun scripts/api-types.ts` writes the types of the sitegloss.dev API
 (`src/lib/cloud/api.gen.ts`) from the copy of its OpenAPI document in
-`src/lib/cloud/openapi-v1.json`; with a path, it takes a new copy first. Both files are
-committed, and a test fails when they disagree.
+`src/lib/cloud/openapi-v1.json`. Both files are committed, and a test fails when they
+disagree. A new copy of the document comes with the server's test vectors:
+`bun scripts/sync-vectors.ts [../sitegloss.dev]` copies them all byte for byte from a
+checkout of sitegloss.dev, checks each against its `packages/api/vectors/manifest.json`,
+records their hashes in `test/vectors.json` (a test fails on a copy that differs) and
+writes the types again.
 
 Three tests run only against a real sitegloss.dev server, named in `SITEGLOSS_SERVER`
 (the server's `bun scripts/serve-local.ts 3200 --demo` and
@@ -470,6 +533,14 @@ The end-to-end tests load the extension into Chrome for Testing or Chromium
 (`CHROME_PATH`, or Playwright's download in its usual cache). Branded Chrome ignores
 `--load-extension`, so without one of them the tests are skipped locally; CI runs them.
 The Firefox ones need Firefox and `ff-rdp` (`FIREFOX_PATH`, `FF_RDP_PATH`).
+
+The look follows the web app's at sitegloss.dev (DEC-077): the side panel's colours are
+custom properties in `src/sidepanel/style.css` (light and dark), each a role of the web
+theme's palette, and `test/contrast.test.ts` holds every pair that must read to its
+contrast; what Sitegloss draws on a web page has its own fixed colours in
+`src/lib/page-look.ts`. The panel and the picture viewer use the web app's typefaces,
+Inter and Manrope (`src/fonts/`, SIL OFL 1.1), bundled once at `fonts/` in the package;
+nothing is loaded from the network, and no font goes into a web page.
 
 ### Building the Firefox package from source
 
@@ -493,7 +564,10 @@ This makes `dist-firefox-store/` (the unpacked package) and
 `sitegloss-firefox-<version>-store.zip` beside it. The zip is reproducible: the same source
 and Bun give the same file, with the same SHA-256, wherever and whenever it is built.
 Sitegloss's own code is in `src/`, the build is `scripts/build.ts`, and the bundled
-packages are listed with their licences in the package's `LICENSES.txt`.
+packages are listed with their licences in the package's `LICENSES.txt`. The two font
+files in `fonts/` are data, not code: copied unchanged from `src/fonts/` (Inter and
+Manrope, the variable Latin files of @fontsource-variable 5.3.0, SIL OFL 1.1, their
+licences also in `LICENSES.txt`).
 
 ## Licence
 

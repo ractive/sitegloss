@@ -36,13 +36,17 @@ import { newCase } from "../src/sidepanel/fresh.ts";
 import {
 	linkStep,
 	markTargets,
+	mayLoadAndShow,
 	type PendingShow,
+	pendingAfterDraw,
 	shortAddress,
 	tryShow,
+	verifiesHere,
 } from "../src/sidepanel/mark-link.ts";
 import { pageView } from "../src/worker/tools.ts";
 import caseFile from "./case-file.json" with { type: "json" };
-import { putCase, sampleCase } from "./fixtures.ts";
+import caseMd from "./case-md.json" with { type: "json" };
+import { putCase, sampleCase, withOneMark } from "./fixtures.ts";
 
 const HOME = "https://shop.example/";
 const SEARCH = "https://shop.example/search";
@@ -436,18 +440,24 @@ describe("a mark's link", () => {
 	});
 });
 
-describe("the server's member download (its vectors/case-file.json)", () => {
-	// test/case-file.json is sitegloss.dev's packages/api/vectors/case-file.json.
+describe("the server's member download (its vectors/case-file.json, case-md.json)", () => {
+	// test/case-file.json and test/case-md.json are sitegloss.dev's packages/api/vectors/ files.
 	const lines = (c: Case, pick: (line: string) => boolean) =>
 		caseMarkdown(validateCase(c)).split("\n").filter(pick);
 	const pageLine = (l: string) =>
 		l.startsWith("- Page:") || l.startsWith("Screenshot ");
 
 	test("validateCase keeps the server's case.json as it is, the query too", () => {
+		// Since its DEC-053 the server's marks have no findings; a file's findings becoming comments
+		// is findings-to-comments.test.ts.
 		expect(validateCase(caseFile.caseJson)).toEqual(caseFile.caseJson as never);
 		expect(validateCase(caseFile.singlePageCaseJson)).toEqual(
 			caseFile.singlePageCaseJson as never,
 		);
+	});
+
+	test("case.md is the server's, byte for byte, a highlight included (its vectors/case-md.json)", () => {
+		expect(caseMarkdown(validateCase(caseMd.caseJson))).toBe(caseMd.caseMd);
 	});
 
 	test("case.md names an address with its query, and a mark's added images, as the server's does", () => {
@@ -611,5 +621,59 @@ describe("open_case and what the panel knew of a draw (DEC-050)", () => {
 		expect(keepsLoaded({ caseId: "c_a", tabId: 1 }, "c_a", 2)).toBe(false);
 		expect(keepsLoaded({ caseId: "c_b", tabId: 2 }, "c_a", 2)).toBe(false);
 		expect(keepsLoaded(undefined, "c_a", 2)).toBe(false);
+	});
+});
+
+describe("a mark's Show while the marks are not drawn", () => {
+	const c = withOneMark(sampleCase("c_show"));
+	const a = c.marks[0] as Mark;
+	const page = markAddress(c, a);
+
+	test("starts only on the mark's own page, in a web tab, of the case shown", () => {
+		expect(mayLoadAndShow(c, a, page, true)).toBe(true);
+		// The tab went to a page that is not the mark's, to a browser page, or away.
+		expect(mayLoadAndShow(c, a, "https://other.example.org/x", true)).toBe(
+			false,
+		);
+		expect(mayLoadAndShow(c, a, "chrome://extensions", true)).toBe(false);
+		expect(mayLoadAndShow(c, a, undefined, true)).toBe(false);
+		// The case was closed meanwhile.
+		expect(mayLoadAndShow(c, a, page, false)).toBe(false);
+	});
+
+	test("Verify is offered only where the tab in front shows the mark's page (DEC-079)", () => {
+		// The mark's page on its own host, or on another (localhost): yes.
+		expect(verifiesHere(c, a, page)).toBe(true);
+		expect(
+			verifiesHere(
+				c,
+				a,
+				page.replace("https://www.example.com", "http://localhost:3000"),
+			),
+		).toBe(true);
+		// Another page, a browser page, a tab whose address is hidden, none.
+		expect(verifiesHere(c, a, "https://www.example.com/other")).toBe(false);
+		expect(verifiesHere(c, a, "chrome://newtab/")).toBe(false);
+		expect(verifiesHere(c, a, "")).toBe(false);
+		expect(verifiesHere(c, a, undefined)).toBe(false);
+		// A mark of no web page has no page to open: it keeps Verify.
+		const file: Case = { ...c, page: { ...c.page, url: "file:///tmp/a.html" } };
+		expect(verifiesHere(file, a, undefined)).toBe(true);
+	});
+
+	test("a draw that drew nothing leaves nothing pending; a newer wait stays", () => {
+		const mine: PendingShow = {
+			tabId: 1,
+			caseId: c.id,
+			markId: a.id,
+			mark: "k",
+			url: page,
+			until: 10,
+			fromShow: true,
+		};
+		const newer = { ...mine, markId: "other" };
+		expect(pendingAfterDraw(mine, mine, false)).toBeUndefined();
+		expect(pendingAfterDraw(mine, mine, true) === mine).toBe(true);
+		expect(pendingAfterDraw(mine, newer, false) === newer).toBe(true);
 	});
 });

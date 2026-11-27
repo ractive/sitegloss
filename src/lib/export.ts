@@ -5,9 +5,12 @@
 
 import {
 	type Case,
+	type CaseComment,
 	CaseError,
 	caseImages,
+	FINDING_COMMENT,
 	importedResolution,
+	MAX_CASE_COMMENTS,
 	MAX_MARK_IMAGES,
 	MAX_MARKS,
 	MAX_SHOTS,
@@ -18,6 +21,7 @@ import {
 	validateCase,
 	withPagesAgreed,
 } from "./case.ts";
+import { debugLog } from "./debug.ts";
 import { webpSize } from "./image-size.ts";
 import { caseMarkdown } from "./markdown.ts";
 import { queryOf } from "./query.ts";
@@ -88,13 +92,29 @@ interface CaseFile {
  * what the person does.
  */
 function withoutSyncNotes(c: Case): Case {
-	const { via: _v, createdVia: _c, deletedVia: _d, ...rest } = c;
+	// An assignment that waits to be sent too (DEC-071): from a file it
+	// would be sent as the person's doing, to a team it may not be of.
+	const {
+		via: _v,
+		createdVia: _c,
+		deletedVia: _d,
+		assign: _a,
+		assignRefused: _r,
+		...rest
+	} = c;
 	return {
 		...rest,
 		// Images held back are this browser's too (DEC-058): not in a file.
 		marks: rest.marks.map(({ via: _a, heldImages: _h, ...a }) => a),
 	};
 }
+
+/** The hand-over's records of `c` (DEC-071), as they are. */
+const handOverOf = (c: Case): Partial<Case> => ({
+	...(c.createdBy === undefined ? {} : { createdBy: c.createdBy }),
+	...(c.assignee === undefined ? {} : { assignee: c.assignee }),
+	...(c.assignedBy === undefined ? {} : { assignedBy: c.assignedBy }),
+});
 
 /** A case's files, each name after `folder` (`""`: at the top), case.json first. */
 async function caseFiles(
@@ -106,9 +126,11 @@ async function caseFiles(
 	// (DEC-046), not part of the case: a file never carries it. A shape of a
 	// kind this version does not know goes out as it came (DEC-066).
 	const kept = withoutSyncNotes(c);
+	// Findings that did not fit the thread (DEC-081) stay in this browser: a
+	// file never carries findings.
 	const written = {
 		...kept,
-		marks: kept.marks.map((a) =>
+		marks: kept.marks.map(({ findings: _f, ...a }) =>
 			a.shape.kind === "unknown" ? { ...a, shape: shapeOut(a.shape) } : a,
 		),
 	};
@@ -265,6 +287,7 @@ async function readCaseJson(
 	try {
 		parsed = JSON.parse(new TextDecoder().decode(json));
 	} catch {
+		// Not JSON: said below.
 		throw new CaseError("case.json is not valid JSON.");
 	}
 	return { c: validateCase(parsed), bytes: json.length };
@@ -425,9 +448,11 @@ export async function readExports(
  * Store a read export: replacing a case with the same id, or as a copy with
  * a new id. Either everything is stored or nothing changes. It is marked as
  * imported, whatever the file says, and keeps no more of the page's address
- * than a saved case does. Its findings are no AI app's own: the app a finding
- * names is whatever the file says (DEC-019), as are who set a mark's status
- * and when (DEC-023).
+ * than a saved case does. Who wrote its comments, who set a mark's status
+ * and when are whatever the file says (DEC-046, DEC-023). A file's findings,
+ * from a build before DEC-081, are comments on their marks (`validateCase`
+ * made them so); they come with the file's marks, also into a case put in
+ * place of one here, whose thread is otherwise its own.
  */
 export async function storeImport(
 	store: CaseStore,
@@ -451,13 +476,23 @@ export async function storeImport(
 			if (!path.startsWith("images/")) continue;
 			try {
 				images.set(path, await options.reencode(image.blob));
-			} catch {
+			} catch (error) {
+				debugLog("re-encode image", error);
 				throw new CaseError(`${path} is not an image Sitegloss can read.`);
 			}
 		}
 	// `page`, the list and the screenshots are made to agree (DEC-038):
 	// nothing in a file says they do.
-	const { comments: _fileThread, ...fromFile } = withoutSyncNotes(parsed.case);
+	const {
+		comments: _fileThread,
+		// The hand-over's records (DEC-071) are the server's word on one case:
+		// a copy is another case, which nobody started or was given yet; a
+		// case put in place of one here keeps that one's.
+		createdBy: _by,
+		assignee: _to,
+		assignedBy: _from,
+		...fromFile
+	} = withoutSyncNotes(parsed.case);
 	// A file put in place of a case here replaces its marks and screenshots,
 	// not its thread (DEC-046): the thread is the conversation the case has
 	// here (and with the team), and a file is a copy of an earlier moment.
@@ -477,11 +512,13 @@ export async function storeImport(
 		// Who wrote a comment is what the file says (DEC-046). A comment's id
 		// is the server's too, taken there by the original's: a copy's
 		// comments are new ones.
+		...(options.copy
+			? {}
+			: handOverOf(existing ?? withoutSyncNotes(parsed.case))),
 		...(existing !== undefined
 			? {
-					...(existing.comments === undefined
-						? {}
-						: { comments: existing.comments }),
+					...withFileFindings(existing.comments, parsed.case.comments),
+					...(existing.assign === undefined ? {} : { assign: existing.assign }),
 					...(existing.deletedVia === undefined
 						? {}
 						: { deletedVia: existing.deletedVia }),
@@ -520,9 +557,6 @@ export async function storeImport(
 		// claims (DEC-046): it would be sent as the app's doing.
 		marks: parsed.case.marks.map(({ createdVia: _cv, ...a }) => ({
 			...a,
-			...(a.findings === undefined
-				? {}
-				: { findings: a.findings.map((f) => ({ ...f, imported: true })) }),
 			// An image keeps the file's time and names nobody (DEC-058): who
 			// added it is only what the file claims.
 			...(a.images === undefined
@@ -568,3 +602,19 @@ export async function storeImport(
 }
 
 const COPY = " (copy)";
+
+/**
+ * The thread of a case put in place of one here: its own, and the comments
+ * the file's findings became (DEC-081) that it does not have yet, imported.
+ */
+function withFileFindings(
+	own: readonly CaseComment[] | undefined,
+	file: readonly CaseComment[] | undefined,
+): { comments?: CaseComment[] } {
+	const have = new Set((own ?? []).map((k) => k.id));
+	const more = (file ?? [])
+		.filter((k) => FINDING_COMMENT.test(k.id) && !have.has(k.id))
+		.map((k) => ({ ...k, imported: true as const }));
+	const all = [...(own ?? []), ...more].slice(0, MAX_CASE_COMMENTS);
+	return all.length > 0 ? { comments: all } : {};
+}

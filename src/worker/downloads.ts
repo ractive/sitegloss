@@ -9,6 +9,7 @@
 
 import { FIREFOX } from "../lib/browser.ts";
 import { isSafeId } from "../lib/case.ts";
+import { debugLog } from "../lib/debug.ts";
 import { exportCase } from "../lib/export.ts";
 import type { Kv } from "../lib/kv.ts";
 import type { CaseStore } from "../lib/store.ts";
@@ -43,7 +44,7 @@ function clearLeftover(): Promise<void> {
 	cleared ??= (async () => {
 		if (await chrome.offscreen.hasDocument())
 			await chrome.offscreen.closeDocument();
-	})().catch(() => undefined);
+	})().catch((error: unknown) => debugLog("offscreen leftover", error));
 	return cleared;
 }
 
@@ -59,6 +60,7 @@ function offscreen(): Promise<void> {
 				"Sitegloss writes each case to Downloads/Sitegloss: the download needs a blob URL of the case's file.",
 		});
 	})();
+	// The caller of `opening` gets the failure.
 	opening.catch(() => undefined).finally(() => (opening = undefined));
 	return opening;
 }
@@ -132,6 +134,7 @@ export function finished(
 		};
 		const timer = setTimeout(() => end({ state: "timeout" }), timeoutMs);
 		const alive = setInterval(
+			// A keep-alive ping: nothing to do when it fails.
 			() => void chrome.runtime.getPlatformInfo().catch(() => undefined),
 			keepAliveMs,
 		);
@@ -186,6 +189,7 @@ export function chromeDownloads(kv: Kv, store: CaseStore): DownloadsApi {
 			await chrome.runtime.sendMessage(request);
 		},
 		async end() {
+			// A failed open is the opener's to tell.
 			await opening?.catch(() => undefined);
 			if (await chrome.offscreen.hasDocument())
 				await chrome.offscreen.closeDocument();

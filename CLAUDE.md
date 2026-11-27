@@ -135,15 +135,22 @@ with `kb/design/overview.md` and `kb/iterations/`.
   the icons; `bun test/e2e/pilot.ts <url>` measures matching on a real page;
   `bun scripts/api-types.ts` writes `src/lib/cloud/api.gen.ts` from the committed
   OpenAPI document (DEC-040).
-- Which page an address is: `pageKey` in `src/lib/case.ts`, and nothing else (DEC-038).
+- Which page an address is: `pageKey` in `src/lib/case/pages.ts`, and nothing else (DEC-038).
   It is the server's function; `test/page-key.json` is a copy of the server's
-  `packages/api/vectors/page-key.json` and is copied again when that changes.
+  `packages/api/vectors/page-key.json`. Every vector of the server (`test/<name>.json`) and its
+  OpenAPI document (`src/lib/cloud/openapi-v1.json`) are copied byte for byte by
+  `bun scripts/sync-vectors.ts [../sitegloss.dev]`, which checks them against the server's
+  `vectors/manifest.json` and records their hashes in `test/vectors.json`
+  (`test/vectors.test.ts` fails on a copy edited by hand): never edit a copy, sync it.
   Whether a mark is drawn on the page in front is `pathKey` (a home page on any host),
   and Home's offer `exactPage` (DEC-050). What a screenshot keeps of its query is
   `keptQuery` in `src/lib/query.ts`, the server's too: `test/kept-query.json` is a copy
   of its `packages/api/vectors/kept-query.json`, held the same way; so is
   `test/case-file.json` (the server's member download, which `validateCase` and
-  case.md have to match).
+  case.md have to match), `test/case-md.json` (a whole case.md, byte for byte),
+  `test/agent-instructions.json` (the web app's text for an AI app, which
+  `src/lib/agent-instructions.ts` has to give) and `test/case-state.json` (where a case
+  stands and whose turn it is, `src/lib/case-state.ts`, DEC-071).
 - Commands: `bun run verify` (Biome CI, type check, the unit tests and the end-to-end
   smoke set; about two minutes) before every commit; `bun run fix` to format;
   `bun run build`, `bun run zip`. The full end-to-end sets are `bun run test:e2e`

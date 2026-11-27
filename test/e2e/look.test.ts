@@ -1,7 +1,7 @@
 /**
  * End to end: the look (DEC-024) where only a real browser can tell. The side
  * panel never scrolls sideways at its narrowest and at a common width, a view
- * has at most one amber button, the dark scheme's tokens arrive, every stroke
+ * has at most one large primary button, the dark scheme's tokens arrive, every stroke
  * on the page has its casing, and the toolbar's rows are the ones meant.
  */
 
@@ -11,6 +11,7 @@ import {
 	CASING_EXTRA,
 	PAGE_LOOK,
 	STATUS_COLOUR,
+	TOOLBAR_FITS,
 } from "../../src/content/overlay.ts";
 import { MARK_COLOUR } from "../../src/lib/marks.ts";
 import { openSidePanel, setRelay } from "./ai.ts";
@@ -71,7 +72,7 @@ inFullSet("the look", () => {
 
 	/**
 	 * What reaches past the right edge of the panel's content, and the view's
-	 * amber buttons. The content's width is the scrolling element's
+	 * large primary buttons. The content's width is the scrolling element's
 	 * `clientWidth`: the window's less a classic scrollbar, where there is one.
 	 */
 	const measure = () =>
@@ -79,7 +80,7 @@ inFullSet("the look", () => {
 			scroll: number;
 			client: number;
 			past: string[];
-			amber: string[];
+			primary: string[];
 		}>(
 			`(() => {
 				const shown = (e) => e.getClientRects().length > 0;
@@ -90,24 +91,24 @@ inFullSet("the look", () => {
 					past: [...document.querySelectorAll("body *")]
 						.filter((e) => shown(e) && !e.closest(".visually-hidden") && e.getBoundingClientRect().right > root.clientWidth + 0.5)
 						.map((e) => e.tagName + "#" + e.id + "." + e.className),
-					amber: [...document.querySelectorAll("button.primary")].filter(shown).map((e) => e.id || e.textContent),
+					primary: [...document.querySelectorAll("button.primary")].filter(shown).map((e) => e.id || e.textContent),
 				};
 			})()`,
 		);
 
-	/** At each width: no sideways scroll, nothing past the edge, `amber` the amber buttons. */
-	async function holds(amber: string[]): Promise<void> {
+	/** At each width: no sideways scroll, nothing past the edge, `primary` the large primary buttons. */
+	async function holds(primary: string[]): Promise<void> {
 		for (const width of WIDTHS) {
 			await panelWidth(width);
 			const seen = await measure();
 			expect(seen.client).toBeLessThanOrEqual(width);
 			expect(seen.scroll).toBeLessThanOrEqual(seen.client);
 			expect(seen.past).toEqual([]);
-			expect(seen.amber).toEqual(amber);
+			expect(seen.primary).toEqual(primary);
 		}
 	}
 
-	test("Home, a case with its marks open, and Settings: no sideways scroll at 345, 360 and 420 px, at most one amber button", async () => {
+	test("Home, a case with its marks open, and Settings: no sideways scroll at 345, 360 and 420 px, at most one large primary button", async () => {
 		await panel.waitFor(`!${id("new-case")}.disabled`);
 		// Home, empty.
 		await holds(["new-case"]);
@@ -116,7 +117,7 @@ inFullSet("the look", () => {
 		await panel.eval(`${id("new-case")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
 		// The case is made and open, the toolbar adding to it (DEC-026): the
-		// tool bar's "Adding marks: Done" is the one amber button (DEC-064).
+		// tool bar's "Adding marks: Done" is the one primary button (DEC-064).
 		await panel.waitFor(
 			`!${id("case-view")}.hidden && ${id("add-marks")}?.textContent === "Adding marks: Done"`,
 			20_000,
@@ -145,10 +146,10 @@ inFullSet("the look", () => {
 			`${id("add-marks")}.textContent === "Add marks"`,
 			20_000,
 		);
-		// At rest the tool bar is calm: no amber in the case (DEC-064).
+		// At rest the tool bar is calm: no primary button in the case (DEC-064).
 
 		// Home, with the page's case under This page: opening it is the one
-		// amber button, a new case a plain one.
+		// primary button, a new case a plain one.
 		await panel.eval(`${id("back")}.click()`);
 		await panel.waitFor(
 			`!${id("home")}.hidden && document.querySelectorAll("[data-case]").length === 1 && !${id("here")}.hidden`,
@@ -186,21 +187,25 @@ inFullSet("the look", () => {
 			20_000,
 		);
 		await holds([]);
+		// What a token resolves to in the panel: the values are the style
+		// sheet's (test/contrast.test.ts holds those), the question is which
+		// token each part takes.
+		const resolved = `((value) => { const e = document.createElement("i"); e.style.color = value; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; })`;
 		// The status block: a chip per status with marks, tinted in its colour.
 		expect(
-			await panel.eval<string[][]>(
-				`[...document.querySelectorAll("#case-status .chip")].map((c) => [c.dataset.group, getComputedStyle(c).color, getComputedStyle(c).backgroundColor])`,
+			await panel.eval<[string, boolean, boolean][]>(
+				`(() => { const r = ${resolved}; const name = { open: "open", toVerify: "verify" }; return [...document.querySelectorAll("#case-status .chip")].map((c) => [c.dataset.group, getComputedStyle(c).color === r("var(--st-" + name[c.dataset.group] + ")"), getComputedStyle(c).backgroundColor === r("var(--st-" + name[c.dataset.group] + "-bg)")]); })()`,
 			),
 		).toEqual([
-			["open", "rgb(194, 15, 76)", "rgb(252, 228, 236)"],
-			["toVerify", "rgb(67, 71, 201)", "rgb(232, 233, 253)"],
+			["open", true, true],
+			["toVerify", true, true],
 		]);
-		// The pins: the status's colour, on the rail.
+		// The pins: the status's pin colour (the page's), on the rail.
 		expect(
-			await panel.eval<string[]>(
-				`[...document.querySelectorAll(".mark .number")].map((n) => getComputedStyle(n).backgroundColor)`,
+			await panel.eval<boolean[]>(
+				`(() => { const r = ${resolved}; return [...document.querySelectorAll(".mark .number")].map((n, i) => getComputedStyle(n).backgroundColor === r(["var(--pin-verify)", "var(--pin-open)", "var(--pin-open)"][i])); })()`,
 			),
-		).toEqual(["rgb(67, 71, 201)", "rgb(194, 15, 76)", "rgb(194, 15, 76)"]);
+		).toEqual([true, true, true]);
 
 		// A long link (DEC-028): cut in its line, never wider than the panel,
 		// its form too.
@@ -249,7 +254,33 @@ inFullSet("the look", () => {
 		await panel.send("Emulation.clearDeviceMetricsOverride");
 	}, 120_000);
 
-	test("the top bar is paper, and the dark scheme's tokens arrive", async () => {
+	test("the top bar is paper, the dark scheme's tokens arrive, and the bundled faces load", async () => {
+		// The values are the style sheet's own: what is asked is that they
+		// arrive, not which they are (test/contrast.test.ts holds those).
+		const css = await Bun.file(
+			new URL("../../src/sidepanel/style.css", import.meta.url),
+		).text();
+		const token = (block: string, name: string) =>
+			new RegExp(`${name}:\\s*(#[0-9a-f]{6});`).exec(block)?.[1] ?? "";
+		const lightBlock = css.slice(css.indexOf(":root {"));
+		const darkBlock = css.slice(
+			css.indexOf("@media (prefers-color-scheme: dark)"),
+		);
+		const rgb = (hex: string) =>
+			`rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+		const want = (block: string) => {
+			const [paper, ink, rule] = ["--paper", "--ink", "--rule"].map((n) =>
+				token(block, n),
+			) as [string, string, string];
+			return {
+				paper,
+				ink,
+				body: rgb(paper),
+				text: rgb(ink),
+				bar: rgb(paper),
+				rule: rgb(rule),
+			};
+		};
 		const read = () =>
 			panel.eval<Record<string, string>>(
 				`(() => {
@@ -269,24 +300,20 @@ inFullSet("the look", () => {
 				features: [{ name: "prefers-color-scheme", value }],
 			});
 		await scheme("light");
-		expect(await read()).toEqual({
-			paper: "#f6f4ee",
-			ink: "#1b2130",
-			body: "rgb(246, 244, 238)",
-			text: "rgb(27, 33, 48)",
-			bar: "rgb(246, 244, 238)",
-			rule: "rgb(222, 218, 208)",
-		});
+		const light = await read();
+		expect(light).toEqual(want(lightBlock));
 		await scheme("dark");
-		expect(await read()).toEqual({
-			paper: "#11141a",
-			ink: "#eceef3",
-			body: "rgb(17, 20, 26)",
-			text: "rgb(236, 238, 243)",
-			bar: "rgb(17, 20, 26)",
-			rule: "rgb(43, 49, 61)",
-		});
+		const dark = await read();
+		expect(dark).toEqual(want(darkBlock));
+		expect(dark["paper"] === light["paper"]).toBe(false);
 		await panel.send("Emulation.setEmulatedMedia", { features: [] });
+		// The web app's faces, from the package's fonts/ (DEC-077): loaded, not
+		// fallen back to the system's.
+		expect(
+			await panel.eval<boolean[]>(
+				`Promise.all(['400 13px "Inter Variable"', '700 15px "Manrope Variable"'].map((f) => document.fonts.load(f).then((faces) => faces.length > 0 && document.fonts.check(f))))`,
+			),
+		).toEqual([true, true]);
 	}, 60_000);
 
 	test("on the page every mark's shape has its casing, a draft's and a loaded mark's", async () => {
@@ -370,6 +397,10 @@ inFullSet("the look", () => {
 		await page.activate();
 		await panel.eval(`${id("add-marks")}.click()`);
 		await page.waitFor(shadow('[data-action="tool-box"]'));
+		const tools = await page.eval<number>(
+			`${shadow(".toolbar")}.querySelectorAll('[data-action^="tool-"]').length`,
+		);
+		expect(tools).toBeGreaterThan(0);
 		interface Layout {
 			fit: string;
 			/** Rows the buttons stand in. */
@@ -412,10 +443,15 @@ inFullSet("the look", () => {
 				})()`,
 			);
 		};
+		/** How tight a layout is: its place in the toolbar's own list. */
+		const rank = (fit: string) =>
+			(TOOLBAR_FITS as readonly string[]).indexOf(fit);
 		/** From wide to narrow: what must hold whatever the font and the scrollbar. */
 		const check = async (): Promise<Layout[]> => {
 			const seen: Layout[] = [];
-			for (const width of [1600, 1200, 1000, 900, 800, 700, 600, 500, 440]) {
+			for (const width of [
+				1600, 1200, 1030, 1000, 900, 800, 700, 600, 500, 440,
+			]) {
 				const layout = await at(width);
 				seen.push(layout);
 				// The tools never wrap in the middle, and the bar stays on the page.
@@ -423,21 +459,24 @@ inFullSet("the look", () => {
 				// Beside the tools or on its own row, never between or across.
 				expect([1, 2]).toContain(layout.status);
 				expect(layout.named).toBe(true);
-				// Words go only once the status has a row of its own.
-				if (layout.status === 1) expect(layout.words).toBe(7);
+				// Words go only once the status has a row of its own: every tool, Undo and Done show theirs.
+				if (layout.status === 1) expect(layout.words).toBe(tools + 2);
 			}
 			// Narrower never brings a roomier layout back.
-			const tightness = seen.map((l) => l.fit.length);
+			const tightness = seen.map((l) => rank(l.fit));
 			expect(tightness).toEqual([...tightness].sort((a, b) => a - b));
 			const words = seen.map((l) => l.words);
 			expect(words).toEqual([...words].sort((a, b) => b - a));
 			return seen;
 		};
 		const plain = await check();
-		// Adding to a case: five tools, Undo and Done have an icon and a word.
+		// Adding to a case: the tools, Undo and Done have an icon and a word.
 		// Wide enough, all of it is one row; narrow enough, only icons are left.
-		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: 7 });
+		expect(plain[0]).toMatchObject({ fit: "", status: 1, words: tools + 2 });
 		expect(plain.at(-1)).toMatchObject({ status: 2, words: 0 });
+		// Between the roomiest and the status on a row of its own, the buttons
+		// come closer with every word kept.
+		expect(plain.map((l) => l.fit)).toContain("snug");
 
 		// Moved to the top, the toolbar has no review bar beside it: the bar
 		// steps aside while marks are added (DEC-061).
@@ -465,7 +504,7 @@ inFullSet("the look", () => {
 		expect(wide.at(-1)).toMatchObject({ status: 2, words: 0 });
 		// The wider font needs the tighter layout sooner.
 		expect(
-			wide.every((l, i) => l.fit.length >= (plain[i] as Layout).fit.length),
+			wide.every((l, i) => rank(l.fit) >= rank((plain[i] as Layout).fit)),
 		).toBe(true);
 		expect(wide.some((l, i) => l.fit !== (plain[i] as Layout).fit)).toBe(true);
 		await page.eval(`(() => {

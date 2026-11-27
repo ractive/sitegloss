@@ -263,7 +263,7 @@ describe("the overlay's style", () => {
 		expect(source).toContain("color-scheme: light;");
 		expect(source).toContain("@media (forced-colors: active)");
 		expect(source).toContain("background: Highlight;");
-		// In forced colours no state of an amber button brings amber back: its
+		// In forced colours no state of a green button brings the green back: its
 		// hover and focus rules outside the block are more specific than a
 		// plain selector inside it, so the block names them too.
 		const forced = source.slice(
@@ -278,14 +278,17 @@ describe("the overlay's style", () => {
 			".popover button.primary:hover",
 		])
 			expect(rule).toContain(selector);
-		const amber = [
-			...source.matchAll(/^(.*)\{[^}]*background: \$\{L\.amber(Hover)?\}/gm),
+		// Every rule filled with the action's green gives way to Highlight.
+		const green = [
+			...source.matchAll(
+				/^(.*)\{[^}]*background: \$\{L\.(popoverA|a)ction(Hover)?\}/gm,
+			),
 		]
 			.flatMap((m) => (m[1] as string).split(","))
 			.map((selector) => selector.trim())
 			.filter((selector) => selector !== "");
-		expect(amber.length).toBeGreaterThanOrEqual(5);
-		for (const selector of amber) expect(rule).toContain(selector);
+		expect(green.length).toBeGreaterThanOrEqual(5);
+		for (const selector of green) expect(rule).toContain(selector);
 		// No page width decides the toolbar's layout: it is measured.
 		expect(source).not.toMatch(/@media \((max|min)-width/);
 	});
@@ -369,16 +372,17 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		);
 	};
 
-	test("the first layout that fits: the status beside the tools, then under them, then icons, then closer", () => {
+	test("the first layout that fits: the status beside the tools (buttons closer, if need be), then under them, then icons, then closer", () => {
 		overlay.setAddingMarks(true);
 		for (const fit of o.TOOLBAR_FITS) {
 			withRoomFrom(fit);
 			overlay.fitToolbar();
 			expect<string | undefined>(overlay.toolbar.dataset["fit"]).toBe(fit);
 		}
-		// Each step keeps what the one before did.
+		// Each step from "rows" on keeps what the one before did.
 		expect(o.TOOLBAR_FITS).toEqual([
 			"",
+			"snug",
 			"rows",
 			"rows icons",
 			"rows icons all",
@@ -493,7 +497,7 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		overlay.setReviewing(false);
 	});
 
-	test("a wider page lays it out again", () => {
+	test("a wider page lays it out again", async () => {
 		overlay.setAddingMarks(true);
 		withRoomFrom("rows icons");
 		overlay.fitToolbar();
@@ -502,6 +506,7 @@ describe("the toolbar's layout is measured, not guessed from the page's width", 
 		);
 		withRoomFrom("");
 		window.dispatchEvent(new window.Event("resize"));
+		await new Promise((done) => window.requestAnimationFrame(() => done(0)));
 		expect<string | undefined>(overlay.toolbar.dataset["fit"]).toBe("");
 		overlay.setAddingMarks(false);
 	});
@@ -526,6 +531,19 @@ describe("a loaded mark's pin and the one popover (DEC-027)", () => {
 		// No marks shown: nothing to pick.
 		overlay.setReviewing(false);
 		expect(overlay.reviewAt(-2, 20)).toBeUndefined();
+	});
+
+	test("a pin moved into what shows of its element (DEC-075) is picked where it is drawn", () => {
+		overlay.setReviewing(true);
+		overlay.renderReview([
+			item(1, pinAt, {
+				clip: { x: 0, y: 100, width: 800, height: 500 },
+				pin: { x: rect.x, y: 111 },
+			}),
+		]);
+		expect(overlay.reviewAt(rect.x, 111)).toBe(1);
+		expect(overlay.reviewAt(rect.x, rect.y)).toBeUndefined();
+		overlay.setReviewing(false);
 	});
 
 	test("a press on a pin picks its mark; a press on its shape does not", () => {

@@ -7,6 +7,7 @@ import {
 	type Case,
 	type ElementDetails,
 	type Highlight,
+	type PageInfo,
 	RESOLVE_CHOICES,
 	type Rect,
 	type ResolveChoice,
@@ -135,6 +136,20 @@ export type ContentRequest =
 	/** The screenshot a mark asked for is taken: the overlay can come back. */
 	| { type: "page:captured" };
 
+/**
+ * The case a request hands the page, which it may then add marks to
+ * (`tab:case`): the toolbar's, or the one whose marks it draws.
+ */
+export function handedCase(
+	request: ContentRequest,
+): { caseId: string; adding: boolean } | undefined {
+	if (request.type === "overlay:show")
+		return { caseId: request.target.caseId, adding: true };
+	if (request.type === "case:load")
+		return { caseId: request.case.id, adding: false };
+	return undefined;
+}
+
 /** The answer to `page:blur`: refused while the page is busy. */
 export type BlurResult = { ok: true } | { ok: false; error: string };
 
@@ -225,6 +240,24 @@ export interface MarkMatch {
 	 * probable.
 	 */
 	textChanged?: true;
+	/**
+	 * A highlight whose text is not in the element shown, found around it
+	 * instead (DEC-083), and drawn there as probable: `nearby`, the same
+	 * text in another element near it; `reworded`, other text between the
+	 * same text before and after it (`textNow`). `textChanged` stays: it is
+	 * not where it was.
+	 */
+	textNear?: "nearby" | "reworded";
+	/** The text found instead (`textNear`), whitespace collapsed, cut: page text. */
+	textNow?: string;
+	/** The element it was found in (`textNear`), as a CSS selector. */
+	textAt?: string;
+	/**
+	 * No element was found for the mark; its text was found near where the
+	 * element was (`textNear`), and the element that holds it is its one
+	 * candidate (DEC-083).
+	 */
+	textPlaced?: true;
 	/**
 	 * A highlight whose element is too long to read whole (DEC-066): its
 	 * text was not looked for, and nothing is said of whether it changed.
@@ -326,7 +359,19 @@ export type WorkerRequest =
 			};
 	  }
 	/** From the viewer in its window: the frame above its page, for the next window's size. */
-	| { type: "viewer:frame"; height: number };
+	| { type: "viewer:frame"; height: number }
+	/**
+	 * From the side panel, before it hands the case to the tab's page
+	 * (`overlay:show`, `case:load`): the page may add marks to it
+	 * (`case:save` adds to no other case, tab-cases.ts).
+	 */
+	| {
+			type: "tab:case";
+			tabId: number;
+			caseId: string;
+			/** For the toolbar (`overlay:show`): kept while the tab lives. */
+			adding?: true;
+	  };
 
 export interface ImagesForAnswer {
 	images?: ImagesFor;
@@ -370,6 +415,7 @@ export const WORKER_REQUESTS: ReadonlySet<string> = new Set<
 	"panel:images-take",
 	"viewer:open",
 	"viewer:frame",
+	"tab:case",
 ]);
 
 export interface BarPlaceAnswer {
@@ -387,6 +433,83 @@ export function isWorkerRequest(message: unknown): message is WorkerRequest {
 export type WorkerResponse<T = object> =
 	| ({ ok: true } & T)
 	| { ok: false; error: string };
+
+/**
+ * A map from each request's `type` to its answer: every type of `R` must
+ * have one.
+ */
+type AnswerMap<
+	R extends { type: string },
+	M extends { [K in R["type"]]: unknown },
+> = M;
+
+/**
+ * What the content script answers to each request (`index.ts`). A content
+ * script of another build (an old one left in a tab) may not answer at all;
+ * where that matters the answer says `undefined`.
+ */
+export type ContentAnswers = AnswerMap<
+	ContentRequest,
+	{
+		"overlay:show": OverlayState;
+		"overlay:end": OverlayState;
+		"overlay:state": OverlayState | undefined;
+		"overlay:title": OverlayState;
+		"page:info": PageInfo | undefined;
+		"overlay:settings": OverlayState;
+		"case:load":
+			| LoadResult
+			| LoadReplacedAnswer
+			| { error: string; busy?: true };
+		"case:show": MarkMatch | { error: string } | null;
+		"case:update": LoadResult | null;
+		"case:matches": LoadResult | null;
+		"case:clear": OverlayState;
+		"case:hide": OverlayState;
+		"element:mark": DescribedElement;
+		"element:inspect": InspectResult | null;
+		"element:unmark": Released | undefined;
+		"page:blur": BlurResult;
+		"page:unblur": Released | undefined;
+		"page:captured": undefined;
+	}
+>;
+
+/** The content script's answer to `R`. */
+export type ContentAnswer<R extends ContentRequest> = ContentAnswers[R["type"]];
+
+/** What the service worker answers to each request, once it went well (`background.ts`). */
+export type WorkerAnswers = AnswerMap<
+	WorkerRequest,
+	{
+		capture: CaptureResult;
+		"case:save": SaveResult;
+		"case:number": NumberCheck;
+		"case:undo-add": UndoResult;
+		"images:discard": object;
+		"bar:place": BarPlaceAnswer;
+		"panel:images": object;
+		"panel:images-take": ImagesForAnswer;
+		"viewer:open": { viewerWindowId: number };
+		"viewer:frame": object;
+		"tab:case": object;
+	}
+>;
+
+/** The service worker's answer to `R`. */
+export type WorkerAnswer<R extends WorkerRequest> = WorkerResponse<
+	WorkerAnswers[R["type"]]
+>;
+
+/**
+ * Ask the service worker: its answer as `WorkerAnswers` has it, `undefined`
+ * where nothing answered.
+ */
+export function askWorker<R extends WorkerRequest>(
+	request: R,
+): Promise<WorkerAnswer<R> | undefined> {
+	return chrome.runtime.sendMessage(request);
+}
 
 export interface CaptureResult {
 	/** Pixels of the stored screenshot. */

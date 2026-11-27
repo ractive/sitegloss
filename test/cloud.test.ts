@@ -10,14 +10,12 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
 	addedImage,
 	type Case,
-	isOwnFinding,
 	type Mark,
 	markFor,
 	markKey,
 	validateCase,
 	withChoice,
 	withComment,
-	withFinding,
 	withImages,
 	withLink,
 	withoutImage,
@@ -36,6 +34,7 @@ import {
 	type Account,
 	type CaseBook,
 	type CloudStatus,
+	confirmedTeam,
 	KEYS,
 	type Queue,
 } from "../src/lib/cloud/book.ts";
@@ -133,6 +132,7 @@ describe("the first time a device meets its team", () => {
 			c_old: "undecided",
 			c_older: "undecided",
 		});
+		expect(tess.kv.data.get(KEYS.atTeam)).toEqual({});
 		// "Sync them".
 		await tess.engine.decide(true);
 		expect([...server.cases.keys()].sort()).toEqual(["c_old", "c_older"]);
@@ -161,6 +161,9 @@ describe("the first time a device meets its team", () => {
 			c_old: "synced",
 			c_other: "local",
 		});
+		// For the panel's link (DEC-069): the server has the shared one, in this team.
+		const { teamId } = (await tess.engine.account()) as Account;
+		expect(tess.kv.data.get(KEYS.atTeam)).toEqual({ c_old: teamId });
 	});
 
 	test("a case made after that is the team's, once it has a mark", async () => {
@@ -237,38 +240,10 @@ describe("two devices and one team", () => {
 		expect(dana.changed).toContain("c_flow");
 	});
 
-	test("a case that came from the server is no import, and its findings keep whose they are", async () => {
+	test("a case that came from the server is no import", async () => {
 		await shared();
-		const app = {
-			id: "https://claude.ai/oauth",
-			name: "Claude",
-			host: "claude.ai",
-		};
-		await change(tess, "c_flow", (c, now) =>
-			withFinding(
-				c,
-				"m1",
-				{ id: "f_1", text: "The total wraps", app, at: now },
-				now,
-			),
-		);
 		await sync(tess, dana);
-		const there = (await dana.store.getCase("c_flow")) as Case;
-		expect(there.importedAt).toBeUndefined();
-		const finding = there.marks[0]?.findings?.[0];
-		expect(finding?.imported).toBeUndefined();
-		expect(finding?.text).toBe("The total wraps");
-		// Written for Tess: Tess's app's own on her device, nobody's on Dana's.
-		expect(finding?.user).toEqual(TESS);
-		expect(finding && isOwnFinding(finding, app.id, TESS.id)).toBe(true);
-		expect(finding && isOwnFinding(finding, app.id, DANA.id)).toBe(false);
-		expect(finding && isOwnFinding(finding, app.id, undefined)).toBe(false);
-		const mine = (await tess.store.getCase("c_flow"))?.marks[0]?.findings?.[0];
-		expect(mine?.user).toEqual(TESS);
-		// A finding that never left this device is its app's, as before.
-		expect(
-			isOwnFinding({ id: "f", text: "x", app, at: "now" }, app.id, undefined),
-		).toBe(true);
+		expect((await dana.store.getCase("c_flow"))?.importedAt).toBeUndefined();
 	});
 
 	test("what each changes reaches the other, with who did it", async () => {
@@ -372,6 +347,8 @@ describe("the status line, from the engine's real states (DEC-045)", () => {
 			},
 			status: status(d),
 			modes: {},
+			atTeam: {},
+			members: undefined,
 			signingIn: false,
 			problem: undefined,
 			live,
@@ -2359,7 +2336,7 @@ describe("what the server does not take", () => {
 		server.refuseWith = {
 			type: "mark.patch",
 			code: "limit",
-			message: "A mark holds at most 20 findings.",
+			message: "A mark holds at most 6 images.",
 		};
 		await change(tess, "c_flow", (c, now) =>
 			withComment(c, "m1", "Refused", now),
@@ -2370,7 +2347,7 @@ describe("what the server does not take", () => {
 			{
 				caseId: "c_flow",
 				title: "Your cart",
-				text: expect.stringContaining("A mark holds at most 20 findings"),
+				text: expect.stringContaining("A mark holds at most 6 images"),
 			},
 		]);
 		// The change stays here, and is not sent again as it is.
@@ -2783,6 +2760,70 @@ describe("a contract that has grown", () => {
 			"Only Tess had this",
 		]);
 		expect(status(tess)?.state).toBe("synced");
+	});
+});
+
+describe("the cases the panel may link: what the server confirmed, in the team chosen now (DEC-069)", () => {
+	const atTeam = (d: typeof tess) => d.kv.data.get(KEYS.atTeam);
+
+	test("the rule, book by book", () => {
+		const shadow = { case: {} as never, shots: {}, marks: {} };
+		const book = (more: Partial<CaseBook>): CaseBook => ({
+			caseId: "c_1",
+			mode: "synced",
+			teamId: TEAM,
+			marks: {},
+			shots: {},
+			shadow,
+			...more,
+		});
+		const reread = (why: "join" | "failed" | "missing" | "resumed") => ({
+			reread: { why, tries: 0, after: 0 },
+		});
+		expect(confirmedTeam(book({}))).toBe(TEAM);
+		// Not sent yet, or no more: no copy of the server's.
+		const { shadow: _none, ...unsent } = book({});
+		expect(confirmedTeam(unsent)).toBeUndefined();
+		// Kept on this device (a team left, a sign-out), or not decided about.
+		expect(confirmedTeam(book({ mode: "local" }))).toBeUndefined();
+		expect(confirmedTeam(book({ mode: "undecided" }))).toBeUndefined();
+		// A copy of before, until the server answers the read.
+		for (const why of ["resumed", "join", "missing"] as const)
+			expect(confirmedTeam(book(reread(why)))).toBeUndefined();
+		// A read that failed leaves the server's copy as it was.
+		expect(confirmedTeam(book(reread("failed")))).toBe(TEAM);
+	});
+
+	test("a sign-out empties it; signing in again names a case only once the server has answered its read", async () => {
+		await shared();
+		expect(atTeam(tess)).toEqual({ c_flow: TEAM });
+		await tess.engine.signOut();
+		expect(atTeam(tess)).toEqual({});
+		// Signed in again while the server cannot be reached: no read yet.
+		const me = await tess.api.me();
+		tess.api.offline = true;
+		await signIn(tess, me);
+		expect(atTeam(tess)).toEqual({});
+		tess.api.offline = false;
+		await tess.engine.retry();
+		expect(atTeam(tess)).toEqual({ c_flow: TEAM });
+	});
+
+	test("a case the team deleted leaves it", async () => {
+		await shared();
+		expect(atTeam(dana)).toEqual({ c_flow: TEAM });
+		await removeCase(tess, "c_flow");
+		await sync(tess, dana);
+		expect(atTeam(tess)).toEqual({});
+		expect(atTeam(dana)).toEqual({});
+	});
+
+	test("written where it changed, also by a run after one that stopped before it", async () => {
+		await shared();
+		// As a worker stopped between a book's write and the publish.
+		tess.kv.data.delete(KEYS.atTeam);
+		await tess.engine.request();
+		expect(atTeam(tess)).toEqual({ c_flow: TEAM });
 	});
 });
 

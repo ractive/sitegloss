@@ -13,9 +13,7 @@ import {
 import {
 	addedImage,
 	type Case,
-	caseImages,
 	cleanTitle,
-	heldImagesOf,
 	MARK_CHANGED,
 	MAX_MARK_IMAGES,
 	type Mark,
@@ -27,6 +25,7 @@ import {
 	type PageInfo,
 	validateCase,
 	viewportAt,
+	withAssigned,
 	withCaseComment,
 	withCaseCommentText,
 	withChoice,
@@ -35,7 +34,6 @@ import {
 	withImages,
 	withLink,
 	withoutCaseComment,
-	withoutFinding,
 	withoutImage,
 	withoutMark,
 	withReopen,
@@ -43,6 +41,7 @@ import {
 	withVerified,
 } from "../lib/case.ts";
 import { sha256Of } from "../lib/cloud/api.ts";
+import { debugLog } from "../lib/debug.ts";
 import {
 	type CheckedExport,
 	exportAllCases,
@@ -56,29 +55,41 @@ import {
 } from "../lib/export.ts";
 import { toAddedImage } from "../lib/images.ts";
 import {
+	askWorker,
 	type Broadcast,
 	type ImagesFor,
-	type ImagesForAnswer,
 	isMarkRequest,
 	isOpenCaseRequest,
-	type LoadReplacedAnswer,
 	type LoadResult,
 	type MarkAnswer,
-	type MarkMatch,
 	type MarkRequest,
 	type OpenCaseAnswer,
 	type OpenCaseRequest,
 	type OverlayState,
-	type WorkerRequest,
 } from "../lib/messages.ts";
 import { IdbStore, type StoredImage } from "../lib/store.ts";
-import { inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
+import { askTab, inject, NoAccessError, sendToTab } from "../lib/tabs.ts";
 import { testWait } from "../lib/test-waits.ts";
 import { markPictures } from "../viewer/pictures.ts";
+import {
+	type AccessMemory,
+	afterAnswer,
+	asksForSite,
+	cannotRunText,
+	DECLINED,
+	noAccessHint,
+	readMemory,
+	refusalHint,
+	refusalKind,
+	unreachableText,
+	writeMemory,
+} from "./access.ts";
 import { type AddImagesDialog, filesOf, openAddImages } from "./add-images.ts";
 import { blurFormsNow, startAi } from "./ai.ts";
 import { aiOpenRefusal, keepsLoaded } from "./ai-open.ts";
+import { droppedUrls, reuseImages } from "./case-images.ts";
 import { linkFromField } from "./case-link.ts";
+import { closedSaid } from "./closed";
 import { cloudActions, startCloud } from "./cloud.ts";
 import { caseSync } from "./cloud-view.ts";
 import { DELETE_ARMED_MS, deleteClick } from "./delete.ts";
@@ -102,9 +113,13 @@ import { markChange } from "./mark-change.ts";
 import {
 	linkStep,
 	markTargets,
+	mayLoadAndShow,
 	type PendingShow,
+	pendingAfterDraw,
 	tryShow,
+	verifiesHere,
 } from "./mark-link.ts";
+import { type Copied, copyStep, firstToVerify, whereIs } from "./next-step.ts";
 import { highestMark, pageFilterEnds, statusLeft } from "./page-filter.ts";
 import { isCasePageAddress } from "./page-hosts.ts";
 import { markAsked } from "./picked.ts";
@@ -121,7 +136,7 @@ import {
 	type PanelState,
 } from "./state.ts";
 import { startSync, syncActions } from "./sync.ts";
-import { type Actions, lostMarksText, NO_ACCESS, render } from "./view.ts";
+import { type Actions, lostMarksText, render, wordsOf } from "./view.ts";
 import { viewerStays } from "./viewer-follow.ts";
 import { panelWindow } from "./window.ts";
 
@@ -146,7 +161,9 @@ const TEST_BUILD =
  */
 function askForSite(url: string): Promise<boolean> {
 	const pattern = sitePattern(url);
-	if (pattern === undefined || declinedSites.has(pattern))
+	// Not in Firefox, where the prompt could not be answered (`asksForSite`):
+	// the tab's notice offers all sites and the icon's click there.
+	if (!asksForSite(pattern, declinedSites, FIREFOX))
 		return Promise.resolve(false);
 	return requestPermissions({ origins: [pattern] }).then(
 		(granted) => {
@@ -167,10 +184,55 @@ const declinedSites = new Set<string>();
 const message = (error: unknown) =>
 	error instanceof Error ? error.message : String(error);
 
+/**
+ * Why an action that needed the page did nothing (DEC-076), from what is
+ * true now; nothing is remembered of it (an error page, a tab still loading
+ * is fine again once the page is).
+ */
 function describeError(error: unknown): string {
-	return error instanceof NoAccessError
-		? NO_ACCESS
-		: `Could not reach the page: ${message(error)}`;
+	if (!(error instanceof NoAccessError))
+		return `Could not reach the page: ${message(error)}`;
+	const words = wordsOf(state);
+	switch (
+		refusalHint(error.message, {
+			allSites: state.allSites,
+			addressShown: (state.tab?.url ?? "") !== "",
+		})
+	) {
+		case "cannot":
+			return cannotRunText(words);
+		case "unreachable":
+			return unreachableText(words);
+		case "no-access":
+			return noAccessHint(words);
+	}
+}
+
+/**
+ * Whether the browser refuses the tab as a page no extension may run on: a
+ * script that does nothing, tried only where the address is hidden (so
+ * Sitegloss may not run there anyway and nothing runs in the page). Its
+ * refusal says which kind (`refusalKind`).
+ */
+async function refusedAsCannot(tabId: number): Promise<"page" | undefined> {
+	try {
+		const results = await chrome.scripting.executeScript({
+			target: { tabId },
+			func: () => true,
+		});
+		// Firefox reports a refusal in the result, Chrome by rejecting; on a
+		// page of Firefox's own (about:) it runs in no frame at all (tried).
+		if (results.length === 0) return "page";
+		const failed = (results as { error?: unknown }[]).find(
+			(r) => r.error !== undefined,
+		);
+		return failed !== undefined &&
+			refusalKind(message(failed.error)) === "cannot"
+			? "page"
+			: undefined;
+	} catch (error) {
+		return refusalKind(message(error)) === "cannot" ? "page" : undefined;
+	}
 }
 
 // --- the state and its work ------------------------------------------------------
@@ -208,7 +270,10 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 /** The tab's size in CSS pixels, as a case records its viewport. */
 async function tabSize(tab: chrome.tabs.Tab): Promise<Size | undefined> {
 	if (tab.id === undefined || !tab.width || !tab.height) return undefined;
-	const zoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+	const zoom = await chrome.tabs.getZoom(tab.id).catch((error: unknown) => {
+		debugLog("tab zoom", error);
+		return 1;
+	});
 	return cssSize({ width: tab.width, height: tab.height }, zoom);
 }
 
@@ -235,6 +300,8 @@ function startLoad(target: Drawn): ReturnType<Latest["start"]> {
 function stopLoads(): void {
 	loadTarget = undefined;
 	loadWork.cancel();
+	// A mark's Show that was waiting for this draw has nothing to wait for.
+	if (pendingShow?.fromShow) pendingShow = undefined;
 	// A draw waiting to search again is over too: a follow may draw anew.
 	setDrawing(undefined);
 }
@@ -311,6 +378,9 @@ let pendingLoad: { tabId: number; caseId: string } | undefined;
  */
 let pendingShow: PendingShow | undefined;
 
+/** A mark's Show is drawing the case's marks first: no second press meanwhile. */
+let showLoading = false;
+
 /** How long a mark's link waits for its page and the marks on it. */
 const SHOW_WAIT_MS = 120_000;
 
@@ -322,7 +392,7 @@ const SHOW_WAIT_MS = 120_000;
 async function showPending(): Promise<void> {
 	const p = pendingShow;
 	const { keep, shown } = await tryShow(p, state.loaded, Date.now(), (q) =>
-		chrome.tabs.sendMessage(q.tabId, {
+		askTab(q.tabId, {
 			type: "case:show",
 			caseId: q.caseId,
 			markId: q.markId,
@@ -336,6 +406,12 @@ async function showPending(): Promise<void> {
 		if (s.loaded?.tabId === p.tabId && s.loaded.caseId === p.caseId)
 			s.loaded.matches.set(p.markId, shown);
 	});
+	const n = shown.number;
+	p.say?.(
+		shown.status === "lost"
+			? `Mark ${n} was not found on this page.`
+			: `Showing mark ${n}.`,
+	);
 }
 
 /**
@@ -354,9 +430,11 @@ async function loadInto(
 	const here = { tabId, caseId: c.id };
 	try {
 		loadsUnderWay++;
-		const result = await sendToTab<
-			LoadResult | LoadReplacedAnswer | { error: string; busy?: true }
-		>(tabId, {
+		// Not told: a mark from the page's own Add marks is refused later.
+		await handCase(tabId, c.id).catch((error: unknown) =>
+			debugLog("hand case to worker", error),
+		);
+		const result = await sendToTab(tabId, {
 			type: "case:load",
 			case: c,
 		}).finally(() => loadsUnderWay--);
@@ -462,9 +540,10 @@ async function readMatches(
 	hint: ReturnType<typeof followHint>,
 	again: boolean,
 ): Promise<void> {
-	const result = (await chrome.tabs
-		.sendMessage(tabId, { type: "case:matches", caseId: c.id })
-		.catch(() => null)) as LoadResult | null;
+	const result = await askTab(tabId, {
+		type: "case:matches",
+		caseId: c.id,
+	}).catch(() => null);
 	// Not for what another draw put there meanwhile.
 	if (
 		result === null ||
@@ -507,9 +586,9 @@ async function readMatches(
  */
 async function readLoaded(c: Case, tabId: number): Promise<void> {
 	const hint = followHint();
-	const result = (await chrome.tabs
-		.sendMessage(tabId, { type: "case:update", case: c })
-		.catch(() => null)) as LoadResult | null;
+	const result = await askTab(tabId, { type: "case:update", case: c }).catch(
+		() => null,
+	);
 	if (result === null || !showing(c.id) || state.loaded !== undefined) return;
 	update((s) => {
 		s.loaded = {
@@ -698,12 +777,29 @@ async function settledSize(tabId: number): Promise<void> {
 	}
 }
 
+/**
+ * The tab's page may add marks to the case (tab-cases.ts): the worker is
+ * told before the page gets it; `adding`: for the page's toolbar.
+ */
+async function handCase(
+	tabId: number,
+	caseId: string,
+	adding = false,
+): Promise<void> {
+	const answer = await askWorker({
+		type: "tab:case",
+		tabId,
+		caseId,
+		...(adding ? { adding: true as const } : {}),
+	});
+	if (answer === undefined) throw new Error("Sitegloss did not answer.");
+	if (!answer.ok) throw new Error(answer.error);
+}
+
 /** The overlay's state on the tab, or `undefined` where it is not injected. */
 async function overlayState(tabId: number): Promise<OverlayState | undefined> {
 	try {
-		return (await chrome.tabs.sendMessage(tabId, {
-			type: "overlay:state",
-		})) as OverlayState;
+		return await askTab(tabId, { type: "overlay:state" });
 	} catch {
 		return undefined;
 	}
@@ -726,6 +822,16 @@ async function refreshTab(): Promise<void> {
 		// Sitegloss may not run on it: hidden here, as in Chrome.
 		const hidden =
 			files === false && (tab?.url ?? "").toLowerCase().startsWith("file:");
+		// A page no extension may run on (DEC-076), as it is now: the
+		// browser's refusal says so where the address is hidden.
+		const cannotRun: "page" | "file" | undefined =
+			tab?.id === undefined
+				? undefined
+				: hidden
+					? "file"
+					: !tab.url && tab.status !== "loading"
+						? await refusedAsCannot(tab.id)
+						: undefined;
 		if (!work.current()) return;
 		update((s) => {
 			if (files !== undefined) s.fileAccess = files;
@@ -738,6 +844,7 @@ async function refreshTab(): Promise<void> {
 							title: hidden ? "" : (tab.title ?? ""),
 							size,
 							loading: tab.status === "loading",
+							...(cannotRun ? { cannotRun } : {}),
 						};
 			// A hint is about the tab in front when it was given; the first read
 			// of that tab is no change of it.
@@ -772,6 +879,17 @@ async function refreshTab(): Promise<void> {
 
 /** The panel has not read the tab in front yet. */
 let firstRead = true;
+
+/**
+ * Where "My cases" is kept (DEC-071): the panel's own session storage, so
+ * a reload keeps it; the panel touches no storage of the extension's.
+ */
+const MINE_KEY = "sitegloss:mine";
+try {
+	if (sessionStorage.getItem(MINE_KEY) === "1") state.mine = true;
+} catch {
+	// No session storage: the filter starts off.
+}
 
 /** A toolbar's case being checked by `adopt`. */
 let adopting: string | undefined;
@@ -899,12 +1017,7 @@ async function refreshCase(): Promise<void> {
 		// once a mark was added (it would not show, as if it was not saved).
 		if (pageFilterEnds(c, s.markPage)) s.markPage = undefined;
 		// What can no longer be told from another mark is let go, and said.
-		const lost = [
-			s.markEdit,
-			s.markDeleteArmed,
-			s.findingDeleteArmed,
-			s.imageDeleteArmed,
-		].some(
+		const lost = [s.markEdit, s.markDeleteArmed, s.imageDeleteArmed].some(
 			(held) =>
 				held !== undefined &&
 				markFor(c, held.markId, held.mark) === "ambiguous",
@@ -914,31 +1027,68 @@ async function refreshCase(): Promise<void> {
 		// mark under the id).
 		s.markEdit = editAfter(s.markEdit, c);
 		s.markDeleteArmed = heldAfter(s.markDeleteArmed, c);
-		s.findingDeleteArmed = heldAfter(s.findingDeleteArmed, c);
 		s.imageDeleteArmed = heldAfter(s.imageDeleteArmed, c);
 		if (lost) s.caseHint = MARK_CHANGED;
 	});
+	// This page's Start verifying waited for the case (DEC-079).
+	if (state.verifyOnOpen === c.id) {
+		update((s) => (s.verifyOnOpen = undefined));
+		startVerifying(c, true);
+	}
 	// Just opened, or its first mark is in: its marks go to the tab in front
 	// (DEC-022, DEC-026).
 	if (opened || first) void follow();
 	if (state.images?.caseId === c.id && state.images.version === c.updatedAt)
 		return;
 	const images = imagesWork.start();
-	const urls = new Map<string, string>();
 	// Its screenshots, the marks' crops and the images added to them, those
-	// held back here too (DEC-058).
-	for (const path of [...caseImages(c), ...heldImagesOf(c)]) {
+	// held back here too (DEC-058): only the new or changed ones are read.
+	const { keys, kept, read } = reuseImages(state.images, c);
+	const made = new Map<string, string>();
+	for (const path of read) {
 		const image = await store.getImage(c.id, path);
-		if (image !== undefined) urls.set(path, URL.createObjectURL(image.blob));
+		if (image !== undefined) made.set(path, URL.createObjectURL(image.blob));
 	}
 	if (!images.current()) {
-		for (const url of urls.values()) URL.revokeObjectURL(url);
+		for (const url of made.values()) URL.revokeObjectURL(url);
 		return;
 	}
+	const urls = new Map([...kept, ...made]);
 	update((s) => {
-		releaseImages(s);
-		s.images = { caseId: c.id, version: c.updatedAt, urls };
+		for (const url of droppedUrls(s.images, urls)) URL.revokeObjectURL(url);
+		s.images = { caseId: c.id, version: c.updatedAt, urls, keys };
 	});
+}
+
+/**
+ * The next step's Start verifying, and This page's once its case is read
+ * (`focus`: the button that asked went with Home, its row's head takes it):
+ * the marks to verify, on every page, the first one of the page in front open.
+ */
+function startVerifying(c: Case, focus: boolean): void {
+	// The case as it is now, and only while it is the one open.
+	const now = state.current;
+	if (now?.id !== c.id) return;
+	const first = firstToVerify(now, (a) => verifiesHere(now, a, state.tab?.url));
+	if (first === undefined) {
+		// Verified meanwhile (by the team, an AI app): say so, filter nothing.
+		if (state.markFilter?.group === "toVerify")
+			actions.filterMarks(c.id, undefined);
+		caseHintWriter()("No mark waits to be checked any more.");
+		return;
+	}
+	// As a status chip and a picked pin: those marks, on every page, the first open.
+	actions.filterMarks(c.id, "toVerify");
+	actions.filterPage(c.id, undefined);
+	update(
+		(s) =>
+			(s.picked = {
+				caseId: c.id,
+				markId: first.id,
+				at: Date.now(),
+				...(focus ? { focus: true as const } : {}),
+			}),
+	);
 }
 
 /** Open a case, and draw its marks on the tab in front (DEC-022). */
@@ -951,9 +1101,12 @@ function openCase(id: string): void {
 		if (other) {
 			s.current = undefined;
 			s.verdictStatus = undefined;
+			imagesWork.cancel();
 			releaseImages(s);
 		}
 		s.view = { kind: "case", id };
+		// What the list said about a case just closed is not said again later.
+		s.hint = undefined;
 		s.caseHint = undefined;
 		s.deleteArmedAt = undefined;
 		s.markEdit = undefined;
@@ -962,9 +1115,9 @@ function openCase(id: string): void {
 		s.markFilter = undefined;
 		s.markPage = undefined;
 		s.markDeleteArmed = undefined;
-		s.findingDeleteArmed = undefined;
 		s.imageDeleteArmed = undefined;
 		s.leaving = undefined;
+		s.verifyOnOpen = undefined;
 	});
 	followed = undefined;
 	void refreshCase();
@@ -999,15 +1152,15 @@ async function endToolbars(
 	let timedOut = false;
 	const answers = await Promise.all(
 		[...tabs].map(async (tabId) => {
-			const answer = (await Promise.race([
-				chrome.tabs
-					.sendMessage(tabId, { type: "overlay:end", caseId, ...how })
-					.catch(() => undefined),
+			const answer = await Promise.race([
+				askTab(tabId, { type: "overlay:end", caseId, ...how }).catch(
+					() => undefined,
+				),
 				sleep(testWait("endMs", END_TIMEOUT_MS)).then(() => {
 					timedOut = true;
 					return undefined;
 				}),
-			])) as OverlayState | undefined;
+			]);
 			return { tabId, answer };
 		}),
 	);
@@ -1035,15 +1188,19 @@ async function askAllTabs(): Promise<TabAnswer[]> {
 
 /** `askAllTabs`, by tab id. */
 async function askTabsById(): Promise<Map<number, TabAnswer>> {
-	const tabs = await chrome.tabs.query({}).catch(() => []);
+	const tabs = await chrome.tabs.query({}).catch((error: unknown) => {
+		debugLog("tabs query", error);
+		return [];
+	});
 	const answers = await Promise.all(
 		tabs.map(async ({ id }): Promise<[number, TabAnswer]> => {
 			if (id === undefined) return [-1, "none"];
 			return [
 				id,
 				await Promise.race([
-					chrome.tabs.sendMessage(id, { type: "overlay:state" }).then(
-						(s) => (s as OverlayState | undefined) ?? "unsure",
+					askTab(id, { type: "overlay:state" }).then(
+						// A content script of another build may not answer it.
+						(s): TabAnswer => s ?? "unsure",
 						() => "none" as const,
 					),
 					sleep(ASK_TAB_MS).then(() => "unsure" as const),
@@ -1081,9 +1238,12 @@ const leavingNow = (): PanelState["leaving"] => state.leaving;
  * goes then, as with its own Done again; one drawn or tried since is tried
  * once more (DEC-014).
  */
-async function leaveCase(): Promise<void> {
+async function leaveCase(
+	keep = false,
+	save?: () => Promise<boolean>,
+): Promise<boolean> {
 	if (state.view.kind !== "case" || state.leaving?.phase === "finishing")
-		return;
+		return false;
 	const caseId = state.view.id;
 	// The first click tries the marks an earlier Done left out once more;
 	// the second is the page's Done again.
@@ -1094,24 +1254,55 @@ async function leaveCase(): Promise<void> {
 	try {
 		const { left, front, timedOut } = await endToolbars(caseId, { retry });
 		// Closed meanwhile (deleted elsewhere), or opened again.
-		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		if (left > 0) {
 			update((s) => {
 				s.leaving = { phase: "blocked", left };
 				if (front !== undefined) s.overlay = front;
 			});
-			return;
+			return false;
 		}
 		// Gone before the list shows: no empty case flashes there (DEC-026);
-		// never while a tab that did not answer may still hold a mark.
-		if (!timedOut) await forgetUntouched(caseId);
-		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return;
+		// never while a tab that did not answer may still hold a mark. Not a
+		// case the person has just closed: it is kept, under Closed.
+		if (!keep && !timedOut) await forgetUntouched(caseId);
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
+		// The toolbars are done and can leave: only now is a close saved, so a
+		// blocked leave closes nothing. A save that fails stays on the case.
+		if (save !== undefined && !(await save())) return false;
+		if (!showing(caseId) || leavingNow()?.phase !== "finishing") return false;
 		closeCase();
+		return true;
 	} finally {
 		// Not left for good when something above failed.
 		if (leavingNow()?.phase === "finishing")
 			update((s) => (s.leaving = undefined));
 	}
+}
+
+/**
+ * The person's own press on "Close case": the panel leaves the case as
+ * "← All cases" does, and the close is saved once the toolbars are done, and the list says once where
+ * the case is and takes the focus. Failing to save, or marks the toolbar has
+ * not added yet, keep the panel on the case, which says why. Reopening, and
+ * a close from anywhere else (an AI app, the web app, the sync), never move
+ * the panel.
+ */
+async function closeFromPanel(caseId: string): Promise<void> {
+	const left = await leaveCase(true, () =>
+		changeThread(caseId, (c, now) => withClosed(c, true, now)),
+	);
+	if (!left) return;
+	// Read again: another writer may have reopened it meanwhile.
+	const saved = await store
+		.getCase(caseId)
+		.catch((error: unknown) => debugLog("read case", error));
+	if (saved?.closed === undefined || state.view.kind !== "home") return;
+	update((s) => {
+		s.cases = s.cases.map((c) => (c.id === caseId ? saved : c));
+		s.hint = closedSaid(saved);
+		s.homeFocus = { seq: s.homeFocus.seq + 1, caseId };
+	});
 }
 
 /**
@@ -1127,6 +1318,7 @@ function closeCase(): void {
 	stopLoads();
 	hiddenOn.clear();
 	pendingLoad = undefined;
+	pendingShow = undefined;
 	toolbarOn.clear();
 	if (drawn !== undefined) takeOff(drawn);
 	update((s) => {
@@ -1181,6 +1373,32 @@ function followHint(): (text: CaseHint | undefined) => void {
 	};
 }
 
+/** How long the next step says what its copy did (DEC-069). */
+const COPIED_MS = 8000;
+
+/**
+ * The next step's copies (DEC-069), written to the clipboard in the click;
+ * what it did is said in the block for `COPIED_MS`, while the step offers it.
+ */
+async function copyFromStep(c: Case, what: Copied["what"]): Promise<void> {
+	const hint = caseHintWriter();
+	const done = await copyStep(c, whereIs(state.cloud, c), what, (text) =>
+		navigator.clipboard.writeText(text),
+	);
+	if (done === undefined) {
+		// The case left the team between the draw and the click: say so.
+		hint(
+			"Nothing was copied: as far as this browser knows now, the team does not have this case.",
+		);
+		return;
+	}
+	const at = Date.now();
+	update((s) => (s.copied = { caseId: c.id, ...done, at }));
+	setTimeout(() => {
+		if (state.copied?.at === at) update((s) => (s.copied = undefined));
+	}, COPIED_MS);
+}
+
 /** The loaded case's results no longer describe the tab: drop them (and the marks). */
 async function forgetLoaded(
 	options: { hint?: string; clearTab?: boolean } = {},
@@ -1223,7 +1441,10 @@ async function endDeleted(
 	caseId: string,
 	title: string | undefined,
 ): Promise<void> {
-	const tabs = await chrome.tabs.query({}).catch(() => []);
+	const tabs = await chrome.tabs.query({}).catch((error: unknown) => {
+		debugLog("tabs query", error);
+		return [];
+	});
 	let lost = 0;
 	await Promise.all(
 		tabs.map(async ({ id }) => {
@@ -1262,7 +1483,10 @@ async function forgetUntouched(caseId: string): Promise<boolean> {
 	const link = typedLink(caseId);
 	const gone = await store
 		.deleteCaseIf(caseId, (c) => isUntouched(c, typed, title, link))
-		.catch(() => false);
+		.catch((error: unknown) => {
+			debugLog("delete untouched case", error);
+			return false;
+		});
 	if (!gone) return false;
 	update((s) => {
 		s.verdictDrafts.delete(caseId);
@@ -1326,7 +1550,9 @@ async function startAddingMarks(
 	const tab = { id };
 	tabWork.cancel(); // a refresh still running must not overwrite this
 	try {
-		const overlay = await sendToTab<OverlayState>(tab.id, {
+		// Not told, the toolbar's marks would be refused: it does not come up.
+		await handCase(tab.id, target.id, true);
+		const overlay = await sendToTab(tab.id, {
 			type: "overlay:show",
 			blurForms: await blurFormsNow(),
 			target: {
@@ -1472,19 +1698,20 @@ async function linkCase(caseId: string, text: string): Promise<void> {
  * A toolbar adding to another case ignores it.
  */
 async function retitleToolbars(c: Case): Promise<void> {
-	const tabs = (await chrome.tabs.query({}).catch(() => [])).flatMap((t) =>
-		t.id === undefined ? [] : [t.id],
-	);
+	const tabs = (
+		await chrome.tabs.query({}).catch((error: unknown) => {
+			debugLog("tabs query", error);
+			return [];
+		})
+	).flatMap((t) => (t.id === undefined ? [] : [t.id]));
 	// Each on its own: a tab that does not answer holds up no other.
 	await Promise.all(
 		tabs.map(async (tabId) => {
-			const now = (await chrome.tabs
-				.sendMessage(tabId, {
-					type: "overlay:title",
-					caseId: c.id,
-					title: c.title,
-				})
-				.catch(() => undefined)) as OverlayState | undefined;
+			const now = await askTab(tabId, {
+				type: "overlay:title",
+				caseId: c.id,
+				title: c.title,
+			}).catch(() => undefined);
 			if (now !== undefined)
 				update((s) => {
 					if (s.tab?.id === tabId) s.overlay = now;
@@ -1505,8 +1732,7 @@ const PAGE_ANSWER_MS = 5000;
 
 /** What the page is, from its content script (injected if need be). */
 async function askPage(tabId: number): Promise<PageInfo | undefined> {
-	const ask = () =>
-		sendToTab<PageInfo | undefined>(tabId, { type: "page:info" });
+	const ask = () => sendToTab(tabId, { type: "page:info" });
 	const page = await ask();
 	if (page !== undefined) return page;
 	// Something there that does not answer it (not this build's content
@@ -1728,6 +1954,46 @@ const actions: Actions = {
 		})();
 	},
 
+	loadAndShow(c, a) {
+		// A second press while the first is drawing does nothing more; the
+		// button says it is busy.
+		if (showLoading) return;
+		showLoading = true;
+		update((s) => (s.showingMark = { caseId: c.id, markId: a.id }));
+		const hint = caseHintWriter();
+		void (async () => {
+			try {
+				const tab = await activeTab();
+				if (tab?.id === undefined || tab.url === undefined)
+					return hint("Could not find the tab to show the mark on.");
+				// What the row offered still holds: the tab may have gone on.
+				if (!mayLoadAndShow(c, a, tab.url, showing(c.id))) return;
+				const work = startLoad({ tabId: tab.id, caseId: c.id });
+				hiddenOn.delete(tab.id);
+				if (pendingLoad?.tabId === tab.id) pendingLoad = undefined;
+				// What "Show marks" does; `showPending` brings this mark into
+				// view once the draw is in (as for a mark's link).
+				const mine: PendingShow = {
+					tabId: tab.id,
+					caseId: c.id,
+					markId: a.id,
+					mark: markKey(c, a),
+					url: tab.url,
+					until: Date.now() + SHOW_WAIT_MS,
+					fromShow: true,
+					say: hint,
+				};
+				pendingShow = mine;
+				const result = await loadInto(c, tab.id, hint, work);
+				// Nothing drawn (busy, no access, stale): nothing waits.
+				pendingShow = pendingAfterDraw(mine, pendingShow, result !== undefined);
+			} finally {
+				showLoading = false;
+				update((s) => (s.showingMark = undefined));
+			}
+		})();
+	},
+
 	hideFromTab(c) {
 		stopLoads();
 		caseHints.cancel();
@@ -1753,6 +2019,10 @@ const actions: Actions = {
 		// becomes the pill that shows the marks again, and a toolbar adding
 		// to the case ends (hidden marks and adding do not go together).
 		for (const tabId of tabs) hideOn({ tabId, caseId: c.id });
+	},
+
+	declineAllSites() {
+		remember({ ...memory, declined: true });
 	},
 
 	allowAllSites() {
@@ -1832,14 +2102,12 @@ const actions: Actions = {
 			);
 			if (step === "show") {
 				const p = pendingShow;
-				const shown = (await chrome.tabs
-					.sendMessage(tabId, {
-						type: "case:show",
-						caseId: c.id,
-						markId: a.id,
-						mark: p.mark,
-					})
-					.catch(() => null)) as MarkMatch | { error: string } | null;
+				const shown = await askTab(tabId, {
+					type: "case:show",
+					caseId: c.id,
+					markId: a.id,
+					mark: p.mark,
+				}).catch(() => null);
 				if (shown !== null && !("error" in shown) && pendingShow === p)
 					pendingShow = undefined;
 				return;
@@ -1886,7 +2154,12 @@ const actions: Actions = {
 						win.height === undefined
 					)
 						break;
-					const zoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+					const zoom = await chrome.tabs
+						.getZoom(tab.id)
+						.catch((error: unknown) => {
+							debugLog("tab zoom", error);
+							return 1;
+						});
 					const bigger = windowFor(
 						want,
 						{ width: tab.width, height: tab.height },
@@ -2000,7 +2273,35 @@ const actions: Actions = {
 			withoutCaseComment(c, commentId, now),
 		),
 	setCaseClosed: (caseId, closed) =>
-		void changeThread(caseId, (c, now) => withClosed(c, closed, now)),
+		closed
+			? void closeFromPanel(caseId)
+			: void changeThread(caseId, (c, now) => withClosed(c, false, now)),
+
+	// Through the sync, as every change of the case (DEC-071): it waits here
+	// while the server cannot be reached, and the block says so.
+	assignCase: (caseId, to) =>
+		void changeThread(caseId, (c, now) => withAssigned(c, to, now)),
+
+	showMine(on) {
+		update((s) => (s.mine = on));
+		try {
+			sessionStorage.setItem(MINE_KEY, on ? "1" : "0");
+		} catch {
+			// Kept for this panel only.
+		}
+	},
+
+	copyCaseLink: (c) => void copyFromStep(c, "copy-link"),
+	copyForAiApp: (c) => void copyFromStep(c, "copy-ai"),
+
+	startVerifying: (c) => startVerifying(c, false),
+
+	verifyCase(id) {
+		// As "Open this case"; once the case is read (`refreshCase`, whichever
+		// read that is), the next step's Start verifying, its row focused.
+		openCase(id);
+		update((s) => (s.verifyOnOpen = id));
+	},
 
 	cancelLink: () => update((s) => (s.linking = undefined)),
 
@@ -2012,7 +2313,7 @@ const actions: Actions = {
 			tabWork.cancel();
 			try {
 				// As the toolbar's Done: a mark not in the case keeps it up.
-				const overlay = await sendToTab<OverlayState>(tab.id, {
+				const overlay = await sendToTab(tab.id, {
 					type: "overlay:end",
 					caseId: c.id,
 				});
@@ -2123,7 +2424,7 @@ const actions: Actions = {
 
 	verifyMark(c, a) {
 		const now = new Date().toISOString();
-		void changeMark(c, a, (current, id) => ({
+		return changeMark(c, a, (current, id) => ({
 			value: withVerified(current, id, undefined, now),
 		}));
 	},
@@ -2192,55 +2493,6 @@ const actions: Actions = {
 		void changeMark(c, a, (current, id) =>
 			withoutMark(current, id, now),
 		).finally(() => deleting.delete(a.id));
-	},
-
-	deleteFinding(c, a, findingId) {
-		const armed = state.findingDeleteArmed;
-		const at = Date.now();
-		const click = deleteClick(
-			armed?.markId === a.id && armed.findingId === findingId
-				? armed.at
-				: undefined,
-			at,
-		);
-		if (click === "arm") {
-			update(
-				(s) =>
-					(s.findingDeleteArmed = {
-						markId: a.id,
-						mark: markKey(c, a),
-						findingId,
-						at,
-					}),
-			);
-			setTimeout(() => {
-				update((s) => {
-					if (s.findingDeleteArmed?.at === at) s.findingDeleteArmed = undefined;
-				});
-			}, DELETE_ARMED_MS);
-			return;
-		}
-		// A double click is no second thought, nor a second delete.
-		if (click === "nothing") return;
-		// A finding's id is unique on its mark only.
-		const key = `${a.id} ${findingId}`;
-		if (deleting.has(key)) return;
-		deleting.add(key);
-		const now = new Date().toISOString();
-		void changeMark(
-			c,
-			a,
-			(current, id) => ({ value: withoutFinding(current, id, findingId, now) }),
-			// The mark's comment or resolve form, unsaved, stays open.
-			{ keepEdit: true },
-		).finally(() => {
-			deleting.delete(key);
-			update((s) => {
-				const armed = s.findingDeleteArmed;
-				if (armed?.markId === a.id && armed.findingId === findingId)
-					s.findingDeleteArmed = undefined;
-			});
-		});
 	},
 
 	addImages(c, a) {
@@ -2340,12 +2592,12 @@ const actions: Actions = {
 		const hint = caseHintWriter();
 		void (async () => {
 			try {
-				const m = (await chrome.tabs.sendMessage(loaded.tabId, {
+				const m = await askTab(loaded.tabId, {
 					type: "case:show",
 					caseId,
 					markId: a.id,
 					candidate,
-				})) as MarkMatch | { error: string } | null;
+				});
 				if (m === null) {
 					await forgetLoaded({
 						hint: "The case is no longer loaded on that tab. Load it again to see its marks there.",
@@ -2423,11 +2675,71 @@ document.addEventListener("visibilitychange", () => {
 // "Blur form fields in screenshots" is the worker's (DEC-016): `ai.ts` shows
 // it and sends a change over the panel's port.
 
+/**
+ * What this browser remembers about all sites (DEC-076): "Not now", and that
+ * it was allowed, so that a take-back is a no also when it happened in the
+ * browser's settings with no panel open. The panel's own `localStorage`
+ * (the panel writes no storage of the extension's, DEC-063); Firefox may
+ * clear it with the site data, and then the offer comes once more.
+ */
+/** The panel's storage, or none where the browser refuses even to hand it out. */
+const panelStorage = ((): Storage | undefined => {
+	try {
+		return localStorage;
+	} catch {
+		return undefined;
+	}
+})();
+let memory: AccessMemory = readMemory(panelStorage);
+update((s) => (s.allSitesDeclined = memory.declined));
+
+function remember(next: AccessMemory): void {
+	memory = next;
+	writeMemory(panelStorage, next);
+	update((s) => (s.allSitesDeclined = next.declined));
+}
+
+// Answered in another panel of this browser (another window's): the same here.
+window.addEventListener("storage", (e) => {
+	if (e.key !== DECLINED && e.key !== null) return;
+	memory = readMemory(panelStorage);
+	update((s) => (s.allSitesDeclined = memory.declined));
+});
+
 async function refreshAllSites(): Promise<void> {
 	const work = sitesWork.start();
 	const granted = await chrome.permissions.contains(ALL_SITES);
-	if (work.current()) update((s) => (s.allSites = granted));
+	if (!work.current()) return;
+	// Newly allowed: the tab's address is read first, so that no render in
+	// between has all sites allowed with the address still hidden, which
+	// would say (and announce) "cannot work on this kind of page" (DEC-076).
+	if (granted && !state.allSites) {
+		await refreshTab();
+		if (!work.current()) return;
+	}
+	// Allowed once and not now: taken back, here or in the browser's
+	// settings; the offer does not come again.
+	remember(afterAnswer(readMemory(panelStorage), granted));
+	update((s) => {
+		s.allSites = granted;
+		s.allSitesKnown = true;
+	});
 }
+
+/** The icon's shortcut, as the browser has it now (the person may change it). */
+async function refreshShortcut(): Promise<void> {
+	const all = await chrome.commands.getAll().catch((error: unknown) => {
+		debugLog("commands", error);
+		return [];
+	});
+	const shortcut = all.find((c) => c.name === "_execute_action")?.shortcut;
+	update((s) => (s.shortcut = shortcut || undefined));
+}
+void refreshShortcut();
+// Chrome 110 and later; Firefox has no such event and is read at each opening.
+(
+	chrome.commands as { onChanged?: chrome.events.Event<() => void> }
+).onChanged?.addListener(() => void refreshShortcut());
 
 allSites.addEventListener("change", () => {
 	// Chrome asks only during a click: nothing may be awaited before this.
@@ -2586,9 +2898,9 @@ async function redrawLoaded(c: Case): Promise<void> {
 	if (state.overlay?.loadedCase === c.id && state.tab !== undefined)
 		tabs.add(state.tab.id);
 	for (const tabId of tabs) {
-		const result = (await chrome.tabs
-			.sendMessage(tabId, { type: "case:update", case: c })
-			.catch(() => null)) as LoadResult | null;
+		const result = await askTab(tabId, { type: "case:update", case: c }).catch(
+			() => null,
+		);
 		if (result === null) continue;
 		update((s) => {
 			if (s.loaded?.caseId === c.id && s.loaded.tabId === tabId)
@@ -2602,8 +2914,8 @@ async function redrawLoaded(c: Case): Promise<void> {
 }
 
 /**
- * Marks (their id) and findings (mark id, space, finding id) being deleted
- * now: a second click waits for the first.
+ * Marks (their id) and added images being deleted now: a second click
+ * waits for the first.
  */
 const deleting = new Set<string>();
 
@@ -2647,12 +2959,9 @@ function takeImagesFor(value: unknown): void {
 function takeImages(tabId: number | undefined): void {
 	imagesAskedFor = tabId;
 	if (tabId === undefined) return;
-	void chrome.runtime
-		.sendMessage({ type: "panel:images-take", tabId } satisfies WorkerRequest)
-		.then((answer: ImagesForAnswer | undefined) =>
-			takeImagesFor(answer?.images),
-		)
-		.catch(() => undefined);
+	void askWorker({ type: "panel:images-take", tabId })
+		.then((answer) => takeImagesFor(answer?.ok ? answer.images : undefined))
+		.catch((error: unknown) => debugLog("panel images", error));
 }
 
 function askImages(s: PanelState): void {
@@ -2698,7 +3007,9 @@ async function showPicture(
 		? markPictures(c, markId).find((p) => p.id === pictureId)?.path
 		: undefined;
 	const stored = path
-		? await store.getImage(caseId, path).catch(() => undefined)
+		? await store
+				.getImage(caseId, path)
+				.catch((error: unknown) => debugLog("read image", error))
 		: undefined;
 	const s = window.screen as Screen & { availLeft?: number; availTop?: number };
 	const layout = {
@@ -2718,20 +3029,16 @@ async function showPicture(
 			height: s.availHeight,
 		},
 	};
-	const answer = (await chrome.runtime.sendMessage({
+	const answer = await askWorker({
 		type: "viewer:open",
 		caseId,
 		markId,
 		pictureId,
 		windowId: browser.id,
 		layout,
-	} satisfies WorkerRequest)) as {
-		ok?: boolean;
-		viewerWindowId?: number;
-		error?: string;
-	};
-	if (answer?.ok !== true || answer.viewerWindowId === undefined)
-		throw new Error(answer?.error ?? "no window");
+	});
+	if (answer === undefined) throw new Error("no window");
+	if (!answer.ok) throw new Error(answer.error);
 	viewerOn = {
 		windowId: answer.viewerWindowId,
 		caseId,

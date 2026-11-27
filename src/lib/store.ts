@@ -4,7 +4,8 @@
  * `cases` and `images`). `MemoryStore` is the same for tests.
  */
 
-import { type Case, imageKey } from "./case.ts";
+import { type Case, findingsAsComments, imageKey } from "./case.ts";
+import { debugLog } from "./debug.ts";
 
 /**
  * The database's version. 1: the stores. 2 (DEC-051): the case format
@@ -15,8 +16,31 @@ import { type Case, imageKey } from "./case.ts";
  * (`forgetCases` in cloud/book.ts), so a team's cases come back from the
  * server whole. A case that was only in this browser is gone (the owner's
  * decision). A build before this one cannot open version 2.
+ *
+ * 3 (DEC-081): the marks' findings are comments on them. The upgrade from 2
+ * rewrites each stored case that has findings (`upgradedCase`), in the
+ * upgrade's own transaction: every case converted, or (a failure aborts it)
+ * none, and the database stays at version 2 for the next open to try again.
+ * A case the conversion cannot read is kept as it was. A build before this
+ * one cannot open version 3.
  */
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
+
+/**
+ * What the upgrade to version 3 makes of a stored case (DEC-081): its
+ * findings as comments on their marks (`findingsAsComments`); `undefined`
+ * when nothing changes, or when the case cannot be read (it stays as it
+ * was, its findings shown nowhere but kept).
+ */
+export function upgradedCase(stored: unknown): unknown {
+	try {
+		const next = findingsAsComments(stored);
+		return next === stored ? undefined : next;
+	} catch (error) {
+		debugLog("case upgrade", error);
+		return undefined;
+	}
+}
 
 export interface StoredImage {
 	blob: Blob;
@@ -392,8 +416,21 @@ export class IdbStore implements CaseStore {
 				// failure aborts it) the database stays as it was, at its old
 				// version, and nothing opens it.
 				const tx = req.transaction as IDBTransaction;
-				tx.objectStore("cases").clear();
-				tx.objectStore("images").clear();
+				if (event.oldVersion < 2) {
+					tx.objectStore("cases").clear();
+					tx.objectStore("images").clear();
+					return;
+				}
+				// From version 2: findings become comments (DEC-081), in this
+				// transaction too: all cases, or none and version 2 stays.
+				const walk = tx.objectStore("cases").openCursor();
+				walk.onsuccess = () => {
+					const at = walk.result;
+					if (at === null) return;
+					const next = upgradedCase(at.value);
+					if (next !== undefined) at.update(next);
+					at.continue();
+				};
 			};
 			req.onsuccess = () => {
 				moved = true;

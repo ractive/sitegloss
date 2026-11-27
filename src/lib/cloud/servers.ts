@@ -11,6 +11,7 @@
  * (`scopedKv`).
  */
 
+import { debugLog } from "../debug.ts";
 import type { Kv } from "../kv.ts";
 
 /** The service. What an ordinary user signs in to, without ever choosing. */
@@ -26,6 +27,20 @@ export const DEVELOPMENT_SERVERS: readonly string[] = [
 ];
 export const DEVELOPMENT_SERVER = DEVELOPMENT_SERVERS[0] as string;
 
+declare const SITEGLOSS_DEV_SERVER: boolean | undefined;
+
+/**
+ * Whether the server chooser offers the development server: the development
+ * build and the test builds do, the builds that go to people (`--store`, and
+ * whatever is packed with `--zip`, so the release's four) do not. The build's
+ * define decides, as for the Firefox and the test build (`browser.ts`);
+ * without it (the unit tests) it is offered. Only a signpost: the development
+ * server creates no accounts for anybody (service DEC-044), and its address
+ * typed under "Another address…" works as ever.
+ */
+export const DEV_SERVER_OFFERED: boolean =
+	typeof SITEGLOSS_DEV_SERVER === "undefined" || SITEGLOSS_DEV_SERVER;
+
 /** The server unless the user chose another. */
 export const DEFAULT_SERVER = PRODUCTION_SERVER;
 
@@ -38,6 +53,7 @@ export function serverProblem(value: string): string | undefined {
 	try {
 		url = new URL(value);
 	} catch {
+		// Not an address.
 		return "Not an address.";
 	}
 	if (url.protocol === "https:") return undefined;
@@ -64,6 +80,7 @@ const hostOf = (server: string): string => {
 	try {
 		return new URL(server).host;
 	} catch {
+		// Not an address.
 		return server;
 	}
 };
@@ -93,7 +110,9 @@ export const SERVER_KEY = "server";
 
 /** The server chosen, as the database has it; the service unless another was set. */
 export async function chosenServer(kv: Kv): Promise<string> {
-	const set = await kv.get(SERVER_KEY).catch(() => undefined);
+	const set = await kv
+		.get(SERVER_KEY)
+		.catch((error: unknown) => debugLog("server choice", error));
 	return (
 		(typeof set === "string" ? serverOrigin(set) : undefined) ?? DEFAULT_SERVER
 	);

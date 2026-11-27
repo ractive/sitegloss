@@ -702,8 +702,11 @@ inBothSets("the side panel's page", () => {
 			chrome.scripting.executeScript = no;
 		})()`);
 		await h.control.eval(`${id("new-case")}.click()`);
+		// The test build may run on all sites: a refusal there is a page that
+		// could not be reached, and the hint offers no way that cannot help
+		// (DEC-076).
 		await h.control.waitFor(
-			`${id("hint")}.textContent.includes("Click the Sitegloss icon")`,
+			`(() => { const t = ${id("hint")}.textContent; return !${id("hint")}.hidden && /reload/i.test(t) && !/all sites|click/i.test(t); })()`,
 		);
 		await a.page.goto(`${h.base}/v1`);
 		await Bun.sleep(300);
@@ -1265,6 +1268,52 @@ inBothSets("the side panel's page", () => {
 					"the AI app's marks to go",
 				);
 				await page.send("Page.close");
+			},
+		);
+	});
+
+	fullDescribe("closing a case from the panel", () => {
+		slowTest(
+			"Close case leads back to the list, says where the case is and takes the focus there; Reopen case stays on the case",
+			async () => {
+				await fresh();
+				const saved = await markedCase("Close and back");
+				await openCase(saved.caseId);
+				await saved.page.activate();
+				await until(
+					async () => (await pageCase(saved.tabId)) === saved.caseId,
+					"the case's marks on the page",
+				);
+				await h.control.eval(`${id("close-case")}.click()`);
+				await h.control.waitFor(`!${id("home")}.hidden`);
+				expect(
+					await h.control.eval<string>(`${id("hint")}.textContent`),
+				).toMatch(
+					/^\u201cClose and back\u201d is closed\. It is under (Closed|This page)\.$/,
+				);
+				// The marks left the tab, as with "All cases"; the focus is not on the body.
+				await until(
+					async () => (await pageCase(saved.tabId)) === null,
+					"the case's marks to go",
+				);
+				expect(
+					await h.control.eval<boolean>(
+						`document.activeElement !== document.body`,
+					),
+				).toBe(true);
+				// Reopened on the case itself: the person goes on there.
+				await openCase(saved.caseId);
+				await h.control.waitFor(
+					`${id("close-case")}.textContent === "Reopen case"`,
+				);
+				await h.control.eval(`${id("close-case")}.click()`);
+				await h.control.waitFor(
+					`${id("close-case")}.textContent === "Close case"`,
+				);
+				expect(await h.control.eval<boolean>(`${id("case-view")}.hidden`)).toBe(
+					false,
+				);
+				await saved.page.send("Page.close");
 			},
 		);
 	});

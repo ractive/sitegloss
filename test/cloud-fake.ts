@@ -11,6 +11,7 @@
 import Ajv2020 from "ajv/dist/2020";
 import {
 	type ElementDetails,
+	findingCommentId,
 	lookOf,
 	MAX_PAGES,
 	pageKey,
@@ -71,7 +72,6 @@ import {
 	type UserRef,
 	type WireCase,
 	type WireComment,
-	type WireFinding,
 	type WireMark,
 	type WireReopen,
 	type WireResolution,
@@ -187,6 +187,10 @@ export class FakeServer {
 	future = false;
 	/** Refuse operations of these types with a code no client knows yet. */
 	refuseWith: { type: Op["type"]; code: string; message: string } | undefined;
+	/** The team's members (DEC-071): everyone a device was made for, and whoever is added. */
+	readonly members = new Map<string, UserRef>();
+	/** A server from before assignees: no members, no assignee on a case, `assignee` in a patch ignored. */
+	beforeAssignees = false;
 
 	#tick(): string {
 		this.now = new Date(this.now.getTime() + 1000);
@@ -213,6 +217,73 @@ export class FakeServer {
 			.filter((k) => !k.deleted && k.value.caseId === caseId)
 			.sort((a, b) => a.createdRev - b.createdRev)
 			.map((k) => k.value);
+	}
+
+	/**
+	 * A case as the server sends it: one that knows assignees always says
+	 * one, `null` for nobody, also of a case made before it knew them; one
+	 * from before says none.
+	 */
+	caseOut(c: WireCase): WireCase {
+		if (this.beforeAssignees) {
+			const { assignee: _a, assignedBy: _b, ...rest } = c;
+			return rest;
+		}
+		return { ...c, assignee: c.assignee ?? null };
+	}
+
+	/**
+	 * Findings a server of before DEC-053 (the service's) stored on its marks,
+	 * by the mark's id: never sent (it answers every mark with none), until
+	 * `findingsToComments` makes them comments, as the service's script does.
+	 */
+	readonly heldFindings = new Map<
+		string,
+		{
+			id: string;
+			text: string;
+			at: string;
+			user?: UserRef;
+			app: AppRef;
+		}[]
+	>();
+
+	/**
+	 * The service's script (its `findings-to-comments.ts`, DEC-053): each
+	 * finding it holds a comment on its mark, its id `f_` and 40 hex digits
+	 * (`findingCommentId` of the mark's id here and the finding's), by the
+	 * finding's person, at its time; one that is there already, or one past the
+	 * case's 1,000 comments, none more.
+	 */
+	findingsToComments(): void {
+		const rev = ++this.seq;
+		for (const [markId, findings] of this.heldFindings) {
+			const mark = this.marks.get(markId);
+			if (mark === undefined || mark.deleted) continue;
+			for (const f of findings) {
+				const id = findingCommentId(markId, f.id);
+				if (this.comments.has(id) || f.text.trim() === "") continue;
+				// The case's limit, as the service's script keeps it.
+				if (this.commentsOf(mark.value.caseId).length >= 1000) continue;
+				this.comments.set(id, {
+					deleted: false,
+					rev,
+					createdRev: rev,
+					value: compact({
+						id,
+						caseId: mark.value.caseId,
+						markId,
+						text: f.text,
+						user: f.user ?? null,
+						app: f.app,
+						at: f.at,
+						rev,
+					}) as WireComment,
+				});
+			}
+			this.#touch(this.#live(mark.value.caseId), rev, this.now.toISOString());
+		}
+		this.heldFindings.clear();
 	}
 
 	caseOf(caseId: string): WireCase | undefined {
@@ -329,32 +400,6 @@ export class FakeServer {
 				}) as WireReopen;
 			});
 		return [...previous, ...added].slice(-20);
-	}
-
-	#stampFinding(
-		user: UserRef,
-		previous: WireFinding | undefined,
-		next: WireFinding,
-		imports: boolean,
-	): WireFinding {
-		if (previous) {
-			if (next.text === previous.text) return previous;
-			return compact({
-				...previous,
-				text: next.text,
-				editedAt: next.editedAt ?? this.now.toISOString(),
-			}) as WireFinding;
-		}
-		const imported = imports && next.imported ? true : undefined;
-		return compact({
-			id: next.id,
-			text: next.text,
-			app: next.app,
-			at: next.at,
-			editedAt: next.editedAt,
-			imported,
-			user: imported ? undefined : user,
-		}) as WireFinding;
 	}
 
 	#live(caseId: string): Row<WireCase> {
@@ -522,6 +567,7 @@ export class FakeServer {
 						importedAt: op.case.importedAt ?? null,
 						closed: null,
 						createdBy: user,
+						...(this.beforeAssignees ? {} : { assignee: null }),
 						createdAt: op.case.createdAt ?? at,
 						updatedAt: at,
 						rev,
@@ -531,7 +577,25 @@ export class FakeServer {
 			}
 			case "case.patch": {
 				const row = this.#live(op.caseId);
-				const v = row.value;
+				let v = row.value;
+				// The assignee (DEC-071): a member of the team, or nobody;
+				// stamped from the caller; the same again changes nothing.
+				if (op.assignee !== undefined && !this.beforeAssignees) {
+					const to =
+						op.assignee === null ? null : this.members.get(op.assignee);
+					if (to === undefined)
+						throw new Refusal(
+							"invalid",
+							"The assignee is no member of the team.",
+						);
+					if ((v.assignee?.id ?? null) !== (to?.id ?? null)) {
+						const { assignedBy: _s, ...rest } = v;
+						v =
+							to === null
+								? { ...rest, assignee: null }
+								: { ...rest, assignee: to, assignedBy: { at, user } };
+					}
+				}
 				row.value = {
 					...v,
 					title: op.title ?? v.title,
@@ -777,9 +841,9 @@ export class FakeServer {
 							undefined,
 							imports,
 						),
-						findings: (op.mark.findings ?? []).map((f) =>
-							this.#stampFinding(user, undefined, f, imports),
-						),
+						// Findings it is sent are none of this fake's: the
+						// extension sends none (DEC-081).
+						findings: [],
 						images,
 						status: statusOf(resolution),
 						createdBy: user,
@@ -843,18 +907,6 @@ export class FakeServer {
 						resolution,
 						status: statusOf(resolution),
 					};
-				}
-				if (op.findings !== undefined) {
-					const gone = new Set(op.findings.remove ?? []);
-					const kept = v.findings.filter((f) => !gone.has(f.id));
-					for (const f of op.findings.upsert ?? []) {
-						const i = kept.findIndex((k) => k.id === f.id);
-						if (i >= 0) kept[i] = this.#stampFinding(user, kept[i], f, imports);
-						else kept.push(this.#stampFinding(user, undefined, f, imports));
-					}
-					if (kept.length > 20)
-						throw new Refusal("limit", "A mark holds at most 20 findings.");
-					v = { ...v, findings: kept };
 				}
 				if (op.images !== undefined) {
 					const gone = new Set(op.images.remove ?? []);
@@ -985,7 +1037,7 @@ export class FakeServer {
 			if (!inRange(row)) continue;
 			if (row.deleted) {
 				if (!whole) removed.push({ type: "case", id, rev: row.rev });
-			} else out.cases.push({ ...row.value, ...extra });
+			} else out.cases.push({ ...this.caseOut(row.value), ...extra });
 		}
 		for (const [id, row] of this.shots) {
 			if (!inRange(row)) continue;
@@ -1040,6 +1092,8 @@ export class FakeServer {
 	/** A device of `user`'s. */
 	api(user: UserRef & { email?: string }): FakeApi {
 		const server = this;
+		if (!server.members.has(user.id))
+			server.members.set(user.id, { id: user.id, name: user.name });
 		const reach = (call: string) => {
 			api.calls.push(call);
 			if (api.offline)
@@ -1079,12 +1133,18 @@ export class FakeServer {
 				);
 				return server.changes(since, limit);
 			},
+			async members(_team) {
+				reach("GET members");
+				return server.beforeAssignees
+					? undefined
+					: structuredClone([...server.members.values()]);
+			},
 			async getCase(_team, caseId) {
 				reach(`GET case ${caseId}`);
 				const row = server.cases.get(caseId);
 				if (row === undefined || row.deleted) return undefined;
 				return structuredClone({
-					...row.value,
+					...server.caseOut(row.value),
 					shots: server.shotsOf(caseId),
 					marks: server.marksOf(caseId),
 					comments: server.commentsOf(caseId),
@@ -1251,7 +1311,7 @@ export function fakeHttp(
 				: Response.json(detail);
 		}
 		const route =
-			/^\/api\/v1\/teams\/([^/]+)\/(changes|ops|blobs)(?:\/([0-9a-f]+))?$/.exec(
+			/^\/api\/v1\/teams\/([^/]+)\/(changes|ops|blobs|members)(?:\/([0-9a-f]+))?$/.exec(
 				url.pathname,
 			);
 		if (route === null || route[1] !== TEAM)
@@ -1267,6 +1327,12 @@ export function fakeHttp(
 					limit === null ? undefined : Number(limit),
 				),
 			);
+		}
+		if (what === "members") {
+			const members = await api.members(TEAM);
+			return members === undefined
+				? no(404, "not_found", "Not found.")
+				: Response.json({ members });
 		}
 		if (what === "ops") {
 			const body = JSON.parse(String(init?.body)) as { ops: Op[] };

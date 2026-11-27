@@ -1,15 +1,20 @@
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
+	beforeEach,
 	describe,
 	expect,
+	jest,
 	setSystemTime,
 	test,
 } from "bun:test";
 import { Window } from "happy-dom";
-import type { Case, Mark } from "../src/lib/case.ts";
+import { type Case, type Mark, markUrl } from "../src/lib/case.ts";
 import { summarize } from "../src/lib/element.ts";
 import type { MarkMatch } from "../src/lib/messages.ts";
+import { closedSaid } from "../src/sidepanel/closed.ts";
+import { HAND_OVER_NOTE, serverChooser } from "../src/sidepanel/cloud-view.ts";
 import { pageFilterEnds, statusLeft } from "../src/sidepanel/page-filter.ts";
 import { initialState, type PanelState } from "../src/sidepanel/state.ts";
 import type { Actions } from "../src/sidepanel/view.ts";
@@ -20,8 +25,8 @@ const globals = globalThis as unknown as Record<string, unknown>;
 const before = { document: globals["document"] };
 let render: (state: PanelState, actions: Actions) => void;
 let afterVerify: typeof import("../src/sidepanel/view.ts")["afterVerify"];
+let opensAfterVerify: typeof import("../src/sidepanel/view.ts")["opensAfterVerify"];
 let ago: (iso: string, now?: number) => string;
-let webAppNote: (state: PanelState) => string | undefined;
 let TALKING_AFTER_MS: number;
 let holdTalkingFor: (ms: number) => void;
 let pagePath: (url: string) => string;
@@ -54,10 +59,10 @@ beforeAll(async () => {
 	({
 		render,
 		afterVerify,
+		opensAfterVerify,
 		ASKING_DOWNLOADS,
 		IMPORT_BUSY,
 		EXPORT_ALL_BUSY,
-		webAppNote,
 		noneFoundText,
 		TALKING_AFTER_MS,
 		holdTalkingFor,
@@ -104,41 +109,58 @@ describe("the tab", () => {
 		expect(text("page")).toBe("Kasse");
 	});
 
-	test("without an address: a notice with a warning sign, the icon's click and Allow on all sites", () => {
+	test("without an address: why, Allow on all sites (recommended) and the icon's click, in place of New case (DEC-076)", () => {
 		const asked: string[] = [];
-		home({ id: 1, url: "", title: "", size: undefined }, undefined, {
-			...noActions,
-			allowAllSites: () => asked.push("all"),
-		} as Actions);
+		home(
+			{ id: 1, url: "", title: "", size: undefined },
+			(s) => {
+				s.allSitesKnown = true;
+				s.allSitesDeclined = true;
+				s.shortcut = "Alt+Shift+O";
+			},
+			{
+				...noActions,
+				allowAllSites: () => asked.push("all"),
+			} as Actions,
+		);
 		const notice = el("access-notice");
 		expect(notice.hidden).toBe(false);
 		expect(notice.querySelector("svg.notice-icon")).not.toBeNull();
-		expect(notice.textContent).toContain("Click the Sitegloss icon");
-		// It stands above New case for this page, and the hint below says nothing.
-		expect(notice.nextElementSibling).toBe(el("new-case"));
+		expect(notice.textContent).toContain(
+			"Sitegloss has no access to this tab yet",
+		);
+		expect(notice.textContent).toContain("For this tab only: click");
+		// The browser's shortcut, as the platform writes it.
+		expect(notice.textContent).toMatch(/or press (Alt\+Shift\+O|⌥⇧O)\./);
+		// Under the heading and the address, first thing on Home.
+		expect(notice.previousElementSibling?.id).toBe("all-sites-offer");
+		expect(el("all-sites-offer").hidden).toBe(true);
 		expect(el("hint").hidden).toBe(true);
 		expect(allow().hidden).toBe(false);
+		expect(allow().textContent).toBe("Allow on all sites (recommended)");
 		allow().click();
 		expect(asked).toEqual(["all"]);
-		// Marking needs the page: off, and its title points at the notice.
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(true);
-		expect(el("new-case").title).toContain("see the notice");
+		// Marking needs the page: not there, the notice is in its place.
+		expect(el("new-case").hidden).toBe(true);
 	});
 
 	test("without an address although Sitegloss may run on all sites: Chrome's own pages, no button", () => {
 		home({ id: 1, url: "", title: "", size: undefined }, (s) => {
 			s.allSites = true;
+			s.allSitesKnown = true;
 		});
 		expect(el("access-notice").hidden).toBe(false);
-		expect(text("access-notice")).toContain("cannot run on this tab");
+		expect(text("access-notice")).toContain("cannot work on this kind of page");
+		expect(text("access-notice")).not.toContain("For this tab only");
 		expect(allow().hidden).toBe(true);
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(true);
+		expect(el("all-sites-offer").hidden).toBe(true);
+		expect(el("new-case").hidden).toBe(true);
 	});
 
 	test("a tab still loading has no address yet: no notice", () => {
 		home({ id: 1, url: "", title: "", size: undefined, loading: true });
 		expect(el("access-notice").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(false);
+		expect(el("new-case").hidden).toBe(false);
 	});
 
 	test("with an address: no notice, New case for this page on", () => {
@@ -151,7 +173,7 @@ describe("the tab", () => {
 		expect(text("page")).toBe("www.example.com/kk");
 		expect(el("hint").hidden).toBe(true);
 		expect(el("access-notice").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("new-case").disabled).toBe(false);
+		expect(el("new-case").hidden).toBe(false);
 	});
 
 	test("a hint of its own goes first", () => {
@@ -160,6 +182,172 @@ describe("the tab", () => {
 		state.hint = "Saving";
 		render(state, noActions);
 		expect(text("hint")).toBe("Saving");
+	});
+});
+
+describe("the offer of all sites (DEC-076)", () => {
+	const tab = (url: string) => ({ id: 1, url, title: "", size: undefined });
+	const home = (
+		url: string,
+		change: (s: PanelState) => void,
+		actions: Actions = noActions,
+	) => {
+		const state = initialState();
+		state.tab = tab(url);
+		state.allSitesKnown = true;
+		change(state);
+		render(state, actions);
+	};
+	const offer = () => el("all-sites-offer");
+	const button = (action: string) =>
+		offer().querySelector(
+			`[data-action="${action}"]`,
+		) as unknown as HTMLButtonElement;
+
+	test("first thing on Home until it is answered: what it is for, Allow on all sites, Not now", () => {
+		const called: string[] = [];
+		home("https://www.example.com/kk", () => undefined, {
+			...noActions,
+			allowAllSites: () => called.push("allow"),
+			declineAllSites: () => called.push("not now"),
+		} as Actions);
+		expect(offer().hidden).toBe(false);
+		expect(offer().previousElementSibling?.id).toBe("page");
+		expect(offer().textContent).toContain("(recommended)");
+		expect(offer().textContent).toContain("without a click on its icon");
+		// A tab with access: the offer says nothing about this tab.
+		expect(offer().textContent).not.toContain("no access to this tab");
+		expect(el("access-notice").hidden).toBe(true);
+		expect(el("new-case").hidden).toBe(false);
+		// Neither of its buttons is the amber one.
+		expect(offer().querySelector(".primary")).toBeNull();
+		button("allow-all-sites").click();
+		button("not-now").click();
+		expect(called).toEqual(["allow", "not now"]);
+	});
+
+	test("on a tab without access it says so too, with the icon's click; one block, not two", () => {
+		home("", () => undefined);
+		expect(offer().hidden).toBe(false);
+		expect(offer().textContent).toContain(
+			"Sitegloss has no access to this tab yet",
+		);
+		expect(offer().textContent).toContain("For this tab only: click");
+		expect(el("access-notice").hidden).toBe(true);
+		expect(el("new-case").hidden).toBe(true);
+	});
+
+	test("not before the browser has said whether all sites is allowed: it does not flash", () => {
+		home("https://www.example.com/kk", (s) => (s.allSitesKnown = false));
+		expect(offer().hidden).toBe(true);
+	});
+
+	test("after Not now it does not come again: a tab with access shows nothing, one without the notice", () => {
+		home("https://www.example.com/kk", (s) => (s.allSitesDeclined = true));
+		expect(offer().hidden).toBe(true);
+		expect(el("access-notice").hidden).toBe(true);
+		home("", (s) => (s.allSitesDeclined = true));
+		expect(offer().hidden).toBe(true);
+		expect(el("access-notice").hidden).toBe(false);
+	});
+
+	test("once allowed, all of it is gone and the option shows on", () => {
+		home("https://www.example.com/kk", (s) => (s.allSites = true));
+		expect(offer().hidden).toBe(true);
+		expect(el("access-notice").hidden).toBe(true);
+		expect(el<HTMLInputElement>("all-sites").checked).toBe(true);
+	});
+
+	test("a store's page: that Sitegloss cannot work there, no way that cannot help (not the file toggle either); the offer stays neutral", () => {
+		// File access off, as Chrome has it by default.
+		home(
+			"https://chromewebstore.google.com/detail/sitegloss/x",
+			(s) => (s.fileAccess = false),
+		);
+		expect(offer().hidden).toBe(false);
+		expect(offer().hasAttribute("data-no-access")).toBe(false);
+		expect(offer().textContent).not.toContain("For this tab only");
+		const notice = el("access-notice");
+		expect(notice.hidden).toBe(false);
+		expect(notice.textContent).toContain("cannot work on this kind of page");
+		expect(notice.textContent).not.toContain("file URLs");
+		expect(
+			(notice.querySelector("button") as unknown as HTMLElement).hidden,
+		).toBe(true);
+		expect(el("new-case").hidden).toBe(true);
+		// All sites allowed too: the same.
+		home("https://chromewebstore.google.com/detail/sitegloss/x", (s) => {
+			s.fileAccess = false;
+			s.allSites = true;
+		});
+		expect(el("access-notice").textContent).not.toContain("file URLs");
+	});
+
+	test("a refused action leaves nothing behind: the same tab and address, New case is there", () => {
+		home("http://localhost:3000/", (s) => {
+			s.allSites = true;
+			s.hint = "Sitegloss could not reach this page. Reload it and try again.";
+		});
+		expect(el("new-case").hidden).toBe(false);
+		expect(el("access-notice").hidden).toBe(true);
+	});
+
+	test("the focus moves only while the panel has it: someone working in the page keeps their keys there", () => {
+		home("https://www.example.com/kk", () => undefined);
+		button("not-now").focus();
+		const doc = window.document as unknown as { hasFocus: () => boolean };
+		const had = doc.hasFocus;
+		doc.hasFocus = () => false;
+		try {
+			home("https://www.example.com/kk", (s) => (s.allSitesDeclined = true));
+			expect(
+				(window.document.activeElement as unknown) === el("new-case"),
+			).toBe(false);
+		} finally {
+			doc.hasFocus = had;
+		}
+	});
+
+	test("a page the browser's refusal named: the same, also with the address hidden", () => {
+		home("", (s) => {
+			s.allSitesDeclined = true;
+			if (s.tab) s.tab.cannotRun = "page";
+		});
+		expect(el("access-notice").textContent).toContain(
+			"cannot work on this kind of page",
+		);
+		expect(el("access-notice").textContent).not.toContain("For this tab only");
+	});
+
+	test("the focus stays with the person: Not now hands it to what comes next", () => {
+		home("https://www.example.com/kk", () => undefined);
+		button("not-now").focus();
+		home("https://www.example.com/kk", (s) => (s.allSitesDeclined = true));
+		expect((window.document.activeElement as unknown) === el("new-case")).toBe(
+			true,
+		);
+		// On a tab without access, to the notice that takes the offer's place.
+		home("", () => undefined);
+		button("not-now").focus();
+		home("", (s) => (s.allSitesDeclined = true));
+		expect(
+			(window.document.activeElement as unknown) ===
+				el("access-notice").querySelector("button"),
+		).toBe(true);
+	});
+
+	test("the focus stays with the person: once allowed, to the New case the offer stood for; a focused New case that the notice replaces, to its button", () => {
+		home("", () => undefined);
+		button("allow-all-sites").focus();
+		home("https://www.example.com/kk", (s) => (s.allSites = true));
+		expect((window.document.activeElement as unknown) === el("new-case")).toBe(
+			true,
+		);
+		home("", (s) => (s.allSitesDeclined = true));
+		expect(
+			(window.document.activeElement as unknown) ===
+				el("access-notice").querySelector("button"),
+		).toBe(true);
 	});
 });
 
@@ -303,156 +491,6 @@ describe("a mark's status and actions", () => {
 		expect(window.document.activeElement).toBe(el("verdict") as never);
 	});
 
-	test("AI findings show under the comment with their app; Delete asks once more", () => {
-		const c: Case = {
-			...twoMarks(),
-			marks: [
-				{
-					...mark(1),
-					findings: [
-						{
-							id: "f_1",
-							text: "Padding in Card.tsx",
-							app: {
-								id: "https://claude.ai/oauth",
-								name: "Claude",
-								host: "claude.ai",
-							},
-							at: "2026-11-10T10:00:00Z",
-						},
-						{
-							id: "f_2",
-							text: "From a file",
-							app: { id: "x", host: "other.example" },
-							at: "2026-11-10T10:00:00Z",
-							imported: true,
-						},
-					],
-				},
-				mark(2),
-			],
-		};
-		const deleted: string[] = [];
-		const actions = actionsWith({
-			deleteFinding: (_c, a, id) => void deleted.push(`${a.id}:${id}`),
-		});
-		render(
-			caseState(c, (s) => {
-				s.findingDeleteArmed = {
-					markId: "m1",
-					mark: "",
-					findingId: "f_2",
-					at: 1,
-				};
-			}),
-			actions,
-		);
-		const finding = (id: string) =>
-			row("m1").querySelector(
-				`[data-finding="${id}"]`,
-			) as unknown as HTMLElement;
-		expect(row("m1").querySelector(".findings-count")?.textContent).toBe(
-			"2 AI findings",
-		);
-		expect(row("m2").querySelector(".findings")).toBeNull();
-		expect(finding("f_1").querySelector(".finding-text")?.textContent).toBe(
-			"Padding in Card.tsx",
-		);
-		expect(finding("f_1").textContent).toContain("Claude (claude.ai), ");
-		expect(finding("f_2").textContent).toContain(
-			"other.example, as the file says",
-		);
-		const button = (id: string) =>
-			finding(id).querySelector(
-				'[data-finding-action="delete"]',
-			) as unknown as HTMLButtonElement;
-		expect(button("f_1").textContent).toBe("Delete finding");
-		expect(button("f_2").textContent).toBe("Really delete?");
-		button("f_1").click();
-		expect(deleted).toEqual(["m1:f_1"]);
-	});
-
-	test("a finding gone from a mark whose comment form is open: the form stays, with its draft", () => {
-		const c: Case = {
-			...twoMarks(),
-			marks: [
-				{
-					...mark(1),
-					findings: [
-						{
-							id: "f_1",
-							text: "Padding in Card.tsx",
-							app: { id: "x", host: "other.example" },
-							at: "2026-11-10T10:00:00Z",
-						},
-					],
-				},
-				mark(2),
-			],
-		};
-		const editing = (value: Case) =>
-			caseState(value, (s) => {
-				s.markEdit = {
-					markId: "m1",
-					mark: "",
-					mode: "comment",
-					kind: "fixed",
-					text: "A draft not saved yet",
-				};
-			});
-		render(editing(c), noActions);
-		const { findings: _gone, ...bare } = c.marks[0] as Mark;
-		render(
-			editing({
-				...c,
-				updatedAt: "2026-11-10T11:00:00Z",
-				marks: [bare, mark(2)],
-			}),
-			noActions,
-		);
-		expect(row("m1").querySelector("[data-finding]")).toBeNull();
-		expect(row("m1").querySelector('[data-form="comment"]')).not.toBeNull();
-		expect(
-			(row("m1").querySelector("textarea") as unknown as HTMLTextAreaElement)
-				.value,
-		).toBe("A draft not saved yet");
-	});
-
-	test("a finding's Delete, clicked once, asks on its own mark only: ids repeat on other marks", () => {
-		const finding = (id: string) => ({
-			id,
-			text: "Same id elsewhere",
-			app: { id: "x", host: "other.example" },
-			at: "2026-11-10T10:00:00Z",
-		});
-		const c: Case = {
-			...twoMarks(),
-			marks: [
-				{ ...mark(1), findings: [finding("f_1")] },
-				{ ...mark(2), findings: [finding("f_1")] },
-			],
-		};
-		render(
-			caseState(c, (s) => {
-				s.findingDeleteArmed = {
-					markId: "m2",
-					mark: "",
-					findingId: "f_1",
-					at: 1,
-				};
-			}),
-			noActions,
-		);
-		const button = (markId: string) =>
-			row(markId).querySelector(
-				'[data-finding="f_1"] [data-finding-action="delete"]',
-			) as unknown as HTMLButtonElement;
-		expect(button("m1").textContent).toBe("Delete finding");
-		expect(button("m1").hasAttribute("data-armed")).toBe(false);
-		expect(button("m2").textContent).toBe("Really delete?");
-		expect(button("m2").hasAttribute("data-armed")).toBe(true);
-	});
-
 	test("Delete asks once more", () => {
 		const c = twoMarks();
 		render(
@@ -508,7 +546,7 @@ describe("a mark's status and actions", () => {
 						matches,
 					};
 			});
-		// Not loaded on a tab: nothing to show.
+		// Not loaded, and no tab in front to draw them on: nothing to show.
 		render(withImages(false), actions);
 		expect(row("m1").querySelector("[data-action=show]")).toBeNull();
 		render(withImages(true), actions);
@@ -545,6 +583,181 @@ describe("a mark's status and actions", () => {
 		) as unknown as HTMLButtonElement;
 		expect(crop.getAttribute("data-action")).toBe("open-larger");
 		expect(crop.getAttribute("aria-label")).toContain("shows it large");
+	});
+
+	test("Show is there while the marks are not drawn: it draws them, then shows the mark", () => {
+		const c = twoMarks();
+		const called: string[] = [];
+		const actions = actionsWith({
+			loadOntoTab: () => called.push("load"),
+			loadAndShow: (_c, a) => called.push(`load+show ${a.id}`),
+			showMatch: () => called.push("show"),
+		});
+		const at = (url: string | undefined) =>
+			caseState(c, (s) => {
+				if (url !== undefined)
+					s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		const show = (id: string) =>
+			row(id).querySelector(
+				".mark-head [data-action=show]",
+			) as unknown as HTMLButtonElement | null;
+		// The page the marks were made on, not drawn: Show draws, then shows.
+		const page = c.marks[0] ? markUrl(c, c.marks[0]) : "";
+		render(at(page), actions);
+		expect(el("load-case").textContent).toBe("Show marks");
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
+		expect(show("m1")?.getAttribute("aria-busy")).toBe("false");
+		show("m1")?.click();
+		expect(called).toEqual(["load+show m1"]);
+		// While it draws, that button says so.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.showingMark = { caseId: c.id, markId: "m1" };
+			}),
+			actions,
+		);
+		expect(show("m1")?.getAttribute("aria-busy")).toBe("true");
+		expect(show("m2")?.getAttribute("aria-busy")).toBe("false");
+		// Drawn on this tab: the old Show, with its drawn name, not this one.
+		const found: MarkMatch = {
+			markId: "m1",
+			number: 1,
+			status: "found",
+			score: 1,
+			current: 0,
+			candidates: [
+				{ score: 1, summary: "p", selector: "p", visible: true, found: true },
+			],
+		};
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					matches: new Map([["m1", found]]),
+					url: page,
+				};
+			}),
+			actions,
+		);
+		expect(show("m1")).not.toBeNull();
+		expect(show("m1")?.getAttribute("aria-label")).toBe(
+			"Show mark 1 on the page",
+		);
+		expect(show("m1")?.hasAttribute("data-loads")).toBe(false);
+		// A mark of a newer kind with no element: no Show while not drawn.
+		const newer: Case = {
+			...c,
+			marks: c.marks.map((m) =>
+				m.id === "m2"
+					? ({
+							...m,
+							element: null,
+							shape: { kind: "unknown", given: { kind: "squiggle" } },
+						} as unknown as Mark)
+					: m,
+			),
+		};
+		render(
+			caseState(newer, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+			}),
+			actions,
+		);
+		expect(show("m1")).not.toBeNull();
+		expect(show("m2")).toBeNull();
+		// A tab without access (Chrome gives no address): no button.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: "", title: "", size: undefined };
+			}),
+			actions,
+		);
+		expect(show("m1")).toBeNull();
+		// A tab Sitegloss cannot work on, none, or another page: no button.
+		for (const url of [
+			"chrome://extensions",
+			undefined,
+			"https://other.example.org/elsewhere",
+		]) {
+			render(at(url), actions);
+			expect(show("m1")).toBeNull();
+		}
+	});
+
+	test("Show is its icon alone, named and with a tooltip in both its states; a labelled button keeps its words beside its icon (DEC-078)", () => {
+		const c = twoMarks();
+		const page = c.marks[0] ? markUrl(c, c.marks[0]) : "";
+		const show = () =>
+			row("m1").querySelector(
+				".mark-head [data-action=show]",
+			) as unknown as HTMLButtonElement;
+		const iconOnly = (b: HTMLButtonElement) => {
+			expect(b.textContent).toBe("");
+			const svg = b.querySelector("svg");
+			expect(svg?.getAttribute("aria-hidden")).toBe("true");
+		};
+		// Not drawn: it draws the marks, then goes to this one.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+			}),
+			noActions,
+		);
+		iconOnly(show());
+		expect(show().getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
+		expect(show().title).toContain("scroll to mark 1");
+		// While it draws the marks: busy, its name and icon kept.
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.showingMark = { caseId: c.id, markId: "m1" };
+			}),
+			noActions,
+		);
+		iconOnly(show());
+		expect(show().getAttribute("aria-busy")).toBe("true");
+		expect(show().getAttribute("aria-label")).toBe(
+			"Show the marks on this page and go to mark 1",
+		);
+		// The labelled buttons beside it: their words, and an icon before them.
+		const load = el<HTMLButtonElement>("load-case");
+		expect(load.textContent).toBe("Show marks");
+		expect(load.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+		// Drawn: it goes to the mark.
+		const found: MarkMatch = {
+			markId: "m1",
+			number: 1,
+			status: "found",
+			score: 1,
+			current: 0,
+			candidates: [
+				{ score: 1, summary: "p", selector: "p", visible: true, found: true },
+			],
+		};
+		render(
+			caseState(c, (s) => {
+				s.tab = { id: 1, url: page, title: "", size: undefined };
+				s.loaded = {
+					caseId: c.id,
+					tabId: 1,
+					matches: new Map([["m1", found]]),
+					url: page,
+				};
+			}),
+			noActions,
+		);
+		iconOnly(show());
+		expect(show().getAttribute("aria-label")).toBe("Show mark 1 on the page");
+		expect(show().title).toContain("Show mark 1 on the page");
+		expect(load.textContent).toBe("Hide marks");
 	});
 
 	test("a mark opens and closes at its head; Expand all opens every one", () => {
@@ -779,19 +992,6 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 	test("a Delete or Remove pressed from the keyboard keeps the focus on its armed control, and on the next one when its image goes", () => {
 		const c = marked("c_pictures5");
 		const a = c.marks[0] as Mark;
-		c.marks = [
-			{
-				...a,
-				findings: [
-					{
-						id: "f_1",
-						text: "Padding",
-						app: { id: "x", name: "Claude", host: "claude.ai" },
-						at: "2026-11-10T10:00:00Z",
-					},
-				],
-			},
-		];
 		const urls = new Map([
 			[a.crop, "blob:crop"],
 			["images/i_a.webp", "blob:a"],
@@ -839,17 +1039,6 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 			s.markDeleteArmed = { markId: a.id, mark: "", at: 1 };
 		}, without);
 		expect(focused().textContent).toBe("Really delete?");
-		at('[data-finding="f_1"] [data-finding-action="delete"]').focus();
-		draw((s) => {
-			s.findingDeleteArmed = {
-				markId: a.id,
-				mark: "",
-				findingId: "f_1",
-				at: 1,
-			};
-		}, without);
-		expect(focused().getAttribute("data-finding-action")).toBe("delete");
-		expect(focused().hasAttribute("data-armed")).toBe(true);
 	});
 
 	test("a mark deleted from the keyboard leaves the focus on the next mark's head, else the one before", () => {
@@ -1016,8 +1205,314 @@ describe("a mark's pictures: its screenshot first, then the images added (DEC-05
 	});
 });
 
+/**
+ * `caseState` with the tab in front on the case's own page: where its marks
+ * are offered Verify (DEC-079).
+ */
+function onItsPage(c: Case, change?: (s: PanelState) => void): PanelState {
+	return caseState(c, (s) => {
+		s.tab = { id: 1, url: c.page.url, title: "", size: undefined };
+		change?.(s);
+	});
+}
+
 describe("Verify closes its mark (DEC-061)", () => {
-	test("Verify closes the row; the focus goes to the next mark to verify, else the row's head", async () => {
+	// The collapse and the held opening run on the clock.
+	beforeEach(() => void jest.useFakeTimers());
+	afterEach(() => void jest.useRealTimers());
+	const COLLAPSED = 320;
+
+	describe("a case of two pages, verified from one of them (DEC-079)", () => {
+		const V1 = "http://127.0.0.1:5/v1";
+		const DEMO = "http://127.0.0.1:5/demo";
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const shot = (id: string, url: string) => ({
+			id,
+			image: `shots/${id}.webp`,
+			scrollX: 0,
+			scrollY: 0,
+			viewport: { width: 1280, height: 800, dpr: 2 },
+			capturedAt: fixed.at,
+			url,
+		});
+		/** Marks 1 to 3 on /v1, 4 and 5 on /demo; 1, 2, 4 fixed, 3 dismissed, 5 open; `done` verified. */
+		const flow = (id: string, done: number[], updatedAt = fixed.at): Case => ({
+			...sampleCase(id),
+			updatedAt,
+			page: { ...sampleCase(id).page, url: V1, title: "Premiums" },
+			pages: [
+				{ url: V1, title: "Premiums", lang: "en" },
+				{ url: DEMO, title: "Bikes", lang: "en" },
+			],
+			shots: [shot("s1", V1), shot("s2", DEMO)],
+			marks: [1, 2, 3, 4, 5].map(
+				(n): Mark => ({
+					id: `m${n}`,
+					number: n,
+					shot: n <= 3 ? "s1" : "s2",
+					comment: `Comment ${n}`,
+					author: "user",
+					shape: { kind: "note", at: { x: 1, y: 1 } },
+					crop: `crops/m${n}.webp`,
+					element: null,
+					...(n === 3
+						? { resolution: { kind: "wontfix" as const, at: fixed.at } }
+						: n === 5
+							? {}
+							: {
+									resolution: done.includes(n)
+										? { ...fixed, verified: { at: updatedAt } }
+										: fixed,
+								}),
+				}),
+			),
+		});
+		const on = (c: Case, url: string | undefined, filtered: boolean) =>
+			caseState(c, (s) => {
+				if (url !== undefined)
+					s.tab = { id: 1, url, title: "", size: undefined };
+				// As Start verifying leaves the list: the marks to verify only.
+				if (filtered)
+					s.markFilter = { caseId: c.id, group: "toVerify", upTo: 5 };
+			});
+		const row = (id: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"]`,
+			) as unknown as HTMLElement;
+		const opened = () =>
+			[...window.document.querySelectorAll("li.mark[data-open]")].map(
+				(li) => (li as unknown as HTMLElement).dataset["mark"],
+			);
+		const verifies = (id: string) =>
+			row(id).querySelector(".head-verify") !== null ||
+			row(id).querySelector('[data-mark-action="verify"]') !== null;
+
+		test("only the marks of the page in front offer Verify; one of another page names its page and opens it", () => {
+			const calls: unknown[] = [];
+			const actions = actionsWith({
+				openMarkPage: (_c, a, where) => void calls.push([a.id, where]),
+				verifyMark: (_c, a) => void calls.push([a.id, "verified"]),
+			});
+			render(on(flow("c_two_pages", []), V1, false), actions);
+			expect(["m1", "m2", "m4"].map(verifies)).toEqual([true, true, false]);
+			expect(
+				row("m1").querySelector(".head-verify")?.getAttribute("title"),
+			).toBe("The fix holds on the page you checked");
+			// Mark 4: its page as the link in its second line, and opened, the
+			// page is its one strong action.
+			const link = row("m4").querySelector<HTMLElement>(".mark-sub .elsewhere");
+			expect(link?.textContent).toBe("On Bikes");
+			(
+				row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+			).click();
+			const strong = [
+				...row("m4").querySelectorAll(".mark-actions .strong"),
+			] as unknown as HTMLElement[];
+			expect(strong.map((b) => b.textContent)).toEqual([
+				"Open its page to verify",
+			]);
+			// The tab is on this case's site: the link and the button go there.
+			expect(strong[0]?.title).toContain(DEMO);
+			// What it offers, said: no promise that Verify will come.
+			expect(row("m4").querySelector(".away-hint")?.textContent).toBe(
+				"Open its page to verify it there, or verify anyway if you checked it elsewhere.",
+			);
+			// Checked somewhere the panel cannot tell: Verify anyway, quiet,
+			// in the open row only, through the same Verify.
+			const anyway = row("m4").querySelector<HTMLElement>(
+				'.mark-actions [data-mark-action="verify-anyway"]',
+			);
+			expect(anyway?.textContent).toBe("Verify anyway");
+			expect(anyway?.classList.contains("strong")).toBe(false);
+			expect(anyway?.title).toBe(
+				"You checked it somewhere else: set mark 4 verified",
+			);
+			expect(row("m4").querySelector(".head-verify")).toBeNull();
+			strong[0]?.click();
+			link?.click();
+			anyway?.click();
+			expect(calls).toEqual([
+				["m4", "made"],
+				["m4", "made"],
+				["m4", "verified"],
+			]);
+			// On /demo it is the other way round.
+			render(on(flow("c_two_pages", []), DEMO, false), actions);
+			expect(["m1", "m2", "m4"].map(verifies)).toEqual([false, false, true]);
+		});
+
+		test.each([
+			["the hand-back mail", "https://mail.google.com/mail/u/0/#inbox"],
+			["the case on the web app", "https://app.sitegloss.dev/cases/c_1"],
+		])(
+			"from %s in the tab, a mark's page opens where it was made, never on that host",
+			(_, url) => {
+				const calls: unknown[] = [];
+				const actions = actionsWith({
+					openMarkPage: (_c, a, where) => void calls.push([a.id, where]),
+				});
+				render(on(flow(`c_from_${url}`, []), url, false), actions);
+				(
+					row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+				).click();
+				const open = row("m4").querySelector<HTMLElement>(
+					'[data-mark-action="open-page"]',
+				);
+				// The tooltip names the whole address it opens, host and all.
+				expect(open?.title).toContain(DEMO);
+				expect(open?.title).not.toContain(new URL(url).host);
+				open?.click();
+				row("m4").querySelector<HTMLElement>(".mark-sub .elsewhere")?.click();
+				expect(calls).toEqual([
+					["m4", "made"],
+					["m4", "made"],
+				]);
+			},
+		);
+
+		test("with the tab's address unknown, the open row says how to let Sitegloss see it, and Verify anyway", () => {
+			render(on(flow("c_unread", []), "", false), noActions);
+			(
+				row("m4").querySelector(".mark-toggle") as unknown as HTMLElement
+			).click();
+			expect(
+				row("m4").querySelector('[data-mark-action="open-page"]'),
+			).toBeNull();
+			expect(row("m4").querySelector(".away-hint")?.textContent).toMatch(
+				/^Sitegloss cannot see which page this tab shows yet\. To verify here, click .+ Or verify anyway if you checked it elsewhere\.$/,
+			);
+			expect(
+				row("m4").querySelector('[data-mark-action="verify-anyway"]'),
+			).not.toBeNull();
+		});
+
+		test("This page's Start verifying: the row it opens has the focus", () => {
+			const c = flow("c_focus", []);
+			render(on(c, V1, true), noActions);
+			const state = on(c, V1, true);
+			state.picked = { caseId: c.id, markId: "m2", at: 1, focus: true };
+			render(state, noActions);
+			expect(row("m2").hasAttribute("data-open")).toBe(true);
+			expect(
+				window.document.activeElement ===
+					(row("m2").querySelector(".mark-toggle") as unknown),
+			).toBe(true);
+		});
+
+		test.each([
+			["a browser page", "chrome://newtab/"],
+			["a tab whose address Sitegloss may not read", ""],
+			["no tab", undefined],
+		])(
+			"with %s in front no mark offers Verify; each names its page",
+			(_, url) => {
+				render(on(flow(`c_nowhere_${url}`, []), url, false), noActions);
+				expect(["m1", "m2", "m4"].map(verifies)).toEqual([false, false, false]);
+				expect(
+					["m1", "m2", "m4"].map(
+						(id) => row(id).querySelector(".mark-sub .elsewhere")?.textContent,
+					),
+				).toEqual(["On Premiums", "On Premiums", "On Bikes"]);
+				// Marks not to verify are as before: no page link added.
+				expect(row("m5").querySelector(".mark-sub .elsewhere")).toBeNull();
+			},
+		);
+
+		test.each([
+			["the whole list", false],
+			["the marks to verify only (Start verifying)", true],
+		])(
+			"in %s, a Verify opens the next mark of this page, then the one of the other page",
+			(_, filtered) => {
+				const id = `c_next_${filtered}`;
+				render(on(flow(id, []), V1, filtered), noActions);
+				// From the collapsed row's head, the focus on the pressed button.
+				const head = row("m1").querySelector(
+					".head-verify",
+				) as unknown as HTMLButtonElement;
+				head.focus();
+				head.click();
+				render(
+					on(flow(id, [1], "2026-11-15T09:00:00Z"), V1, filtered),
+					noActions,
+				);
+				jest.advanceTimersByTime(COLLAPSED);
+				expect(opened()).toEqual(["m2"]);
+				expect(
+					window.document.activeElement ===
+						(row("m2").querySelector(".mark-toggle") as unknown),
+				).toBe(true);
+				// From the open row: mark 4 is next, on /demo; it opens, its page the action.
+				const body = row("m2").querySelector(
+					'.body [data-mark-action="verify"]',
+				) as unknown as HTMLButtonElement;
+				body.focus();
+				body.click();
+				render(
+					on(flow(id, [1, 2], "2026-11-16T09:00:00Z"), V1, filtered),
+					noActions,
+				);
+				jest.advanceTimersByTime(COLLAPSED);
+				expect(opened()).toEqual(["m4"]);
+				expect(
+					row("m4").querySelector(".mark-actions .strong")?.textContent,
+				).toBe("Open its page to verify");
+				expect(window.document.getElementById("case-hint")?.textContent).toBe(
+					"Mark 4 opened: it is on another page; open its page to verify it.",
+				);
+			},
+		);
+	});
+
+	test("a Verify takes no focus the person has moved to another row meanwhile", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const c: Case = {
+			...sampleCase("c_verify_elsewhere"),
+			marks: [m(1, fixed), m(2), m(3, fixed)],
+		};
+		render(onItsPage(c), noActions);
+		const part = (id: string, selector: string) =>
+			window.document.querySelector(
+				`[data-mark="${id}"] ${selector}`,
+			) as unknown as HTMLButtonElement;
+		part("m1", ".mark-toggle").click();
+		part("m1", '[data-mark-action="verify"]').click();
+		// The save is on its way; the person goes to mark 2.
+		part("m2", ".mark-toggle").focus();
+		render(
+			onItsPage({
+				...c,
+				updatedAt: "2026-11-15T09:00:00Z",
+				marks: [
+					m(1, { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } }),
+					m(2),
+					m(3, fixed),
+				],
+			}),
+			noActions,
+		);
+		expect(
+			window.document
+				.querySelector('[data-mark="m3"]')
+				?.hasAttribute("data-open"),
+		).toBe(false);
+		expect(
+			window.document.activeElement === (part("m2", ".mark-toggle") as unknown),
+		).toBe(true);
+	});
+
+	test("Verify closes the row and opens the next mark to verify; with none left, the focus stays on the row's head", async () => {
 		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
 		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
 			id: `m${k}`,
@@ -1038,7 +1533,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 		const actions = actionsWith({
 			verifyMark: (_c, a) => void verified.push(a.id),
 		});
-		render(caseState(c), actions);
+		render(onItsPage(c), actions);
 		const row = (id: string) =>
 			window.document.querySelector(
 				`[data-mark="${id}"]`,
@@ -1053,7 +1548,8 @@ describe("Verify closes its mark (DEC-061)", () => {
 			) as unknown as HTMLButtonElement
 		).click();
 		expect(verified).toEqual(["m1"]);
-		// Stored as verified: drawn closed, the focus on mark 3, the next to verify.
+		// Stored as verified: drawn closed; mark 3, the next to verify, opens by
+		// itself with the focus on its head (not on its Verify), shown as "this one".
 		const done: Case = {
 			...c,
 			updatedAt: "2026-11-15T09:00:00Z",
@@ -1063,12 +1559,497 @@ describe("Verify closes its mark (DEC-061)", () => {
 				m(3, fixed),
 			],
 		};
-		render(caseState(done), actions);
+		render(onItsPage(done), actions);
+		jest.advanceTimersByTime(COLLAPSED);
 		expect(row("m1").hasAttribute("data-open")).toBe(false);
+		expect(row("m3").hasAttribute("data-open")).toBe(true);
+		expect(row("m3").hasAttribute("data-picked")).toBe(true);
+		expect(row("m2").hasAttribute("data-open")).toBe(false);
 		expect(
 			window.document.activeElement ===
 				(row("m3").querySelector(".mark-toggle") as unknown),
 		).toBe(true);
+		// The last one verified: nothing else opens, the focus stays on its row.
+		(
+			row("m3").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		const all: Case = {
+			...done,
+			updatedAt: "2026-11-16T09:00:00Z",
+			marks: [
+				done.marks[0] as Mark,
+				m(2),
+				m(3, { ...fixed, verified: { at: "2026-11-16T09:00:00Z" } }),
+			],
+		};
+		render(onItsPage(all), actions);
+		jest.advanceTimersByTime(COLLAPSED);
+		expect(row("m3").hasAttribute("data-open")).toBe(false);
+		expect(row("m2").hasAttribute("data-open")).toBe(false);
+		expect(
+			window.document.activeElement ===
+				(row("m3").querySelector(".mark-toggle") as unknown),
+		).toBe(true);
+	});
+
+	test("a Verify shows at the press, cues the row it opens once, says when nothing waits, and comes back when not saved", async () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const m = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const verified = (k: number, at: string) =>
+			m(k, { ...fixed, verified: { at } });
+		const c: Case = {
+			...sampleCase("c_verify_cue"),
+			marks: [m(1, fixed), m(2), m(3, fixed)],
+		};
+		let answer: Promise<string | undefined> | undefined;
+		const actions = actionsWith({ verifyMark: () => answer });
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const cued = () => doc.querySelectorAll("[data-arrived]").length;
+		const line = () => doc.getElementById("case-hint")?.textContent;
+		render(onItsPage(c), actions);
+		// Not saved: the row is as it was.
+		answer = Promise.resolve("Not saved: no.");
+		(
+			row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+		).click();
+		const verify = row("m1").querySelector(
+			'[data-mark-action="verify"]',
+		) as unknown as HTMLButtonElement;
+		verify.click();
+		expect(row("m1").hasAttribute("data-verifying")).toBe(true);
+		// The stored truth stays in data-status; the press has its own marker.
+		expect(row("m1").getAttribute("data-status")).toBe("fixed");
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+		expect(row("m1").getAttribute("data-status")).toBe("fixed");
+		expect(row("m1").hasAttribute("data-open")).toBe(true);
+		expect(cued()).toBe(0);
+		// Saved: the next row to verify carries the cue, once.
+		answer = undefined;
+		verify.click();
+		const one: Case = {
+			...c,
+			updatedAt: "2026-11-15T09:00:00Z",
+			marks: [verified(1, "2026-11-15T09:00:00Z"), m(2), m(3, fixed)],
+		};
+		render(onItsPage(one), actions);
+		jest.advanceTimersByTime(COLLAPSED);
+		expect(cued()).toBe(1);
+		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
+		expect(line()).toBe("Mark 3 opened, to verify.");
+		// A redraw within the cue's second carries it on, on the same row only;
+		// once it has run out, an unrelated redraw (a changed comment) has none.
+		const redrawn = (at: string, comment: string): Case => ({
+			...one,
+			updatedAt: at,
+			marks: one.marks.map((a) => (a.id === "m2" ? { ...a, comment } : a)),
+		});
+		render(onItsPage(redrawn("2026-11-15T09:30:00Z", "Edited")), actions);
+		expect(cued()).toBe(1);
+		expect(row("m3").hasAttribute("data-arrived")).toBe(true);
+		jest.advanceTimersByTime(3000);
+		render(onItsPage(redrawn("2026-11-15T10:00:00Z", "Edited again")), actions);
+		expect(cued()).toBe(0);
+		// The last one to verify, with an open mark left: said once.
+		(
+			row("m3").querySelector(
+				'[data-mark-action="verify"]',
+			) as unknown as HTMLButtonElement
+		).click();
+		const last: Case = {
+			...one,
+			updatedAt: "2026-11-16T09:00:00Z",
+			marks: [one.marks[0] as Mark, m(2), verified(3, "2026-11-16T09:00:00Z")],
+		};
+		render(onItsPage(last), actions);
+		jest.advanceTimersByTime(COLLAPSED);
+		expect(cued()).toBe(0);
+		expect(line()).toBe("That was the last mark to verify.");
+	});
+
+	describe("the order of a Verify's motion", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const mk = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const base = (id: string): Case => ({
+			...sampleCase(id),
+			marks: [mk(1, fixed), mk(2, fixed), mk(3, fixed)],
+		});
+		const stored = (c: Case, k: string): Case => ({
+			...c,
+			updatedAt: k,
+			marks: [
+				mk(1, { ...fixed, verified: { at: k } }),
+				mk(2, fixed),
+				mk(3, fixed),
+			],
+		});
+		const verify = (id: string) =>
+			(
+				row(id).querySelector(
+					'[data-mark-action="verify"]',
+				) as unknown as HTMLButtonElement
+			).click();
+		const openRow = (id: string) =>
+			(
+				row(id).querySelector(".mark-toggle") as unknown as HTMLButtonElement
+			).click();
+
+		test("the next row does not open before the collapse ends, whether the answer is early or late; a redraw in between continues the collapse", () => {
+			const c = base("c_order");
+			const actions = actionsWith({ verifyMark: () => undefined });
+			render(onItsPage(c), actions);
+			openRow("m1");
+			verify("m1");
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
+			// The answer lands early: the verified row keeps collapsing, nothing opens.
+			jest.advanceTimersByTime(100);
+			const k1 = "2026-11-15T09:00:00Z";
+			render(onItsPage(stored(c, k1)), actions);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
+			expect(row("m1").hasAttribute("data-open")).toBe(true);
+			expect(row("m2").hasAttribute("data-open")).toBe(false);
+			// A second redraw in between: still the same, and the held opening survives.
+			jest.advanceTimersByTime(100);
+			render(onItsPage(stored(c, "2026-11-15T09:00:01Z")), actions);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
+			expect(row("m2").hasAttribute("data-open")).toBe(false);
+			// The collapse is done: the row is closed and the next opens, with its cue.
+			jest.advanceTimersByTime(120);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+			expect(row("m2").hasAttribute("data-open")).toBe(true);
+			expect(row("m2").hasAttribute("data-arrived")).toBe(true);
+			// A late answer (after the collapse): the next opens as it lands.
+			verify("m2");
+			jest.advanceTimersByTime(COLLAPSED);
+			expect(row("m2").hasAttribute("data-open")).toBe(false);
+			render(
+				onItsPage({
+					...stored(c, "2026-11-15T10:00:00Z"),
+					marks: [
+						mk(1, { ...fixed, verified: { at: "x" } }),
+						mk(2, { ...fixed, verified: { at: "x" } }),
+						mk(3, fixed),
+					],
+				}),
+				actions,
+			);
+			expect(row("m3").hasAttribute("data-open")).toBe(true);
+		});
+
+		test("the highlight holds, then fades: on for its whole time, off after; a second Verify on that row works at once", () => {
+			const c = base("c_hold");
+			const verified: string[] = [];
+			const actions = actionsWith({
+				verifyMark: (_c, a) => void verified.push(a.id),
+			});
+			render(onItsPage(c), actions);
+			openRow("m1");
+			verify("m1");
+			render(onItsPage(stored(c, "2026-11-15T09:00:00Z")), actions);
+			jest.advanceTimersByTime(COLLAPSED);
+			expect(row("m2").hasAttribute("data-arrived")).toBe(true);
+			// Held (700 ms) and fading (to 1.9 s): still marked at 1.8 s.
+			jest.advanceTimersByTime(1800);
+			expect(row("m2").hasAttribute("data-arrived")).toBe(true);
+			jest.advanceTimersByTime(200);
+			expect(row("m2").hasAttribute("data-arrived")).toBe(false);
+			// Again, while the highlight is still on: the press is not blocked.
+			const k = "2026-11-16T09:00:00Z";
+			render(
+				onItsPage({
+					...stored(c, k),
+					marks: [
+						mk(1, { ...fixed, verified: { at: k } }),
+						mk(2, fixed),
+						mk(3, fixed),
+					],
+				}),
+				actions,
+			);
+			expect(row("m2").hasAttribute("data-open")).toBe(true);
+			verify("m2");
+			expect(verified).toEqual(["m1", "m2"]);
+			expect(row("m2").hasAttribute("data-collapsing")).toBe(true);
+		});
+
+		test("a filter or another case on screen during the collapse: the verified row is closed when shown again", () => {
+			const c = base("c_leak");
+			const actions = actionsWith({ verifyMark: () => undefined });
+			render(onItsPage(c), actions);
+			openRow("m1");
+			verify("m1");
+			jest.advanceTimersByTime(100);
+			// A filter on "to verify" takes the verified row away.
+			render(
+				onItsPage(stored(c, "2026-11-15T09:00:00Z"), (st) => {
+					st.markFilter = { caseId: c.id, group: "toVerify", upTo: 99 };
+				}),
+				actions,
+			);
+			expect(doc.querySelector('[data-mark="m1"]')).toBeNull();
+			jest.advanceTimersByTime(COLLAPSED);
+			render(onItsPage(stored(c, "2026-11-15T09:30:00Z")), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			// Another case within the 300 ms: no key is left either.
+			const d = base("c_leak2");
+			render(onItsPage(d), actions);
+			openRow("m1");
+			verify("m1");
+			jest.advanceTimersByTime(100);
+			render(onItsPage(base("c_leak_other")), actions);
+			jest.advanceTimersByTime(COLLAPSED);
+			render(onItsPage(stored(d, "2026-11-15T10:00:00Z")), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+		});
+
+		test("the held next row is verified or gone during the hold: the focus stays with the verified row's head and the last-mark line is said", () => {
+			const c: Case = {
+				...sampleCase("c_gone"),
+				marks: [mk(1, fixed), mk(2, fixed), mk(3)],
+			};
+			const actions = actionsWith({ verifyMark: () => undefined });
+			render(onItsPage(c), actions);
+			openRow("m1");
+			verify("m1");
+			jest.advanceTimersByTime(100);
+			const k = "2026-11-15T09:00:00Z";
+			render(
+				onItsPage({
+					...c,
+					updatedAt: k,
+					marks: [
+						mk(1, { ...fixed, verified: { at: k } }),
+						mk(2, fixed),
+						mk(3),
+					],
+				}),
+				actions,
+			);
+			// Held; meanwhile mark 2 is verified from the web app.
+			jest.advanceTimersByTime(100);
+			const k2 = "2026-11-15T09:00:01Z";
+			render(
+				onItsPage({
+					...c,
+					updatedAt: k2,
+					marks: [
+						mk(1, { ...fixed, verified: { at: k } }),
+						mk(2, { ...fixed, verified: { at: k2 } }),
+						mk(3),
+					],
+				}),
+				actions,
+			);
+			jest.advanceTimersByTime(COLLAPSED);
+			expect(doc.querySelectorAll("[data-arrived]").length).toBe(0);
+			expect(row("m2").hasAttribute("data-open")).toBe(false);
+			expect(doc.getElementById("case-hint")?.textContent).toBe(
+				"That was the last mark to verify.",
+			);
+			expect(
+				doc.activeElement ===
+					(row("m1").querySelector(".mark-toggle") as unknown),
+			).toBe(true);
+		});
+
+		test("a failed Verify during the collapse puts the row back; an unanswered one too, with one 'Not saved'", async () => {
+			const c = base("c_back");
+			let answer: Promise<string | undefined> =
+				Promise.resolve("Not saved: no.");
+			const actions = actionsWith({ verifyMark: () => answer });
+			render(onItsPage(c), actions);
+			openRow("m1");
+			verify("m1");
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(true);
+			for (let i = 0; i < 4; i++) await Promise.resolve();
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+			expect(row("m1").hasAttribute("data-open")).toBe(true);
+			expect(row("m1").getAttribute("data-status")).toBe("fixed");
+			// Unanswered: closed by the collapse, then back after the wait.
+			answer = new Promise(() => {});
+			verify("m1");
+			jest.advanceTimersByTime(COLLAPSED);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			jest.advanceTimersByTime(5000);
+			expect(row("m1").hasAttribute("data-open")).toBe(true);
+			expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+			expect(row("m1").getAttribute("data-status")).toBe("fixed");
+			expect(doc.getElementById("case-hint")?.textContent).toBe(
+				"Not saved: the Verify got no answer.",
+			);
+		});
+
+		test("with reduced motion the row closes and the next opens at once, the highlight still marks it", () => {
+			const c = base("c_still");
+			const actions = actionsWith({ verifyMark: () => undefined });
+			const had = globalThis.matchMedia;
+			globalThis.matchMedia = (() => ({ matches: true })) as never;
+			try {
+				render(onItsPage(c), actions);
+				openRow("m1");
+				verify("m1");
+				expect(row("m1").hasAttribute("data-collapsing")).toBe(false);
+				expect(row("m1").hasAttribute("data-open")).toBe(false);
+				render(onItsPage(stored(c, "2026-11-15T09:00:00Z")), actions);
+				expect(row("m2").hasAttribute("data-open")).toBe(true);
+				expect(row("m2").hasAttribute("data-arrived")).toBe(true);
+			} finally {
+				globalThis.matchMedia = had;
+			}
+		});
+	});
+
+	describe("a Verify that is not saved or not answered puts back only what is still its own", () => {
+		const fixed = { kind: "fixed" as const, at: "2026-11-14T09:00:00Z" };
+		const mk = (k: number, resolution?: Mark["resolution"]): Mark => ({
+			id: `m${k}`,
+			number: k,
+			shot: "s1",
+			comment: `Comment ${k}`,
+			author: "user",
+			shape: { kind: "note", at: { x: 1, y: 1 } },
+			crop: `crops/m${k}.webp`,
+			element: null,
+			...(resolution ? { resolution } : {}),
+		});
+		const doc = window.document;
+		const row = (id: string) =>
+			doc.querySelector(`[data-mark="${id}"]`) as unknown as HTMLElement;
+		const later = async () => {
+			for (let i = 0; i < 4; i++) await Promise.resolve();
+		};
+		const press = (c: Case, answer: Promise<string | undefined>): Actions => {
+			const actions = actionsWith({ verifyMark: () => answer });
+			render(onItsPage(c), actions);
+			(
+				row("m1").querySelector(".mark-toggle") as unknown as HTMLButtonElement
+			).click();
+			(
+				row("m1").querySelector(
+					'[data-mark-action="verify"]',
+				) as unknown as HTMLButtonElement
+			).click();
+			return actions;
+		};
+
+		test("another case on screen meanwhile: its row is left alone", async () => {
+			const a: Case = {
+				...sampleCase("c_undo_a"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			const b: Case = {
+				...sampleCase("c_undo_b"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			let fail: (why: string) => void = () => {};
+			const actions = press(
+				a,
+				new Promise((resolve) => {
+					fail = resolve;
+				}),
+			);
+			render(onItsPage(b), actions);
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			fail("Not saved: no.");
+			await later();
+			expect(row("m1").hasAttribute("data-open")).toBe(false);
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+		});
+
+		test("no answer: after the wait the row is put back and says so, once; a late answer changes nothing", async () => {
+			const c: Case = {
+				...sampleCase("c_undo_wait"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			jest.useFakeTimers();
+			try {
+				let late: (why: string | undefined) => void = () => {};
+				press(
+					c,
+					new Promise((resolve) => {
+						late = resolve;
+					}),
+				);
+				expect(row("m1").hasAttribute("data-verifying")).toBe(true);
+				expect(row("m1").querySelector(".pill")?.textContent).toBe("Verified");
+				jest.advanceTimersByTime(5050);
+				expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+				expect(row("m1").querySelector(".pill")?.textContent).toBe("To verify");
+				expect(row("m1").hasAttribute("data-open")).toBe(true);
+				expect(doc.getElementById("case-hint")?.textContent).toBe(
+					"Not saved: the Verify got no answer.",
+				);
+				late("Not saved: too late.");
+				await later();
+				expect(row("m1").hasAttribute("data-open")).toBe(true);
+				expect(doc.getElementById("case-hint")?.textContent).toBe(
+					"Not saved: the Verify got no answer.",
+				);
+			} finally {
+				jest.useRealTimers();
+			}
+		});
+
+		test("a redraw already shows the mark verified: a refused write does not reopen it", async () => {
+			const c: Case = {
+				...sampleCase("c_undo_truth"),
+				marks: [mk(1, fixed), mk(2, fixed)],
+			};
+			let fail: (why: string) => void = () => {};
+			const actions = press(
+				c,
+				new Promise((resolve) => {
+					fail = resolve;
+				}),
+			);
+			render(
+				onItsPage({
+					...c,
+					updatedAt: "2026-11-15T09:00:00Z",
+					marks: [
+						mk(1, { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } }),
+						mk(2, fixed),
+					],
+				}),
+				actions,
+			);
+			fail("Not saved: changed meanwhile.");
+			await later();
+			expect(row("m1").getAttribute("data-status")).toBe("verified");
+			expect(row("m1").hasAttribute("data-verifying")).toBe(false);
+			expect(row("m1").querySelector(".pill")?.textContent).toBe("Verified");
+		});
 	});
 
 	test("a Verify not saved takes no focus later from a field the person moved to (DEC-064's review)", () => {
@@ -1078,7 +2059,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 			...base,
 			marks: base.marks.map((a) => ({ ...a, resolution: fixed })),
 		};
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		const row = window.document.querySelector(
 			'[data-mark="m1"]',
 		) as unknown as HTMLElement;
@@ -1093,7 +2074,7 @@ describe("Verify closes its mark (DEC-061)", () => {
 				resolution: { ...fixed, verified: { at: "2026-11-15T09:00:00Z" } },
 			})),
 		};
-		render(caseState(later), noActions);
+		render(onItsPage(later), noActions);
 		expect(window.document.activeElement?.id).toBe("verdict");
 	});
 
@@ -1109,6 +2090,39 @@ describe("Verify closes its mark (DEC-061)", () => {
 			markId: "m1",
 		});
 		expect(afterVerify(order, "gone")).toBeUndefined();
+		// One on the page in front before one of another page (DEC-079).
+		const pages = [
+			{ id: "m1", status: "fixed" },
+			{ id: "m2", status: "fixed", away: true },
+			{ id: "m3", status: "fixed" },
+		];
+		expect(afterVerify(pages, "m1")).toEqual({ markId: "m3" });
+		expect(afterVerify(pages, "m3")).toEqual({ markId: "m1" });
+		expect(
+			afterVerify(
+				pages.filter((m) => m.id !== "m3"),
+				"m1",
+			),
+		).toEqual({ markId: "m2" });
+	});
+
+	test("the row a Verify opens: the next that waits; in a filtered list the one known at the click; none when nothing waits", () => {
+		const order = [
+			{ id: "m1", status: "fixed" },
+			{ id: "m2", status: "open" },
+			{ id: "m3", status: "fixed" },
+		];
+		expect(opensAfterVerify(order, "m1", undefined)).toBe("m3");
+		// Round to the ones before it, after the last.
+		expect(opensAfterVerify(order, "m3", undefined)).toBe("m1");
+		// The list is filtered and the verified mark has left it.
+		const left = order.filter((m) => m.id !== "m1");
+		expect(opensAfterVerify(left, "m1", "m3")).toBe("m3");
+		// What was known at the click waits no more: nothing is opened for it.
+		expect(opensAfterVerify(left, "m1", "m2")).toBeUndefined();
+		expect(
+			opensAfterVerify([{ id: "m1", status: "verified" }], "m1", undefined),
+		).toBeUndefined();
 	});
 });
 
@@ -1179,7 +2193,7 @@ describe("Verify (DEC-023)", () => {
 		);
 
 	test("the status block: a bar and the chips in order, counts above zero", () => {
-		render(caseState(fourMarks()), noActions);
+		render(onItsPage(fourMarks()), noActions);
 		const bar = [
 			...window.document.querySelectorAll("#case-status .progress > span"),
 		].map((s) => s.getAttribute("data-kind"));
@@ -1194,7 +2208,7 @@ describe("Verify (DEC-023)", () => {
 
 	test("the status block and Show marks sit in the marks' section, under its heading", () => {
 		const c = fourMarks();
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		const marks = window.document.querySelector("section.marks");
 		const bar = marks?.querySelector(".marks-bar");
 		// The chips filter this list: straight under its bar, above the marks.
@@ -1210,7 +2224,7 @@ describe("Verify (DEC-023)", () => {
 		// A redraw of the list keeps both, and the focus on the button pressed.
 		el("load-case").focus();
 		render(
-			caseState({ ...c, updatedAt: "2026-11-14T10:00:00.000Z" }),
+			onItsPage({ ...c, updatedAt: "2026-11-14T10:00:00.000Z" }),
 			noActions,
 		);
 		expect(window.document.querySelectorAll("#load-case").length).toBe(1);
@@ -1224,7 +2238,7 @@ describe("Verify (DEC-023)", () => {
 			) as unknown as HTMLElement
 		).focus();
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markFilter = { caseId: c.id, group: "open", upTo: 4 };
 			}),
 			noActions,
@@ -1233,7 +2247,7 @@ describe("Verify (DEC-023)", () => {
 		expect(at?.getAttribute("data-group")).toBe("open");
 		expect(at?.getAttribute("aria-pressed")).toBe("true");
 		// A case without marks: no block, no gap for one.
-		render(caseState({ ...c, id: "c_none", marks: [] }), noActions);
+		render(onItsPage({ ...c, id: "c_none", marks: [] }), noActions);
 		expect(window.document.querySelector("#case-status")).toBeNull();
 		expect(
 			(
@@ -1250,10 +2264,10 @@ describe("Verify (DEC-023)", () => {
 			window.document
 				.querySelector(`[data-mark="${id}"]`)
 				?.hasAttribute("data-open");
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		expect(open("m3")).toBe(false);
 		const picked = (at: number) =>
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.picked = { caseId: c.id, markId: "m3", at };
 			});
 		render(picked(1), noActions);
@@ -1276,7 +2290,7 @@ describe("Verify (DEC-023)", () => {
 		render(picked(2), noActions);
 		expect(open("m3")).toBe(true);
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.picked = { caseId: "c_other", markId: "m1", at: 3 };
 			}),
 			noActions,
@@ -1290,13 +2304,13 @@ describe("Verify (DEC-023)", () => {
 		const actions = actionsWith({
 			filterMarks: (id, group) => void filters.push([id, group]),
 		});
-		render(caseState(c), actions);
+		render(onItsPage(c), actions);
 		(
 			window.document.querySelector(
 				'#case-status .chip[data-group="toVerify"]',
 			) as unknown as HTMLElement
 		).click();
-		const filtered = caseState(c, (s) => {
+		const filtered = onItsPage(c, (s) => {
 			s.markFilter = { caseId: c.id, group: "toVerify", upTo: 4 };
 		});
 		render(filtered, actions);
@@ -1326,7 +2340,7 @@ describe("Verify (DEC-023)", () => {
 		]);
 		// Another case's filter is not this one's.
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markFilter = { caseId: "c_other", group: "toVerify", upTo: 4 };
 			}),
 			actions,
@@ -1338,7 +2352,7 @@ describe("Verify (DEC-023)", () => {
 	test("the filter ends when its marks are gone, or a mark is added", () => {
 		const c = fourMarks();
 		const filtered = (k: Case) =>
-			caseState(k, (s) => {
+			onItsPage(k, (s) => {
 				s.markFilter = { caseId: c.id, group: "toVerify", upTo: 4 };
 			});
 		// The last mark to verify verified: all marks again, no empty list.
@@ -1368,14 +2382,14 @@ describe("Verify (DEC-023)", () => {
 	test("nothing open or to verify: a line says so", () => {
 		const c = fourMarks();
 		c.marks = c.marks.slice(2);
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		expect(
 			window.document.querySelector("#case-status .all-done")?.textContent,
 		).toBe("✓ All marks are verified or dismissed.");
 	});
 
 	test("each status: its pill, its strong button and the others", () => {
-		render(caseState(fourMarks()), noActions);
+		render(onItsPage(fourMarks()), noActions);
 		const pill = (id: string) =>
 			row(id).querySelector(".mark-sub .pill")?.textContent;
 		expect([pill("m1"), pill("m2"), pill("m3"), pill("m4")]).toEqual([
@@ -1437,7 +2451,7 @@ describe("Verify (DEC-023)", () => {
 		const c = fourMarks();
 		const calls: unknown[] = [];
 		render(
-			caseState(c),
+			onItsPage(c),
 			actionsWith({
 				verifyMark: (_c, a) => void calls.push(["verify", a.id]),
 				editMark: (_c, a, mode) => void calls.push(["edit", a.id, mode]),
@@ -1475,11 +2489,11 @@ describe("Verify (DEC-023)", () => {
 				},
 			],
 		};
-		render(caseState(c), noActions);
+		render(onItsPage(c), noActions);
 		expect(row("m1").querySelector(".mark-sub .reopened")?.textContent).toBe(
 			"Reopened: Still pale on hover",
 		);
-		render(caseState(verified), noActions);
+		render(onItsPage(verified), noActions);
 		const lines = [...row("m1").querySelectorAll(".history li")].map((li) => [
 			li.getAttribute("data-kind"),
 			li.textContent,
@@ -1519,7 +2533,7 @@ describe("Verify (DEC-023)", () => {
 				},
 			],
 		};
-		render(caseState(fromFile), noActions);
+		render(onItsPage(fromFile), noActions);
 		const lines = [...row("m2").querySelectorAll(".history li")].map(
 			(li) => li.textContent,
 		);
@@ -1543,7 +2557,7 @@ describe("Verify (DEC-023)", () => {
 			resolveMark: (_c, a, kind, note) => void calls.push([a.id, kind, note]),
 		});
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markEdit = {
 					markId: "m1",
 					mark: "",
@@ -1594,7 +2608,7 @@ describe("Verify (DEC-023)", () => {
 			reopenMark: (_c, a, note) => void calls.push([a.id, note]),
 		});
 		render(
-			caseState(c, (s) => {
+			onItsPage(c, (s) => {
 				s.markEdit = {
 					markId: "m2",
 					mark: "",
@@ -1635,7 +2649,7 @@ describe("Verify (DEC-023)", () => {
 		expect(row("m2").querySelector(".mark-sub button")).toBeNull();
 	});
 
-	test("the case list counts by status, with the bar", () => {
+	test("the case list counts by status, with the bar, after the case's state", () => {
 		const c = fourMarks();
 		const home = initialState();
 		home.cases = [c];
@@ -1651,7 +2665,16 @@ describe("Verify (DEC-023)", () => {
 			[...item.querySelectorAll(".card-chips > span")].map(
 				(s) => s.textContent,
 			),
-		).toEqual(["● 1 open", "◐ 1 to verify", "✓ 1 verified", "– 1 dismissed"]);
+		).toEqual([
+			"In progress",
+			"● 1 open",
+			"◐ 1 to verify",
+			"✓ 1 verified",
+			"– 1 dismissed",
+		]);
+		expect(item.getAttribute("aria-label")).toContain(
+			"Button contrast, in progress:",
+		);
 		expect(
 			[...item.querySelectorAll(".progress.band > span")].map((s) =>
 				s.getAttribute("data-kind"),
@@ -1765,7 +2788,7 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		],
 	});
 
-	test("the notice with Allow on all sites; only what needs the page is off", () => {
+	test("why, in the tool bar in place of Add marks and Show marks; no Show on a mark; the rest works (DEC-076)", () => {
 		const c = withMark();
 		const asked: string[] = [];
 		const state = noAccess(c);
@@ -1790,26 +2813,25 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		render(state, actionsWith({ allowAllSites: () => void asked.push("all") }));
 		const notice = el("case-access");
 		expect(notice.hidden).toBe(false);
-		expect(notice.textContent).toContain("Click the Sitegloss icon");
+		expect(notice.textContent).toContain(
+			"Sitegloss has no access to this tab yet, so this case's marks are not drawn here",
+		);
+		expect(notice.textContent).toContain("For this tab only: click");
 		expect(notice.querySelector("svg.notice-icon")).not.toBeNull();
-		// In the This tab block, which says nothing else.
-		expect(notice.parentElement).toBe(el("this-tab"));
+		// In the tool bar at the bottom, always in view, where the buttons were.
+		expect(notice.parentElement?.id).toBe("case-dock");
+		expect(el("case-dock").getAttribute("role")).toBeNull();
 		expect(el("tab-line").hidden).toBe(true);
-		(
-			notice.querySelector(
-				'[data-action="allow-all-sites"]',
-			) as unknown as HTMLButtonElement
-		).click();
-		expect(asked).toEqual(["all"]);
-		// Show marks goes; Add marks is off and says why.
-		expect(el("load-case").hidden).toBe(true);
-		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(true);
-		expect(el("add-marks").title).toContain("see the notice");
-		const show = window.document.querySelector(
-			'[data-action="show"]',
+		const allow = notice.querySelector(
+			'[data-action="allow-all-sites"]',
 		) as unknown as HTMLButtonElement;
-		expect(show.disabled).toBe(true);
-		expect(show.title).toContain("see the notice");
+		expect(allow.textContent).toBe("Allow on all sites (recommended)");
+		allow.click();
+		expect(asked).toEqual(["all"]);
+		// Show marks, Add marks and a mark's Show are not there: none that does nothing.
+		expect(el("load-case").hidden).toBe(true);
+		expect(el("add-marks").hidden).toBe(true);
+		expect(window.document.querySelector('[data-action="show"]')).toBeNull();
 		// The rest works without the tab.
 		for (const id of ["export-case", "delete-case", "save-verdict"])
 			expect(el<HTMLButtonElement>(id).disabled).toBe(false);
@@ -1817,7 +2839,9 @@ describe("a case on a tab Sitegloss may not run on", () => {
 
 	test("with all sites allowed: the tab is Chrome's own, no button", () => {
 		render(noAccess(sampleCase("c_never"), true), noActions);
-		expect(el("case-access").textContent).toContain("cannot run on this tab");
+		expect(el("case-access").textContent).toContain(
+			"cannot work on this kind of page",
+		);
 		expect(
 			(
 				el("case-access").querySelector(
@@ -1857,6 +2881,47 @@ describe("a case on a tab Sitegloss may not run on", () => {
 		expect(button.hidden).toBe(true);
 	});
 
+	test("the focus stays: a focused Add marks the notice replaces hands it to the notice's button, and back once allowed (DEC-076)", () => {
+		const c = withMark();
+		const withTab = (url: string) =>
+			caseState(c, (s) => {
+				s.tab = { id: 1, url, title: "", size: undefined };
+			});
+		render(withTab("http://localhost:3000/kk"), noActions);
+		el("add-marks").focus();
+		render(withTab(""), noActions);
+		const allow = el("case-access").querySelector("button");
+		expect((window.document.activeElement as unknown) === allow).toBe(true);
+		render(withTab("http://localhost:3000/kk"), noActions);
+		expect((window.document.activeElement as unknown) === el("add-marks")).toBe(
+			true,
+		);
+	});
+
+	test("the tool bar's name goes with its role while the notice fills it; a reader meets the reason under the case's head", () => {
+		render(noAccess(withMark()), noActions);
+		expect(el("case-dock").getAttribute("aria-label")).toBeNull();
+		expect(el("case-access-pointer").hidden).toBe(false);
+		expect(el("case-access-pointer").textContent).toContain(
+			"the bar at the end of the case",
+		);
+		render(
+			caseState(withMark(), (s) => {
+				s.tab = {
+					id: 1,
+					url: "http://localhost:3000/kk",
+					title: "",
+					size: undefined,
+				};
+			}),
+			noActions,
+		);
+		expect(el("case-dock").getAttribute("aria-label")).toBe(
+			"Marks on this tab",
+		);
+		expect(el("case-access-pointer").hidden).toBe(true);
+	});
+
 	test("with access: no notice, the buttons on", () => {
 		render(
 			caseState(withMark(), (s) => {
@@ -1870,7 +2935,9 @@ describe("a case on a tab Sitegloss may not run on", () => {
 			noActions,
 		);
 		expect(el("case-access").hidden).toBe(true);
+		expect(el("case-dock").getAttribute("role")).toBe("toolbar");
 		expect(el<HTMLButtonElement>("load-case").disabled).toBe(false);
+		expect(el("add-marks").hidden).toBe(false);
 		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(false);
 	});
 });
@@ -2268,8 +3335,19 @@ describe("a case of several pages (DEC-038)", () => {
 		render(state, noActions);
 		expect(el("here").hidden).toBe(false);
 		const row = el("here-cases").querySelector('[data-case="c_flow"]');
-		// The site and the number of pages (DEC-067).
-		expect(row?.textContent).toContain("Site: shop.example · 2 pages");
+		// The site, a line right under the title, and the number of pages in
+		// the line where they were (DEC-067).
+		const sites = row?.querySelector(".card-sites");
+		expect(sites?.textContent).toBe("Site: shop.example");
+		expect(
+			(row?.querySelector(".card-head")?.nextElementSibling === sites) === true,
+		).toBe(true);
+		expect(
+			[...(sites?.childNodes ?? [])]
+				.filter((n) => n.nodeType === 3)
+				.map((n) => n.textContent),
+		).toEqual(["shop.example"]);
+		expect(row?.querySelector(".card-where")?.textContent).toBe("2 pages");
 		expect(row?.getAttribute("aria-label")).toContain(
 			"on the site shop.example, 2 pages",
 		);
@@ -2797,6 +3875,12 @@ describe("a case of several pages (DEC-038)", () => {
 		expect(showOf(3)?.getAttribute("aria-label")).toBe(
 			"Show mark 3: open Payment in this tab",
 		);
+		// Its icon alone, named, its tooltip starting with its name (DEC-078).
+		expect(showOf(3)?.textContent).toBe("");
+		expect(showOf(3)?.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
+			"true",
+		);
+		expect(showOf(3)?.title.startsWith("Show mark 3: open Payment")).toBe(true);
 		showOf(3)?.click();
 		el("case-view")
 			.querySelector<HTMLButtonElement>(
@@ -2908,15 +3992,16 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		expect(el("cloud-heading").textContent).toBe("Team");
 		// Home in the order a newcomer reads it, one level each (DEC-045).
 		expect(
-			[...document.querySelectorAll("#home h2, #home h3")].map(
-				(h) => `${h.tagName} ${h.textContent}`,
-			),
+			[...document.querySelectorAll("#home h2, #home h3")]
+				.filter((h) => !h.closest("[hidden]"))
+				.map((h) => `${h.tagName} ${h.textContent}`),
 		).toEqual([
 			"H2 This page",
 			"H2 Cases",
 			"H2 Team",
 			"H2 Files",
 			"H3 Copy to a folder",
+			"H2 Options",
 		]);
 		expect(el("cloud").dataset["cloud"]).toBe("off");
 		expect(el("cloud").textContent).toContain(
@@ -2991,6 +4076,30 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		field.blur();
 		pick("production");
 		expect(set.at(-1)).toBe("");
+	});
+
+	test("a build that goes to people does not offer the development server; whoever is set to it still sees it", () => {
+		const names = (server: string, offer: boolean) =>
+			[
+				...serverChooser(
+					{ server, signingIn: false } as Parameters<typeof serverChooser>[0],
+					offer,
+				).querySelectorAll("option"),
+			].map((o) => o.textContent);
+		const all = [
+			"Sitegloss (app.sitegloss.dev)",
+			"Development server",
+			"Another address…",
+		];
+		expect(names("https://app.sitegloss.dev", true)).toEqual(all);
+		expect(names("https://app.sitegloss.dev", false)).toEqual([
+			"Sitegloss (app.sitegloss.dev)",
+			"Another address…",
+		]);
+		// Set to the development server: it stays named, in either build.
+		expect(names("https://app.dev.sitegloss.dev", false)).toEqual(all);
+		// Self-hosting stays.
+		expect(names("http://localhost:3200", false)).toContain("Another address…");
 	});
 
 	test("a server that is not the service is said in words, beside the account and before signing in", () => {
@@ -3085,13 +4194,13 @@ describe("the account and the sync with a team (DEC-039)", () => {
 				{
 					caseId: "c_1",
 					title: "Checkout",
-					text: "A change to a mark was not taken: A mark holds at most 20 findings.",
+					text: "A change to a mark was not taken: A mark holds at most 6 images.",
 				},
 			],
 			undecided: 0,
 		});
 		expect(el("cloud-problems").textContent).toBe(
-			"“Checkout”: A change to a mark was not taken: A mark holds at most 20 findings.",
+			"“Checkout”: A change to a mark was not taken: A mark holds at most 6 images.",
 		);
 	});
 
@@ -3195,52 +4304,6 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		expect(ago("2026-11-20T14:07:00.000Z", now)).toBe("1 minute ago");
 		expect(ago("2026-11-20T13:08:00.000Z", now)).toBe("1 hour ago");
 		expect(ago("2026-11-18T14:08:00.000Z", now)).toStartWith("on ");
-	});
-
-	test("the tab in front is the team's web app: said in one line, only for the server signed in to (DEC-045)", () => {
-		const tab = (url: string) => ({
-			id: 1,
-			url,
-			title: "Case",
-			size: undefined,
-		});
-		const at = (url: string, more: Partial<Cloud> = {}) => {
-			const state = initialState();
-			Object.assign(state.cloud, { account: account(), ...more });
-			state.tab = tab(url);
-			render(state, noActions);
-			return el("web-app-note");
-		};
-		const note = at("https://app.sitegloss.dev/t/pedal/cases/c_1");
-		expect(note.hidden).toBe(false);
-		expect(note.textContent).toContain(
-			"your team's web app at app.sitegloss.dev",
-		);
-		expect(at("https://shop.example/cart").hidden).toBe(true);
-		// Signed out: no team, no web app of one.
-		expect(
-			at("https://app.sitegloss.dev/t/pedal", { account: undefined }).hidden,
-		).toBe(true);
-		// Signed in to the development server: the service's pages are not its web app.
-		expect(
-			at("https://app.sitegloss.dev/t/pedal", {
-				account: account({ server: "https://app.dev.sitegloss.dev" }),
-			}).hidden,
-		).toBe(true);
-		expect(
-			at("https://app.dev.sitegloss.dev/t/pedal", {
-				account: account({ server: "https://app.dev.sitegloss.dev" }),
-			}).hidden,
-		).toBe(false);
-		// Not in an open case (DEC-061): Home says it; the case's head stays calm.
-		const c = sampleCase("c_1");
-		const state = caseState(c, (s) => {
-			s.cloud.account = account();
-			s.tab = tab("https://app.sitegloss.dev/t/pedal/cases/c_1");
-		});
-		render(state, noActions);
-		expect(el("case-view").textContent).not.toContain("your team's web app");
-		expect(webAppNote(state)).toContain("your team's web app");
 	});
 
 	test("an AI app just paired: its card says what to ask it and offers the way back (DEC-045)", () => {
@@ -3548,15 +4611,6 @@ describe("the account and the sync with a team (DEC-039)", () => {
 							user: { id: "u_tess", name: "Tess Tester" },
 						},
 					},
-					findings: [
-						{
-							id: "f_1",
-							text: "The token is overridden",
-							app,
-							at: "2026-11-19T09:30:00.000Z",
-							user: { id: "u_dana", name: "Dana Developer" },
-						},
-					],
 				},
 			],
 		};
@@ -3567,9 +4621,6 @@ describe("the account and the sync with a team (DEC-039)", () => {
 		);
 		expect(history[0]).toContain("by Dana Developer via Claude");
 		expect(history[1]).toContain("by Tess Tester");
-		expect(mark?.querySelector(".finding-meta")?.textContent).toContain(
-			"Dana Developer via Claude",
-		);
 		expect(mark?.querySelector(".mark-by")?.textContent).toBe(
 			"Added by Tess Tester",
 		);
@@ -3862,6 +4913,89 @@ describe("the thread and closing (DEC-046)", () => {
 	});
 });
 
+describe("after Close case", () => {
+	test("the list says once where the case is and takes the focus once: on the card where it is on screen, else on the heading", () => {
+		const c = sampleCase("c_gone");
+		const shut: Case = { ...c, closed: { at: "2026-11-20T12:00:00.000Z" } };
+		const home = (n: number, text: string | undefined) => {
+			const state = initialState();
+			state.cases = [sampleCase("c_open"), shut];
+			state.hint = text;
+			state.homeFocus = { seq: n, caseId: "c_gone" };
+			render(state, noActions);
+			return state;
+		};
+		const said = closedSaid(shut);
+		expect(said).toBe(
+			`\u201c${shut.title}\u201d is closed. It is under Closed.`,
+		);
+		home(1, said);
+		expect(el("hint").textContent).toBe(said);
+		expect(el("hint").hidden).toBe(false);
+		// Under Closed, folded: the heading of the list, never the body.
+		const heading = el("cases-heading");
+		expect((window.document.activeElement as unknown) === heading).toBe(true);
+		// The same request drawn again takes no focus back.
+		const other = el("cases").querySelector(
+			'[data-case="c_open"]',
+		) as unknown as HTMLElement;
+		other.focus();
+		home(1, said);
+		expect((window.document.activeElement as unknown) === other).toBe(true);
+	});
+
+	test("the hint is a status line, and the Close button is busy while the panel leaves", () => {
+		expect(el("hint").getAttribute("role")).toBe("status");
+		const c = sampleCase("c_busy");
+		render(caseState(c), noActions);
+		expect(el<HTMLButtonElement>("close-case").disabled).toBe(false);
+		render(
+			caseState(c, (s) => {
+				s.leaving = { phase: "finishing" };
+			}),
+			noActions,
+		);
+		expect(el<HTMLButtonElement>("close-case").disabled).toBe(true);
+		expect(el("close-case").getAttribute("aria-busy")).toBe("true");
+		render(caseState(c), noActions);
+		expect(el("close-case").hasAttribute("aria-busy")).toBe(false);
+	});
+
+	test("under This page only open cases are promoted: closed ones fold in their own Closed section under the main action", () => {
+		const url = "https://www.example.com/kk";
+		const shut = (id: string): Case => ({
+			...sampleCase(id),
+			closed: { at: "2026-11-20T12:00:00.000Z" },
+		});
+		const home = (cases: Case[]) => {
+			const state = initialState();
+			state.tab = { id: 1, url, title: "KK", status: "complete" } as never;
+			state.cases = cases;
+			render(state, noActions);
+		};
+		// Closed only: as for a page without a case.
+		home([shut("c_a")]);
+		expect(el("here").hidden).toBe(true);
+		expect(el("open-here").hidden).toBe(true);
+		expect(el("new-case").classList.contains("primary")).toBe(true);
+		const group = el<HTMLDetailsElement>("closed-here");
+		expect(group.open).toBe(false);
+		expect(group.querySelector("summary")?.textContent).toBe("Closed 1");
+		expect(el("closed-cases")).toBeNull();
+		// Open and closed: the open one is promoted, the closed one counted.
+		home([sampleCase("c_o"), shut("c_a")]);
+		expect(el("here").hidden).toBe(false);
+		expect(el("open-here").hidden).toBe(false);
+		expect(el("new-case").classList.contains("primary")).toBe(false);
+		expect(el("here-cases").querySelectorAll("[data-case]")).toHaveLength(1);
+		expect(el("closed-here").querySelectorAll("[data-case]")).toHaveLength(1);
+		// None: nothing under This page.
+		home([]);
+		expect(el("here").hidden).toBe(true);
+		expect(el("closed-here")).toBeNull();
+	});
+});
+
 describe("what stays between renders", () => {
 	test("the open case's buttons stay the same elements", () => {
 		const c = sampleCase("c_keep");
@@ -3979,10 +5113,10 @@ describe("the summary for the developer", () => {
 		const none = window.document.querySelector('[data-case="c_none"]');
 		expect(none?.querySelector(".card-summary")).toBeNull();
 		expect(none?.getAttribute("aria-label")).not.toContain("summary");
-		// The summary is the case's content: right under its title, before
-		// the facts (DEC-064).
+		// The summary is the case's content: under the title and its sites
+		// line, before the facts (DEC-064, DEC-067).
 		expect(
-			card?.querySelector(".card-head")?.nextElementSibling?.className,
+			card?.querySelector(".card-sites")?.nextElementSibling?.className,
 		).toBe("card-summary");
 	});
 
@@ -4074,7 +5208,7 @@ describe("an imported case", () => {
 		expect(el("case-origin").textContent).toContain("Imported from a file");
 		// What came in with it is the file's: statuses and reopen notes too.
 		expect(el("case-origin").textContent).toContain(
-			"statuses and reopen notes, summary and findings are as the file says",
+			"statuses and reopen notes and summary are as the file says",
 		);
 		render(caseState(sampleCase("c_j")), noActions);
 		expect(el("case-origin").hidden).toBe(true);
@@ -4213,7 +5347,8 @@ describe("the AI app", () => {
 		expect(el("ai-status").textContent).toBe("Connected: Claude");
 		// The owner: Stop goes; the switch in the AI view stops AI access.
 		expect(el("stop-ai")).toBeNull();
-		expect(el("bar").querySelectorAll("button").length).toBe(2);
+		// Back, the case's id to copy, and the AI pill: no Stop among them.
+		expect(el("bar").querySelectorAll("button").length).toBe(3);
 		expect(el("ai-switch").closest("label")?.title).toContain(
 			"stops that at once",
 		);
@@ -4576,6 +5711,45 @@ describe("the New case button (DEC-023, DEC-026)", () => {
 		expect(primary("new-case")).toBe(true);
 	});
 
+	test("a page whose case waits for me to verify: This page says so, and Start verifying is the action (DEC-079)", () => {
+		const calls: string[] = [];
+		const actions = actionsWith({
+			openCase: (id) => void calls.push(`open ${id}`),
+			verifyCase: (id) => void calls.push(`verify ${id}`),
+		});
+		const base = withOneMark(sampleCase("c_back"));
+		const mark = base.marks[0] as Mark;
+		const withStatus = (...fixed: boolean[]): Case => ({
+			...base,
+			marks: fixed.map((f, i) => ({
+				...mark,
+				id: `m${i + 1}`,
+				number: i + 1,
+				...(f ? { resolution: { kind: "fixed", at: base.updatedAt } } : {}),
+			})),
+		});
+		const at = (cases: Case[]) => {
+			const state = initialState();
+			state.tab = { id: 1, url: base.page.url, title: "", size: undefined };
+			state.cases = cases;
+			render(state, actions);
+		};
+		// Signed out, two marks fixed on this page.
+		at([withStatus(true, true, false)]);
+		expect(el("here-text").textContent).toBe(
+			"2 marks wait for you to verify on this page.",
+		);
+		expect(el("open-here").textContent).toBe("Start verifying");
+		expect(el("open-here").classList.contains("primary")).toBe(true);
+		el("open-here").click();
+		// Nothing fixed: the ordinary sentence and Open this case.
+		at([withStatus(false, false)]);
+		expect(el("here-text").textContent).toContain("already has a case");
+		expect(el("open-here").textContent).toBe("Open this case");
+		el("open-here").click();
+		expect(calls).toEqual(["verify c_back", "open c_back"]);
+	});
+
 	test("no hint lines for drafts: there are no drafts (DEC-026)", () => {
 		home(overlay({ visible: true, drafts: 3 }));
 		expect(el("hint").hidden).toBe(true);
@@ -4879,7 +6053,25 @@ describe("the top bar and Settings (DEC-023)", () => {
 		);
 		// In the top bar, before the AI pill.
 		expect(el("back").parentElement).toBe(el("bar"));
-		expect(el("back").nextElementSibling).toBe(el("ai-button"));
+		// Then the case's id to copy and its spoken word, then the AI pill.
+		// (Compared as booleans: a failed comparison of two elements prints the whole page.)
+		expect(el("back").nextElementSibling === el("copy-case-id")).toBe(true);
+		expect(el("bar").lastElementChild === el("ai-button")).toBe(true);
+		// The open case's id is there to copy, named with it; not on Home.
+		expect(el("copy-case-id").hidden).toBe(false);
+		expect(el("copy-case-id").title).toContain("c_");
+		expect(el("copy-case-id").getAttribute("aria-label")).toBe(
+			"Copy this case's id",
+		);
+		// A refusal shows the id to copy by hand; another case forgets it.
+		el("copy-case-id").click();
+		expect(el("copy-case-failed").hidden).toBe(false);
+		expect(el("copy-case-shown").textContent).toBe("c_top");
+		render(caseState(sampleCase("c_other")), noActions);
+		expect(el("copy-case-failed").hidden).toBe(true);
+		render(initialState(), noActions);
+		expect(el("copy-case-id").hidden).toBe(true);
+		render(caseState(sampleCase("c_top")), actions);
 		el("back").click();
 		expect(called).toEqual(["close"]);
 	});
@@ -4940,15 +6132,30 @@ describe("the top bar and Settings (DEC-023)", () => {
 		expect(el("leave-hint").hidden).toBe(true);
 	});
 
-	test("Settings holds the AI app card and the options, over Home or a case", () => {
+	test("Settings holds the AI app card only, over Home or a case; the options are on Home, last (DEC-076)", () => {
 		const called: string[] = [];
 		const actions = actionsWith({
 			closeSettings: () => void called.push("back"),
 			closeCase: () => void called.push("close"),
 		});
 		expect(el("ai-card").closest("main")).toBe(el("settings"));
-		expect(el("all-sites").closest("main")).toBe(el("settings"));
-		expect(el("blur-forms").closest("main")).toBe(el("settings"));
+		expect(el("all-sites").closest("main")?.id).toBe("home");
+		expect(el("blur-forms").closest("main")?.id).toBe("home");
+		expect(el("home").lastElementChild?.id).toBe("options");
+		// Access first, "highly recommended", with what it means under it.
+		const options = [...el("options").querySelectorAll("input")].map(
+			(i) => i.id,
+		);
+		expect(options).toEqual(["all-sites", "blur-forms"]);
+		expect(el("all-sites").closest("label")?.textContent?.trim()).toBe(
+			"Allow on all sites (highly recommended)",
+		);
+		expect(el("all-sites").getAttribute("aria-describedby")).toBe(
+			"all-sites-note",
+		);
+		expect(el("all-sites-note").textContent).toContain(
+			"Without it, Sitegloss works on a tab only after you click its icon there",
+		);
 		const c = sampleCase("c_set");
 		render(
 			caseState(c, (s) => (s.settings = true)),
@@ -5007,10 +6214,11 @@ describe("the case view's actions and this tab (DEC-023)", () => {
 		// The last thing in the case's view: sticky, it rests after the content.
 		expect(dock.parentElement?.lastElementChild === dock).toBe(true);
 		expect(dock.getAttribute("role")).toBe("toolbar");
-		expect([...dock.querySelectorAll("button")].map((b) => b.id)).toEqual([
-			"add-marks",
-			"load-case",
-		]);
+		expect(
+			[...dock.querySelectorAll("button")]
+				.filter((b) => !b.closest(".notice"))
+				.map((b) => b.id),
+		).toEqual(["add-marks", "load-case"]);
 		expect(el("case-view").querySelectorAll("#add-marks").length).toBe(1);
 		// Calm at rest (DEC-064): the secondary look, amber only while adding.
 		expect(el("add-marks").classList.contains("primary")).toBe(false);
@@ -5339,24 +6547,36 @@ describe("a loaded mark", () => {
 			expect(from).toBeGreaterThanOrEqual(0);
 			return css.slice(from, css.indexOf("}", from)).replace(/\s+/g, " ");
 		};
-		for (const [selector, tone] of [
-			['[data-status="open"],\n[data-group="open"]', "--st-open"],
-			['[data-status="fixed"],\n[data-group="toVerify"]', "--st-verify"],
-			['[data-status="verified"],\n[data-group="verified"]', "--st-verified"],
+		for (const [selector, tone, pin] of [
+			['[data-status="open"],\n[data-group="open"]', "--st-open", "--pin-open"],
+			[
+				'[data-status="fixed"],\n[data-group="toVerify"]',
+				"--st-verify",
+				"--pin-verify",
+			],
+			[
+				'[data-status="verified"],\n[data-group="verified"]',
+				"--st-verified",
+				"--pin-verified",
+			],
 			[
 				'[data-status="wontfix"],\n[data-status="cantreproduce"],\n[data-group="dismissed"]',
 				"--st-dismissed",
+				"--pin-dismissed",
 			],
-		] as const)
+		] as const) {
 			expect(rule(selector)).toContain(`--tone: var(${tone});`);
-		// Found, or not looked for: filled, with a ring of paper on the rail.
+			expect(rule(selector)).toContain(`--pin: var(${pin});`);
+		}
+		// Found, or not looked for: filled in the page's pin colour, with a
+		// ring of paper on the rail.
 		expect(rule(".number")).toContain(
-			"background: var(--tone, var(--st-open));",
+			"background: var(--pin, var(--pin-open));",
 		);
 		expect(rule(".number")).toContain("box-shadow: 0 0 0 2px var(--paper);");
 		// Unsure: a dashed ring outside it. Not found: hollow.
 		expect(rule('.mark[data-colour="unsure"] .number')).toContain(
-			"outline: 1.5px dashed var(--tone, var(--st-open));",
+			"outline: 1.5px dashed var(--pin, var(--pin-open));",
 		);
 		const hollow = rule('.mark[data-colour="lost"] .number');
 		expect(hollow).toContain("background: var(--paper);");
@@ -5829,7 +7049,7 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 			`[data-mark-link="${which}"]`,
 		) as unknown as HTMLButtonElement | null;
 
-	test("Home: on the same page of the same site, open cases first and closed ones after; another host offers none", () => {
+	test("Home: on the same page of the same site, only open cases are promoted, closed ones fold under the main action; another host offers none", () => {
 		const state = initialState();
 		state.tab = tab("https://shop.example/search?q=boots");
 		state.cases = [
@@ -5842,18 +7062,17 @@ describe("where a mark was made, and the offer on Home (DEC-050)", () => {
 		const rows = [...el("here-cases").querySelectorAll("[data-case]")].map(
 			(b) => b.getAttribute("data-case"),
 		);
-		expect(rows).toEqual(["c_open", "c_closed"]);
+		expect(rows).toEqual(["c_open"]);
 		expect(
-			el("here-cases").querySelector('[data-case="c_closed"] .closed-tag')
+			el("closed-here").querySelector('[data-case="c_closed"] .closed-tag')
 				?.textContent,
 		).toBe("Closed");
-		expect(el("here-text").textContent).toContain("already has 2 cases");
+		expect(el("here-text").textContent).toContain("already has a case");
 		// Not under Closed as well.
 		expect(
-			window.document.querySelector(
-				'ul.cases[data-group="closed"] [data-case="c_closed"]',
-			),
-		).toBeNull();
+			window.document.querySelector('#closed-cases [data-case="c_closed"]') ===
+				null,
+		).toBe(true);
 		// The same path on localhost: nothing offered, nothing about other sites.
 		state.tab = tab("http://localhost:3000/search?q=shoes");
 		render(state, noActions);
@@ -5961,4 +7180,329 @@ test("two hosts' home pages are two pages, named with their hosts; other pages b
 	expect(pagePath("https://staging.example/t/a/settings")).toBe(
 		"/t/a/settings",
 	);
+});
+
+describe("what comes next on the open case (DEC-069)", () => {
+	const AT = "2026-11-04T10:00:00Z";
+	const TEAM = {
+		id: "t_1",
+		name: "Pedal & Pine web",
+		slug: "pedal-pine",
+		permissions: ["case:create", "case:close"],
+	};
+	const signedIn = (s: PanelState, modes: PanelState["cloud"]["modes"]) => {
+		s.cloud.account = {
+			name: "Tess",
+			email: "tess@example.com",
+			userId: "u_tess",
+			server: "https://app.sitegloss.dev",
+			teams: [TEAM],
+			teamId: "t_1",
+			expired: false,
+		};
+		s.cloud.modes = modes;
+	};
+	const step = (action: string) =>
+		el("next-step").querySelector(
+			`[data-step="${action}"]`,
+		) as unknown as HTMLButtonElement | null;
+
+	test("a named region under the counts, whose buttons are the panel's own actions", () => {
+		const done: string[] = [];
+		const actions = actionsWith({
+			addMarks: (c) => void done.push(`add ${c.id}`),
+			cloudShare: (id) => void done.push(`share ${id}`),
+			setCaseClosed: (id, closed) => void done.push(`close ${id} ${closed}`),
+			startVerifying: (c) => void done.push(`verify ${c.id}`),
+		});
+		const empty = sampleCase();
+		render(caseState(empty), actions);
+		expect(el("next-step").getAttribute("aria-label")).toBe("Next step");
+		expect(el("case-counts").nextElementSibling?.id).toBe("next-step");
+		step("add-marks")?.click();
+
+		const marked = withOneMark(sampleCase());
+		render(
+			caseState(marked, (s) => signedIn(s, { c_1: "local" })),
+			actions,
+		);
+		step("share")?.click();
+
+		const fixed = withOneMark(sampleCase());
+		const one = fixed.marks[0] as Mark;
+		fixed.marks = [{ ...one, resolution: { kind: "fixed", at: AT } }];
+		render(caseState(fixed), actions);
+		step("verify")?.click();
+
+		const settled = {
+			...fixed,
+			marks: [{ ...one, resolution: { kind: "wontfix" as const, at: AT } }],
+		};
+		render(caseState(settled), actions);
+		step("close")?.click();
+		expect(done).toEqual([
+			"add c_1",
+			"share c_1",
+			"verify c_1",
+			"close c_1 true",
+		]);
+
+		// Closed: no block at all.
+		render(caseState({ ...settled, closed: { at: AT } }), actions);
+		expect(el("next-step").classList.contains("visually-hidden")).toBe(true);
+		// Empty, it is no named region for a reader to land on.
+		expect(el("next-step").hasAttribute("aria-label")).toBe(false);
+	});
+
+	test("its sentence is written once, not again on a render that leaves it as it was", () => {
+		const c = withOneMark(sampleCase());
+		render(caseState(c), noActions);
+		const words = el("next-step-text").firstChild;
+		render(caseState(c), noActions);
+		expect(el("next-step-text").firstChild).toBe(words);
+	});
+
+	test("Add marks is off where the tool bar's is, and says why", () => {
+		const state = caseState(sampleCase(), (s) => {
+			s.tab = {
+				id: 1,
+				url: "https://www.example.com/kk",
+				title: "",
+			} as PanelState["tab"];
+			s.leaving = { phase: "finishing" };
+		});
+		render(state, noActions);
+		expect(el<HTMLButtonElement>("add-marks").disabled).toBe(true);
+		expect(step("add-marks")?.disabled).toBe(true);
+		expect(step("add-marks")?.title).toBe(el("add-marks").title);
+	});
+
+	test("on a tab without access Add marks is not there either: the tool bar says why (DEC-076)", () => {
+		const state = caseState(sampleCase(), (s) => {
+			s.tab = { id: 1, url: "", loading: false } as PanelState["tab"];
+		});
+		render(state, noActions);
+		expect(el("add-marks").hidden).toBe(true);
+		expect(step("add-marks")).toBeNull();
+		expect(el("case-access").hidden).toBe(false);
+	});
+
+	test("the copies, once the team has the case; what a copy did is said under it", () => {
+		const done: string[] = [];
+		const c = withOneMark(sampleCase());
+		const state = caseState(c, (s) => {
+			signedIn(s, { c_1: "synced" });
+			s.cloud.atTeam = { c_1: "t_1" };
+			s.copied = {
+				caseId: "c_1",
+				what: "copy-link",
+				text: "Link copied.",
+				at: 1,
+			};
+		});
+		render(
+			state,
+			actionsWith({
+				copyCaseLink: (x) => void done.push(`link ${x.id}`),
+				copyForAiApp: (x) => void done.push(`ai ${x.id}`),
+			}),
+		);
+		// Copy link is its icon alone, named; Copy for your AI app keeps its words (DEC-078).
+		expect(step("copy-link")?.textContent).toBe("");
+		expect(step("copy-link")?.getAttribute("aria-label")).toBe("Copy link");
+		expect(step("copy-link")?.title.startsWith("Copy link: ")).toBe(true);
+		expect(step("copy-ai")?.textContent).toBe("Copy for your AI app");
+		step("copy-link")?.click();
+		step("copy-ai")?.click();
+		expect(done).toEqual(["link c_1", "ai c_1"]);
+		expect(el("next-step-note").textContent).toBe("Link copied.");
+		expect(el("next-step-note").getAttribute("role")).toBe("status");
+		// The step moved on (no link any more): what the copy did is not said.
+		state.cloud.atTeam = {};
+		render(state, noActions);
+		expect(el("next-step-note").textContent).toBe("");
+	});
+});
+
+describe("the hand-over in the panel (DEC-071)", () => {
+	const TESS = { id: "u_tess", name: "Tess" };
+	const DANA = { id: "u_dana", name: "Dana" };
+	const signedIn = (s: PanelState) => {
+		s.cloud.account = {
+			name: "Tess",
+			email: "tess@example.com",
+			userId: TESS.id,
+			server: "https://app.sitegloss.dev",
+			teams: [
+				{ id: "t_1", name: "Web", slug: "web", permissions: ["case:update"] },
+			],
+			teamId: "t_1",
+			expired: false,
+		};
+		s.cloud.atTeam = { c_1: "t_1" };
+		s.cloud.members = [DANA, TESS];
+	};
+
+	test("the main view says the hand-over once: under Team before signing in, in the empty list with a team", () => {
+		const said = () =>
+			(el("home").textContent ?? "").split(HAND_OVER_NOTE).length - 1;
+		render(initialState(), noActions);
+		expect(said()).toBe(1);
+		expect(el("cloud-hand-over")?.textContent).toBe(HAND_OVER_NOTE);
+		const team = initialState();
+		signedIn(team);
+		render(team, noActions);
+		expect(said()).toBe(1);
+		expect(el("cloud-hand-over")).toBeNull();
+	});
+
+	test("Assign is a menu: you first, the others, then Nobody; the one who has it is checked, and a pick assigns", () => {
+		const picked: (string | null)[] = [];
+		const c = { ...withOneMark(sampleCase()), createdBy: TESS, assignee: DANA };
+		render(
+			caseState(c, signedIn),
+			actionsWith({
+				assignCase: (id, to) => void picked.push(`${id} ${to?.id ?? null}`),
+			}),
+		);
+		const button = el("next-step").querySelector(
+			'[data-step="assign"]',
+		) as unknown as HTMLButtonElement;
+		expect(button.textContent).toBe("Reassign");
+		expect(button.getAttribute("aria-haspopup")).toBe("menu");
+		const menu = el("assign-menu");
+		expect(menu.hidden).toBe(true);
+		button.click();
+		expect(menu.hidden).toBe(false);
+		expect(button.getAttribute("aria-expanded")).toBe("true");
+		const items = [...menu.querySelectorAll('[role="menuitemradio"]')];
+		expect(items.map((x) => x.textContent?.replace("✓", ""))).toEqual([
+			"You",
+			"Dana",
+			"Nobody",
+		]);
+		expect(items.map((x) => x.getAttribute("aria-checked"))).toEqual([
+			"false",
+			"true",
+			"false",
+		]);
+		(items[2] as unknown as HTMLButtonElement).click();
+		expect(picked).toEqual(["c_1 null"]);
+		expect(menu.hidden).toBe(true);
+		// Escape closes it, the focus back on its button.
+		button.click();
+		menu.dispatchEvent(
+			new window.KeyboardEvent("keydown", {
+				key: "Escape",
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(menu.hidden).toBe(true);
+		expect(window.document.activeElement === (button as unknown)).toBe(true);
+		// A press anywhere outside it closes it too.
+		button.click();
+		el("case-facts").dispatchEvent(
+			new window.PointerEvent("pointerdown", {
+				bubbles: true,
+			}) as unknown as Event,
+		);
+		expect(menu.hidden).toBe(true);
+		expect(button.getAttribute("aria-expanded")).toBe("false");
+	});
+
+	test("My cases: a chip with its count; on, the list keeps the person's cases only", () => {
+		const shown: boolean[] = [];
+		const theirs = {
+			...withOneMark(sampleCase("c_theirs")),
+			title: "Theirs",
+			createdBy: TESS,
+			assignee: DANA,
+		};
+		const given = {
+			...withOneMark(sampleCase("c_given")),
+			title: "Given",
+			createdBy: DANA,
+			assignee: TESS,
+		};
+		const state = initialState();
+		signedIn(state);
+		state.cases = [theirs, given];
+		const actions = actionsWith({ showMine: (on) => void shown.push(on) });
+		render(state, actions);
+		const chip = el<HTMLButtonElement>("my-cases");
+		expect(chip.textContent).toBe("My cases1");
+		expect(chip.getAttribute("aria-pressed")).toBe("false");
+		chip.focus();
+		chip.click();
+		expect(shown).toEqual([true]);
+		const listed = () =>
+			[
+				...window.document.querySelectorAll('[data-group="other"] [data-case]'),
+			].map((x) => x.getAttribute("data-case"));
+		expect(listed()).toEqual(["c_theirs", "c_given"]);
+		state.mine = true;
+		render(state, actions);
+		expect(listed()).toEqual(["c_given"]);
+		// Pressed, it keeps the focus (drawn anew, focused anew).
+		expect(el("my-cases").getAttribute("aria-pressed")).toBe("true");
+		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
+			true,
+		);
+		// A focused card that leaves the list hands the focus to My cases.
+		(
+			window.document.querySelector(
+				'[data-case="c_given"]',
+			) as unknown as HTMLElement
+		).focus();
+		state.cases = [theirs, { ...given, assignee: DANA }];
+		render(state, actions);
+		expect(listed()).toEqual([]);
+		expect(window.document.activeElement === (el("my-cases") as unknown)).toBe(
+			true,
+		);
+		state.cases = [theirs, given];
+		// The person's case under "This page" counts, and the list says so.
+		const onPage = initialState();
+		signedIn(onPage);
+		onPage.mine = true;
+		onPage.tab = {
+			id: 1,
+			url: given.page.url,
+			title: "KK",
+			size: undefined,
+		};
+		onPage.cases = [theirs, given].map((x) =>
+			x.id === "c_given"
+				? x
+				: {
+						...x,
+						page: { ...x.page, url: "https://other.example/" },
+						shots: [],
+					},
+		);
+		render(onPage, actions);
+		expect(el("my-cases").textContent).toBe("My cases1");
+		expect(el("cases").querySelector(".empty")?.textContent).toBe(
+			"No other case waits for you.",
+		);
+		// A card says who has the open marks.
+		expect(
+			window.document.querySelector('[data-case="c_given"] .card-assignee')
+				?.textContent,
+		).toBe(" · Assigned to you");
+		// Not signed in, or a server that assigns no cases: no filter,
+		// nothing about assignees.
+		const out = initialState();
+		out.cases = [theirs, given];
+		render(out, actions);
+		expect(el("my-cases")).toBeNull();
+		expect(window.document.querySelector(".card-assignee")).toBeNull();
+		const old = initialState();
+		signedIn(old);
+		old.cloud.members = undefined;
+		old.cases = [theirs, given];
+		render(old, actions);
+		expect(el("my-cases")).toBeNull();
+		expect(window.document.querySelector(".card-assignee")).toBeNull();
+	});
 });

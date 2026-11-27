@@ -16,9 +16,9 @@ import type { CaseComment, ImageAdded } from "../case.ts";
 import type { Kv } from "../kv.ts";
 import type {
 	ImageRef,
+	Member,
 	Op,
 	Team,
-	WireFinding,
 	WireReopen,
 	WireResolution,
 } from "./api.ts";
@@ -38,8 +38,19 @@ export const KEYS = {
 	status: "status",
 	/** How each case syncs: read by the panel, which needs no more of a book. */
 	modes: "modes",
+	/**
+	 * The cases the server has, as the sync last knew it, with the team's id
+	 * (DEC-069): those synced with a book that holds the server's copy. Read
+	 * by the panel, which offers a case's link only then.
+	 */
+	atTeam: "atTeam",
 	/** When the team's whole state has to be read again. */
 	whole: "whole",
+	/**
+	 * The chosen team's members, to assign a case to (DEC-071): read by the
+	 * panel and the AI app's tools, so the menu works offline too.
+	 */
+	members: "members",
 } as const;
 
 /** What a case's book is kept under, before the case's id. */
@@ -59,6 +70,7 @@ const ABOUT_CASES: ReadonlySet<string> = new Set([
 	KEYS.queue,
 	KEYS.whole,
 	KEYS.modes,
+	KEYS.atTeam,
 	KEYS.status,
 ]);
 
@@ -105,6 +117,26 @@ export async function forgetCases(kv: Kv): Promise<void> {
 		}
 		return { set, remove };
 	});
+}
+
+/**
+ * The members of a team as the server last listed them (DEC-071), and when
+ * (ms). `members` null: the server lists none (one from before assignees).
+ */
+export interface TeamMembers {
+	teamId: string;
+	members: Member[] | null;
+	at: number;
+}
+
+/** The members of the team `teamId`, as stored; none: not known. */
+export function membersOf(
+	value: unknown,
+	teamId: string | undefined,
+): Member[] | undefined {
+	const stored = value as TeamMembers | undefined;
+	if (teamId === undefined || stored?.teamId !== teamId) return undefined;
+	return stored.members ?? undefined;
 }
 
 /** Who is signed in, and where. */
@@ -155,7 +187,6 @@ export interface MarkContent {
 	author: "user" | "ai";
 	resolution: WireResolution | null;
 	reopens: WireReopen[];
-	findings: WireFinding[];
 	/**
 	 * The images added to the mark, in order (DEC-058). Absent: not told (a
 	 * server from before images, or a shadow written before them), which
@@ -199,6 +230,11 @@ export interface Shadow {
 	marks: Record<string, ShadowMark>;
 	/** Closed at the server (DEC-046); none: open, or a build before it. */
 	closed?: boolean;
+	/**
+	 * The user id the case is assigned to at the server (DEC-071), `null`
+	 * nobody; none: not told (a server from before, a book from before).
+	 */
+	assignee?: string | null;
 	/** The thread at the server, by the comment's id (the same here). */
 	comments?: Record<string, ShadowComment>;
 }
@@ -430,14 +466,55 @@ export class Books {
 		await this.kv.remove(BOOK + caseId);
 	}
 
-	/** Write how each case syncs, for the panel. */
-	async publishModes(): Promise<Record<string, SyncMode>> {
+	/**
+	 * Write how each case syncs, and which cases the server confirmed and in
+	 * which team (`confirmedTeam`), for the panel: only when either differs
+	 * from what is stored, so it is cheap to call at the end of every run,
+	 * and a run that stopped before it is made good by the next. `books`:
+	 * the books as just read, while none was written since.
+	 */
+	async publishModes(
+		books?: Map<string, CaseBook>,
+	): Promise<Record<string, SyncMode>> {
 		const modes: Record<string, SyncMode> = {};
-		for (const book of (await this.all()).values())
+		const atTeam: Record<string, string> = {};
+		for (const book of (books ?? (await this.all())).values()) {
 			modes[book.caseId] = book.mode;
-		await this.kv.set({ [KEYS.modes]: modes });
+			const team = confirmedTeam(book);
+			if (team !== undefined) atTeam[book.caseId] = team;
+		}
+		const same =
+			sameRecord(await this.kv.get(KEYS.modes), modes) &&
+			sameRecord(await this.kv.get(KEYS.atTeam), atTeam);
+		if (!same)
+			await this.kv.set({ [KEYS.modes]: modes, [KEYS.atTeam]: atTeam });
 		return modes;
 	}
+}
+
+/** Whether `stored` is a record of the very entries of `now`. */
+function sameRecord(stored: unknown, now: Record<string, string>): boolean {
+	if (typeof stored !== "object" || stored === null) return false;
+	const entries = Object.entries(stored as Record<string, unknown>);
+	return (
+		entries.length === Object.keys(now).length &&
+		entries.every(([key, value]) => now[key] === value)
+	);
+}
+
+/**
+ * The team whose server confirmed the case as its book has it now, or none
+ * (DEC-069): what the panel's link for it rests on. Synced, with the
+ * server's copy (`shadow`), and no read of it pending that holds back what
+ * is sent: a book taken up again (`resumed`), joined with the team's copy
+ * (`join`) or missing here has a copy of before until the server answers.
+ * A `failed` read leaves the server's copy as it was (`blocks` in engine.ts).
+ */
+export function confirmedTeam(book: CaseBook): string | undefined {
+	if (book.mode !== "synced" || book.shadow === undefined) return undefined;
+	if (book.reread !== undefined && book.reread.why !== "failed")
+		return undefined;
+	return book.teamId;
 }
 
 /** The account, as stored; `undefined`: nobody is signed in. */

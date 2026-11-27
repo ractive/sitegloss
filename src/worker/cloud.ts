@@ -41,10 +41,12 @@ import {
 	casesForgotten,
 	forgetCases,
 	KEYS,
+	membersOf,
 	readAccount,
 	teamOf,
 } from "../lib/cloud/book.ts";
 import { CloudSync } from "../lib/cloud/engine.ts";
+import { findingsIntoThreadsOnce } from "../lib/cloud/findings.ts";
 import {
 	chosenServer,
 	SERVER_KEY,
@@ -53,10 +55,12 @@ import {
 	serverOrigin,
 	serverProblem,
 } from "../lib/cloud/servers.ts";
+import { debugLog } from "../lib/debug.ts";
 import { cropImages } from "../lib/images.ts";
 import type { Kv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
 import { type CaseStore, DB_VERSION } from "../lib/store.ts";
+import type { HandOver } from "./tools.ts";
 
 /** The alarm that looks for the team's changes while no panel listens. */
 export const CLOUD_ALARM = "sitegloss-cloud";
@@ -169,13 +173,26 @@ export class Cloud {
 	 * store opened at its version 2 (its upgrade emptied it), then the cloud's
 	 * database brought along in one step (`forgetCases`): here, in the
 	 * worker, and nowhere else. The store not open yet (held up by a build
-	 * before this one, say): no, and nothing is forgotten.
+	 * before this one, say): no, and nothing is forgotten. Then, once, what
+	 * the servers own of the findings goes from the cases here and every
+	 * book loses its findings (DEC-081, `findingsIntoThreadsOnce`).
 	 */
 	async #casesReady(): Promise<boolean> {
 		const deps = this.#deps;
 		if ((await deps.store.version()) !== DB_VERSION) return false;
 		await forgetCases(deps.kv);
-		return casesForgotten(deps.kv);
+		if (!(await casesForgotten(deps.kv))) return false;
+		// The findings the servers own leave this browser (DEC-081). A run
+		// that did not go whole is tried again at the next start; the sync
+		// does not wait for it.
+		await findingsIntoThreadsOnce(deps.store, deps.kv, (server) =>
+			scopedKv(deps.kv, server),
+		).catch((error: unknown) => {
+			console.warn(
+				`Sitegloss: the findings could not be brought along (${error instanceof Error ? error.name : "unknown"}); it is tried again at the next start.`,
+			);
+		});
+		return true;
 	}
 
 	/**
@@ -224,6 +241,33 @@ export class Cloud {
 	}
 
 	/**
+	 * The hand-over in the team chosen, for the AI app's tools (DEC-071):
+	 * who is signed in, the members as last listed, whether the role lets
+	 * them assign, which cases are the team's. None: nobody signed in, no
+	 * team, or the sign-in ran out.
+	 */
+	async handOver(): Promise<HandOver | undefined> {
+		const { kv } = await this.current();
+		const account = await readAccount(kv);
+		const team = teamOf(account);
+		if (account === undefined || team === undefined || account.expired)
+			return undefined;
+		const modes = (await kv.get(KEYS.modes)) as
+			| Record<string, string>
+			| undefined;
+		return {
+			me: account.user.id,
+			team: team.name,
+			members: membersOf(await kv.get(KEYS.members), team.id),
+			mayAssign: (team.permissions ?? []).includes("case:update"),
+			synced: (caseId) => {
+				const mode = modes?.[caseId];
+				return mode === undefined || mode === "synced";
+			},
+		};
+	}
+
+	/**
 	 * The worker started: take up what a stopped run left, and look for the
 	 * team's changes, unless it just did: a worker is started often (an alarm
 	 * of the AI connection every minute, each message), and each start is no
@@ -234,8 +278,12 @@ export class Cloud {
 		void (async () => {
 			const { kv } = await this.current();
 			const [status, queue] = await Promise.all([
-				kv.get(KEYS.status).catch(() => undefined),
-				kv.get(KEYS.queue).catch(() => undefined),
+				kv
+					.get(KEYS.status)
+					.catch((error: unknown) => debugLog("cloud status read", error)),
+				kv
+					.get(KEYS.queue)
+					.catch((error: unknown) => debugLog("cloud queue read", error)),
 			]);
 			const last = Date.parse(
 				(status as CloudStatus | undefined)?.lastSyncedAt ?? "",
@@ -336,7 +384,9 @@ export class Cloud {
 		const told =
 			tokens === undefined
 				? Promise.resolve()
-				: session.revoke(server, tokens).catch(() => undefined);
+				: session
+						.revoke(server, tokens)
+						.catch((error: unknown) => debugLog("token revoke", error));
 		await kv.remove(PENDING_KEY);
 		await engine.signOut();
 		await told;
@@ -449,7 +499,9 @@ export class Cloud {
 					// account have no "Sign out" to end them, so they are ended
 					// now, here and at the server.
 					await session.forget();
-					await session.revoke(server, tokens).catch(() => undefined);
+					await session
+						.revoke(server, tokens)
+						.catch((error: unknown) => debugLog("token revoke", error));
 					await over();
 					throw error;
 				}

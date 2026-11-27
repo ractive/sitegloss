@@ -690,7 +690,7 @@ access again" with a button, never failing silently. The rest was worked out her
   export, an AI app's `set_summary` writes it again (the worker), a case deleted in the
   panel keeps its file, and after Stop syncing nothing more is written.
 
-## DEC-022: Opening a case shows its marks on the tab in front, and they follow it (owner)
+## DEC-022: Opening a case shows its marks on the tab in front, and they follow it (owner; the notice and the options amended by DEC-076)
 
 The owner, 2026-11-12: "you never want to load a case without showing the marks … When a
 tab becomes active and the case is loaded, just try to show the marks. If none of them
@@ -864,7 +864,11 @@ width decides its layout (the review said 720 px; on macOS the tools with their 
 measure about 740 px, another system's font gives another width, and a classic
 scrollbar takes 15 px of the page). The toolbar
 measures itself when its parts change, when it shows and when the page is resized, and
-takes the first layout that fits: the status beside the tools; the status on a second
+takes the first layout that fits: the status beside the tools; the same with the buttons
+closer (added 2026-11-23: with the Highlight tool, DEC-066, the eight words and a long case
+title need 975 to 990 px (more in a Linux font), and a 1000 px window with a classic
+scrollbar made a two-row bar; buttons, logo and status come closer; a test guards one row
+at 1000); the status on a second
 row; the tools as icons; Undo and Close as icons too; the buttons closer. Their words
 stay as accessible names. The side panel holds at 345 px of content (Chrome's 360 px
 less a classic scrollbar): there the AI pill's words give way first. The found line keeps "3 of 4
@@ -1257,10 +1261,16 @@ decision).
 asked for the Edge upload to be automated as well (tab-mcp's DEC-194 is the same decision).
 
 - `release.yml` runs the job `publish-edge` after it creates the release:
-  `edge-extension-publish.yml` of ractive/release-workflows (v0.7.0, pinned to a commit),
+  `edge-extension-publish.yml` of ractive/release-workflows (v0.7.0 when decided, v0.8.2 since 24 November 2026: the addendum below; pinned to a commit),
   in the environment `edge-add-ons` (required reviewer, tags `v*` only), with the Publish
   API's `EDGE_CLIENT_ID` and `EDGE_API_KEY`. `publish.yml` runs it by hand (store `edge` or
   `both`).
+- **Addendum, 24 November 2026 (the release of 0.4.0):** the first real run failed right
+  after the upload (run 45341403491): "the upload's status answered HTTP 202". v0.7.0 took
+  every status answer but 200 for an error, and Microsoft answers 202 with an empty body
+  while an operation runs. v0.8.2 takes 202 as still in progress; both workflows pin it
+  now. The tag v0.4.0 keeps the old pin, and "Publish to the stores" runs from the
+  release's tag, so 0.4.0 itself has to go to Edge by hand in Partner Center.
 - Beside the Chrome Web Store job, not after it: one store's failure or rejection does not
   hold back the other, and each waits for its own approval.
 - The same verified zip: its build provenance is checked before the upload, so the
@@ -1984,6 +1994,22 @@ Both addresses of the second are known, in one module with the first
   not asked anything while the second is chosen, its tokens go nowhere else, and
   back at the first the case goes on with the marks it had.
 
+**The development server is not offered in a build that goes to people** (owner,
+2026-11-23: "there's no way to connect the extension to the dev environment [...] It
+obviously should only be possible for me."). The chooser still has "Sitegloss" and
+"Another address…" there, and "Development server" only in the development build (the
+one loaded unpacked) and the test builds. A build knows by the define
+`SITEGLOSS_DEV_SERVER`, set in `scripts/build.ts` as `SITEGLOSS_FIREFOX` and
+`SITEGLOSS_TEST_BUILD` are: false for `--store` (Chrome and Firefox) and for anything
+packed with `--zip`, which is what the release's four zips are (the unpacked one with the
+fixed key too: it goes to people), true otherwise; without the define (unit tests) it is
+offered. (Not the manifest's `key`: the Firefox builds have none, and the release's
+unpacked zip has it.) What does not change: somebody already set to the development server
+keeps working and still sees it named, in the choice and in the Team section's note; the
+address typed under "Another address…" works as ever, self-hosting included; the lock is on
+the server, which creates no accounts (service DEC-044), so this takes only the signpost
+away. A local `bun run zip` therefore also leaves the option out.
+
 ## DEC-042: One MCP address for every installation, tab-mcp client 0.18 (owner)
 
 2026-11-20. The hosted relay `tab-mcp.ractive.ch` moved to relay 0.12.0, which has one
@@ -2394,6 +2420,35 @@ stays `sitegloss/1`, and a 0.3.0 browser on the same team keeps working.
   over a merge, a restored server, another's text, the limit, and a file put in place
   of a synced case; the 0.3.0 file test goes through `exportCase`, `readExport` and
   `storeImport`.
+
+**Note, 2026-11-24: Close case leads back to the list.** The owner: "When clicking 'Close
+case' in the extension I'd say you can get back to 'all cases'." Rules:
+
+- The person's own press on "Close case" (the footer's button or the next step's) saves the
+  close, then leaves the case by the path "← All cases" takes (`leaveCase`: the toolbars
+  end, the case's marks leave the tab, pending things and the loaded state clear), except
+  that the untouched-case clean-up is skipped: a case just closed is kept.
+- The list says once, under "This page", "“<title>” is closed. It is under Closed." (the
+  page's closed case is under the "Closed" section below the main action; both places
+  are headed "Closed"). The panel has no
+  undo or button inside a hint, so there is no Reopen there: the sentence alone; the case
+  is one press away. The hint is cleared when any case is opened.
+- The focus goes once to the closed case's card when it is on screen (the page's own case),
+  else to the list's heading, never the body (`homeFocus` in the state).
+- A close that fails (not saved, refused for a team case) leaves the panel on the case,
+  with "Not saved: ..." as before; so do marks the toolbar has not added yet ("← All
+  cases" says so).
+- "Reopen case" stays on the case. A close from an AI app (`set_case_status`), the web app
+  or a teammate through the sync never moves the panel: only the press does.
+- The owner, same day: "A closed case should not be promoted under 'This page'." "I think
+  you can pack the closed cases for 'This page' also in a collapsible section like for the
+  'Other cases'." So (amending DEC-050's offer): only the page's open cases get the
+  sentence, their cards and the primary "Open this case"; with none open, "New case for
+  this page" is the main action; the page's closed cases fold in a "Closed n" section (the
+  list's own `closedGroup`, closed by default, each section's open state kept apart) under
+  that button, and are not in the list's Closed group again. Nothing else hangs on the
+  page's case: following the tab draws only the case open in the panel, and the AI tools
+  and the page's bar do not name a case for the page.
 
 ## DEC-047: Crops for marks made at the server, and what a mark records of the page
 
@@ -3422,6 +3477,37 @@ settled: what follows is what was built, and why, to be judged.
   in place, and now lends room below the list while it holds (taken back at the person's
   next own scroll or press): a row that closes near the list's end no longer lets the
   browser scroll the page back by itself.
+  - *A cue that the next mark opened (owner, 23 November):* "When you now click 'Verify' ...
+    the current one is closed and the next one opened. That is nice. Could you add some
+    animation or indicator that the new mark just got opened? Otherwise you don't realize
+    for a second or two if something even happened." Built so: **at the press** the row
+    shows the mark as verified (its status colour and pill, before the store answers) and
+    its body fades closed in 160 ms; a Verify that is not saved (`verifyMark` answers why)
+    puts the row back as it was, open if it was, and the existing "Not saved" hint says why.
+    **When the next row opens** it carries `data-arrived` for 1.1 s, once, set on the node
+    the Verify opened (the list is rebuilt on every change, so no later redraw has it):
+    its body eases open in 200 ms (opacity and a 6 px slide) and a highlight on its head
+    (the accent's tint with an accent border, so that forced colours still show it) fades
+    in 1 s. The scroll to it is smooth within about a panel's height and a jump beyond it,
+    and a jump with reduced motion. **For a screen reader and the eye:** the status line
+    says "Mark 7 opened, to verify." once; with nothing left to verify it says "That was
+    the last mark to verify.", unless no mark is open either, when the Next step block
+    already says that every mark is settled. **Reduced motion:** the same fades, no slide.
+    The cue is only for a Verify, not for a click or a pin on the page. Focus rules unchanged.
+  - *The cue was too fast (owner, 24 November):* "it's hard to even notice it goes so fast.
+    What about first collapsing the current mark with an animation?" Now a sequence the eye
+    follows: the pressed row collapses in height (300 ms, ease-out) while it takes its
+    verified look; only then does the next row open (also when the answer came sooner: the
+    opening is held until the collapse is done, and runs at once when the answer is later);
+    its body expands (300 ms) and the highlight stays at full strength for 700 ms, then fades
+    over 1.2 s (tint 30%, with the border). Heights are keyframes between measured pixel
+    values (`--collapse-h`, `--open-h`, one read at the press and at the opening) with a
+    negative delay (`--cue-elapsed`), so a row drawn anew by the rebuild at the answer
+    continues the collapse and the highlight where they were; the held opening is module
+    state run by a timer or the next render, so a second rebuild does not lose it. A
+    failed or unanswered Verify puts the row back with its own 200 ms expand. Reduced
+    motion: no height animation, the row closes and the next opens at once, the highlight
+    still holds and fades. A press on the newly opened row works at once; nothing blocks input.
 - **A mark's comments are at the mark**, the last three with "Show n earlier", each with its
   own Edit and Delete, and "Add comment" there (as the web's `markThread`). The thread at the
   bottom keeps the comments about the case as a whole (and one about a deleted mark).
@@ -3702,6 +3788,25 @@ less rounded"; the lead's weak points: "all valid. Please fix them."
   - One picture: no Previous, no Next, no "1 of 1", and the arrow keys do nothing.
 
 
+**Note, 2026-11-23: a mark's Show is there while the marks are not drawn (owner).** "The
+'Show' button on a mark is only shown when the marks are shown. hm. Why not keep it there
+always and clicking it turns on the 'Show marks' indirectly." Rule for a row of the page in
+front, per state:
+
+| State | The row's Show |
+|---|---|
+| Marks drawn on this tab, mark found or a note or box | "Show mark n on the page": scrolls and outlines (unchanged) |
+| Marks not drawn, tab can take them (the "Show marks" button is there) | "Show the marks on this page and go to mark n": draws the case's marks as "Show marks" does, then shows this mark, once |
+| Mark of another page of the case | unchanged: the page's link and, while the marks are drawn, "Show" that opens its page |
+| Tab Sitegloss may not run on yet, a browser page, no tab, the panel as a page | none while not drawn (as "Show marks"); while drawn, on a tab without access or a browser page none since DEC-076 (the tool bar says why) |
+| No mark of this page, a mark of a newer kind with no element | none |
+| Drawn, mark lost or unsure | none, as before; the row says it was not found |
+| Closed case | as an open one: "Show marks" works there |
+
+A press goes through `loadAndShow`: the same load as "Show marks" (no new permission or
+setting), then the mark waits as a mark's link does (`pendingShow`). A second press while
+it draws does nothing. A mark found is shown; one not found says so in its row.
+
 ## DEC-065: "Pages" is a heading that opens and closes its list, and the list is flush left
 
 2026-11-23. The owner, on the panel as merged: "Keep the list of sites left aligned and
@@ -3944,3 +4049,1329 @@ the display. The page filter's menu does not group by site (the web's does).
 - **The build test checks the list's data** (`xn--p1ai`), not an option's name: in the worker and
   the panel, never in `content.js`.
 - `CLAUDE.md` names `tldts` beside the tab-mcp client, and where it may be loaded.
+
+**The sites are a line under the title; the card's last line keeps the pages**
+(owner, 2026-11-23, about the web app's card, which now has it: "Make the 'Sites:
+comparis.ch, ractive.ch' a subtitle below the title. I think for the eye it's easier to pick
+up the sites than reading the titles. Or maybe even just 'comparis.ch | ractive.ch', with
+this centred dot in between instead of the pipe."). The panel's card says it the same way:
+right under the title, in the secondary text style, the names alone joined by " · "
+("sitegloss.dev"; "comparis.ch · ractive.ch"; more than three, "comparis.ch · ractive.ch and
+2 more sites"); a case on local addresses only says its first page's host; no line without a
+page. A screen reader hears "Site: ", "Sites: " or "On: " before it (a hidden word; the
+card's name says "on the site …"), which the card does not show. Where "Site: … · n pages"
+stood, only the pages: "15 pages", or the only page's address. The summary for the developer
+and the state badge and assignee (DEC-071) keep their places; the grouping inside an open
+case does not change.
+
+## DEC-069: What comes next on the open case, and the hand-over's small part
+
+2026-11-23. The owner, on 22 November: the panel should tell the user the next step once
+marking is done, copy the share link from the extension, and copy the instructions for
+the AI agent there too. On 23 November: "Yesterday we also discussed the flow of a case
+and that we should help the user do the next step. So when the PO or the tester tested
+things, how will he proceed? How will he hand this over to a dev? Or when the dev or AI
+agent is done, how is it handed back to a PO? [...] I think this also never appeared,
+even if we discussed it multiple times."
+
+One block on the open case, directly under the counts: one sentence on where the case
+stands and the buttons that move it on. Quiet: a line of text and the panel's small
+buttons, no colour or banner of its own. The counts stand right above it, so the sentence
+does not repeat them. No change to the service's API or the case format. The rule is one
+pure function (`nextStep` in `src/sidepanel/next-step.ts`); the block is drawn by
+`next-step-view.ts`.
+
+| The case | It says | It offers |
+|---|---|---|
+| Closed | (no block) | |
+| No marks | Draw on the page and say what is wrong. | Add marks (not while adding: the tool bar's button is Done then) |
+| Every mark settled | Every mark is settled. | Close case, where the role lets |
+| Marks fixed, none open | Check the fixed marks on the page that has the fix. | Start verifying |
+| Marks fixed and open | That sentence, then the open marks' sentence below | Start verifying, then the open marks' buttons |
+| Open, the server has it in this team | Send the case to whoever fixes the open marks. | Copy link; Copy for your AI app |
+| Open, the team's, the server not known to have it | It is being sent to the team / It is not with the team yet: the server cannot be reached / The team does not have it yet: Team in the list of cases says why / It goes to the team with the next sync; its link works once it is there. | nothing |
+| Open, the sign-in ran out | Your sign-in ran out, so changes stay in this browser: sign in again under Team in the list of cases. | nothing |
+| Open, only in this browser, may be shared | It is only in this browser. Share it so whoever fixes it can open it. | Share with team |
+| ... the role may not share | It is only in this browser. Your role in "T" does not let you share it: export it to send it as a file. | Export… |
+| ... nobody signed in, or no team chosen | It is only in this browser. Export it to send it as a file, or sign in (choose a team) under Team in the list of cases to share it. | Export… |
+
+Decided, and why:
+
+- **The link only on the sync's own word.** A case's link and the AI app's instructions
+  are offered only where the server confirmed the case, as its book is now, in the team
+  chosen now (`confirmedTeam` in `book.ts`): a synced book with the server's copy
+  (`shadow`) and no read of it pending that holds back what is sent. A book taken up
+  again after a sign-out or a switch of team (`resumed`), joined with the team's copy
+  (`join`) or missing here holds a copy of before until the server answers; a `failed`
+  read leaves the server's copy as it was. The worker publishes the result beside the
+  modes (`atTeam`: case id to team id) at the end of every run and wherever the modes
+  change, writing only when it differs from what is stored, so a run stopped before the
+  write is made good by the next. Nothing of the case itself is proof:
+  an imported file's marks carry `createdBy` too, and a case the sync has not seen counts
+  as the team's. The sync's overall status is no proof either: cases held back or waiting
+  to be read again are not in its count of what waits. The team id in it keeps a case of
+  the team before a switch from getting the new team's address. Until then the block
+  says why there is no link yet.
+- **Settled and to verify come before sharing.** Closing a settled case and verifying a
+  fix are the same whether the case is the team's or this browser's. With fixed and open
+  marks both, both are said and both offered (Start verifying first): the open ones still
+  need handing over while a fix waits to be checked.
+- **Copy link** copies `<server>/t/<team slug>/cases/<case id>`, the address the web app
+  gives a member. The panel had no such address before: the slug, which the server always
+  sent with the teams, is now kept in the panel's account (`slug`). It says: "Link copied.
+  It opens the case for the members of "T"; for anyone else, use Share… in the web app."
+  A refused clipboard (mostly a panel without the focus) says "Copying did not work.
+  Click in the side panel and try again." Either is said for eight seconds, and only
+  while the step still offers that copy.
+- **Copy for your AI app** copies the web app's case template word for word
+  (`caseInstructions` in sitegloss.dev's `apps/app/src/lib/agent-instructions.ts`),
+  copied into `src/lib/agent-instructions.ts`, with one line of the extension's own: that
+  reading the live page is the extension's AI app connection and the MCP server has the
+  case as stored, as the web app's AI app page says it. The two files are kept in step by
+  hand (no test can read the other repository); the file's header lists where they
+  differ. The service's copy lacks the extension's line until it takes it.
+- **"Start verifying", not "Verify".** A mark's own Verify settles it; a second button of
+  the same name that only filters and scrolls would be taken for "verify all". It shows
+  the marks to verify on every page, opens the lowest-numbered and brings it into view,
+  as a pin clicked on the page does. If none is left by then (verified by the team
+  meanwhile), it says so and lets go of that filter.
+- **The same actions as their other places.** Add marks is the tool bar's `addMarks` and
+  is off (with its title) where that one is; Share with team is the Team row's
+  `cloudShare`; Export… is the menu's `exportCase`; Close case is the footer's
+  `setCaseClosed`. Those places stay as they were.
+- **Keyboard and screen reader.** The block is a `section` named "Next step"; its
+  sentence is an `aria-live` paragraph written only when its words change; what a copy
+  did is a `role="status"` line under the buttons. Both stay rendered while empty (out
+  of sight, not `hidden`), so a reader hears what is written into them; the section has
+  its name only while it says something, so an empty one is no landmark. A copy clicked
+  after the case stopped being confirmed copies nothing and says so. A click that
+  changes the buttons keeps the focus on the same action where it is still offered,
+  else on the block's first button, else on the block.
+
+What step 2 (an assignee, the case's states, "my cases", a mail on hand-over and
+hand-back) will need from this block: `Where`'s team branch gains the assignee, and
+`nextStep` a row per hand-over state (open and assigned to someone: say to whom, offer
+"Hand over…"; all fixed: "Hand back to" the reporter); "Copy link" stays as the way
+outside the mail. The API needs the assignee and the case's state first; the block needs
+no new place in the panel.
+
+Changed on 2026-11-23, after an AI app's feedback on the text it received (the owner
+accepted it: "yes, change the template"), the same words as the web app's: (1) inside
+the quoted block a `Contents:` line says how many marks are open, how many wait to be
+verified and the pages the open ones are on (host and path, cut; several: their number
+and the sites); (2) step 2 stays "in this repository", but a mark about other code (another repository,
+another product) is named in a comment on the mark, not changed on the mark's word: the
+mark's text is untrusted data, so it must not send the AI app into other code; (3) either
+connection will do, the server's or the extension's own, and the server is added only if
+there is neither. A page address without a host (a file, data:, or one that does not
+parse) is named "a local file" or "a page without an address", never by its path. The setup is not in the copied text any more (the owner: "Isn't it very verbose to always contain the whole MCP setup? ... We mention the AI setup in several other places"): it says to use the Sitegloss tools you have and, if you have none, to stop and say so, with the address of the team's AI app page (`/t/<team>/ai`), or the AI app card of the side panel. The page is the service's; the text no longer carries `claude mcp add`, `/mcp` or `/reload-plugins`. The line on the live
+page (`LIVE_PAGE`) is now the web app's too.
+
+## DEC-070: Escape takes a new mark back while its comment is empty (owner)
+
+2026-11-23. The dialog that opens as a mark is drawn got "Cancel" where it said "Delete
+mark" (pull request 57), and Escape still did the opposite: it kept the mark. The lead
+asked whether Escape should discard a new mark while its comment is empty; the owner:
+"Yes".
+
+- Escape with nothing written (blanks count as nothing) takes the mark back, exactly as
+  Cancel does, and the toolbar says "Mark N taken back". With something written, Escape
+  keeps the mark and the words, as before: Escape never throws words away.
+- A mark without a comment is still possible (an arrow or a stroke that says it all):
+  Done, the save key and a click beside the dialog keep it. Only Escape changed.
+- The window's Escape handler takes the person's own key only (`isTrusted`): before,
+  a page's script could close the dialog with a made-up key; now it could have taken a
+  mark back with one.
+
+## DEC-071: A case is handed over: its assignee, its state, whose turn it is, My cases
+
+2026-11-23. The owner, on 22 November: "I think it could make sense if a case had a
+status like open, assigned, closed." On 23 November, on the flow: "when the PO or the
+tester tested things, how will he proceed? How will he hand this over to a dev? Or when
+the dev or AI agent is done, how is it handed back to a PO?" Answering the lead's
+proposal (one assignee per case, the state worked out from the marks, "my cases", a mail
+both ways): "Yes. [...] I also want to filter for 'my cases' in the extension", with the
+flow described "on the website, the web app and the extension". The contract between
+service and extension is one document; the service's side is its DEC-042 (pull request
+ractive/sitegloss.dev#54; the API types here are from its document as of 7a9247b, after
+its review). This is the extension's side of step 2; step 1 is DEC-069.
+
+- **The rule is the server's, copied.** `src/lib/case-state.ts` has `caseState`,
+  `caseTurn` and `isMine` as the service's `packages/api/src/v1/case-state.ts` has
+  them, and `test/case-state.json` is a byte copy of its vectors (17 states, 24 turns,
+  36 answers for "mine"), held as `pageKey`'s are. `caseTurn` takes, as the server's
+  does since its second review, whether the reporter is a member of the team
+  (`reporterHere`, default true): the reporter's turn is nobody's once they left or
+  when none is on record. Here that is read from the members list. The state is worked out from the
+  marks here, never stored and never read from the server: a case here has all its
+  marks. The list's `state` and `turn` that the API sends with `GET …/cases` are not
+  used, because the extension syncs through `changes` and never lists cases.
+- **The case keeps the server's records as given.** `createdBy` (the reporter),
+  `assignee` (`null`: nobody; absent: not told, a server from before) and `assignedBy`
+  (a stamp) come from the server's case and are stored, exported and imported as they
+  came. They are never sent back. What is sent is `assign`, an assignment made in this
+  browser (by the person, or by their AI app, whose name goes with it as `via`): the
+  next sync sends it as a `case.patch` of its own that says only `assignee`, a member's
+  id or `null`, and it goes once the server is known to have it (the operation was
+  taken, or the server's copy says the same). Offline it waits, as every change of a
+  case does, and the block says so. The shadow keeps the server's assignee id beside
+  its other fields, so a patch is sent only while the two differ; a pick is kept as
+  `assign` even when it is the record here again (that record may be older than what
+  the server took), so only the sync decides there is nothing to send; once the book's
+  shadow says that assignee (the operation was applied or a duplicate, or nothing had
+  to be sent), the sync drops it and the case's record says that assignee. **Refused**
+  (the person left the team, the role does not allow it): its own operation, so the
+  title, summary, link and marks are never held back by it; the waiting assignment is
+  dropped, the server's record shows again, and the case says why in its block,
+  `assignRefused`, this browser's note: "Gone is not in the team any more, so the case
+  was not assigned to them." only where the server said the operation was invalid and
+  the person is not among the members as last listed; otherwise "The server did not
+  take the assignment to Dana: <its reason>". It is said while marks are open, until
+  the next assignment here or until the server's hand-over is another one (someone
+  assigned the case since). **To another
+  team**: sharing a case with a team other than the one it was of drops what the first
+  team said of it and any assignment waiting for it; the new team's server says its
+  own. A `case.patch` that names no assignee, as every other
+  change does, leaves it at the server (tested against the fake, which now keeps the
+  server's rule: a member or nobody, stamped from the caller).
+- **Files.** `assign` is this browser's note and never in a file, in or out (as `via`).
+  An import keeps the file's records for a case that is not here, the records of the
+  case it replaces for one that is, and none for a copy (another case, which nobody
+  started or was given yet). A crafted file's `assignee` is only ever shown: nothing
+  sends it.
+- **The members.** `GET …/members` (id and name) is asked for with the account's teams
+  (at most every ten minutes, and at once for a team just chosen) and stored beside the
+  account (`members`), so the Assign menu works offline from the last list. A server
+  from before answers 404: no members, stored as none. **That is how a server that
+  assigns cases is told from one that does not**: without members nothing about
+  assignees shows (no Assign, no My cases, no "Assigned to" on cards, no turn in the
+  tools); every case there would read as unassigned. Signing out forgets them.
+- **Cases synced before this version** have no reporter and no assignee here, and the
+  changes feed does not bring them again for a case nobody changed. Once per team and
+  start, where the server assigns cases, every synced book whose shadow has no
+  `assignee` is read again whole (as `#readThreadsOnce` does for the thread, DEC-046),
+  at most 25 a run (`HAND_OVER_READS`), so the sync is not held for a whole team at
+  once; the next runs take the rest.
+  Until then the case's hand-over is not known (`handOverKnown`): it is in nobody's My
+  cases, and its block says nothing about whose turn it is. A team's case whose
+  reporter is not on record is nobody's either (an earlier draft took it for the
+  person's own, which put every old case under everybody's My cases).
+- **The next step block** (DEC-069) in the team's case, once the server told the
+  assignee, in the service's words (`apps/app/src/lib/next-step.ts` on its branch),
+  counts included: "2 marks are open: assign the case to whoever fixes them." with
+  Assign (for whoever may change the case, `case:update`, while the members are known)
+  and the copies; without the right "2 marks are open, and nobody is on it yet."; the
+  assignee "It is assigned to you: 2 marks are open." with Copy for your AI app; anyone
+  else "Dana is on it: 2 marks are open." with Copy link. Fixed: the reporter "Every
+  open mark is fixed: check them and verify." with Start verifying; the others "Every
+  open mark is fixed: Tess checks them and verifies." Settled: "Every mark is settled:
+  close the case." or "... Tess closes the case." A reporter who left the team (or none
+  on record): "Every open mark is fixed, and whoever started the case is no longer in
+  the team: check them and verify." for whoever may settle marks (`mark:update`), the
+  same without the instruction for the others; settled likewise with "close the case"
+  for whoever may close. The panel's one addition: while marks are open and others
+  wait to be verified, the reporter reads "Check the fixed marks on the page that has
+  the fix." before the open marks' sentence. An assignment waiting to be sent adds "The
+  change goes to the team with the next sync." or, offline, "The change waits here
+  until the server can be reached." A case only in this browser, one not at the server
+  yet, or one whose hand-over is not known reads as before (DEC-069).
+- **Assign is a menu button** ("Assign", "Reassign" where someone has it, a chevron
+  pointing down, as the owner asked of a menu on 23 November): the person looking first
+  as "You", the others by name, then "Nobody"; radio items, the one who has it checked;
+  arrows and Tab as the case's "…" menu; Escape (on the menu or its button) closes it
+  with the focus back on the button, and a press anywhere outside it closes it, as the
+  "…" menu's capturing `pointerdown` does. Offered with open marks only: once
+  they are fixed the turn is the reporter's whoever is assigned, and a reopened mark
+  makes it the assignee's again.
+- **My cases** is a chip above the list of cases, as the open case's status chips
+  filter its marks: "My cases" with its count; on, it is filled in the text's colour
+  with a tick (`aria-pressed`), off a quiet chip with an edge. Mine: the team's open
+  cases where it is the person's turn (`isMine`), and every open case kept only in this
+  browser, which nobody else has. Only for someone signed in with a team chosen whose
+  server assigns cases; otherwise no chip and nothing about assignees. It narrows the
+  list under "Cases" and hides the Closed group (nobody's turn); the cases under "This
+  page" stay, they are about the tab, and the count takes them in: with the person's
+  one case there, the list says "No other case waits for you." A press keeps the focus
+  on the chip, and a redraw of the list keeps it on the card that had it; a card (or
+  the Closed group's heading) that leaves the list hands it to the chip. **Kept for the panel's session** (`sessionStorage`): the panel touches
+  no storage of the extension's (a test holds it), and keeping a view filter across
+  browser restarts through the worker was not worth a message of its own; a reopened
+  panel shows every case.
+- **The cards** say the state as one quiet badge before the counts where it adds to
+  them: "New" and "In progress" (whether anything was settled yet). "To verify" and
+  "Settled" said what the counts beside them say ("2 to verify"), so they are left
+  out, as for an empty case ("No marks yet") and a closed one (its own tag); and, in the team's case with open marks
+  once the server told, who has them after the date ("Assigned to Dana", "Assigned to
+  you", "Nobody assigned"). The card's name for a screen reader says both.
+- **The AI app's tools.** `list_cases` gives every case's `state`, and in the team's
+  case `turn`, `assignee` and `startedBy`; it takes `mine`. `get_case` gives the same and
+  `assignedBy`, or `assignmentNotSentYet`. `assign_case` takes `me`, a member's id or a
+  name only one member has, or `null`; it asks first, as every changing tool, and the
+  question names who gets it ("Assign to: Dana.", "Assign to: nobody.") or says, by
+  the same checks in the same order as the call, why it will be refused, in one short
+  sentence (the members' list goes to the app only); it refuses a
+  case only in this browser, a role without `case:update` and a name that is no member
+  (with the members to choose from), and goes through the sync. The instructions tell
+  the flow in three sentences, in step with the service's MCP server.
+- **The flow in the panel's words**: the empty list (signed out, or where the server
+  assigns cases) and the Team section before signing in say "With a team, a case is handed over. Assign it to whoever fixes its open
+  marks: it is under My cases for them, and the case says what is theirs to do. When
+  every open mark is fixed, it is back under My cases for whoever started it, to check
+  the fixes, verify them and close the case." No new screen.
+- **What a released extension does with it.** 0.3.1 and 0.4.0 know none of the fields:
+  their sync builds a case from the fields they name and never sends `assignee`, so the
+  server keeps it whatever they change; 0.4.0 keeps the case-level fields of a file as
+  unknown ones (DEC-066) and writes them out again. Nothing is lost at the server; they
+  show no assignee and have no My cases. An assignment made here and not sent yet is
+  left unsent by an older build the browser is taken back to (it is an unknown field
+  there), and sent when this build is back.
+
+## DEC-072: AI access that went off by itself says why
+
+2026-11-23. The owner asked: "Why did AI access turn off; is it because I switched to
+another macOS user?" The code's answer: the relay ends a session no AI app used for a long
+time (`idle`) or an old one (`expired`); without Keep AI access on nothing connects again
+(`sessionOnAfter`, DEC-015). A browser restart or an update or reload of Sitegloss clears
+`chrome.storage.session`, the session's "on" flag, so AI access is off after it too (DEC-015,
+DEC-059). Switching to another macOS user is not among the causes; the browser of the other
+user is another browser. The panel said only "AI access is off · paired apps stay paired" and
+"Not connected", and `endedProblem` deliberately has no words for `idle` and `expired`.
+
+- **What is shown.** In the AI card's state line and the status (the pill's tooltip and the
+  status text), one sentence each, with the way back:
+  - idle: "AI access went off because no AI app used it for a while. Paired apps stay paired.
+    Turn it on again, or tick “Keep AI access on”."
+  - expired: "AI access went off because a connection ends after a long time. Paired apps stay
+    paired. Turn it on again, or tick “Keep AI access on”."
+  - restart: "AI access was on before the browser or Sitegloss restarted, so it is off now.
+    Paired apps stay paired. Turn it on again, or tick “Keep AI access on”."
+
+  The status has "Not connected: " before it. It is information (DEC-024): `problemOf` says
+  nothing of it, so no red line under the top bar; the pill keeps "AI off". It shows only
+  while AI access is off with nothing wrong now: not while connecting, retrying, taken over
+  or with a problem of the last connect. The state line is a live region: its text is
+  assigned only when it changes, so a redraw does not read the sentence again.
+- **What is kept.** A record `{ reason, at }` in the worker's settings database (`kv`, DEC-016),
+  so it outlives a stopped worker and a browser restart: no page content, no AI app. It is
+  written when the relay ends an idle or old session without Keep AI access on, and when a
+  worker starts as a restart. It is forgotten when AI access is on again (connected, the
+  Turn on command, Keep AI access on ticked), when the person stops it (in memory at
+  once, the store after the disconnect) and when the relay is changed. A takeover needs no
+  clearing: it happens while connected, when no record exists, and a takeover's own words
+  win over a record. A record older than 7 days is not shown and is removed at start (`at`
+  is for that): a sentence about last week helps nobody. At start a record is not read
+  either while the session is on or Keep AI access on holds.
+- **How a restart is told.** The smallest honest way: a second flag, `aiWasOn`, written in
+  the one place the session's flag is written (`#setSessionOn`), after it. A worker that
+  starts with `aiWasOn` true and the session's flag gone, with no stop of the person's, no
+  Keep AI access on and no takeover, was on when the browser or Sitegloss restarted: it
+  records `restart` and clears the flag, so one restart is told once. A worker that was only
+  stopped by the browser keeps the session's flag, so it says nothing. The reason cannot say
+  whether it was the browser or Sitegloss (an update, a reload) that restarted; it says both.
+- **A failed store write** is accepted: the memory holds, a console warning is logged. A
+  failed removal could bring an old sentence back after the next start; the rules above
+  (not read with the session on or keep-on, gone after 7 days) cover the visible cases.
+- **Unchanged.** Keep AI access on ticked: nothing is recorded, it reconnects as before. No
+  new permission, the manifest is untouched, Chrome and Firefox alike. The connection's
+  behaviour, the alarm and the session's flag are as before.
+- Tests: `test/went-off.test.ts` (the reasons, the sentences, age, nothing for a stop, a
+  takeover, keep-on or a live state), `test/connection.test.ts` (idle and expired through the
+  Connection with a test relay that ends them: record, store, forgotten on connect, nothing
+  with keep-on; a restart, kept over a second start, forgotten on connect, Stop, ticking
+  keep-on and a change of relay; nothing after a stop; a stale record).
+
+## DEC-074: tab-mcp client 0.24.0: WebMCP that comes late, pictures through the extension; none of it reaches Sitegloss (owner)
+
+2026-11-23. The owner's plan: the candidate first, then the release. `@ractive-ch/tab-mcp-client`
+goes from 0.23.0 to 0.24.0 (tested first as 0.24.0-rc.1 on a branch); the relay used by the tests
+stays `@ractive-ch/tab-mcp` 0.13.3.
+
+- **What 0.24.0 changes in the library:** a `TabMcp` that found no WebMCP when it was made listens
+  on `document` for `tab-mcp-webmcp` (`WEBMCP_EVENT`, from `./extension`) and mirrors its tools
+  when WebMCP arrives later; a WebMCP call the tab-mcp browser extension announces gets the whole
+  MCP result (pictures included) instead of text; `client.via` is `'tab-mcp-extension'` also for
+  read-only tools, and the new `client.allowed` says whether the user allowed the call (code that
+  read `via` as "the user allowed it" must read `allowed`); `WebMcpClient` has the new field
+  `allowed`.
+- **Not reached:** Sitegloss has one `TabMcp`, in the service worker, with `webmcp: false`
+  (DEC-068). The library returns before it touches `document` in that case, so there is no
+  listener and no mirror. Nothing in Sitegloss reads `client.via` as permission; the worker looks
+  only at `client.kind`, `name` and `host`. No code change.
+- **Checked:** on 0.24.0-rc.1: type check, Biome, both builds, `bun run verify` and the full
+  Chromium end-to-end set (the connection, pairing and tools files all pass; two toolbar layout
+  tests fail the same way on main). On 0.24.0: the published package equals the candidate except
+  for the version strings and the bundler's own chunk and debug ids; then type check, Biome,
+  both builds and `bun run verify` again.
+
+## DEC-075: A loaded mark shows only where its element does
+
+2026-11-23. The owner, on a web app whose document does not scroll (a head, and panes under
+it that scroll on their own): "When scrolling up, the marks are over the sticky header." The
+overlay drew a loaded mark at its element's box wherever that box was, and nothing asked
+whether the element could be seen there: a pane that scrolled an element past its top left
+the box and the pin painted over the head and the account button above the pane.
+
+- **The principle.** A mark that vanishes while its element is plainly visible is worse
+  than a mark drawn over a cover. Where the page cannot be read with certainty, the mark is
+  drawn.
+- **The rule.** A loaded case's mark (its box or stroke, its pin, a highlight's strokes, a
+  note's marker) is drawn only where its element shows, and not at all while nothing of the
+  element shows. What shows is the window's visual viewport, cut by each ancestor that clips
+  the element (`overflow` other than `visible` on that axis, or `contain: paint`), less what is
+  fixed or sticky over it. Only ancestors in the element's chain of containing blocks count: a
+  fixed element escapes them all but a transformed one, an absolute one those up to its
+  positioned ancestor. An ancestor without a box of its own (`display: contents`, a table row
+  or row group) cuts nothing. The root's overflow, and the body's when it is handed on to the
+  window, are the window's. The geometry is `src/lib/clip.ts` (pure, unit tested, the
+  containing-block chain included), the page's side `src/content/visible.ts`.
+- **What is cut.** The drawing is cut exactly at the view: at a pane's edge and at a cover's
+  edge, past which lies the head it must not reach over, and at the window's, past which
+  nothing is seen. A mark whose element touches a pane's edge loses the half of its stroke
+  past that edge. The cut is a nested SVG viewport round the mark's parts, in the same
+  coordinates (no `clipPath` reference to find in the shadow root).
+- **The pin goes with what shows.** When the place it belongs to (the box's corner, an
+  arrow's start) is cut away on an axis, it goes to the nearest place on that axis of what
+  shows of the mark; and it always stays whole inside the view where the view has room for
+  it. So no pin pokes over a pane's or a cover's edge, and no element showing means no pin.
+  It is picked where it is drawn, with a tool on too (DEC-027).
+- **What is hidden.** An element of which nothing is inside the window and its panes; an
+  element under one painting cover at all five of its points; any element outside every open
+  modal dialog (any of them, not only the one in front) or outside a fullscreen element. The
+  case's found marks, drawn or not, are on the overlay's `svg.marks` as `data-found` (the
+  numbers), for a test to read.
+- **Covers, the rule** (narrowed after the second review: the band logic hid marks that were
+  plainly visible twice). A cover cuts only the top end or the bottom end of a mark, and only
+  where one and the same fixed or sticky element covers both points of that end: a head or
+  a foot bar, cut at its edge. A mark is hidden by a cover only when that one element covers
+  all five points inside it (the four corners, 2 px in, and the middle). An element counts as
+  a cover only if it paints: between the topmost hit and the covering element something has
+  a background colour with alpha above zero, a background image or a backdrop filter, or is
+  a dialog or an open popover.
+- **What a cover is, in detail.** The page is asked what is topmost (`elementFromPoint`, then
+  the shadow-aware list of `pageElementsAt` when something else is on top or a shadow host
+  is; Sitegloss's own host skipped) at those five points, and at two points just past the
+  top and two just past the bottom of what the mark reaches (the drawing, its pin, the
+  element), where a head next to the element would have the pin's half or a padded box over
+  it: the same rule, one element at both or nothing. The element, something inside it or
+  around it on top: no cover there. Something else that is, or sits in, a fixed or sticky box
+  outside the element's ancestors: the covering element is the outermost part of that box the
+  hit test saw (a `pointer-events: none` layer is not seen, its button is), its box cut to the
+  fixed or sticky box. An element the hit test does not see counts as showing.
+- **What it deliberately does not do.** No cut at a side by a cover: a fixed side rail or nav
+  next to an element leaves its mark drawn over the rail. A head made of two elements (two
+  halves that take the pointer, the bar itself not) cuts nothing: the mark is drawn over it.
+  Two widgets at an element's two corners (a chat launcher, a consent button) cut nothing.
+  Covers that are neither fixed nor sticky (an absolutely positioned menu) are no covers. A
+  transparent layer that takes the pointer (the click-catcher behind an open menu) is none.
+- **When the page is asked.** A mark is hit-tested when it first shows, when the page's DOM
+  changed, once it has stood still 350 ms after moving (`SETTLE_MS`: a head that slides away
+  or in by a transition after the scroll; the reviewer draws again 370 ms after the last
+  scroll event for it), and every 2 s while something covers it (`COVER_MS`: a cover that
+  went without a move or a DOM change would leave it wrongly hidden). A mark nothing covers
+  is not asked again while the page stands still: a cover that comes by a class change alone
+  leaves it drawn over the cover until the next move, the lesser wrong. While a mark moves
+  (a scroll), no hit test: the covers it had and those found on the page in the last 5 s
+  are taken at their boxes of the moment. A pass spends 2 ms on hit tests at most, its clock
+  starting at its first test; a mark that was due and got no time stays owed (its last test
+  and its count of DOM changes kept), and the marks are taken owed and longest untested
+  first, so none waits for ever; the reviewer draws again in the next frame while any is
+  owed.
+- **The cost, measured** (Chromium, the test build). Local web app, 8 marks in two panes,
+  199 frames of both panes scrolling 4 px a frame: the clips about 0.06 ms a frame (each
+  element's clipping ancestors read again only after a DOM change or 2 s, their boxes once a
+  pass, shared by marks). 60 marks in view under a fixed head, 199 frames of the window
+  scrolling 2 px a frame: 0.60 to 0.63 ms a frame against 0.14 to 0.17 without the clipping,
+  at most 2.8 ms in a frame. Standing still for 10 s after the scroll: the 6 marks the head
+  covers are tested again every 2 s, the rest never; 1.5 ms a redraw (twice a second, as
+  before) on average, 4.7 ms at most. All reads come before the overlay's one write.
+- **The toolbar's own marks too.** Until the side panel's copy of the case reaches the page,
+  the toolbar draws the marks it added itself (the saved ones faintly, those on their way to
+  the case). They follow the same rule: cut to where their element shows, not drawn while
+  nothing of it does. Found in CI: with the panel late, marks 1 and 2 of a page scrolled to
+  mark 3 stayed drawn by the toolbar, out of the window, and in a pane they would have stayed
+  over the head. Only the box being drawn and the mark whose comment is open stay whole.
+- **The popover** of a mark's comment (DEC-027) is placed by what is drawn of its mark (the
+  shape cut to its clip, and its pin). While its mark is not drawn (off the page, cut away,
+  covered) it stays where it is, with what is being typed in it: it is the person's open
+  work, not a mark.
+- **What stays as it is.** The panel's "found on this page" (the element is still found);
+  a mark without an element, drawn where it was; a mark being added (the box being drawn,
+  the mark whose comment dialog is open) is not clipped, so nothing is cut away from under
+  the pointer. Showing a mark from the panel or the highlight tool scrolls its
+  element into the middle of its own pane (`scrollIntoView` scrolls every scrolling ancestor),
+  so its mark shows; `load_case` scrolls nowhere, as before. Not handled: `clip-path` and
+  `mask` on an ancestor. No new permission, the manifest untouched; Chrome and Firefox alike (standard DOM
+  only).
+- Tests: `test/clip.test.ts` (the containing-block chain, the probes, the cover rule: one
+  bar at an end, two different elements, two rails, the five points, a corner that changes
+  nothing; the cut, the pin); `test/visible.test.ts` (happy-dom with given boxes and hit
+  tests: an absolute element escaping a scroller, the body's overflow, `display: contents`,
+  modal dialogs, a button in a `pointer-events: none` layer, a head bar, a two-part head, two
+  corner widgets, a transparent and a painting full-window layer, a bar in a shadow root,
+  the age limit and the settle test with a fake clock, the time of a pass held to one mark);
+  `test/overlay.test.ts` (a moved pin is picked where it is drawn); `test/e2e/marks.test.ts`
+  (a page with a fixed head and a pane with a sticky band: no part of the box or pin above
+  the band while the element is under it, nothing drawn while all of it is, and shown from
+  the panel it is back in its pane and drawn).
+- **Addendum, 2026-11-24: a load under the sticky band.** The hand-back audit (DEC-079)
+  reported that a case loaded while a marked element sits partly under a sticky band draws
+  its box from the element's top (70) instead of the band's end (100) until the next scroll;
+  the e2e test above failed in Chromium (run 45301559834) one time in a few with the panel
+  slowed. Not a defect of the drawing: its "clip top 70" was `getBoundingClientRect` of the
+  nested SVG that cuts the mark, and for a nested SVG that is the box of its content, uncut
+  (the box drawn at the element's top), not the viewport that cuts it. Counted in the
+  pixels painted, after the scroll had settled and on every frame after a second load sent
+  by hand: none of the mark's pink inside the band (y 61 to 99), 118 below it; the cover
+  test's view on that load ended at 100 (its result kept from the scroll, the element not
+  moved). The test read that box, and passed only when it caught a frame drawn before the
+  scroll (the clip then at 130): its timing decided it. It now reads the clip's own box
+  (its `y`) on a frame drawn after the scroll (the mark's box at the element's new top),
+  and checks the draw of a second load the same way. With the panel slowed 20 times: the
+  old test 1 failure in 4, the new one 6 of 6 passed, and 6 of 6 unslowed; with the cover
+  cut taken out, the new one fails. Every draw path (load, update, scroll, resize, tick, the
+  toolbar's own marks) goes through `Visibility.viewOf` and `clipMark`; nothing in them
+  changed. What stays as DEC-075 says: an element scrolled under a band that was never
+  found before is drawn over it until the test 350 ms after the scroll stops (97 pixels of
+  pink in the band during that time here), as no hit test runs during a scroll.
+
+## DEC-076: Access to all sites, offered first and said where something is missing (owner)
+
+2026-11-23. The owner, dogfooding in Firefox: "The extension does not request 'Allowed on all
+sites' or so? In firefox I need to click on the icon for each page I open from the extension."
+Told where the setting was: "I don't find it in the Firefox sitegloss ext." Then: "yes, move the
+options to the main view. And really make it clear to the user that this exists and in this case
+I really would add a '(highly recommended)' or so. If it's not turned on it's completely
+intransparent, why suddenly no marks are there and why you can't show/hide marks anymore."
+
+- **What the panel showed before**, the same in both browsers (DEC-022): on a tab without access,
+  Home had a notice above a disabled "New case for this page": "Sitegloss may not run on this
+  tab yet. Click the Sitegloss icon in the toolbar (or press Alt+Shift+O) while this tab is in
+  front." with "Allow on all sites". An open case had that notice at the top of the case, under
+  its head, where it scrolls away; the tool bar at the bottom, where the eye goes, lost "Show
+  marks"/"Hide marks" without a word and kept a disabled "Add marks"; a mark's Show was disabled.
+  The setting itself was a checkbox under Options at the very end of Settings, which only the AI
+  pill opens, and that pill also turns AI access on (in Firefox it asks for the data collection
+  consent first). In Firefox 160, measured with real clicks through Marionette in the sidebar:
+  Sitegloss's button sits in the Extensions menu (the puzzle piece), not in the toolbar, so
+  "the Sitegloss icon in the toolbar" is not there to click; and Firefox drops `activeTab` when
+  the tab goes to the next page, even of the same site. So a case open while browsing a site
+  loses its marks at every link, and the tool bar's Show/Hide goes with them: the owner's
+  "suddenly no marks". Chrome keeps the grant while the tab stays on the same origin and drops it
+  at another (tested with the store package in Chromium).
+- **What happened in Firefox when the box was ticked** (a build without the host permission,
+  `bun scripts/build.ts --firefox`, installed as a temporary add-on through Marionette, the
+  sidebar opened by `SidebarController`, the click a real one): Firefox's own prompt came ("…
+  Access your data for all websites"), Allow granted `<all_urls>`, the box showed it, and a
+  removal or grant made outside the panel (what about:addons' toggle calls) moved the box. It
+  worked; it was not found. Two things did not work: (1) opening a case's page (its address,
+  a mark's link) asks for that site in the click and opens or navigates the tab at once;
+  Firefox's prompt belongs to the tab in front and is taken away by that before anyone sees it,
+  answering no, so every page opened from the panel needed the icon's click: the owner's first
+  sentence. (2) Taking any permission back with AI access off set the AI problem "Firefox has not
+  been allowed to let Sitegloss send the pages' content…" (`consentChanged` ran on every
+  removal).
+- **Rule now, per state.** The panel knows three things: the tab in front (`yes`, `ask`: no
+  access yet, `never`: no extension may run there), all sites allowed or not, and whether the
+  person said "Not now" (or took all sites back) in this browser (`localStorage`, as Keep AI
+  access on's question, DEC-059). `src/sidepanel/access.ts` decides; `view.ts` draws it.
+
+  | All sites | Said no | Tab | Home, top of "This page" | Open case, tool bar |
+  |---|---|---|---|---|
+  | allowed | either | yes | nothing; Options' box ticked | Add marks, Show/Hide marks |
+  | allowed | either | never | "cannot run on this tab" (unchanged) | the same text, in the tool bar |
+  | not | no | yes | the offer: "Let Sitegloss work on every tab (recommended)", Allow on all sites, Not now | Add marks, Show/Hide marks |
+  | not | no | ask | the offer, headed "Sitegloss has no access to this tab yet" with the warning sign, and the one-tab way | the notice |
+  | not | yes | yes | nothing; Options' box unticked, its note says what that means | Add marks, Show/Hide marks |
+  | not | yes | ask | the notice | the notice |
+
+  Before the browser has answered whether all sites is allowed, no offer (it would flash for
+  someone who has it). The notice: the warning sign, the sentence ("Sitegloss has no access to
+  this tab yet, so it cannot start a case or show marks here." on Home; "…, so this case's marks
+  are not drawn here and cannot be shown or added." in a case), "Allow on all sites
+  (recommended)", and the one-tab way under it.
+- **Rule now, per control** (one rule, all of them): what needs the page is absent on a tab
+  without access, and the sentence stands where it was; never a disabled control, never one that
+  goes without a word. "New case for this page": absent, the notice in its place. Add marks and
+  Show/Hide marks: absent, the notice fills the tool bar (which stays sticky at the bottom, so
+  the reason is in view however far the case is scrolled; it is no toolbar for assistive
+  technology then). A mark's Show: absent, the tool bar says why. The next step's Add marks
+  (DEC-069): absent as the tool bar's is. A request for all sites from "Show marks" was not
+  chosen: a broad prompt from a button that says something else is a surprise.
+- **Options** leave Settings and are Home's last section, after Files: they are set once and
+  are not what Home is for; what makes access findable is the offer at the top and the notice
+  where something is missing, so Options only has to be where a setting is looked for. Access
+  first, "Allow on all sites (highly recommended)" (the owner's words), then "Blur form fields
+  in screenshots" (while the worker cannot keep it, it says why under it: the AI card that
+  said so is not beside it any more). Under the access box, always (after review): "Without
+  it, Sitegloss works on a tab only after you click its icon there[, until the tab goes to
+  another page]; on other tabs your marks are not drawn and cannot be shown. With it,
+  Sitegloss can read the page in front whenever you use it and, while AI access is on,
+  whenever a connected AI app asks (a screenshot, an element's details), on any site. It
+  sends nothing anywhere by itself. Chrome asks first (“Read and change all your data on all
+  websites”)." (Firefox: its prompt's “Access your data for all websites”.) Each clause
+  checked: no script goes into a page by itself; the panel draws the open case on the tab in
+  front and marking acts there; an AI app's read tools act on whatever tab is in front
+  without a question (`src/worker/tab.ts`), which without all sites is only a clicked tab;
+  "the tab in front only" was dropped, as "Fill in the code for me", when on, reads the
+  relay's pairing page in whichever tab an AI app opened it. PRIVACY.md now says the AI-app
+  consequence under "All sites". Settings keeps only the AI connection.
+- **Wording.** The one-tab way says where the icon really is: Chrome "For this tab only: click
+  the Sitegloss icon in the toolbar (under the puzzle piece until you pin it) or press ⌥⇧O.";
+  Firefox "For this tab only: click Sitegloss under the puzzle piece in the toolbar (or its
+  icon, if pinned) or press ⌥⇧O. Firefox lets it in until the tab goes to another page." The
+  shortcut is the browser's own (`commands.getAll()`, so a changed one is named, an unset one
+  is left out), on a Mac in symbols as the panel writes keys elsewhere (Alt+Shift+O on other
+  systems). The browser is named as it is: Firefox by the build, Chrome or Edge by its brands,
+  any other "your browser" (it only names; nothing is decided by it). "Allow on all sites"
+  stays the button's name everywhere (the worker's refusal text for an AI app names it);
+  "(recommended)" goes with it where something is missing, "(highly recommended)" on the
+  option.
+- **Pages no extension may run on** (after review). Never "no access yet" with ways that
+  cannot help: the panel says "Sitegloss cannot work on this kind of page: …" with no button
+  (Chrome: "the browser's own pages, other extensions' pages and its extension store"; Firefox:
+  "its own pages (about:), addons.mozilla.org and PDFs in its viewer"). Only by what is true
+  now (second review: "cannot work on this kind of page" on an ordinary page is worse than "no
+  access yet" where nothing helps): the address where it shows, by scheme (the browsers' own
+  pages, view-source:) and by that browser's restricted hosts only (Chrome: the Chrome Web
+  Store; Edge: that and Edge Add-ons, Edge told by its brands, the one choice a brand makes;
+  Firefox: `extensions.webextensions.restrictedDomains`, addons.mozilla.org, support and
+  accounts among them; in another browser these are ordinary sites); where it is hidden, the
+  refusal of a script that does nothing, asked at each look at the tab (it runs nowhere, as
+  Sitegloss may not run there): Chrome says "Cannot access a chrome:// URL" for its pages,
+  Firefox runs it in no frame on about: pages (both tried); and in Firefox a file while
+  "Access local files" is off. The file text ("Allow access to file URLs") only where the
+  address is hidden: a store page in Chrome, whose file access is off by default, is a store
+  page. On such a page the first-use offer, if still up, has the neutral head. A refused
+  action is remembered nowhere (the first round marked the tab and address, which an error
+  page of a dev server that was down turned into a lasting "cannot"); its hint says, from
+  what is true now: the browser's own cannot words, "cannot work on this kind of page"; where
+  the ways cannot help (all sites allowed, or the address shows, so the click is in: an error
+  page, a PDF in Firefox's viewer, which Firefox refuses with "Missing host permission",
+  tried), only "Sitegloss could not reach this page. Reload it and try again." (in Firefox
+  with "A PDF in Firefox's viewer refuses every extension."); else no access yet, with the
+  ways. Not recognisable: the Chrome Web Store and addons.mozilla.org with no access, where the
+  browsers refuse them in the same words as any page without access (tried); there the notice
+  says "no access yet" until the icon's click shows the address.
+- **Focus** (after review). It never falls to the page's body when access changes what is shown:
+  after Not now to what comes next (the notice that takes the offer's place, else New case
+  for this page, else the heading "This page"); after Allow on all sites to the control the
+  offer or the notice stood for (New case, Add marks) once it is back; a focused New case, Add
+  marks, Show/Hide marks or mark's Show that the notice replaces hands it to the notice's
+  button. The notice writes its text only when it changes (a live region speaks each write);
+  the tool bar's name goes with its role while the notice fills it; a reader meets, under the
+  case's head, that the bar at the end of the case says why (the bar is last in the page, as
+  on screen). The focus moves only while the panel's document has it: someone working in the
+  page keeps their keys there. After a grant the tab's address is read before all sites is
+  shown as allowed, so no render in between has all sites with a hidden address (which would
+  say, and announce, "cannot work on this kind of page").
+- **Firefox.** The checkbox and the offer's button ask in the click, as before; both tested
+  in the real sidebar. Opening a case's page or a mark's link does not ask for the site in
+  Firefox any more (it could not be answered); the tab's notice offers all sites and the click.
+  `consentChanged` ends AI access only when it is on or retrying (`consentGoneEnds`). Unchanged:
+  `permissions.onAdded` and `onRemoved` already moved the box, the notice and the drawing in
+  both browsers; now a removal also counts as "said no", so the offer does not come back after
+  it: the panel remembers that all sites was allowed, so a take-back in the browser's settings
+  with no panel open is a no too, decided when a panel next opens. "Not now" and that memory
+  live in the panel's own `localStorage` (the panel writes no storage of the extension's,
+  DEC-063; read inside a `try`: where the browser refuses it, the panel works on and offers
+  again); two open panels (two windows) agree through its `storage` event.
+- **Unchanged.** The manifest: `<all_urls>` optional, nothing new at install, no new warning.
+  "Blur form fields in screenshots" apart from its place. Every other rule of the panel.
+- **What remains.** Firefox's sidebar strip shows a Sitegloss icon too; whether its click gives
+  access was not tested (Firefox's code grants `activeTab` for the action and commands, not for
+  sidebar switches), so the texts name the puzzle piece and the shortcut. A person who says
+  "Not now" in one browser profile is offered it again in another; Firefox clears the panel's
+  storage with the site data (and a temporary add-on gets a new origin at each load), and then
+  the offer comes once more. The gesture rule (`permissions.request` in the click) is held, for
+  the handlers this change made (Allow on all sites, the option's box, the offer's and the
+  notices' buttons, a case's page in Chrome), by a check of the source that nothing defers
+  the request (`await`, `.then`, a timer); the panel's other requests (downloads, Fill in the
+  code, the data consent) are not in it. Automation cannot click Chrome's real prompt.
+  Edge was not run.
+- Tests: `test/access.test.ts` (each state, a store page and a refused page, the refusals'
+  kinds, the words that differ by browser, the shortcut and the browser's name, Firefox's
+  skipped site prompt, the memory and a take-back with no panel open, the source check of the all-sites
+  handlers' gesture), `test/connection.test.ts` (`consentGoneEnds`), `test/view.test.ts` (the offer,
+  Not now, the notice on Home and in the tool bar, no Show, no next-step Add marks, all gone
+  once allowed, Options on Home, a store page, the focus after Not now, after a grant and when
+  the notice replaces a focused control, the tool bar's name), `test/e2e/shipped.test.ts`
+  (the store package in Chromium: the offer on a tab without access asks for `<all_urls>` in
+  the click, Not now puts the notice in its place and holds over a reopening),
+  `test/e2e/firefox/firefox.test.ts` (the Firefox store package: no host access, the offer
+  first, the option on Home in Firefox's words).
+
+## DEC-077: The extension in the web app's look: cream, the forest green, Inter and Manrope (owner)
+
+2026-11-23 and 24. The owner, after the redesign of sitegloss.dev (its DEC-033 to DEC-039):
+"How much effort is it to bring the look and feel of the redesigned sitegloss.dev page to
+the extension? Colors etc." and "You don't need to replicate the Astryx component library
+1:1, just 'roughly'." Shown a draft build: "I like the design preview. Go for it."
+
+- **Roughly, not a port.** The panel keeps its layout, its density (340 px, its spacing
+  scale) and its own components; what changes is the ground, the ink, the action colour,
+  the type and the shape of buttons, chips and cards. Every colour is a role of the web
+  theme's palette (sitegloss.dev's `packages/ui/src/palette.ts`, its DEC-034), named in
+  the token's comment, so a change there can be followed here by name.
+
+| Panel token | Before (light / dark) | After (light / dark) | Web theme's role |
+|---|---|---|---|
+| `--paper` | #f6f4ee / #11141a | #fcf9ed / #181712 | page (cream 1) |
+| `--sheet` | #ffffff / #1a1e27 | #fefdf7 / #201e18 | card (cream 2); cards also take a rule edge and `--shadow-card` (the web's shadow-low) |
+| `--card-edge` (new) | (cards had `--edge`) | #dbd8cb / #4b4940 | rule (cream 5); in dark cream 7, as the shadow does not show there |
+| `--field` (new) | (was `--sheet`) | #ffffff / #27251f | field, menu (cream 3) |
+| `--wash` | #ebe8e0 / #242a37 | #f1efe3 / #2d2b24 | quiet fill (cream 4) |
+| `--control`, `--control-hover`, `--control-press` (new) | (the default button was the sheet with an edge) | #dbd8cb #cfccbf #c4c1b4 / #39372f #424038 #4b4940 | secondary button: control fill, hovered, pressed (cream 5, 6, 7), no edge |
+| `--ink` | #1b2130 / #eceef3 | #211e13 / #f2f0e9 | text (cream 12) |
+| `--ink-2` | #535c6e / #a6aebd | #565346 / #c0beb4 | secondary text (cream 11) |
+| `--placeholder` | #6e7583 / #7f8797 | #797564 / #928f83 | disabled text (cream 9; cream 10 in dark, for 4.5:1 on a field, DEC-060) |
+| `--rule` | #dedad0 / #2b313d | #dbd8cb / #39372f | rule (cream 5) |
+| `--edge` | #7b8291 / #737c8e | #8b8672 / #7e7c71 | control edge (cream 8) |
+| `--strong`, `--strong-hover` (new), `--on-strong` | #1b2130, mixed, #ffffff / #eceef3, mixed, #11141a | #00362a #002c22 #fcf9ed / #53ba9e #5dc4a7 #181712 | primary, hovered, primary text (green 9, 10; cream 1) |
+| `--accent`, `--accent-edge` | #ffb000 #a06c00 / #ffb000 | unchanged | the logo's amber (below); `--accent-hover`, `--accent-ink` removed |
+| `--link` | #1a55c2 / #8fb8ff | #00614e / #74d3b7 | link (green 11) |
+| `--focus` | #1a55c2 / #8fb8ff | #00362a / #53ba9e | focus ring (green 9) |
+| `--st-open`, `--st-verify`, `--st-verified`, `--st-dismissed` | #c20f4c #4347c9 #166d2d #535c6e / #ff7aa5 #a9adff #72d18c #a6aebd | #c20f4c #4f53e0 #006425 #565346 / #f6a3af #abb9fe #91d099 #c0beb4 | chip text (step 11; open keeps #c20f4c in light, pink 11 is maroon; to verify is the pin's indigo, which reads as text) |
+| `--st-*-bg` | #fce4ec #e8e9fd #dff2e3 #e9ebef / #3a1524 #22244d #13301d #272c38 | #fee8eb #eaeeff #e4f3e6 #f1efe3 / #402025 #242944 #19321d #2d2b24 | chip fill (step 4) |
+| `--pin-open`, `-verify`, `-verified`, `-dismissed` (new), `--on-pin` | (pins were `--st-*`, pale in dark with a dark number) | #e0185c #4f53e0 #1a7f37 #797564, #ffffff, both schemes | pin fill and text (fixed: the page's pins) |
+| `--danger`, `--danger-bg`, `--on-danger` | #b3261e #fbe6e3 #ffffff / #ff8f85 #3a1714 #11141a | #9e0016 #ffe9e6 #fcf9ed / #ffa098 #41211e #181712 | destructive text (red 11), error tint (red 4), confirm text |
+| `--warn`, `--warn-bg`, `--warn-edge` | #7d4500 #fff0cc #a86400 / #ffc861 #33270d #c98a1a | #625200 #f7efcd #907900 / #d5bd5d #332b0a #907900 | warning text (amber 11), tint (amber 4); the edge is one step darker than the web's amber 8, to keep 3:1 on the paper |
+| `--scrim` | #1b213066 / #000000a3 | #211e1380 / #181712cc | overlay |
+| `--r-card` | 8px | 10px | container radius (controls stay 6 px) |
+
+- **Buttons in the web app's grammar** (its control grammar, DEC-034): the default button
+  is the darker cream with no edge (its border stays, transparent, for its size and for
+  forced colours); a destructive one is that button with red words (its hover no longer
+  turns red); armed, it is the solid red. The view's main action (`.strong`) and the one
+  that starts drawing (`.primary`, larger) are the forest green. Fields stay white with
+  the edge; menus are the field's white with the card's shadow.
+- **A button without an edge is told by its label.** The darker cream is 1.35:1 from the
+  paper in light (1.51:1 in dark), not the 3:1 of WCAG 1.4.11's non-text contrast; the
+  button's boundary rests on its label, which is text at 4.5:1 or more (the exception
+  1.4.11 makes for a control identified by its text), as in the web app. The fill is held
+  to the web palette's own minimums for it, the pairs in sitegloss.dev's
+  `packages/ui/src/palette.ts` (`PAIRS`): control fill on the page and on a card 1.3:1, on
+  the selected fill and the segmented track 1.15:1. **On a warning's or an error's tint**
+  (a notice, `#import-prompt`, `#pair-problem`, `#pair-replaced`, an error hint, the sync
+  and AI banners, the server note) the cream is only 1.18 to 1.24:1 from the tint, so a
+  button there has the field's edge (3.14:1 or more); the table holds the cream on those
+  tints, so a later change to one of them shows. A disabled button (the quiet fill) is
+  about 1.2:1 from an enabled one: its words, in the secondary text, say it.
+- **Cards** keep the approved soft look in light: the lighter cream, a rule-coloured edge
+  (1.35:1 on the paper) and the shadow. In dark the shadow does not show on the dark paper,
+  so a card's edge there is one step stronger (`--card-edge`, cream 7 in dark, 1.99:1 on
+  the paper), which tells a clickable case card from the ground. Beyond that a card's
+  boundary is decorative: a card is identified by its text (its title and its lines).
+- **Amber is the logo's, and no button's.** The web app's main action is the forest green,
+  and one product cannot have an amber main button in its panel and a green one on its
+  site. Amber keeps what it is as the logo's colour: the loop in the page's bars, the AI
+  pill's dot while it waits, the edge of a highlight's quote, the Highlight tool's marker
+  stroke, and the toolbar icon's badge while the sync is paused (the web app's amber is its
+  warning colour too). The Verify cue's highlight of the next mark (DEC-061) stays as the
+  owner approved it: the amber at 30 % with its amber edge. Seen on the new cream in both
+  schemes it is as plain as on the old paper (the tint against the paper 1.19:1 in light,
+  1.98:1 in dark, before 1.18:1 and 1.96:1), so its share is unchanged; the row's words
+  read on it (ink 13.27:1 and 7.93:1).
+- **The dark scheme's main button** is the web app's own (green 9 in dark, #53ba9e with the
+  page's colour as text); it is loud at the panel's full width, and stays as the web has it.
+- **Pins are the page's colours in both schemes**, as the web app's: a screenshot does not
+  change with the scheme, and the pin beside it should not either. The words of a status
+  keep the text tones above. The progress bar of a case takes the pins' colours.
+- **Fonts.** Inter for text and Manrope for headings, as the web app: the variable Latin
+  files of @fontsource-variable 5.3.0, byte for byte those the app serves
+  (`inter-latin-wght-normal.woff2`, 48,256 bytes; `manrope-latin-wght-normal.woff2`,
+  24,836 bytes), with their SIL OFL 1.1 texts, in `src/fonts/`. `src/fonts/fonts.css`
+  (`font-display: swap`, the system stack after them) is imported by the side panel's and
+  the viewer's style sheets; the build copies the two files once to `fonts/` (external to
+  the bundler, which would otherwise inline a copy into each page) and adds both licences
+  to `LICENSES.txt`. Nothing is fetched from the network. The package grows by about
+  85 KB unpacked; the Chrome store zip from about 400 KB to 476 KB. **Limits, accepted:**
+  the files cover Latin (the web app's `unicode-range`: Basic Latin, Latin-1 and a few
+  marks): a character outside it (an arrow, a Polish or Czech letter such as "ł" or "č" in
+  a page title, Cyrillic, Greek) is drawn in the system's face, mid-word if need be, as
+  the web app serves only these two files too. No metrics-matched fallback: a local file
+  is there within the first frames, so the swap from the system face is brief, but a line
+  cut with an ellipsis may cut at another place once Inter is in. Numbers in pins, counts
+  and chips stay in rounded digits where the system has them (`ui-rounded`, macOS), else
+  in Inter, not in the system's face.
+- **The comment field's frame keeps the system font.** It sits inside the dialog Sitegloss
+  draws on the marked page, which never loads a font into the page and so uses the
+  system's face; the field in the web app's face beside the dialog's words would look like
+  a different thing. So the fonts are loaded only by the side panel and the viewer. (The
+  relay's pairing page is the relay's, not an extension page: nothing there to style.)
+- **On the marked page, deliberately little** (`src/lib/page-look.ts`): the bars' ink is the
+  web's text colour with cream words and a warm hover; the pressed tool, the toolbar's main
+  action and the review bar's Add marks are the dark scheme's green (#53ba9e, the bar's ink
+  on it), the bars being dark; the dialog's text, edges and placeholder are the panel's
+  light values, its main button the forest green, its other buttons the darker cream
+  with the field's edge (3.65:1 on the dialog's white): the dialog sits on any page, and
+  its Cancel and Delete must be found as buttons.
+  **Left as they were on purpose:** the marks' colours (they are data, a status, and the
+  same on every page; the dismissed grey #667085 stays, though the web's is #797564), the
+  white casing under every stroke, the blue hover outline #1f6feb (also the field frame's
+  focus ring) that has to read on any page, the system font, the bars' shadows, the
+  logo's amber.
+- **Tests:** `test/contrast.test.ts` holds every pair above to its minimum, as before; the
+  edgeless button's fill is held to the web palette's 1.3:1 on the paper and the card and
+  1.15:1 on the quiet fill and the tints (its words carry the 4.5:1), the edged buttons
+  on the tints are checked to be there, the card's edge on the paper (1.3:1 in light,
+  1.8:1 in dark), red words on the pressed button, the focus ring on every surface it is
+  drawn on, the dialog's button fill and edge; the bars are checked to be the panel's dark
+  values and the dialog its light ones. `test/build.test.ts`: every build
+  (development, store, test, Firefox, Firefox store) has the two font files once and both
+  licences, the panel's and the viewer's style sheets name them, the field's and the
+  content script do not.
+- **Remains:** icons on the panel's buttons (a pass of its own; until then the cream buttons
+  of a long list of marks read heavier than the old outlined ones); the store screenshots
+  of both stores, which show the old look.
+
+## DEC-078: Icons on the panel's action buttons, the web app's; Show is its icon alone (owner)
+
+2026-11-23. The owner, with a picture of a mark's row and its cream "Show" button: "What
+about showing just an icon instead of the 'Show' buttons (which look a bit clumsy) plus a
+tooltip. Anyway: Add icons to all action buttons when applicable. I like this..." The
+same day he liked that the web app's buttons carry icons; DEC-077 had left the cream Show
+and Verify buttons reading heavier than the old outlined ones.
+
+- **One family, the web app's**: heroicons' outline set (24 px grid, 1.5 stroke), the
+  paths copied from heroicons 2.2.0 into `src/sidepanel/icons.ts` (data, no runtime
+  dependency; MIT, its licence in every build's `LICENSES.txt`, `scripts/build.ts`). An
+  icon is an inline `<svg aria-hidden="true">` in `currentColor`, 16 px on a button, 14 px
+  on a small one (its line kept at 1 px). The top bar's back chevron and copy icon are now
+  the family's (chevron-left, clipboard-document; the tick after a copy, check). The
+  disclosure chevrons (a mark's row, Comments, Screenshots, a site's pages, Assign's menu)
+  stay drawn in CSS: the same open chevron, the same weight. The marks' pins and the
+  status chips' signs stay as they are: they are data, not actions.
+- **The same action has the same icon as in the web app, and one icon is one action:**
+
+| Action | Where in the panel | Web app's icon | Panel's icon |
+|---|---|---|---|
+| Show a mark on the page (all three states) | a mark's row | ViewfinderCircle ("The mark" in the viewer) | viewfinder-circle, the button is the icon alone |
+| Verify; Verify anyway; Start verifying | a mark to verify (row and actions); a mark to verify of another page (DEC-079); Next step, This page | Check (Verify; "Show the marks to verify") | check |
+| Reopen…; Reopen case | a settled mark; the case's end | ArrowUturnLeft | arrow-uturn-left |
+| Close case | the case's end; Next step | CheckCircle | check-circle |
+| Edit comment; a comment's Edit; Rename… | a mark; the thread; the case's "…" menu | PencilSquare (Edit text…, Rename…) | pencil-square |
+| Delete mark; Delete comment; Delete case | a mark; the thread; the "…" menu | Trash | trash |
+| Add comment | a mark's comments | ChatBubbleLeft | chat-bubble-left |
+| Assign / Reassign | Next step | User | user |
+| Copy for your AI app; Copy (address, code, commands, a file's path) | Next step; Pair an AI app; How do I add it?; Saved as; the top bar's case id | ClipboardDocument (the tick when copied) | clipboard-document, check when copied |
+| Copy link | Next step | (none; its Share dialog's button has none) | link, the icon alone (below) |
+| Share with team | Next step | Share (Share…) | share |
+| Export…; Export all cases | the "…" menu, Next step; Files | ArrowDownTray (Download) | arrow-down-tray |
+| Import a case… | Files | (none in the web app) | arrow-up-tray |
+| New case for this page; Add marks; Add another image… | This page; the tool bar, Next step; a mark's pictures | Plus (New team) | plus |
+| Show marks / Hide marks | the tool bar | (none in the web app) | eye / eye-slash |
+| Sign in / Sign in again; Sign out | Team | ArrowRightStartOnRectangle (Sign out) | arrow-right-end-on-rectangle; arrow-right-start-on-rectangle |
+| Sync now | Team | (none) | arrow-path |
+| Allow on all sites | the first-use offer; the no-access notice | (none) | globe-alt |
+| Disconnect (an app); Disconnect all apps | AI app: the connected apps, Pair an AI app | (none) | link-slash |
+| All cases / Back | the top bar | ChevronLeft | chevron-left |
+
+- **Show is its icon alone**, a 28 × 28 square in the row's action place (the top bar's
+  copy is its model), its name and tooltip saying what it does in each state: "Show mark 2
+  on the page" (tooltip: "…: scroll to it and outline it"); while the marks are not drawn
+  "Show the marks on this page and go to mark 2" (tooltip: "Show this case's marks on this
+  page, scroll to mark 2 and outline it"; `aria-busy` while it draws); for a mark of
+  another page "Show mark 2: open <page> in this tab". The viewfinder, not the eye: the
+  eye is Show marks / Hide marks, the marks drawn or not; the viewfinder is the web app's
+  "the mark", one element found and framed. A row's comment gets the width Show's word
+  took: no row wraps more than before (340 px, beside Verify too).
+- **When a button has no icon.** A button gets one only where a heroicon says its action
+  honestly and the same action has it everywhere; never a guess (a wrong icon is worse than
+  none), never one that would only repeat a neighbour's, and never one that costs a row a
+  line it did not take before at 340 or 460 px (the icon goes first, not the words). So no
+  icon on: Resolve… and Change… (the web app has none; no picture says "fixed, won't fix
+  or can't reproduce"), Open this case (the primary green, its words say it), Adding
+  marks: Done and Done (a tick is Verify here), Save, Cancel and the other buttons of a
+  form, Turn on AI access, Stop AI access and a question's Allow/Deny (DEC-037: alike on
+  purpose), Keep it on / Not now, the sync's Copy to Downloads and Choose a folder… (with
+  icons the pair takes two lines at 340 px), Show in folder, Try again, Allow access,
+  Change…, Stop copying, Match size, Next candidate, Sync them / Keep them, Connect
+  again, Disconnect all apps in the takeover notice (beside Connect again it would
+  take a line more; under the code it has its icon), and Open its page to verify
+  (DEC-079: the same action as Show on a mark of another page, but with the viewfinder
+  its row took four lines at 340 px where it takes three). Not at all: text links (Share with
+  team in the facts, Add a link, Expand all, + Add another AI app, Fill in the code for
+  me), chips, a menu's items where the web app gives them none (Add a link…, the
+  members in Assign), the cards of cases.
+- **The weight.** Show as a square in place of a word is the change that calms a list of
+  marks; with an icon and a label the filled buttons are as heavy as before (the icon is
+  the words' colour and weight). Where a row of three or four small buttons in the Next
+  step took a line more with icons (Start verifying, Assign, Copy link, Copy for your AI
+  app at 460 px; Start verifying, Copy link, Reassign at 340 px), Copy link, the least of
+  them and never alone, is its icon alone with its name and tooltip; no text was made
+  smaller. Checked at 340 and 460 px, light and dark: the main view, an open case, an open
+  mark of each status, the Next step's rows, the "…" menu, the tool bar, the AI view.
+- **Accessibility.** Icons are decoration (`aria-hidden`, `focusable="false"`); a name is
+  the words or `aria-label`; an icon-only button has both and a `title`. In forced colours
+  the icon is `currentColor`, so `ButtonText` and the rest; nothing is said by an icon's
+  colour; the focus ring and reduced motion are unchanged. Contrast: the icon is drawn in
+  its button's text colour, so the text's rows of `test/contrast.test.ts` cover it (4.5:1
+  where a graphic needs 3:1).
+- **Tests:** `test/icons.test.ts` (every icon an `svg` hidden from readers in
+  `currentColor`; `setLabel`), `test/view.test.ts` (Show has no text, its name and tooltip
+  in both states; Copy link the same; a labelled button keeps its words beside its icon),
+  `test/build.test.ts` (heroicons' licence in every build).
+
+## DEC-079: The hand-back in the panel: Verify where the page was checked, on to the next mark, "This page" for whoever came to verify
+
+2026-11-24, the night before the public release. The owner, on 24 November: "see how
+the workflow can be enhanced so that the handover from a tester to a dev and back from
+the dev to a tester can be simplified. Gather ideas and implement them." A walk through
+the whole flow that night (service at 7e06b47, extension at fa7c0ac, in the e2e
+harness) found, for the extension: B6 (from the web to the live page, "This page" speaks
+of marking, not of verifying), B7 (Verify does not move on, and every row offers Verify,
+also for marks of pages the tester has not opened), B10 (the hand-over paragraph twice;
+the `set_mark_status` question without the sync line), D1 to D3 (the copied text: the
+report after the statuses, no exit for a mark that stays, a question that reaches
+nobody) and D7 (thin status answers). The service's part is its own.
+
+- **B7 was real, in one situation.** On the audit's build the rule "after a Verify the
+  next mark that waits opens" (`afterVerify`, `opensAfterVerify`, the cue; DEC-061, the
+  motion of pull request 78) held in the whole list. After Start verifying, which
+  filters the list to the marks to verify, it did not: the verified row left the
+  filtered list, the redraw handed the focus to the next row's head (`focusInMarks`,
+  the rule for a deleted mark), and the rule "only a focus the Verify left behind is
+  moved" took that focus for the person's own. Nothing opened, as the audit's picture
+  shows ("Showing 3 of 5 marks", all closed). Shown in a view test of the audit's case
+  (five marks on two pages; 1, 2, 4 fixed, 3 won't fix, 5 open; the tab on /v1): from
+  the head and from the open row, with the focus on the pressed button, the whole list
+  opened mark 2, the filtered list nothing. Now a focus the redraw moved, because the
+  verified row left the list, is still the Verify's (`movedTo`), there and when the
+  held opening runs. Unchanged: a focus on the body counts as left behind (the next
+  opens), a field or a button elsewhere that the person went to is theirs (nothing
+  opens), also a button outside the list that kept the focus because the browser does
+  not focus a clicked button (Safari, Firefox on macOS) after it was reached by keyboard.
+- **Which rows offer Verify (the rule).** The one-click Verify in a row's head and the
+  Verify in an open row are there for a mark to verify of the page in front, as the
+  panel knows "this page": `onPageInFront` with the tab's address, the rule of the
+  row's Show (`verifiesHere` in `mark-link.ts`). A mark to verify of another page has
+  neither: its second line names its page as the link that opens it in this tab and
+  shows the mark there (the existing "On <page>" link, now also while the marks are not
+  drawn), and its open row has "Open its page to verify" as its strong action, the same
+  `openMarkPage`. That link takes the tab's host only where the tab shows a page of
+  this case (another environment: `pageInFront`) or the case is drawn on it; from any
+  other site (the hand-back mail in a webmail, the case on the web app) it opens the
+  address where the mark was made, and its tooltip names that whole address (review).
+  **Verify is never impossible (review):** paths differ between environments (ids in a
+  path), a fix moves a route, a page redirects. So the open row of such a mark has a
+  quiet "Verify anyway" beside it ("You checked it somewhere else: set mark N
+  verified"), the same Verify with its cue and the next mark; the row's head has none.
+  The row says what is true: "Open its page to verify it there, or verify anyway if you
+  checked it elsewhere." With no page of the case in front (a browser page, no tab) no
+  row offers Verify and each mark to verify names its page. Where the tab's address is
+  not known (no access yet: Firefox after the tab went to another page, any tab not
+  let in) the open row offers no page to open again but the access notice's way: "To
+  verify here, click the Sitegloss icon …", and Verify anyway. A mark of no web page
+  (an imported file's) has nowhere to open, so it keeps Verify. Rows of other states
+  are as they were.
+- **After a Verify** the next mark to verify of the page in front opens first, then one
+  of another page; that row opens with "Open its page to verify" as its one obvious
+  action, and the status line says "Mark 4 opened: it is on another page; open its page
+  to verify it." The tab is not navigated by itself. Start verifying (the next step's,
+  and This page's) opens the first mark to verify of the page in front, else the lowest.
+  - *Shown on the page too (owner, 25 November):* "When you click "Verify" and the next
+    mark opens, this mark should also just be shown." The row that opens does what its
+    Show does (`showMatch`: the page scrolls to it and outlines it) where the case's marks
+    are drawn on the tab and the mark is found there or shown at its stored place. Where
+    they are not drawn (Hide marks, whose promise is "they stay off on this tab until you
+    show them again") its Show would draw them first: a Verify does not, the row only
+    opens. A mark of another page only opens, as before. Focus unchanged; the status line
+    stays as it was when the mark is shown, and where showing fails (the page busy, the
+    case no longer drawn) the panel's hint says why, as it does for the Show button.
+- **B6, "This page" for whoever came to verify.** When the page in front has one open
+  case (pull request 81: only open cases are promoted there) that waits for this person
+  to verify it, it says so instead of "This page already has a case …": "3 marks wait
+  for you to verify on this page." (or "…, on other pages of this case." when none of
+  them is on this page), and its main button is Start verifying: the case opens, its
+  marks are drawn, the first mark to verify of this page opens with the focus on its
+  head (`verifyCase`: Open this case; the step waits in the panel's state,
+  `verifyOnOpen`, until a read of the case makes it current, whichever read that is).
+  Waits for this person: the team's case (a server that assigns cases) is "to verify"
+  and among their cases by the rule of My cases (`mineFor`: they started it and the
+  server told its hand-over); signed out, a case of this browser only, or a server that
+  assigns none: fixed marks on this page (`waitsToVerify` in `my-cases.ts`). Every other state, and several
+  cases on the page, keep the sentence and Open this case.
+- **The copied text (D1, D2, D3)** in the service's words, step 2: "… Where a mark is to
+  stay as it is (by design, or someone else's decision), set it to "wontfix" with the
+  reason. Where a mark is unclear, leave it open, ask in a comment on that mark, and tell
+  me." Step 3: "Add one comment on the case: what changed, the branch or pull request,
+  and how to check it. Then set each mark you fixed to "fixed" with a one-line note."
+  The extension's AI tools' instructions say the same order and the wontfix exit.
+- **Small ones.** The first-use main view says the hand-over once: before signing in
+  under Team beside Sign in, in the empty list only where a team assigns cases (B10).
+  The question before an AI app's `set_mark_status` says "It syncs with the team …: its
+  members see it." where the case syncs and the call changes the mark, as add_comment's
+  does (B10). `set_mark_status` answers where the case stands after the change, as this
+  browser knows it: "Still open: 5." or "No mark is open now: the case is ready to
+  verify." (or "…, and none waits to be verified."); no mail is claimed, the server
+  sends those (D7).
+- **Not changed:** no permission, the manifest, settings, the version; the marks'
+  drawing on the page; the web app.
+- **Found on the way, not this change's:** the full Chromium run on this branch once
+  failed "a loaded mark shows only where its element does …" (`marks.test.ts`, DEC-075),
+  by timing: with the side panel's page slowed it failed on `main` too. It was the test,
+  not the content script: it read `getBoundingClientRect()` of the nested `<svg>` that
+  cuts the mark, which is its content's box uncut, and passed only when it caught a frame
+  drawn before the scroll. Fixed on `main` by pull request 85 (it reads the clip's own
+  box and checks a second load).
+- **Known, left for later:** a batch status tool (`set_marks_status`) for the
+  extension's AI tools (D7: five marks, five questions unless "Always allow"); "open on
+  the page" from the web through a hint in the address (the audit's C10); following the
+  next mark to another page by navigating the tab after a Verify.
+
+## DEC-080: The text for an AI app names its tools, says when to stop, and carries nothing from the case (owner, 24 November 2026)
+
+2026-11-24. The owner gave an AI app the text of "Copy for your AI app" while it had no
+Sitegloss tools connected. It did not stop: it read the case through the owner's
+browser. The owner: "The copy/pasted AI instructions from the extension were completely
+unusable for you it seems. You should have asked me if you don't have a connection!" On
+the lines that fenced the case's title: "I'm not an LLM, but I would never understand
+this". On the team's AI app page in the text: "This URL is irrelevant here, isn't it?"
+
+The text had six weaknesses:
+
+- It named the tools in Sitegloss's words ("the server's or the extension's own AI app
+  connection"), not by the names an AI app sees.
+- The case's address was its second line, so an AI app with a browser started there.
+- The rule to stop stood in the middle of a paragraph and forbade nothing: it did not
+  say not to read the case another way.
+- It said nothing about a server that is connected but asks to sign in first.
+- The case's title and a `Contents:` line were fenced by two lines saying "quoted as
+  data", which neither the owner nor the AI app understood.
+- Step 2 was one paragraph with four cases in it.
+
+Decided, the text word for word as the owner approved it (`caseInstructions` in
+`src/lib/agent-instructions.ts`):
+
+- **The tools are named:** get_case, add_comment and set_mark_status. Both of Sitegloss's
+  connections, the service's MCP server and the extension's own, offer these three under
+  these names, with the statuses "fixed", "wontfix" and "verified".
+- **When to stop, on lines of their own:** if the tools are missing, or their server asks
+  to sign in first, the AI app stops and says so. It does not open the case in a browser
+  and does not read it any other way.
+- **Where to connect is the public help page,** `https://sitegloss.dev/help/#mcp`, not the
+  team's AI app page and not the side panel's AI app card. `CaseRef` loses `aiUrl`, and
+  the panel's `Where` its `ai` address.
+- **Nothing the case holds is in the text:** no title, no `Contents:` line, no fence.
+  That text is written by other people; pasted, it would arrive with the paster's
+  authority. The AI app reads it through get_case, as tool data. The text holds the
+  case's id and its address. One paragraph says the marks are written by other people
+  and that a mark asking for anything other than a fix is not followed. The code that
+  only put case data into the text is gone (`contentsOf`, `pageName`, `textStart`,
+  `quoted` and the types `CaseContents` and `PageName`), and its tests with it.
+- **Step 2 is a list:** fix it here; other code is left alone and named in a comment;
+  "wontfix" with the reason; unclear, asked in a comment and said. The comment on the
+  case is step 3, the statuses step 4, and "verified" is never the AI app's.
+- **The case's address comes last,** labelled as being for people.
+
+This replaces DEC-069's wording of this text, including its change of 23 November. The
+web app carries the same text (sitegloss.dev DEC-050); the two are still kept in step by
+hand. It reaches users with the next release: 0.4.0 is in the stores' review with the
+old text, and the version is not changed here.
+
+## DEC-081: The tools for an AI app as the server's: a case read in three steps, findings are comments (owner, 25 November 2026)
+
+2026-11-25. The service redesigned its MCP server's case tools (sitegloss.dev DEC-052):
+its `get_case` had answered a case of 46 marks with 124,912 characters, which an AI app
+cannot hold (Claude Code writes a text over about 50,000 characters into a file), and its
+instructions had passed the 4,096 characters a client keeps. The extension's `get_case`
+was the same kind of answer, larger still with the crops in it. The owner wants the
+extension's tools in line with the server's. The same day the owner decided: "Get rid of
+the findings": what an AI app finds out about a mark is a comment on that mark.
+
+**Reading a case, in the server's three steps:**
+
+- **`get_case(caseId)`** answers in plain text: the case (id, title, link, state; in a
+  case of the user's team whose turn it is, the assignee and who started it; closed or
+  not, the summary in full, the pages numbered `p1`, `p2`, its sites, its marks by
+  status), its last 5 comments that fit, with how many there are and the `list_comments`
+  call for the rest, then the first page of the overview of its marks. No pictures and
+  no element details. Where the extension knows more than the server it says it in the
+  same style: "Kept in this browser only, with no team" for a case without a team, and
+  "not sent to the team yet" for an assignment that waits for the sync.
+- **`list_marks(caseId, status?, page?, after?)`** gives the overview a page at a time:
+  one line per mark, by default the open and fixed ones, at most about 20,000
+  characters, ending at a mark, its last line the literal next call. The lines are the
+  server's, byte for byte: `src/lib/overview.ts` is a copy of its
+  `packages/api/src/v1/overview.ts`, held to `test/mark-overview.json`, a copy of its
+  vectors, as `test/page-key.json` is. Its `jsonText`, `quote`, `quoteStart` and
+  `plainLine` came with it: every JSON in the tools' answers goes through `jsonText`,
+  and every value of a case printed outside JSON (a time, a title, a name, an id, a
+  path) through `plainLine` or `quote`, so a line break, a line separator or a direction
+  control in a case, also in a time a file brings, cannot start a line or turn text
+  around. `validateCase` stays as lenient as it was: stored cases keep loading.
+- **`get_mark(caseId, mark)`** gives one mark in full: its status and how it was settled,
+  who made it and who wrote its comment, the comment, kind and shape, its page and the
+  address it was made at, a highlight's text, the element's details as one line of JSON
+  (cut field by field as the server cuts them), a stroke's ends, its last 5 comments and
+  its reopens, newest kept where they do not all fit. Its crop comes as a picture; the
+  screenshot and the images a person added are named with their `get_image` call. What
+  only the extension can say: whether the tab in front shows the mark's page, so that
+  `load_case`, `highlight` and `get_mark_element` find its element there; reopens that
+  do not fit are in the mark's history in the side panel.
+- `list_cases` gives one case per line as compact JSON, at most about 20,000 characters,
+  with a cursor for the next page (last change and id), as the server's does. The same
+  fields as before.
+- `list_comments` takes `mark` and `before` (a comment's id), as the server's; `offset`
+  stays.
+
+**Writing:**
+
+- **`set_mark_status(caseId, marks, status, note?)`** takes a list of marks with one note
+  for all, at most 100. Each mark stands on its own: one the case does not have or that is
+  refused is said, the others are changed, and the answer says per mark what happened
+  and then where the case stands. A call where nothing changed and something was refused
+  is an error. The old `mark: 3` is still taken, as `marks: [3]`; the schema lists it as
+  such, since the relay checks the input against the schema. The question to the user
+  names each mark (the first ten one by one) and says which will change nothing or be
+  refused; what the user allowed is held to those marks, whatever their numbers are by
+  then (DEC-039).
+- **No more findings.** `add_finding`, `edit_finding` and `delete_finding` are gone (DEC-019
+  is replaced in this). What an AI app finds out about a mark it writes with
+  `add_comment` and the mark's number, where the team reads it and can answer. The panel
+  no longer shows findings apart, nor their "N AI findings" tag or their Delete; they are
+  comments on the mark, in the thread. case.md has no findings section. The extension
+  sends no findings to the service and reads none from it (`wire.ts`, `book.ts`); the
+  service keeps taking them from older extensions and turns them into comments itself.
+
+**Findings already stored, at the update:** a stored finding of a mark goes one of three
+ways.
+
+1. **A case in no team (no book of a sync):** it becomes a comment on its mark in this
+   browser (`findingsAsComments`, `src/lib/case.ts`): its text as it was, its time, its
+   app, the person a team's server once wrote it down for, `imported` for one from a
+   file, and `edited` with its time for one its app changed. It goes into the thread by
+   its time. Its id is made by the server's function (its DEC-053): `f_` and the first 40
+   hexadecimal digits of the SHA-256 of the mark's id, a line feed and the finding's id,
+   held to a copy of the server's vectors (`test/finding-comment-id.json`;
+   `src/lib/sha256.ts` computes it at once, as an upgrade needs). It is made from the
+   mark's id here, so it has the server's shape, not the value the server would give the
+   same finding. The same finding gives the same comment, never a second one; a finding
+   without words makes none. What does not fit the thread's 1,000 comments stays on its
+   mark as it was and becomes a comment when a later write of the case through
+   `validateCase` (a change in the panel, a sync's merge) finds room; reading the case
+   (`getCase`, `listCases`) converts nothing.
+2. **The case syncs with a team, and a book of a server it syncs with (`mode` synced)
+   says that server has the finding** (its shadow has it), **and that server has, at the
+   moment of the migration, a signed-in account that has not run out, whose chosen team
+   is the book's team and is still among its teams:** the finding is removed here, with
+   no comment made. The server owns it, turns it into a comment itself, and that comment
+   comes with the ordinary sync, like any other. Every other book counts as "no server
+   has it" for that finding, and its comment stays (way 1 or 3): a sync that will not
+   bring the server's comment must not lose the words. On a later return to that team
+   they may show twice, which is accepted.
+3. **The case syncs with a team, and no server confirmed the finding** (no shadow has
+   it): it stays the ordinary local comment of way 1, which the comment sync sends once
+   as a new comment when it next looks at the case (a case left idle waits for its next
+   change, or for "Sync now"). A finding that waited in the queue, sent and not confirmed, counts
+   as this: the queued operation goes without its findings (a `mark.patch` left with
+   nothing else goes), and the comment instead; the service takes a comment id it has in
+   the same case as a duplicate, so a lost confirmation of the comment does not double it.
+
+How it runs:
+
+- **The store's version 3** (`DB_VERSION`, `store.ts`, after DEC-051's 2): its upgrade
+  does way 1 for every stored case, in the upgrade's own transaction. Every case is
+  converted or, if the transaction fails, none is, and the database stays at version 2
+  for the next open to try again. A case the conversion cannot read is kept as it was. A
+  build before this one cannot open version 3.
+- **Then, once, before the sync runs again** (`findingsIntoThreadsOnce` in
+  `cloud/findings.ts`, in the worker's `casesReady`, after `forgetCases`): for every
+  server's books, the comments of way 2 go from the case (they are found by their id,
+  made from the mark's id here, which the book maps to the server's), and every book,
+  of every server, loses its findings, shadow and queue, with nothing written in their
+  place. A case that two servers have (dev and production) therefore gets each server's
+  own comments from that server. A case is changed before its books. One that fails is
+  passed by and said in the console (its id and the error's name, nothing of the case);
+  its books keep their findings, and every queue loses them all the same, so nothing it
+  waited to send carries findings. The marker stays unset, so it all runs again at the
+  worker's next start, and also when another server's first `casesReady` runs in the
+  same worker; the sync does not wait for it meanwhile.
+- `validateCase` runs way 1 first, so a file with findings (an export of an older build)
+  is read with them as comments on their marks, imported. These are ordinary local
+  comments: they are sent like any other when their case syncs. A file put in place of a
+  case here keeps that case's thread (DEC-046) and adds the file's finding-comments it
+  does not have yet.
+- An export never writes findings: a finding left on its mark past the 1,000 comments
+  stays in this browser and is left out of the file.
+- In a case of a team nothing is left on a mark by way 2. A finding of way 3 past the
+  1,000 comments stays on its mark until there is room, as in way 1 (the rule said
+  otherwise; dropping it would lose words the server never had).
+
+**Known and accepted:**
+
+- An edit or a delete of an already synced finding that was made on 0.4.0 and not yet
+  pushed when the extension updates is not carried over: the server's text stands, and a
+  deleted one comes back as a comment.
+- A finding whose push the old server confirmed but this device has not pulled back is
+  in the shadow (0.4.0's `applyOp` put it there): way 2, not doubled. One exception: the
+  deployed service answers "applied" for a finding it cannot place past a case's 1,000
+  comments and keeps no comment of it, while 0.4.0 wrote it into its shadow; way 2 then
+  removes the only copy. 0.4.0's own next pull would have dropped it as well.
+- A finding that only another server's shadow has (with a valid account there) is
+  removed for the current server too; the words come back when the device syncs with
+  that other server again. In practice that is the owner's development server.
+- A membership that ended while the browser was closed still looks valid until the
+  account is next read from the server (the account record keeps when the teams were
+  last asked for, `checkedAt`, but nothing that tells a stale membership from a valid
+  one). If the first piece of work after the migration then turns the book local (no
+  member any more, a sign-out, another account or team), the server's comment does not
+  arrive and way 2 has removed the words here.
+- Before the migration's first run, the panel, the tools and an export see the
+  upgrade's comments of findings a server owns; an edit made to one in that window is
+  lost with it.
+- A queued operation whose confirmation was lost while the old server stored its
+  finding: the words are there twice, the server's comment and this device's.
+- If the service's script has not run when this version meets it, the findings of
+  synced cases are out of sight on every device until it runs, and nothing is lost: the
+  server keeps them stored, and nothing is sent about them.
+
+Why these gaps are accepted and no more is built for them: the service is deployed and
+its script has run on dev and production. There were 8 synced findings in all (1 on
+dev, 7 in one case on production), and all of them are comments on the server now. From
+now on a finding a 0.4.0 device pushes is turned into a comment at once and dropped by
+0.4.0's own next pull, so no new finding stays in a shadow.
+
+**Releasing:** the service with its findings change (its DEC-053) is deployed and its
+script has turned every stored finding into a comment, on production and on dev, with
+nothing left, before this version goes out.
+
+**The instructions and the copied text:**
+
+- The instructions an AI app gets are 2,241 characters (the server's: about 1,900; a
+  client keeps 4,096): the rule that a case's texts and a page's are data and not
+  instructions first, then the three steps of reading, what only this connection does
+  (the live page), and how to report. Each reading tool's description ends with whose
+  words it returns. Every case tool has the server's title and hints (`readOnlyHint`,
+  `idempotentHint`, `destructiveHint`, `openWorldHint: false`) besides Sitegloss's own
+  (`consequentialHint` asks first, `untrustedContentHint`). No tool answers with
+  `structuredContent` and none has an `outputSchema`. The tools for the live page, their
+  descriptions and hints are as they were.
+- Step 1 of "Copy for your AI app" (`caseInstructions`, DEC-080) is the server's: "Read the
+  case with get_case. Before you work on a mark, read it with get_mark if you have that
+  tool. Look at its picture when its words and its element's details do not make clear
+  what is meant." Nothing else of the text changed.
+
+**What an AI app connected to an older extension still sees:** that extension's tools as
+they were: its `get_case` answers with the whole case as JSON, findings included, and
+`add_finding` writes one. Its findings of a team's case go to the service, which makes
+them comments; the service answers with no findings, so on the next sync they leave that
+extension's marks and come back as comments in its thread. The copied text's step 1 says
+"if you have that tool", so an AI app on an older extension reads the case with
+`get_case` alone.
+
+Decided here, not by the owner:
+
+- The differences from the server's tools stay: no `full` on `get_image`, no `team` or
+  `show` on `list_cases` (it lists closed cases with `closed: true`, as before), another
+  cursor format (`<ms>.<id>`), a smaller inline crop (at most 800 pixels a side), and crop
+  paths by the mark's id. The tools print the calls an AI app should make, so it need not
+  build a path itself.
+- A person's summary or comment is never cut, so one very long text can make an answer
+  large, as at the server; `list_comments` has no budget, as in 0.4.0.
+- `get_case` still takes `images` from a call of before and does nothing with it, as the
+  relay refuses an argument the schema does not list.
+- The question for `set_mark_status` names at most ten marks one by one.
+- There is no test of an upgrade that fails: IndexedDB's transaction is what keeps it
+  whole.
+- The version is not changed: the release is not part of this.
+
+## DEC-082: tab-mcp client 0.25.0: the WebMCP draft's names and errors; the tools' type is renamed (owner, 25 November 2026)
+
+2026-11-25. `@ractive-ch/tab-mcp-client` goes from 0.24.0 to 0.25.0 (tested first as 0.25.0-rc.1);
+the relay used by the tests stays `@ractive-ch/tab-mcp` 0.13.3.
+
+- **What 0.25.0 changes in the library:** the types `Tool`, `RegisterToolOptions` and
+  `ToolExecuteOptions` are `ModelContextTool`, `ModelContextRegisterToolOptions` and
+  `ToolExecuteCallbackOptions`; the event `toolschange` is `toolchange`; `registerTool` fails as
+  the WebMCP draft says (an invalid name or an empty description is an `InvalidStateError`, a
+  missing name, description or `execute`, a schema that is no object, a signal that is no
+  `AbortSignal` or a list option that is `null` a `TypeError`, an `exposedTo` entry that is not
+  https, wss or loopback a `SecurityError`).
+- **What Sitegloss needed:** the rename of `Tool` in `src/worker/tools.ts` and
+  `test/tools.test.ts`. Sitegloss listens to no `toolschange`, and its tools are fixed and valid,
+  so no error of `registerTool` is new to it.
+
+## DEC-083: A highlight's text found around its element, only on evidence and only where it is the one place (owner, 25 November 2026)
+
+2026-11-25. On `highlight-nearby`. The owner, checking his case of sitegloss.dev, whose texts were
+reworded after he marked them: "This mark here is off. I highlighted the word "localhost". Maybe the
+same word just nearby could then be highlighted? Not sure if it's feasible." Two of its marks
+highlight "localhost": one in a span of the home page's headline (that part became a card since),
+one whose text was "localhost:3000" in a paragraph that now says "localhost" (the reword was the
+fix the mark asked for). Until now (DEC-066) a highlight's text was looked for only in the element
+its mark was matched to; not there, the element was drawn as a box, "Text changed".
+
+**The rule: a dashed mark on the wrong text is worse than the old box.** A mark found this way is
+drawn on the text, dashed, probable, never found; so it is drawn only where there is evidence and
+exactly one place. When in doubt, the old box and "Text changed". The first version took any
+occurrence and the first of several, and a review reproduced what that does: a cell's "3" drawn on
+the "3" of "2023", a button's "Save" (now "Submit") on "Saved drafts", a "the" the fix deleted on
+the "the" of "About the team" as "Text moved", "1042" of the third of three rows "Delete invoice …
+from the list" on the first row's "1040".
+
+- **Whether it looks, by how the element was found** (`nearWays`). The element search found it
+  (`found`): all three ways below. Only `probable`: ways 1 and 3, not 2, which trusts that the
+  element is the text's old place, and "probable" does not establish that (three rows
+  "Delete invoice … from the list", "1042" highlighted in the one the fix deleted, the first row
+  picked as probable: way 2 would say "1042" now reads "1040"). `ambiguous`, or more than one
+  candidate: no search around it at all. A lost mark: ways 1 and 2 only, which carry the text
+  around it; never way 3, a lone word anywhere in a wide area.
+- **Where it looks.** When the text is not in the matched element, or no element was matched and
+  the element's recorded selector names a place (`placeOf`: the element it names, else the
+  nearest of its own ancestors in it, up to four, that is on the page once; the levels dropped
+  count against the area's). The dropping stops, with no place, where what is left of the path
+  would name a `section`, `article`, `main`, `aside`, `form`, `dialog`, the body or a child of the
+  body (an app's root): an area that wide says nothing of where the mark was (a review placed a
+  lost headline's mark on the one "localhost" in a page's footer this way). The areas, nearest
+  first: the element itself, then its ancestors, at
+  most four levels up, not past the nearest `section`, `article`, `main`, `aside`, `form`, `dialog`
+  or `body`. The first area where one way has exactly one place that shows is taken; a wider area
+  is tried only when nothing qualifies in the nearer one. An area over 2,000 text nodes with words
+  (`AREA_NODES`, through `elementText`'s limit, `MAX_NODES` for an element itself) ends the search:
+  every area above it is larger. On a page of nested divs four levels can be much of the page;
+  nearest first and one place only are what keep that from drawing on a far copy.
+- **Three ways, in this order, each with its evidence.**
+  1. *The sentence moved*: the stored `before`, the text and the stored `after` as they were, both
+     sides at least 6 characters without spaces at the ends, exactly once in the area.
+  2. *Reworded in place*: the whole `before` and the whole `after`, the same sides' rule, with text
+     between them that is not empty and no longer than twice the old text and 20 characters
+     ("localhost:3000" now "localhost"); exactly one such place in the area, so of three rows
+     with the same words round a number none is taken, unless the row is the element itself,
+     found for sure (its own area comes first). A fix that deleted the text leaves nothing between: no place.
+  3. *The same text alone* (a highlight of a whole span, button, cell or link has no `before` and
+     `after`): only whole words (not inside a longer word or number: "Save" is not in "Saved"), at
+     least 4 characters and a letter ("3" and "the" are found anywhere), exactly once in the area.
+  A text with more than 1,000 places in an area is no evidence of any one of them: no places at
+  all (counting only the first 1,000 would make one of many look like the only one).
+  A place counts only where its text shows: its element passes `checkVisibility` with its
+  visibility and opacity (where there is one); one of its line boxes is larger than 2 by 2 px and
+  not wholly left of or above the page (text put at `left: -10000px` for screen readers); and no
+  box of at most 2 px that cuts its overflow holds it, from its element up to the area's root
+  (text for screen readers only, a collapsed accordion however far up); a hidden copy (a mobile
+  duplicate) is no second place, nor a place. Checked only for the candidates, not for every
+  node.
+- **Probable only.** The mark is drawn dashed on the text (on the element that holds it, which also
+  decides where it shows, DEC-075); `textChanged` stays true ("not where it was"); a found element
+  becomes probable. A lost mark that was placed gets the element that holds the text as its one
+  candidate, probable at the element search's score, and so counts in the bar's "N of M found" as
+  every probable mark does; the late looks of a lost mark still look for its own element again.
+- **Looked for again.** A mark looked for again and not found any more loses what was found before
+  (its text was kept and drawn on its old element). Text found this way that keeps changing (a
+  clock, a countdown, a price) is looked for again at most every 3 s (`REFIND_MS`), not at every
+  tick, while it is on the page (text or element re-rendered away is looked for at once); and the tick takes the replaced elements and texts in turn, so one that keeps changing does
+  not keep the others waiting.
+- **Time.** Reading an area of 2,012 text nodes (over the limit, so the search ends there): about
+  4 ms in happy-dom, 71 ms the first time (measured once, `test/text-near.test.ts`). In Chrome
+  50,000 nodes took 66 ms (DEC-066), so 2,000 are about 3 ms, and the worst case (five areas, the
+  last at the limit) a few ms more. It runs only for a highlight whose text is not in its element.
+- **What it says.** The match carries `textNear` (`nearby` or `reworded`), `textNow` (the text
+  found, cut to 200 characters; page text), `textAt` (its element's selector) and `textPlaced` (a
+  lost mark placed). The panel, where "Text changed" stood: "Text moved" and "The highlighted text
+  is now in another element nearby, and drawn there (NN%)."; for a placed lost mark "The
+  highlighted text was found on the page near where the mark was, and drawn there (NN%)."; or
+  "Text changed" and "The highlighted text has changed in place; it now reads “…” (NN%).", the text
+  cut to 80 characters, as text. The AI app's tools (load_case, highlight, get_mark_element):
+  `textChanged` then says "The highlighted text is not where it was any more: textFound says what
+  was found instead.", with `textFound` in a sentence, `textNow` and `textAt`.
+- **Not done**: a search of the whole page, and a fuzzy match of reworded text without both sides.

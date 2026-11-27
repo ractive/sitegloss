@@ -123,7 +123,7 @@ inFullSet("open_case", () => {
 		const result = await openCase("c_new");
 		expect(result.isError).toBe(true);
 		expect(result.content[0]?.text).toContain(
-			"the panel is busy with “Old case”: a mark's form is open there, with what is typed in it",
+			'the panel is busy with "Old case": a mark\'s form is open there, with what is typed in it',
 		);
 		expect(await title()).toBe("Old case");
 		expect(

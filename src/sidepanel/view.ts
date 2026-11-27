@@ -8,12 +8,12 @@
 import {
 	BROWSER,
 	CANNOT_RUN_FILES_TEXT,
-	CANNOT_RUN_TEXT,
 	FIREFOX,
 	PANEL,
 } from "../lib/browser.ts";
 import {
 	appLabel,
+	assigneeOf,
 	byline,
 	type Case,
 	type CasePage,
@@ -24,7 +24,6 @@ import {
 	type FindingApp,
 	GROUP_LABEL,
 	GROUP_OF,
-	isOfferedOn,
 	MAX_COMMENT,
 	MAX_MARK_IMAGES,
 	MAX_REOPEN_NOTE,
@@ -48,12 +47,33 @@ import {
 	type UserRef,
 	viewportAt,
 } from "../lib/case.ts";
+import { reporterHere } from "../lib/case-state.ts";
 import { summarize } from "../lib/element.ts";
 import type { CandidateInfo, MarkMatch } from "../lib/messages.ts";
 import { caseSites, siteOf } from "../lib/site.ts";
 import {
+	ALLOW_ALL_SITES,
+	ALLOW_ALL_SITES_RECOMMENDED,
+	accessPlan,
+	type BrowserKind,
+	browserLabel,
+	cannotRunText,
+	NO_ACCESS_CASE,
+	NO_ACCESS_HOME,
+	offerText,
+	oneTabWay,
+	optionNote,
+	shortcutText,
+	type TabAccess,
+	tabAccess,
+	verifyHereWay,
+	type Words,
+} from "./access.ts";
+import { pageCases } from "./closed.ts";
+import {
 	type CloudActions,
 	caseSync,
+	HAND_OVER_NOTE,
 	hostOf,
 	renderCloudBanner,
 	renderCloudSection,
@@ -61,7 +81,35 @@ import {
 } from "./cloud-view.ts";
 import { byId, formatDate, h, isWebPage, shortPath, shortUrl } from "./dom.ts";
 import { findsOn, foundLine, noneHere } from "./follow.ts";
-import { markTargets, shortAddress } from "./mark-link.ts";
+import {
+	type IconName,
+	icon,
+	setCopyLabel,
+	setLabel,
+	withIcon,
+} from "./icons.ts";
+import {
+	markTargets,
+	mayLoadAndShow,
+	shortAddress,
+	verifiesHere,
+} from "./mark-link.ts";
+import {
+	type CardHandOver,
+	cardHandOver,
+	mineTest,
+	NO_OTHER_MINE,
+	NONE_MINE,
+	teamAssigns,
+	waitsText,
+	waitsToVerify,
+} from "./my-cases.ts";
+import { nextStep, type StepAction, whereIs } from "./next-step.ts";
+import {
+	nextStepParts,
+	renderNextStep,
+	type StepParts,
+} from "./next-step-view.ts";
 import { type PageChoice, type PageFilter, pageFilter } from "./page-filter.ts";
 import { openAt, pageHosts } from "./page-hosts.ts";
 import { holdClickedInPlace } from "./scroll-anchor.ts";
@@ -92,6 +140,18 @@ import {
 export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	/** Close the case (filed away, not frozen) or open it again (DEC-046). */
 	setCaseClosed(caseId: string, closed: boolean): void;
+	/** The next step's "Copy link": the case's address in the web app (DEC-069). */
+	copyCaseLink(c: Case): void;
+	/** The next step's "Copy for your AI app": the instructions for the case. */
+	copyForAiApp(c: Case): void;
+	/** The next step's "Start verifying": the marks to verify, the first one open. */
+	startVerifying(c: Case): void;
+	/** "This page"'s Start verifying (DEC-079): the case opens, then Start verifying. */
+	verifyCase(id: string): void;
+	/** The next step's Assign menu: the case to a member, or to nobody (DEC-071). */
+	assignCase(caseId: string, to: UserRef | null): void;
+	/** "My cases" in the list of cases, on or off (DEC-071). */
+	showMine(on: boolean): void;
 	/** "New case for this page": a new case, stored at once and opened (DEC-026). */
 	startNewCase(): void;
 	openCase(id: string): void;
@@ -106,8 +166,11 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	typeMark(change: { kind?: ResolveChoice; text?: string }): void;
 	cancelMarkEdit(): void;
 	resolveMark(c: Case, a: Mark, kind: ResolveChoice, note: string): void;
-	/** "Verify" on a fixed mark: the fix holds (DEC-023). */
-	verifyMark(c: Case, a: Mark): void;
+	/**
+	 * "Verify" on a fixed mark: the fix holds (DEC-023). May answer why it was
+	 * not saved, so that the row can come back as it was.
+	 */
+	verifyMark(c: Case, a: Mark): void | Promise<string | undefined>;
 	/** "Reopen" in its form: the note says what is still wrong. */
 	reopenMark(c: Case, a: Mark, note: string): void;
 	/** A status chip: show only those marks; `undefined`: all of them. */
@@ -120,8 +183,6 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	addImages(c: Case, a: Mark): void;
 	/** An added image's Remove: the first click asks, the second removes. */
 	deleteImage(c: Case, a: Mark, imageId: string): void;
-	/** An AI app's finding on a mark: the first click asks, the second deletes. */
-	deleteFinding(c: Case, a: Mark, findingId: string): void;
 	/** Open one of the case's pages in a new tab (DEC-038); none named: the first. */
 	openPage(c: Case, url?: string): void;
 	/** A mark's picture in the viewer, a tab of the extension's own (DEC-060). */
@@ -134,6 +195,8 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	openMarkPage(c: Case, a: Mark, where: "made" | "here"): void;
 	/** Chrome's prompt for "Allow on all sites"; call it in the click. */
 	allowAllSites(): void;
+	/** "Not now" on the offer of all sites: it does not come again (DEC-076). */
+	declineAllSites(): void;
 	/** Sitegloss's page in chrome://extensions ("Allow access to file URLs"). */
 	openDetails(): void;
 	matchSize(c: Case): void;
@@ -163,6 +226,11 @@ export interface Actions extends SyncActions, CloudActions, ThreadActions {
 	typeVerdict(caseId: string, text: string): void;
 	saveVerdict(caseId: string, text: string): void;
 	showMatch(caseId: string, a: Mark, candidate: number): void;
+	/**
+	 * A mark's Show while the case's marks are not drawn on the tab in front:
+	 * what "Show marks" does, and then this mark is shown, in one press.
+	 */
+	loadAndShow(c: Case, a: Mark): void;
 	importReplace(): void;
 	importCopy(): void;
 	importCancel(): void;
@@ -186,11 +254,74 @@ const casesHeading = byId<HTMLHeadingElement>("cases-heading");
 const here = byId<HTMLDivElement>("here");
 const hereText = byId<HTMLParagraphElement>("here-text");
 const hereCases = byId<HTMLDivElement>("here-cases");
+const hereClosed = byId<HTMLDivElement>("here-closed");
 const openHere = byId<HTMLButtonElement>("open-here");
 const allSites = byId<HTMLInputElement>("all-sites");
 const aiStatus = byId<HTMLSpanElement>("ai-status");
 const aiLabel = byId<HTMLSpanElement>("ai-label");
 const backLabel = byId<HTMLSpanElement>("back-label");
+const copyId = byId<HTMLButtonElement>("copy-case-id");
+const copyIdSaid = byId<HTMLElement>("copy-case-said");
+
+const copyIdFailed = byId<HTMLDivElement>("copy-case-failed");
+const copyIdShown = byId<HTMLElement>("copy-case-shown");
+
+/** How long the copy button says that it copied. */
+const COPIED_ID_MS = 1600;
+let copiedIdUntil: ReturnType<typeof setTimeout> | undefined;
+
+/** The copy button as before a press: no tick, no refusal, nothing said. */
+function forgetCopiedId(): void {
+	clearTimeout(copiedIdUntil);
+	copyId.removeAttribute("data-copied");
+	copyIdSaid.textContent = "";
+	copyIdFailed.hidden = true;
+}
+
+/**
+ * The open case's id on the clipboard, from the bar (the owner: to tell an
+ * AI app "check Sitegloss case …"). Its id alone: a title can be anything.
+ * A refusal shows the id under the bar, selected, to copy by hand; that
+ * stays until the next press or another case.
+ */
+function renderCopyId(id: string | undefined): void {
+	copyId.hidden = id === undefined;
+	if (copyId.dataset["copies"] === (id ?? "")) return;
+	copyId.dataset["copies"] = id ?? "";
+	// What was said was said of the case before.
+	forgetCopiedId();
+	if (id === undefined) return;
+	const name = "Copy this case's id";
+	copyId.setAttribute("aria-label", name);
+	copyId.title = `${name}, to name the case to your AI app: ${id}`;
+	copyId.onclick = () => {
+		const say = (ok: boolean) => {
+			// Another case since the press: its answer is not this one's.
+			if (copyId.dataset["copies"] !== id) return;
+			forgetCopiedId();
+			// Asked a moment later, so that the same words are said again.
+			queueMicrotask(() => {
+				copyIdSaid.textContent = ok
+					? "Case id copied"
+					: `Copying did not work. The case's id is ${id}`;
+			});
+			if (!ok) {
+				copyIdShown.textContent = id;
+				copyIdFailed.hidden = false;
+				document.getSelection()?.selectAllChildren(copyIdShown);
+				return;
+			}
+			copyId.setAttribute("data-copied", "");
+			copiedIdUntil = setTimeout(forgetCopiedId, COPIED_ID_MS);
+		};
+		const clipboard = globalThis.navigator?.clipboard;
+		if (clipboard === undefined) return say(false);
+		clipboard.writeText(id).then(
+			() => say(true),
+			() => say(false),
+		);
+	};
+}
 const aiButton = byId<HTMLButtonElement>("ai-button");
 const aiAction = byId<HTMLSpanElement>("ai-action");
 const aiCall = byId<HTMLParagraphElement>("ai-call");
@@ -201,6 +332,10 @@ const importError = byId<HTMLDivElement>("import-error");
 const importDone = byId<HTMLParagraphElement>("import-done");
 const exportAll = byId<HTMLButtonElement>("export-all");
 const importButton = byId<HTMLButtonElement>("import");
+// The main view's buttons in index.html, each with its icon (DEC-078).
+newCaseButton.prepend(icon("add"));
+importButton.prepend(icon("import"));
+exportAll.prepend(icon("export"));
 /** Their titles in index.html, for when no import is at work. */
 const importTitle = importButton.title;
 const exportAllTitle = exportAll.title;
@@ -219,30 +354,49 @@ export const IMPORT_BUSY =
 export const EXPORT_ALL_BUSY =
 	"An import is at work: wait for it, or answer its question below, before exporting all cases.";
 
-/** Why Sitegloss does not work on a tab yet, and what to do about it. */
-export const NO_ACCESS =
-	"Sitegloss may not run on this tab yet. Click the Sitegloss icon in the toolbar (or press Alt+Shift+O) while this tab is in front.";
-
-/** A tab Sitegloss is not let onto even with "Allow on all sites". */
-export const CANNOT_RUN = CANNOT_RUN_TEXT;
-
-/** The same, where Sitegloss may not read files either: that is the toggle for them. */
+/** Where Sitegloss may not read files: that is the toggle for them. */
 export const CANNOT_RUN_FILES = CANNOT_RUN_FILES_TEXT;
 
-/** The title of a button that needs the page, while Sitegloss may not run there. */
-export const NEEDS_ACCESS =
-	"Sitegloss may not run on this tab yet: see the notice.";
+/** The browser's name, as its brands say (display only; DEC-076). */
+const BROWSER_LABEL = browserLabel(
+	FIREFOX,
+	(navigator as { userAgentData?: { brands?: { brand: string }[] } })
+		.userAgentData?.brands,
+);
 
 /**
- * Whether Sitegloss may run on the tab in front, as far as the panel knows:
- * Chrome tells the address only of a tab it may run on (a tab still loading
- * has none yet). `never`: not even with "Allow on all sites".
+ * Whose restricted hosts apply: Firefox by the build; Edge, whose add-ons
+ * site only Edge restricts, by its brands (the one choice a brand makes,
+ * DEC-076: an ordinary site taken for an impossible one would be worse).
  */
-export function access(state: PanelState): "yes" | "ask" | "never" {
-	const tab = state.tab;
-	if (tab === undefined || tab.url !== "" || tab.loading) return "yes";
-	return state.allSites ? "never" : "ask";
+const BROWSER_KIND: BrowserKind = FIREFOX
+	? "firefox"
+	: BROWSER_LABEL === "Edge"
+		? "edge"
+		: "chrome";
+
+/** How the access texts name the browser and its shortcut now (DEC-076). */
+export function wordsOf(state: PanelState): Words {
+	return {
+		firefox: FIREFOX,
+		browser: BROWSER_LABEL,
+		shortcut: shortcutText(state.shortcut, navigator),
+	};
 }
+
+/** Whether Sitegloss may run on the tab in front (`access.ts`). */
+export function access(state: PanelState): TabAccess {
+	return tabAccess(state.tab, state.allSites, BROWSER_KIND);
+}
+
+/** What the panel shows about access now (DEC-076). */
+const planOf = (state: PanelState) =>
+	accessPlan({
+		tab: access(state),
+		allSites: state.allSites,
+		declined: state.allSitesDeclined,
+		known: state.allSitesKnown,
+	});
 
 /**
  * The one quiet line where the marks start (DEC-063), or nothing. A case of
@@ -275,14 +429,17 @@ export function pagePath(url: string): string {
 	return shortPath(url, /^https?:\/\//.test(pageKey(url)));
 }
 
-/** `sitegloss.dev, 8 pages`: where a case is, in its card's name (DEC-067). */
+/** `the site sitegloss.dev, 8 pages`: where a case is, in its card's name (DEC-067). */
 export function pagesLine(c: Case): string {
-	const { where, pages } = whereText(c);
-	// Spoken after "on": the card's "Site: …" label reads as "the site …".
-	const spoken = where
-		.replace(/^Sites: /, "the sites ")
-		.replace(/^Site: /, "the site ");
-	return pages === undefined ? spoken : `${spoken}, ${pages}`;
+	const { sites, label, pages } = whereText(c);
+	// Spoken after "on".
+	const where =
+		sites === undefined
+			? undefined
+			: label === "On: "
+				? sites
+				: `${label === "Site: " ? "the site " : "the sites "}${sites.replaceAll(" · ", ", ")}`;
+	return where === undefined ? pages : `${where}, ${pages}`;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -325,25 +482,34 @@ function warningIcon(): SVGSVGElement {
 	return svg;
 }
 
-/** A notice with the warning sign: its text, and a button where there is one. */
+/**
+ * A notice with the warning sign: its text, a button where there is one, and
+ * a line under the button (the one-tab way) where there is one.
+ */
 interface Notice {
 	el: HTMLElement;
 	text: HTMLParagraphElement;
 	button: HTMLButtonElement;
+	way: HTMLParagraphElement;
 }
 
 function notice(id: string, button: HTMLButtonElement): Notice {
 	const text = h("p", {});
+	const way = h("p", { class: "meta notice-way", hidden: true });
 	const el = h(
 		"div",
 		{ class: "notice", id, role: "status", hidden: true },
 		warningIcon(),
-		h("div", { class: "notice-body" }, text, button),
+		h("div", { class: "notice-body" }, text, button, way),
 	);
-	return { el, text, button };
+	return { el, text, button, way };
 }
 
-/** The notice when Sitegloss may not run on the tab in front, with "Allow on all sites". */
+/**
+ * The notice where the tab in front has no access (DEC-076): why, "Allow on
+ * all sites (recommended)", and the one-tab way; or that no extension may run
+ * there.
+ */
 function accessNotice(id: string, actions: () => Actions): Notice {
 	return notice(
 		id,
@@ -358,37 +524,118 @@ function accessNotice(id: string, actions: () => Actions): Notice {
 	);
 }
 
-const ALLOW_ALL_SITES_TITLE = `Let Sitegloss run on every site, without a click on its icon on each tab. ${BROWSER} asks first; you can take it back in the options, in Settings (the AI pill at the top).`;
+const ALLOW_ALL_SITES_TITLE = `Let Sitegloss run on every site, without a click on its icon on each tab. ${BROWSER_LABEL ?? "Your browser"} asks first; Options on the panel's main view takes it back.`;
 const DETAILS_TITLE =
 	"Open Sitegloss's page in chrome://extensions, where “Allow access to file URLs” is";
 
 /**
- * Sitegloss may not run on the tab: "Allow on all sites" helps, or, where it
- * may run on all sites already, Chrome keeps the tab off limits; for a file
- * that is the "Allow access to file URLs" toggle, which the panel cannot
- * tell apart (Chrome hides the address), so it says both.
+ * The tab in front has no access (`no-access`): why, in `sentence`, with
+ * both ways on. Or no extension may run there (`cannot`): where Sitegloss may
+ * run on all sites already, the browser keeps the tab off limits; for a file
+ * that is the "Allow access to file URLs" toggle, which the panel cannot tell
+ * apart (Chrome hides the address), so it says both.
  */
-function renderAccess(n: Notice, state: PanelState): void {
-	const now = access(state);
-	n.el.hidden = now === "yes";
+function renderAccess(
+	n: Notice,
+	state: PanelState,
+	kind: "no-access" | "cannot" | undefined,
+	sentence: string,
+): void {
+	n.el.hidden = kind === undefined;
 	// Which tab it is about: the address and title are hidden too.
 	n.el.dataset["tab"] = state.tab === undefined ? "" : String(state.tab.id);
-	const files = now === "never" && state.fileAccess === false;
-	n.text.textContent =
-		now !== "never" ? NO_ACCESS : files ? CANNOT_RUN_FILES : CANNOT_RUN;
+	// A file only where the address is hidden and files are not allowed: a
+	// page whose address shows (a store) or the probe named is no file.
+	const cannotRun = state.tab?.cannotRun;
+	const files =
+		kind === "cannot" &&
+		(cannotRun === "file" ||
+			(cannotRun === undefined &&
+				state.tab?.url === "" &&
+				state.fileAccess === false));
+	const w = wordsOf(state);
+	// Written only when they change: the notice is a live region, and a
+	// render for something else must not make it speak again.
+	setText(
+		n.text,
+		kind !== "cannot" ? sentence : files ? CANNOT_RUN_FILES : cannotRunText(w),
+	);
 	// Firefox lets no extension open its add-ons page: the text says the way.
-	n.button.hidden = now === "never" && (!files || FIREFOX);
+	n.button.hidden = kind === "cannot" && (!files || FIREFOX);
 	n.button.dataset["action"] = files ? "file-access" : "allow-all-sites";
-	n.button.textContent = files
-		? "Open Sitegloss's details"
-		: "Allow on all sites";
-	n.button.title = files ? DETAILS_TITLE : ALLOW_ALL_SITES_TITLE;
+	setLabel(
+		n.button,
+		files ? undefined : "all-sites",
+		files ? "Open Sitegloss's details" : ALLOW_ALL_SITES_RECOMMENDED,
+	);
+	const title = files ? DETAILS_TITLE : ALLOW_ALL_SITES_TITLE;
+	if (n.button.title !== title) n.button.title = title;
+	setHint(n.way, kind === "no-access" ? oneTabWay(w) : undefined);
 }
 
-/** The actions of the last render, for the home view's notice made once. */
+/** Text written only when it changed (a live region speaks each write). */
+function setText(el: HTMLElement, text: string): void {
+	if (el.textContent !== text) el.textContent = text;
+}
+
+/** The actions of the last render, for the home view's parts made once. */
 let lastActions: Actions | undefined;
 const homeAccess = accessNotice("access-notice", () => lastActions as Actions);
-newCaseButton.before(homeAccess.el);
+
+/**
+ * The first-use offer (DEC-076): at the top of Home while Sitegloss may not
+ * run on all sites and the person has not said "Not now". A note, not a
+ * dialog; neither button is the amber one.
+ */
+const offerHead = h("h3", { class: "group-title", id: "all-sites-offer-head" });
+const offerLine = h("p", { id: "all-sites-offer-text" });
+const offerWay = h("p", { class: "meta", hidden: true });
+const homeOffer = h(
+	"section",
+	{
+		class: "all-sites-offer",
+		id: "all-sites-offer",
+		"aria-labelledby": "all-sites-offer-head",
+		hidden: true,
+	},
+	offerHead,
+	offerLine,
+	h(
+		"div",
+		{ class: "row" },
+		h(
+			"button",
+			{
+				type: "button",
+				class: "strong",
+				"data-action": "allow-all-sites",
+				title: ALLOW_ALL_SITES_TITLE,
+				onclick: () => lastActions?.allowAllSites(),
+			},
+			...withIcon("all-sites", ALLOW_ALL_SITES),
+		),
+		h(
+			"button",
+			{
+				type: "button",
+				"data-action": "not-now",
+				title:
+					"Keep clicking the Sitegloss icon on each tab. This offer does not come again; Options below has the setting.",
+				onclick: () => lastActions?.declineAllSites(),
+			},
+			"Not now",
+		),
+	),
+	offerWay,
+);
+pageText.after(homeOffer, homeAccess.el);
+
+/** Under the option: the same words in every state, the browser's own (DEC-076). */
+byId<HTMLParagraphElement>("all-sites-note").textContent = optionNote({
+	firefox: FIREFOX,
+	browser: BROWSER_LABEL,
+	shortcut: undefined,
+});
 
 const sizeOf = (s: Size) => `${s.width}×${s.height}`;
 
@@ -436,23 +683,20 @@ function renderSaved(
 		el.replaceChildren();
 		return;
 	}
-	const copy: HTMLButtonElement = h(
-		"button",
-		{
-			type: "button",
-			"data-action": "copy-path",
-			title: "Copy the file's full path",
-			onclick: () =>
-				void actions.copyPath(exported.path).then((ok) => {
-					if (!ok) return;
-					copy.textContent = "Copied";
-					setTimeout(() => {
-						copy.textContent = "Copy";
-					}, 1500);
-				}),
-		},
-		"Copy",
-	);
+	const copy: HTMLButtonElement = h("button", {
+		type: "button",
+		"data-action": "copy-path",
+		title: "Copy the file's full path",
+		onclick: () =>
+			void actions.copyPath(exported.path).then((ok) => {
+				if (!ok) return;
+				setCopyLabel(copy, "Copied");
+				setTimeout(() => {
+					setCopyLabel(copy, "Copy");
+				}, 1500);
+			}),
+	});
+	setCopyLabel(copy, "Copy");
 	el.replaceChildren(
 		h("p", {}, "Saved as"),
 		h("code", { class: "path" }, exported.path),
@@ -477,18 +721,28 @@ function renderSaved(
 // --- home ----------------------------------------------------------------------
 
 /**
- * "sitegloss.dev · 8 pages": where the case is, its sites and its number of
- * pages (DEC-067); the sites are cut, the count stays.
+ * The case's sites, a line right under its title (DEC-067): the names alone,
+ * "comparis.ch · ractive.ch"; the word before them is for a screen reader.
+ * No line for a case without a page.
  */
+function sitesLine(c: Case): HTMLElement | null {
+	const { sites, label } = whereText(c);
+	return sites === undefined
+		? null
+		: h(
+				"span",
+				{ class: "card-sites" },
+				h("span", { class: "visually-hidden" }, label),
+				sites,
+			);
+}
+
+/** "15 pages", or the only page's address: the card's line of pages. */
 function whereLine(c: Case): HTMLElement {
-	const { where, pages } = whereText(c);
 	return h(
 		"span",
 		{ class: "card-where" },
-		h("span", { class: "where-url" }, where),
-		pages === undefined
-			? null
-			: h("span", { class: "where-more" }, ` · ${pages}`),
+		h("span", { class: "where-url" }, whereText(c).pages),
 	);
 }
 
@@ -501,13 +755,17 @@ function caseBand(c: Case): HTMLElement {
 	return band;
 }
 
-/** "25 open", "6 to verify", …: a chip per status with marks, each with its sign. */
-function caseChips(c: Case): HTMLElement {
+/**
+ * "25 open", "6 to verify", …: a chip per status with marks, each with its
+ * sign; before them the case's state as one quiet badge (DEC-071).
+ */
+function caseChips(c: Case, state: string | undefined): HTMLElement {
 	const n = caseCounts(c);
 	const groups = STATUS_GROUPS.filter((g) => n[g] > 0);
 	return h(
 		"span",
 		{ class: "card-chips" },
+		state === undefined ? null : h("span", { class: "card-state" }, state),
 		...(groups.length === 0
 			? [h("span", { class: "none" }, "No marks yet")]
 			: groups.map((g) =>
@@ -534,11 +792,19 @@ function summaryStart(c: Case): string | undefined {
  * The card's name, in one sentence: title, state, counts, where, when. Of the
  * summary only that there is one: the whole would be read on every card.
  */
-function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
+function cardName(
+	c: Case,
+	deviceOnly: boolean,
+	team: boolean,
+	hand: CardHandOver,
+): string {
 	const count = c.marks.length;
 	const counts = marksText(c);
 	const state = [
-		c.closed !== undefined ? "closed" : undefined,
+		c.closed !== undefined ? "closed" : hand.state?.toLowerCase(),
+		hand.assignee
+			?.replace(/^Assigned/, "assigned")
+			.replace(/^Nobody/, "nobody"),
 		team ? "shared with the team" : undefined,
 		deviceOnly ? "on this device only" : undefined,
 	].filter(Boolean);
@@ -553,8 +819,9 @@ function cardName(c: Case, deviceOnly: boolean, team: boolean): string {
 function caseItem(
 	c: Case,
 	actions: Actions,
-	deviceOnly = false,
-	team = false,
+	deviceOnly: boolean,
+	team: boolean,
+	hand: CardHandOver,
 ): HTMLLIElement {
 	const summary = summaryStart(c);
 	return h(
@@ -567,7 +834,7 @@ function caseItem(
 				class: "case-card",
 				"data-case": c.id,
 				...(c.closed !== undefined ? { "data-closed": true } : {}),
-				"aria-label": cardName(c, deviceOnly, team),
+				"aria-label": cardName(c, deviceOnly, team, hand),
 				title: `Open “${c.title}” and show its marks on the page in this tab`,
 				onclick: () => actions.openCase(c.id),
 			},
@@ -586,12 +853,21 @@ function caseItem(
 					? h("span", { class: "tag device-only" }, "This device only")
 					: null,
 			),
-			// The summary is the case's own words: under the title, in the
+			sitesLine(c),
+			// The summary is the case's own words: under the sites, in the
 			// text's colour, apart from the facts (DEC-064).
 			summary ? h("span", { class: "card-summary" }, summary) : null,
 			whereLine(c),
-			h("span", { class: "card-date" }, formatDate(c.updatedAt)),
-			caseChips(c),
+			h(
+				"span",
+				{ class: "card-date" },
+				formatDate(c.updatedAt),
+				// Who has its open marks (DEC-071), where the team's case says.
+				hand.assignee === undefined
+					? null
+					: h("span", { class: "card-assignee" }, ` · ${hand.assignee}`),
+			),
+			caseChips(c, hand.state),
 		),
 	);
 }
@@ -604,8 +880,13 @@ function renderCases(state: PanelState, actions: Actions): void {
 	const url = state.tab?.url ?? "";
 	const local = (c: Case) => caseSync(state.cloud, c.id).kind === "local";
 	const team = (c: Case) => caseSync(state.cloud, c.id).kind === "synced";
+	const mine = mineTest(state.cloud);
+	const card = (c: Case) =>
+		caseItem(c, actions, local(c), team(c), cardHandOver(c, state.cloud));
 	const key = JSON.stringify([
 		url,
+		// The filter, and who it is for (DEC-071).
+		mine === undefined ? null : [state.mine, state.cloud.account?.userId],
 		state.cases.map((c) => [
 			c.id,
 			c.updatedAt,
@@ -613,47 +894,73 @@ function renderCases(state: PanelState, actions: Actions): void {
 			c.verdict,
 			caseSync(state.cloud, c.id).kind,
 			c.closed !== undefined,
+			cardHandOver(c, state.cloud),
+			mine?.(c) ?? null,
 		]),
 	]);
 	if (key === casesKey) return;
 	casesKey = key;
-	// The page's own cases stand under "This page" (the owner): going on with
-	// the case a page has is what is done most, a second case for it rarely.
-	// Only on the same page of the same site as one of its screenshots
-	// (DEC-050): elsewhere (localhost, staging) a case is opened by hand.
-	// Not closed ones first, closed ones after; nothing opens by itself.
-	const offered = state.cases.filter((c) => url && isOfferedOn(c, url));
-	const own = [
-		...offered.filter((c) => c.closed === undefined),
-		...offered.filter((c) => c.closed !== undefined),
-	];
-	// Closed cases are filed away under Closed, folded (DEC-046): they leave
-	// the list, and the page's own stand under "This page".
+	// What has the focus in the lists, by what it is: the same control after
+	// they are drawn again (a press of My cases, a teammate's change).
+	// A card (or the Closed group's heading) that leaves the list hands it to
+	// My cases, else to the list's heading: never to the page's body.
+	const active = document.activeElement as HTMLElement | null;
+	const inLists =
+		active !== null &&
+		(casesList.contains(active) ||
+			hereCases.contains(active) ||
+			hereClosed.contains(active));
+	const focused: string[] | undefined = !inLists
+		? undefined
+		: active.id === "my-cases"
+			? ["#my-cases"]
+			: active.dataset["case"] !== undefined
+				? // A case's id is a safe id (letters, digits, _ and -): no quoting.
+					[`[data-case="${active.dataset["case"]}"]`, "#my-cases"]
+				: active.closest("#closed-cases > summary") !== null
+					? ["#closed-cases > summary", "#my-cases"]
+					: active.closest("#closed-here > summary") !== null
+						? ["#closed-here > summary", "#my-cases"]
+						: undefined;
+	// The page's own open cases stand under "This page" (the owner): going on
+	// with the case a page has is what is done most, a second case for it
+	// rarely. Only on the same page of the same site as one of its screenshots
+	// (DEC-050): elsewhere (localhost, staging) a case is opened by hand. A
+	// closed case is not promoted there: the page's closed cases are folded
+	// under the main action, and not in the list's Closed group again.
+	const { open: own, closed: ownClosed } = pageCases(state.cases, url);
 	const open = state.cases.filter((c) => c.closed === undefined);
 	const closed = state.cases.filter(
-		(c) => c.closed !== undefined && !own.includes(c),
+		(c) => c.closed !== undefined && !ownClosed.includes(c),
 	);
-	const other = open.filter((c) => !own.includes(c));
+	const others = open.filter((c) => !own.includes(c));
+	// "My cases" (DEC-071): the list narrowed to them, while it is on. Its
+	// count is all of them, the one under "This page" too.
+	const mineOnly = mine !== undefined && state.mine;
+	const other = mineOnly ? others.filter(mine) : others;
+	const mineCount = mine === undefined ? 0 : open.filter(mine).length;
 	const one = own.length === 1 ? own[0] : undefined;
 	here.hidden = own.length === 0;
+	hereClosed.replaceChildren(
+		...(ownClosed.length > 0 ? [closedGroup(ownClosed, card, "here")] : []),
+	);
+	// The one case here waits for this person to verify it: said so, and
+	// Start verifying is the action (DEC-079).
+	const waits = one ? waitsToVerify(one, url, state.cloud) : undefined;
 	hereText.textContent =
 		own.length === 0
 			? ""
-			: one
-				? "This page already has a case. Open it to go on with its marks, or start a new one."
-				: `This page already has ${own.length} cases. Open one to go on with its marks, or start a new one.`;
+			: waits
+				? waitsText(waits)
+				: one
+					? "This page already has a case. Open it to go on with its marks, or start a new one."
+					: `This page already has ${own.length} cases. Open one to go on with its marks, or start a new one.`;
 	hereCases.replaceChildren(
 		...(own.length > 0
-			? [
-					h(
-						"ul",
-						{ class: "cases", "data-group": "here" },
-						...own.map((c) => caseItem(c, actions, local(c), team(c))),
-					),
-				]
+			? [h("ul", { class: "cases", "data-group": "here" }, ...own.map(card))]
 			: []),
 	);
-	// One case: opening it is the view's one amber button, a new case steps
+	// One case: opening it is the view's one primary button, a new case steps
 	// back. Several: each row opens its case, and none is the one.
 	openHere.hidden = one === undefined;
 	// One case: its Open button is part of its card; several: none.
@@ -662,52 +969,134 @@ function renderCases(state: PanelState, actions: Actions): void {
 		unit.classList.add("with-action");
 		unit.append(openHere);
 	} else hereCases.after(openHere);
-	openHere.onclick = one ? () => actions.openCase(one.id) : null;
-	openHere.title = one
-		? `Open “${one.title}” and show its marks on the page in this tab`
-		: "";
+	// Start verifying has the Verify tick wherever it is; Open this case none (DEC-078).
+	setLabel(
+		openHere,
+		waits ? "check" : undefined,
+		waits ? "Start verifying" : "Open this case",
+	);
+	openHere.onclick = !one
+		? null
+		: waits
+			? () => actions.verifyCase(one.id)
+			: () => actions.openCase(one.id);
+	openHere.title = !one
+		? ""
+		: waits
+			? `Open “${one.title}”, show its marks on the page in this tab, and open the first mark to verify`
+			: `Open “${one.title}” and show its marks on the page in this tab`;
 	newCaseButton.classList.toggle("primary", own.length === 0);
 	casesHeading.textContent = own.length > 0 ? "Other cases" : "Cases";
 	casesList.replaceChildren(
+		...(mine === undefined || state.cases.length === 0
+			? []
+			: [mineFilter(state.mine, mineCount, actions)]),
 		state.cases.length === 0
 			? h(
-					"p",
+					"div",
 					{ class: "empty" },
-					"No cases yet. Start one with “New case for this page”, or import a case someone sent you.",
+					...emptyList(state.cloud).map((t) => h("p", {}, t)),
 				)
 			: other.length === 0
 				? h(
 						"p",
 						{ class: "empty" },
-						open.length === 0 ? "No open cases." : "No cases for other pages.",
+						mineOnly
+							? mineCount > 0
+								? NO_OTHER_MINE
+								: NONE_MINE
+							: open.length === 0
+								? "No open cases."
+								: "No cases for other pages.",
 					)
 				: h(
 						"ul",
 						{ class: "cases", "data-group": "other" },
-						...other.map((c) => caseItem(c, actions, local(c), team(c))),
+						...other.map(card),
 					),
-		...(closed.length === 0 ? [] : [closedGroup(closed, actions, local, team)]),
+		// Closed cases are nobody's turn: not under My cases.
+		...(closed.length === 0 || mineOnly ? [] : [closedGroup(closed, card)]),
+	);
+	if (focused !== undefined) {
+		const next = focused
+			.map(
+				(selector) =>
+					casesList.querySelector<HTMLElement>(selector) ??
+					hereCases.querySelector<HTMLElement>(selector) ??
+					hereClosed.querySelector<HTMLElement>(selector),
+			)
+			.find((el) => el !== null);
+		if (next) next.focus();
+		else {
+			casesHeading.tabIndex = -1;
+			casesHeading.focus();
+		}
+	}
+}
+
+/**
+ * What the empty list says (DEC-071): how to begin, and how a case goes
+ * from whoever finds what is wrong to whoever fixes it and back.
+ */
+export const EMPTY_LIST = [
+	"No cases yet. Start one with “New case for this page”, or import a case someone sent you.",
+	HAND_OVER_NOTE,
+];
+
+/**
+ * The empty list's words: the hand-over only where it can happen. Before
+ * signing in the Team section says it, under Sign in: once on the page.
+ */
+const emptyList = (cloud: PanelState["cloud"]): string[] =>
+	teamAssigns(cloud) ? EMPTY_LIST : EMPTY_LIST.slice(0, 1);
+
+/** "My cases" and how many (DEC-071): a chip to press, as the open case's status chips are. */
+function mineFilter(on: boolean, count: number, actions: Actions): HTMLElement {
+	return h(
+		"div",
+		{
+			class: "chips cases-filter",
+			role: "group",
+			"aria-label": "Filter the cases",
+		},
+		h(
+			"button",
+			{
+				type: "button",
+				class: "chip",
+				id: "my-cases",
+				"aria-pressed": String(on),
+				title: on
+					? "Show every case again"
+					: "Show only the cases where it is your turn: assigned to you with open marks, or started by you and waiting for you to hand them over, check them or close them",
+				onclick: () => actions.showMine(!on),
+			},
+			"My cases",
+			h("span", { class: "n" }, String(count)),
+		),
 	);
 }
 
-/** Whether the Closed group was unfolded: it stays so across redraws. */
-let closedOpen = false;
+/**
+ * Whether each Closed group (the list's, and the page's under "This page")
+ * was unfolded: it stays so across redraws, each on its own.
+ */
+const closedOpen = { list: false, here: false };
 
 /** The closed cases, folded by default (DEC-046). */
 function closedGroup(
 	closed: Case[],
-	actions: Actions,
-	local: (c: Case) => boolean,
-	team: (c: Case) => boolean,
+	card: (c: Case) => HTMLLIElement,
+	where: "list" | "here" = "list",
 ): HTMLElement {
 	const group = h(
 		"details",
 		{
 			class: "closed-cases",
-			id: "closed-cases",
-			...(closedOpen ? { open: true } : {}),
+			id: where === "list" ? "closed-cases" : "closed-here",
+			...(closedOpen[where] ? { open: true } : {}),
 			ontoggle: (e: Event) => {
-				closedOpen = (e.target as HTMLDetailsElement).open;
+				closedOpen[where] = (e.target as HTMLDetailsElement).open;
 			},
 		},
 		h(
@@ -716,11 +1105,7 @@ function closedGroup(
 			"Closed ",
 			h("span", { class: "count" }, String(closed.length)),
 		),
-		h(
-			"ul",
-			{ class: "cases", "data-group": "closed" },
-			...closed.map((c) => caseItem(c, actions, local(c), team(c))),
-		),
+		h("ul", { class: "cases", "data-group": "closed" }, ...closed.map(card)),
 	);
 	return group;
 }
@@ -804,21 +1189,32 @@ function renderImportPrompt(state: PanelState, actions: Actions): void {
 	importPrompt.hidden = false;
 }
 
+/** The last `homeFocus` the list has answered. */
+let homeFocusSeq = 0;
+
 /**
- * The tab in front is the web app of the server the account is signed in
- * to (DEC-045): its case pages show the same team's cases, marks and all,
- * as this panel does. Said in one line, where the address is known.
+ * After the person's own Close case the list takes the focus, once: on the
+ * closed case's card where it is on screen (the page's own case), else on
+ * the list's heading, never on the body.
  */
-export function webAppNote(state: PanelState): string | undefined {
-	const server = state.cloud.account?.server;
-	const url = state.tab?.url;
-	if (server === undefined || !url) return undefined;
-	try {
-		if (new URL(url).origin !== new URL(server).origin) return undefined;
-	} catch {
-		return undefined;
+function applyHomeFocus(state: PanelState): void {
+	const { seq, caseId } = state.homeFocus;
+	// Home out of sight (Settings, a case open): it waits for it.
+	if (seq === homeFocusSeq || state.settings || state.view.kind !== "home")
+		return;
+	homeFocusSeq = seq;
+	const card =
+		caseId === undefined
+			? null
+			: document.querySelector<HTMLElement>(
+					`#here-cases [data-case="${caseId}"], #here-closed [data-case="${caseId}"], #cases [data-case="${caseId}"]`,
+				);
+	const folded = card?.closest("details:not([open])") != null;
+	if (card && !folded) card.focus();
+	else {
+		casesHeading.tabIndex = -1;
+		casesHeading.focus();
 	}
-	return `This tab is your team's web app at ${hostOf(server)}: it shows the same cases as this panel.`;
 }
 
 function renderHome(state: PanelState, actions: Actions): void {
@@ -827,13 +1223,22 @@ function renderHome(state: PanelState, actions: Actions): void {
 	// address only of a tab Sitegloss may run on).
 	pageText.textContent = tab?.url ? shortUrl(tab.url) : (tab?.title ?? "");
 	pageText.hidden = pageText.textContent === "";
-	renderAccess(homeAccess, state);
+	// Access (DEC-076): the offer of all sites until it is taken or declined;
+	// on a tab without access, why, with both ways on, in place of New case.
+	const plan = planOf(state);
+	const forTab = plan.offer === "for-tab";
+	homeOffer.hidden = plan.offer === undefined;
+	homeOffer.toggleAttribute("data-no-access", forTab);
+	const offer = offerText(forTab, wordsOf(state));
+	setHint(offerHead, offer.head);
+	setHint(offerLine, offer.text);
+	setHint(offerWay, forTab ? oneTabWay(wordsOf(state)) : undefined);
+	renderAccess(homeAccess, state, plan.notice, NO_ACCESS_HOME);
 	setHint(hint, state.hint);
-	setHint(byId<HTMLElement>("web-app-note"), webAppNote(state));
-	const ok = access(state) === "yes";
-	// Always a new case, stored and opened at once (DEC-023, DEC-026).
-	newCaseButton.disabled = !ok;
-	newCaseButton.title = ok ? newCaseTitle : NEEDS_ACCESS;
+	// Always a new case, stored and opened at once (DEC-023, DEC-026); not
+	// there where it could not work.
+	newCaseButton.hidden = !plan.pageControls;
+	newCaseButton.title = newCaseTitle;
 	importError.hidden = state.importError === undefined;
 	importErrorText.textContent = state.importError ?? "";
 	// One import at a time, and no export of all cases while it stores them.
@@ -855,6 +1260,7 @@ function renderHome(state: PanelState, actions: Actions): void {
 		actions,
 	);
 	renderCases(state, actions);
+	applyHomeFocus(state);
 	renderImportPrompt(state, actions);
 	renderCloudSection(state, actions);
 	renderSyncSection(state, actions);
@@ -872,7 +1278,8 @@ function colourOf(m: MarkMatch): "found" | "unsure" | "lost" {
 /** Where the mark is on the tab in front, in words: the number's colour says it too, but not to everyone. */
 function matchWord(m: MarkMatch | undefined): string | undefined {
 	if (m === undefined || m.status === "no-element") return undefined;
-	// A highlight whose text is not there any more (DEC-066).
+	// A highlight whose text is not there any more (DEC-066), found nearby (DEC-083).
+	if (m.textNear === "nearby" && m.status !== "lost") return "Text moved";
 	if (m.textChanged && m.status !== "lost") return "Text changed";
 	if (m.textUnread && m.status !== "lost") return "Text not looked for";
 	return colourOf(m) === "unsure" ? "Unsure" : matchText(m);
@@ -888,6 +1295,15 @@ const PILL: Record<MarkStatus, string | undefined> = {
 };
 
 function matchText(m: MarkMatch): string {
+	// Found around its element instead (DEC-083): page text, shown as text.
+	if (m.textNear === "nearby" && m.status !== "lost")
+		return m.textPlaced
+			? `The highlighted text was found on the page near where the mark was, and drawn there (${percent(m.score)}).`
+			: `The highlighted text is now in another element nearby, and drawn there (${percent(m.score)}).`;
+	if (m.textNear === "reworded" && m.status !== "lost") {
+		const now = m.textNow ?? "";
+		return `The highlighted text has changed in place; it now reads “${textLength(now) > NOW_SHOWN ? `${cutText(now, NOW_SHOWN - 1)}…` : now}” (${percent(m.score)}).`;
+	}
 	if (m.textChanged && m.status !== "lost")
 		return `The highlighted text is no longer in the element: it changed, or the fix changed it. Its element is outlined (${percent(m.score)}).`;
 	if (m.textUnread && m.status !== "lost")
@@ -929,6 +1345,9 @@ const canShow = (m: MarkMatch | undefined): m is MarkMatch =>
 
 /** A highlight's text, cut to the most a row's line shows (DEC-066). */
 const QUOTE_SHOWN = 160;
+
+/** The text found in a highlight's place, cut to the most its sentence quotes (DEC-083). */
+const NOW_SHOWN = 80;
 
 /**
  * A mark of a kind this version does not know (DEC-066): its kind's name,
@@ -1087,8 +1506,7 @@ function picturesView(c: Case, a: Mark, x: MarkContext): HTMLElement {
 							"Add a picture of what the screenshot does not show, for example a menu that closes",
 						onclick: () => x.actions.addImages(c, a),
 					},
-					h("span", { class: "plus", "aria-hidden": "true" }, "+ "),
-					"Add another image…",
+					...withIcon("add", "Add another image…"),
 				)
 			: null,
 	);
@@ -1227,8 +1645,16 @@ interface CaseParts {
 	size: HTMLElement;
 	sizeText: HTMLSpanElement;
 	origin: HTMLElement;
-	/** Sitegloss may not run on the tab in front. */
+	/** Sitegloss may not run on the tab in front: in the tool bar (DEC-076). */
 	access: Notice;
+	/** The tool bar at the bottom: Add marks, Show/Hide marks, or `access`. */
+	dock: HTMLElement;
+	/**
+	 * For a reader going down the case: under its head, that the tool bar at
+	 * the end says why nothing is drawn (the bar is last in the page, as it
+	 * is on screen).
+	 */
+	accessPointer: HTMLElement;
 	/** None of the case's marks were found on the tab in front (DEC-022). */
 	/** The quiet line where the marks start (DEC-063). */
 	noneFound: HTMLElement;
@@ -1248,6 +1674,8 @@ interface CaseParts {
 	closeButton: HTMLButtonElement;
 	/** Who closed it and when, while it is closed. */
 	closedLine: HTMLElement;
+	/** What comes next, under the counts (DEC-069). */
+	next: StepParts;
 	/** The case's thread (`thread-view.ts`). */
 	thread: HTMLElement;
 	/** Who last changed the summary, in a team (DEC-046). */
@@ -1437,6 +1865,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		title: string,
 		onclick: () => void,
 		keepOpen = false,
+		glyph?: IconName,
 	) =>
 		h(
 			"button",
@@ -1450,6 +1879,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 					if (!keepOpen) closeMenu();
 				},
 			},
+			glyph === undefined ? null : icon(glyph),
 			label,
 		);
 	const renameButton = item(
@@ -1457,6 +1887,8 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		"Rename…",
 		"Change this case's title; it is saved at once",
 		() => actions.startRename(created.current),
+		false,
+		"edit",
 	);
 	const linkMenu = item(
 		"case-link-menu",
@@ -1467,8 +1899,10 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const exportItem = item(
 		"export-case",
 		"Export…",
-		"Save this case as one .zip file: its marks, comments, AI findings, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
+		"Save this case as one .zip file: its marks, comments, summary, thread and screenshots, and case.md to read them without Sitegloss. Someone imports it with Import a case…",
 		() => actions.exportCase(created.current),
+		false,
+		"export",
 	);
 	const more: HTMLButtonElement = h(
 		"button",
@@ -1782,7 +2216,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 						? actions.doneAdding(created.current)
 						: actions.addMarks(created.current),
 			},
-			"Add marks",
+			...withIcon("add", "Add marks"),
 		),
 		adding: false,
 		leaving: h("p", {
@@ -1811,6 +2245,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 			id: "case-closed",
 			hidden: true,
 		}),
+		next: nextStepParts(),
 		thread: h("section"),
 		summaryBy: h("p", { class: "meta", id: "summary-by", hidden: true }),
 		saved: h("div", { id: "export-saved", hidden: true }),
@@ -1838,7 +2273,21 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		pickedAt: undefined,
 		shots: h("section"),
 		shotsKey: "",
+		accessPointer: h("p", {
+			class: "visually-hidden",
+			id: "case-access-pointer",
+			hidden: true,
+		}),
+		dock: h("div", {
+			class: "case-dock",
+			id: "case-dock",
+			// The scroll hold lends its room above the bar (DEC-063).
+			"data-room-before": "",
+			role: "toolbar",
+			"aria-label": "Marks on this tab",
+		}),
 	};
+	created.dock.append(created.addMarks, created.loadButton, created.access.el);
 	// The menu holds Rename, the link, Export and Delete case (DEC-061).
 	menu.append(renameButton, linkMenu, exportItem, created.deleteButton);
 	created.deleteButton.setAttribute("role", "menuitem");
@@ -1864,6 +2313,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		created.rename,
 		created.closedLine,
 		created.counts,
+		created.next.el,
 		created.leaving,
 		created.saved,
 		// A case's several pages under "Site" or "Sites": each site a heading
@@ -1907,7 +2357,6 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	const thisTab = h(
 		"section",
 		{ class: "this-tab", id: "this-tab" },
-		created.access.el,
 		created.noneFound,
 		created.tabLine,
 		created.hint,
@@ -1915,6 +2364,7 @@ function createParts(c: Case, actions: Actions): CaseParts {
 	);
 	caseView.replaceChildren(
 		header,
+		created.accessPointer,
 		thisTab,
 		created.marks,
 		created.thread,
@@ -1923,22 +2373,87 @@ function createParts(c: Case, actions: Actions): CaseParts {
 		h("section", { class: "case-footer" }, created.closeButton),
 		// Always in reach while a case is open (DEC-063): adding marks, and
 		// the marks shown or not on the tab. Sticky at the panel's bottom, it
-		// rests after the content, so it never covers the last row.
-		h(
-			"div",
-			{
-				class: "case-dock",
-				id: "case-dock",
-				// The scroll hold lends its room above the bar (DEC-063).
-				"data-room-before": "",
-				role: "toolbar",
-				"aria-label": "Marks on this tab",
-			},
-			created.addMarks,
-			created.loadButton,
-		),
+		// rests after the content, so it never covers the last row. On a tab
+		// without access, why, in their place (DEC-076).
+		created.dock,
 	);
 	return created;
+}
+
+/**
+ * What comes next on the case (DEC-069). Its buttons are the actions of the
+ * tool bar's Add marks, the Team row's Share, the menu's Export and the
+ * footer's Close case, and are off when those are, for the same reason.
+ */
+function renderStep(
+	state: PanelState,
+	p: CaseParts,
+	c: Case,
+	mayClose: boolean,
+	actions: Actions,
+): void {
+	const me = state.cloud.account?.userId;
+	const members = state.cloud.members;
+	// Who may change the case may assign it, when the team's members are known.
+	const mayAssign =
+		members !== undefined &&
+		members.length > 0 &&
+		(teamOf(state.cloud)?.permissions.includes("case:update") ?? false);
+	const next = nextStep(c, whereIs(state.cloud, c), {
+		adding: p.adding,
+		mayClose,
+		...(me === undefined ? {} : { me }),
+		mayAssign,
+		mayVerify: teamOf(state.cloud)?.permissions.includes("mark:update") ?? true,
+		reporterHere: reporterHere(c, members),
+	});
+	// Not there where the tool bar's is not: a tab without access (DEC-076).
+	const step =
+		next && p.addMarks.hidden
+			? { ...next, actions: next.actions.filter((a) => a !== "add-marks") }
+			: next;
+	const off: Partial<Record<StepAction, string>> = {};
+	if (p.addMarks.disabled) off["add-marks"] = p.addMarks.title;
+	// What a copy did, while the step still offers that copy.
+	const copied =
+		state.copied?.caseId === c.id && step?.actions.includes(state.copied.what)
+			? state.copied.text
+			: undefined;
+	renderNextStep(
+		p.next,
+		step,
+		copied,
+		(action) => {
+			const now = p.current;
+			switch (action) {
+				case "add-marks":
+					return actions.addMarks(now);
+				case "share":
+					return actions.cloudShare(now.id);
+				case "export":
+					return actions.exportCase(now);
+				case "copy-link":
+					return actions.copyCaseLink(now);
+				case "copy-ai":
+					return actions.copyForAiApp(now);
+				case "verify":
+					return actions.startVerifying(now);
+				case "close":
+					return actions.setCaseClosed(now.id, true);
+				case "assign":
+					return;
+			}
+		},
+		off,
+		mayAssign && me !== undefined
+			? {
+					members,
+					current: assigneeOf(c) ?? null,
+					me,
+					pick: (to) => actions.assignCase(p.current.id, to),
+				}
+			: undefined,
+	);
 }
 
 /** One line on what the tab in front shows of the case, where there is one. */
@@ -2250,6 +2765,7 @@ function markButton(
 	title: string | undefined,
 	onclick: () => void,
 	strong = false,
+	glyph?: IconName,
 ): HTMLButtonElement {
 	return h(
 		"button",
@@ -2260,6 +2776,7 @@ function markButton(
 			title,
 			onclick,
 		},
+		glyph === undefined ? null : icon(glyph),
 		label,
 	);
 }
@@ -2275,39 +2792,477 @@ const REOPEN_TITLE =
  * is in the list: a Verify that was not saved, and a change of that mark
  * minutes later, take no focus from a field (DEC-064's review).
  */
-let verifiedNow: { caseId: string; markId: string; at: number } | undefined;
+let verifiedNow:
+	| {
+			caseId: string;
+			markId: string;
+			at: number;
+			/** The next mark to verify as the list stood at the click: the verified one may leave a filtered list. */
+			next: string | undefined;
+	  }
+	| undefined;
 /** How long a Verify waits for its row to be drawn as verified. */
 export const VERIFIED_WAIT_MS = 5000;
 
-const verifyButton = (c: Case, a: Mark, actions: Actions) =>
+/**
+ * Verify, and the same press as "Verify anyway" on a mark of another page
+ * (DEC-079): quiet, for a mark checked somewhere the panel cannot tell.
+ */
+const verifyButton = (c: Case, a: Mark, actions: Actions, anyway = false) =>
 	markButton(
-		"Verify",
-		"verify",
-		VERIFIED_TITLE,
+		anyway ? "Verify anyway" : "Verify",
+		anyway ? "verify-anyway" : "verify",
+		anyway
+			? `You checked it somewhere else: set mark ${a.number} verified`
+			: VERIFIED_TITLE,
 		() => {
-			openMarks.delete(`${c.id}:${a.id}`);
-			verifiedNow = { caseId: c.id, markId: a.id, at: Date.now() };
-			actions.verifyMark(c, a);
+			const undo = verifying(c.id, a.id);
+			const order = rowOrder(document, "section.marks li.mark");
+			const next = afterVerify(order, a.id)?.markId;
+			verifiedNow = {
+				caseId: c.id,
+				markId: a.id,
+				at: Date.now(),
+				next: next === a.id ? undefined : next,
+			};
+			// Not saved: the row comes back as it was; the hint says why (the
+			// store's own error path). No success is faked.
+			void Promise.resolve(actions.verifyMark(c, a)).then(
+				(why) => {
+					if (why !== undefined) undo();
+					else undo.done();
+				},
+				() => undo(),
+			);
 		},
-		true,
+		!anyway,
+		"check",
 	);
 
-/** Where the focus goes after a Verify: the next mark to verify, else the row's head. */
+/** What a mark to verify of another page offers, said in its open row (DEC-079). */
+export const AWAY_HINT =
+	"Open its page to verify it there, or verify anyway if you checked it elsewhere.";
+
+/**
+ * In place of Verify on a mark of another page (DEC-079): its page, opened
+ * in this tab with the mark shown there; Verify comes once the tab is there.
+ * No icon (DEC-078): with Show's viewfinder its row took a line more at 340 px.
+ */
+function verifyThere(
+	c: Case,
+	a: Mark,
+	tabUrl: string | undefined,
+	actions: Actions,
+): HTMLElement | null {
+	const to = elsewhereTarget(c, a, tabUrl);
+	if (to === undefined) return null;
+	return h(
+		"button",
+		{
+			type: "button",
+			class: "small strong",
+			"data-mark-action": "open-page",
+			"aria-label": `Open ${to.name} to verify mark ${a.number} there`,
+			title: `Open ${to.address} in this tab and show mark ${a.number} there\n${AWAY_HINT}`,
+			onclick: () => actions.openMarkPage(c, a, to.where),
+		},
+		"Open its page to verify",
+	);
+}
+
+/** The motion of a Verify, in order: the row collapses, then the next opens (expands), its highlight holds, then fades. */
+export const COLLAPSE_MS = 300;
+const EXPAND_MS = 300;
+const RESTORE_MS = 200;
+const HOLD_MS = 700;
+const FADE_MS = 1200;
+/** How long the cue on the row a Verify opened stays on it. */
+export const ARRIVED_MS = HOLD_MS + FADE_MS + 50;
+
+/** The row a Verify closes, while it collapses; carried across a redraw. */
+let closing:
+	| { caseId: string; markId: string; at: number; h: number }
+	| undefined;
+let closingTimer: ReturnType<typeof setTimeout> | undefined;
+/** What the answer decided, held until the collapse is done: the next row to open, or the line for "none". */
+let pending:
+	| {
+			caseId: string;
+			verified: string;
+			/** The row whose head the redraw gave the focus when the verified row left the list. */
+			movedTo: string | undefined;
+			to: string | undefined;
+			number: number | undefined;
+			say: boolean;
+			opensAt: number;
+	  }
+	| undefined;
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+/** The row the last Verify opened, while its cue runs. */
+let arrived:
+	| { caseId: string; markId: string; at: number; h: number }
+	| undefined;
+let arrivedTimer: ReturnType<typeof setTimeout> | undefined;
+/** The scroll after the expansion, and the end of the expansion's clipping. */
+let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+let expandTimer: ReturnType<typeof setTimeout> | undefined;
+
+const stillMotion = () =>
+	globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+/** The cue and the line after a Verify end with the case view (no replay on coming back). */
+function clearCue(): void {
+	if (closing) openMarks.delete(`${closing.caseId}:${closing.markId}`);
+	arrived = undefined;
+	clearTimeout(scrollTimer);
+	clearTimeout(expandTimer);
+	verifyLine = undefined;
+	pending = undefined;
+	closing = undefined;
+	clearTimeout(arrivedTimer);
+	clearTimeout(pendingTimer);
+	clearTimeout(closingTimer);
+}
+
+/** The cue's end: the marker off the row that has it. */
+function endCue(): void {
+	clearTimeout(arrivedTimer);
+	clearTimeout(scrollTimer);
+	clearTimeout(expandTimer);
+	const k = arrived;
+	arrived = undefined;
+	const row = k && parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
+	row?.removeAttribute("data-arrived");
+	row?.removeAttribute("data-expanding");
+	row?.style.removeProperty("--cue-elapsed");
+}
+
+/** The cue on a row: `data-arrived` for what is left of `ARRIVED_MS`; the style sheet starts its animations `elapsed` in. */
+function cueRow(row: HTMLElement, elapsed: number, h: number): void {
+	row.setAttribute("data-arrived", "");
+	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
+	row.style.setProperty("--open-h", `${h}px`);
+	// Clipped only while the body grows: focus rings must show after.
+	clearTimeout(expandTimer);
+	if (!stillMotion() && elapsed < EXPAND_MS) {
+		row.setAttribute("data-expanding", "");
+		expandTimer = setTimeout(
+			() => row.removeAttribute("data-expanding"),
+			EXPAND_MS - elapsed,
+		);
+	}
+	clearTimeout(arrivedTimer);
+	arrivedTimer = setTimeout(() => {
+		row.removeAttribute("data-arrived");
+		row.style.removeProperty("--cue-elapsed");
+	}, ARRIVED_MS - elapsed);
+}
+
+/** A row's collapse, `elapsed` ms in (a row drawn anew continues from there). */
+function collapseRow(
+	caseId: string,
+	row: HTMLElement,
+	h: number,
+	elapsed: number,
+): void {
+	if (row.dataset["mark"] === undefined) return;
+	showOpen(row);
+	// A row drawn anew is measured again: its body may differ from the press.
+	if (elapsed > 0) {
+		const now = row.querySelector<HTMLElement>(".body")?.offsetHeight;
+		if (now) {
+			h = now;
+			if (closing?.caseId === caseId && closing.markId === row.dataset["mark"])
+				closing.h = now;
+		}
+	}
+	row.setAttribute("data-collapsing", "");
+	row.style.setProperty("--collapse-h", `${h}px`);
+	row.style.setProperty("--cue-elapsed", `-${Math.round(elapsed)}ms`);
+}
+
+/** The collapse is done: the row closes for good. */
+function finishClosing(): void {
+	clearTimeout(closingTimer);
+	const k = closing;
+	closing = undefined;
+	if (!k) return;
+	// Closed for good, whether or not its row is on screen (a filter, another case).
+	openMarks.delete(`${k.caseId}:${k.markId}`);
+	const row = parts?.current.id === k.caseId ? rowOf(k.markId) : undefined;
+	if (!row) return;
+	row.removeAttribute("data-collapsing");
+	row.style.removeProperty("--collapse-h");
+	row.style.removeProperty("--cue-elapsed");
+	setOpen(k.caseId, row, false);
+}
+
+/**
+ * The answer's decision, once the collapse is done (at once when it is):
+ * open the next row, with its cue, scroll and focus; or, with none left, the
+ * focus and the line. Rows are found as the list is drawn now.
+ */
+function runPending(): void {
+	const k = pending;
+	if (!k) return;
+	clearTimeout(pendingTimer);
+	const wait = k.opensAt - Date.now();
+	if (wait > 0) {
+		pendingTimer = setTimeout(runPending, wait);
+		return;
+	}
+	pending = undefined;
+	const p = parts;
+	if (!p || p.current.id !== k.caseId) return;
+	const marks = p.marks;
+	// Only a focus the Verify left behind is moved: nowhere, in its row, or
+	// on the head the redraw gave it when the row left a filtered list.
+	const mine =
+		focusLeftBy(marks, k.verified) === true ||
+		(k.movedTo !== undefined &&
+			document.activeElement?.classList.contains("mark-toggle") === true &&
+			focusLeftBy(marks, undefined) === k.movedTo);
+	if (!mine) return;
+	const head = (id: string) =>
+		marks.querySelector<HTMLElement>(
+			`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
+		);
+	const found = k.to === undefined ? undefined : rowOf(k.to);
+	// Not a row that is gone, or was verified meanwhile: then nothing opens.
+	const row =
+		found?.dataset["status"] === "fixed" &&
+		!found.hasAttribute("data-verifying")
+			? found
+			: undefined;
+	if (row && k.to !== undefined) {
+		setOpen(k.caseId, row, true);
+		// "This one", as for a pin clicked on the page.
+		row.setAttribute("data-picked", "");
+		releaseHeld();
+		const h = row.querySelector<HTMLElement>(".body")?.offsetHeight ?? 0;
+		arrived = { caseId: k.caseId, markId: k.to, at: Date.now(), h };
+		cueRow(row, 0, h);
+		scrollToOpened(row);
+		// The row has grown by then: the scroll follows.
+		if (!stillMotion()) {
+			const to = k.to;
+			clearTimeout(scrollTimer);
+			scrollTimer = setTimeout(() => {
+				const r = parts?.current.id === k.caseId ? rowOf(to) : undefined;
+				if (r?.hasAttribute("data-arrived")) scrollToOpened(r);
+			}, EXPAND_MS + 20);
+		}
+		// Its head, not its Verify: a second Enter must not verify it unseen.
+		head(k.to)?.focus({ preventScroll: true });
+		// And on the page, as its Show would (owner, 25 November): only where
+		// the marks are drawn here. Never another page, nor drawing marks a
+		// Hide took off ("they stay off on this tab until you show them").
+		// A row away by now (the tab went on since it was drawn) is not.
+		if (!row.hasAttribute("data-away")) showsHere.get(row)?.();
+		sayAfterVerify(
+			p.hint,
+			k.caseId,
+			row.hasAttribute("data-away")
+				? `Mark ${k.number ?? ""} opened: it is on another page; open its page to verify it.`
+				: `Mark ${k.number ?? ""} opened, to verify.`,
+		);
+	} else {
+		// Nothing waits: the verified row's head; where a filter has taken that
+		// row away, the list's first control, not nowhere.
+		(
+			head(k.verified) ??
+			marks.querySelector<HTMLElement>("button:not([disabled])")
+		)?.focus({ preventScroll: true });
+		if (k.say)
+			sayAfterVerify(p.hint, k.caseId, "That was the last mark to verify.");
+	}
+}
+
+/**
+ * Where the focus is, for a Verify of `markId` in `list`: `true` when it is
+ * nowhere or in that mark's row (left there by the Verify); else the mark id
+ * of the row of `list` it is in; else `false` (a field or button elsewhere).
+ */
+function focusLeftBy(
+	list: HTMLElement,
+	markId: string | undefined,
+): true | string | false {
+	const at = document.activeElement;
+	if (at === null || at === document.body) return true;
+	const row = at.closest<HTMLElement>("li.mark");
+	const id =
+		row !== null && list.contains(row) ? row.dataset["mark"] : undefined;
+	if (id === undefined) return false;
+	return id === markId ? true : id;
+}
+
+/** A line for the status region after a Verify, said once (see the render of the hint). */
+let verifyLine: { caseId: string; text: string; at: number } | undefined;
+/** How long that line stays when nothing else is said. */
+const VERIFY_LINE_MS = 8000;
+
+/** Said once, now, through the status line; later renders keep it while nothing else is said. */
+function sayAfterVerify(hint: HTMLElement, caseId: string, text: string): void {
+	verifyLine = { caseId, text, at: Date.now() };
+	setHint(hint, text, true);
+	hint.classList.remove("visually-hidden");
+}
+
+const rowOf = (markId: string) =>
+	document.querySelector<HTMLElement>(
+		`section.marks li.mark[data-mark="${quoted(markId)}"]`,
+	) ?? undefined;
+
+/**
+ * The press of a Verify, at once and before anything answers: the row shows
+ * the mark as verified and closes. The returned function
+ * puts the row back as it was (a Verify that was not saved).
+ */
+function verifying(
+	caseId: string,
+	markId: string,
+): (() => void) & { done: () => void } {
+	const key = `${caseId}:${markId}`;
+	const wasOpen = openMarks.has(key);
+	openMarks.delete(key);
+	/** The row, only while the case on screen is the one pressed in (mark ids are per case). */
+	const rowHere = () =>
+		parts?.current.id === caseId ? rowOf(markId) : undefined;
+	// One thing moves at a time: what the last Verify was doing is finished.
+	finishClosing();
+	endCue();
+	const li = rowHere();
+	// `data-status` stays the stored truth; the row says "verified" by its own marker.
+	const pill = li?.querySelector<HTMLElement>(".pill");
+	const pillText = pill?.textContent ?? "";
+	li?.setAttribute("data-verifying", "");
+	if (pill) pill.textContent = PILL.verified ?? "";
+	const h = li?.querySelector<HTMLElement>(".body")?.offsetHeight ?? 0;
+	if (li && wasOpen) {
+		if (stillMotion()) setOpen(caseId, li, false);
+		else {
+			closing = { caseId, markId, at: Date.now(), h };
+			collapseRow(caseId, li, h, 0);
+			closingTimer = setTimeout(finishClosing, COLLAPSE_MS);
+		}
+	}
+	let settled = false;
+	let giveUp: ReturnType<typeof setTimeout> | undefined;
+	const undo = (said?: string) => {
+		if (settled) return;
+		settled = true;
+		clearTimeout(giveUp);
+		if (closing?.markId === markId && closing.caseId === caseId) {
+			clearTimeout(closingTimer);
+			closing = undefined;
+		}
+		if (verifiedNow?.markId === markId && verifiedNow.caseId === caseId)
+			verifiedNow = undefined;
+		const now = rowHere();
+		// Put back only a row still marked as verifying, or one the stored case
+		// still has to verify: a redraw that shows it truly verified stays.
+		if (
+			now &&
+			(now.hasAttribute("data-verifying") || now.dataset["status"] === "fixed")
+		) {
+			now.removeAttribute("data-verifying");
+			now.removeAttribute("data-collapsing");
+			now.style.removeProperty("--collapse-h");
+			const pillNow = now.querySelector<HTMLElement>(".pill");
+			if (pillNow) pillNow.textContent = pillText;
+			if (wasOpen) {
+				openMarks.add(key);
+				setOpen(caseId, now, true);
+				// Its own short expand, back to where it was.
+				if (!stillMotion()) {
+					now.setAttribute("data-restoring", "");
+					now.style.setProperty("--open-h", `${h}px`);
+					now.style.removeProperty("--cue-elapsed");
+					setTimeout(() => now.removeAttribute("data-restoring"), RESTORE_MS);
+				}
+			}
+			if (said !== undefined && parts) sayAfterVerify(parts.hint, caseId, said);
+		}
+	};
+	// No answer at all: the row does not stay "verified" for good.
+	giveUp = setTimeout(
+		() => undo("Not saved: the Verify got no answer."),
+		VERIFIED_WAIT_MS,
+	);
+	return Object.assign(() => undo(), {
+		done: () => {
+			settled = true;
+			clearTimeout(giveUp);
+		},
+	});
+}
+
+/** A smooth scroll within about a panel's height, a jump beyond (sixty marks are not scrolled through). */
+function scrollToOpened(row: HTMLElement): void {
+	const r = row.getBoundingClientRect();
+	const h = globalThis.innerHeight || 0;
+	const away = r.top < 0 ? -r.top : r.bottom > h ? r.bottom - h : 0;
+	const still =
+		globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ===
+		true;
+	row.scrollIntoView?.({
+		block: "nearest",
+		behavior: !still && h > 0 && away <= h ? "smooth" : "instant",
+	});
+}
+
+/**
+ * Where the focus goes after a Verify: the next mark to verify, else the
+ * row's head. One that can be verified on the page in front comes first (the
+ * page being checked is done before another is opened, DEC-079); then one
+ * of another page (`away`), whose row offers to open its page.
+ */
 export function afterVerify(
-	order: readonly { id: string; status: string }[],
+	order: readonly { id: string; status: string; away?: boolean }[],
 	verified: string,
 ): { markId: string } | undefined {
 	const at = order.findIndex((m) => m.id === verified);
 	if (at < 0) return undefined;
+	const round = [...order.slice(at + 1), ...order.slice(0, at)];
 	const next =
-		order.slice(at + 1).find((m) => m.status === "fixed") ??
-		order.slice(0, at).find((m) => m.status === "fixed");
+		round.find((m) => m.status === "fixed" && m.away !== true) ??
+		round.find((m) => m.status === "fixed");
 	return { markId: next?.id ?? verified };
 }
 
+/** A drawn list's rows as `afterVerify` reads them. */
+const rowOrder = (list: ParentNode, rows = "li.mark") =>
+	[...list.querySelectorAll<HTMLElement>(rows)].map((li) => ({
+		id: li.dataset["mark"] ?? "",
+		status: li.dataset["status"] ?? "",
+		away: li.hasAttribute("data-away"),
+	}));
+
+/**
+ * The row a Verify opens next, in the list as it is drawn now: the one known at
+ * the click while it still waits there (a filtered list has dropped the verified
+ * mark, and nothing can be counted from it), else the next by the list. None
+ * when nothing waits: the rows after the verified one first, then round to the
+ * ones before it, since going through them all is what a Verify after a Verify is.
+ */
+export function opensAfterVerify(
+	order: readonly { id: string; status: string; away?: boolean }[],
+	verified: string,
+	known: string | undefined,
+): string | undefined {
+	const kept = order.find((m) => m.id === known && m.status === "fixed")?.id;
+	const to = kept ?? afterVerify(order, verified)?.markId;
+	return to === verified ? undefined : to;
+}
+
 const reopenButton = (c: Case, a: Mark, actions: Actions) =>
-	markButton("Reopen…", "reopen", REOPEN_TITLE, () =>
-		actions.editMark(c, a, "reopen"),
+	markButton(
+		"Reopen…",
+		"reopen",
+		REOPEN_TITLE,
+		() => actions.editMark(c, a, "reopen"),
+		false,
+		"reopen",
 	);
 
 /** `, and its 2 added images`; nothing for none. */
@@ -2322,6 +3277,14 @@ function markActions(
 	a: Mark,
 	armed: boolean,
 	actions: Actions,
+	/**
+	 * A mark to verify not on the page in front (DEC-079): the address its
+	 * page link goes to, and the way onto a tab whose address is not known.
+	 */
+	away: {
+		linkTab: string | undefined;
+		unread: string | undefined;
+	} | null = null,
 ): HTMLElement {
 	const status = markStatus(a);
 	return h(
@@ -2336,7 +3299,16 @@ function markActions(
 					true,
 				)
 			: null,
-		status === "fixed" ? verifyButton(c, a, actions) : null,
+		status !== "fixed"
+			? null
+			: away === null
+				? verifyButton(c, a, actions)
+				: away.unread === undefined
+					? verifyThere(c, a, away.linkTab, actions)
+					: null,
+		status === "fixed" && away !== null
+			? verifyButton(c, a, actions, true)
+			: null,
 		status === "open" ? null : reopenButton(c, a, actions),
 		status === "open"
 			? null
@@ -2346,8 +3318,13 @@ function markActions(
 					"Change how it was settled, or its note",
 					() => actions.editMark(c, a, "resolve"),
 				),
-		markButton("Edit comment", "comment", undefined, () =>
-			actions.editMark(c, a, "comment"),
+		markButton(
+			"Edit comment",
+			"comment",
+			undefined,
+			() => actions.editMark(c, a, "comment"),
+			false,
+			"edit",
 		),
 		h(
 			"button",
@@ -2361,7 +3338,7 @@ function markActions(
 				...(armed ? { "data-armed": true } : {}),
 				onclick: () => actions.deleteMark(c, a),
 			},
-			armed ? "Really delete?" : "Delete mark",
+			...withIcon("delete", armed ? "Really delete?" : "Delete mark"),
 		),
 	);
 }
@@ -2941,7 +3918,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 		caseView.replaceChildren(h("p", { class: "meta" }, "Loading…"));
 		return;
 	}
-	if (parts?.current.id !== c.id) parts = createParts(c, actions);
+	if (parts?.current.id !== c.id) {
+		clearCue();
+		parts = createParts(c, actions);
+	}
 	const p = parts;
 	p.current = c;
 	// The summary: what the store has, unless the user typed another.
@@ -3016,7 +3996,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 		p.origin,
 		c.importedAt === undefined
 			? undefined
-			: `Imported from a file on ${formatDate(c.importedAt)}. Its link, comments, statuses and reopen notes, summary and findings are as the file says: whoever wrote it, whatever author or AI app it names.`,
+			: `Imported from a file on ${formatDate(c.importedAt)}. Its link, comments, statuses and reopen notes and summary are as the file says: whoever wrote it, whatever author or AI app it names.`,
 	);
 	// Marks the panel loaded, or an AI app (the page says so).
 	const here =
@@ -3024,23 +4004,46 @@ function renderCase(state: PanelState, actions: Actions): void {
 			? state.loaded
 			: undefined;
 	p.loadedHere = here !== undefined || state.overlay?.loadedCase === c.id;
-	renderAccess(p.access, state);
-	const ok = access(state) === "yes";
+	// On a tab without access, the tool bar says why in place of its
+	// buttons, which could not work there (DEC-076).
+	const plan = planOf(state);
+	renderAccess(p.access, state, plan.inCase, NO_ACCESS_CASE);
+	const ok = plan.pageControls;
+	// A tool bar with its name only while it holds the buttons.
+	if (ok) {
+		p.dock.setAttribute("role", "toolbar");
+		p.dock.setAttribute("aria-label", "Marks on this tab");
+	} else {
+		p.dock.removeAttribute("role");
+		p.dock.removeAttribute("aria-label");
+	}
+	setHint(
+		p.accessPointer,
+		plan.inCase === "no-access"
+			? "Sitegloss has no access to this tab yet: the bar at the end of the case says why and what to do."
+			: plan.inCase === "cannot"
+				? "Sitegloss cannot work on this kind of page: the bar at the end of the case says more."
+				: undefined,
+	);
+	p.dock.toggleAttribute("data-notice", !ok);
 	// The toolbar on the tab in front adds to this case (DEC-023).
 	p.adding =
 		state.overlay?.visible === true && state.overlay.target?.caseId === c.id;
-	p.addMarks.disabled = !ok || state.leaving?.phase === "finishing";
-	// Calm at rest, always in reach; amber only while adding is on, and it
+	p.addMarks.hidden = !ok;
+	p.addMarks.disabled = state.leaving?.phase === "finishing";
+	// Calm at rest, always in reach; primary only while adding is on, and it
 	// says so (DEC-064).
-	p.addMarks.textContent = p.adding ? "Adding marks: Done" : "Add marks";
+	setLabel(
+		p.addMarks,
+		p.adding ? undefined : "add",
+		p.adding ? "Adding marks: Done" : "Add marks",
+	);
 	p.addMarks.classList.toggle("primary", p.adding);
 	// Its words say what it does; no pressed state beside them (DEC-064's review).
-	p.addMarks.title = !ok
-		? NEEDS_ACCESS
-		: p.adding
-			? "Stop adding marks: the toolbar goes once each mark is in the case"
-			: "Each mark you draw on the page goes into this case when its comment is done";
-	// The same button at the end of a long list of marks; not amber, which
+	p.addMarks.title = p.adding
+		? "Stop adding marks: the toolbar goes once each mark is in the case"
+		: "Each mark you draw on the page goes into this case when its comment is done";
+	// The same button at the end of a long list of marks; not primary, which
 	// is the view's one button that starts drawing (DEC-024).
 	setHint(p.leaving, leavingText(state.leaving));
 	setHint(p.tabLine, ok ? tabLineText(state, c, p.adding) : undefined);
@@ -3056,7 +4059,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 		here === undefined;
 	// A case without marks has nothing to show or hide.
 	p.loadButton.hidden = !ok || none || looking || c.marks.length === 0;
-	p.loadButton.textContent = p.loadedHere ? "Hide marks" : "Show marks";
+	setLabel(
+		p.loadButton,
+		p.loadedHere ? "hide-marks" : "show-marks",
+		p.loadedHere ? "Hide marks" : "Show marks",
+	);
 	p.loadButton.title = p.loadedHere
 		? "Take this case's marks off the page in this tab; they stay off on this tab until you show them again"
 		: "Look for each mark's element on the page in this tab and draw the marks there";
@@ -3084,8 +4091,17 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const mayClose =
 		sync.kind !== "synced" ||
 		(team?.permissions.includes("case:close") ?? true);
-	p.closeButton.textContent = c.closed ? "Reopen case" : "Close case";
-	p.closeButton.disabled = !mayClose;
+	setLabel(
+		p.closeButton,
+		c.closed ? "reopen" : "close",
+		c.closed ? "Reopen case" : "Close case",
+	);
+	// Leaving after a Close: the button is busy, so no press reopens the case
+	// before the panel is on the list.
+	const leavingNow = state.leaving?.phase === "finishing";
+	p.closeButton.disabled = !mayClose || leavingNow;
+	if (leavingNow) p.closeButton.setAttribute("aria-busy", "true");
+	else p.closeButton.removeAttribute("aria-busy");
 	p.closeButton.title = !mayClose
 		? `Your role in “${sync.team}” does not allow closing its cases`
 		: c.closed
@@ -3097,6 +4113,7 @@ function renderCase(state: PanelState, actions: Actions): void {
 			? `Closed ${formatDate(c.closed.at)}${byline(c.closed.user, c.closed.app) ? ` by ${byline(c.closed.user, c.closed.app)}` : ""}.`
 			: undefined,
 	);
+	renderStep(state, p, c, mayClose, actions);
 	const threadContext: ThreadContext = {
 		me: state.cloud.account?.userId,
 		mayComment:
@@ -3108,11 +4125,15 @@ function renderCase(state: PanelState, actions: Actions): void {
 	p.deleteButton.toggleAttribute("data-armed", armed);
 	holdDelete(armed && sync.mayDelete ? p.deleteButton : undefined);
 	p.deleteButton.disabled = !sync.mayDelete;
-	p.deleteButton.textContent = !armed
-		? "Delete case"
-		: sync.kind === "synced"
-			? "Really delete for the team?"
-			: "Really delete?";
+	setLabel(
+		p.deleteButton,
+		"delete",
+		!armed
+			? "Delete case"
+			: sync.kind === "synced"
+				? "Really delete for the team?"
+				: "Really delete?",
+	);
 	p.deleteButton.title = !sync.mayDelete
 		? `Your role in “${sync.team}” does not allow deleting its cases`
 		: sync.kind === "synced"
@@ -3146,7 +4167,15 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const again = typeof caseHint === "string" && state.caseHintSeq !== p.hintSeq;
 	p.hintSeq = state.caseHintSeq;
 	if (!settling) {
-		setHint(p.hint, typeof caseHint !== "object" ? caseHint : foundNow, again);
+		const said =
+			verifyLine?.caseId === c.id && Date.now() - verifyLine.at < VERIFY_LINE_MS
+				? verifyLine.text
+				: undefined;
+		setHint(
+			p.hint,
+			typeof caseHint !== "object" ? (caseHint ?? said) : foundNow,
+			again,
+		);
 		p.hint.classList.toggle("visually-hidden", foundNow !== undefined);
 	}
 
@@ -3214,7 +4243,6 @@ function renderCase(state: PanelState, actions: Actions): void {
 	const edit = state.markEdit;
 	if (edit === undefined) focusedForm = undefined;
 	const markArmed = state.markDeleteArmed?.markId;
-	const findingArmed = state.findingDeleteArmed;
 	const imageArmed = state.imageDeleteArmed;
 	// Images added here the team does not have, and why (DEC-058).
 	const notSent = state.cloud.status?.notSent?.[c.id];
@@ -3237,7 +4265,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 		// A mark's link offers the host in front too (DEC-050).
 		tabOrigin(state.tab?.url),
 		markArmed ?? null,
-		findingArmed ? [findingArmed.markId, findingArmed.findingId] : null,
+		// Whether a mark's Show must draw the marks first.
+		p.loadedHere,
+		p.loadButton.hidden,
+		state.showingMark ?? null,
 		imageArmed ? [imageArmed.markId, imageArmed.imageId] : null,
 		notSent ?? null,
 		ok,
@@ -3256,6 +4287,11 @@ function renderCase(state: PanelState, actions: Actions): void {
 			actions.filterMarks(c.id, undefined);
 			actions.filterPage(c.id, undefined);
 		};
+		// The tab shows a page of this case, on whatever host.
+		const caseTab =
+			state.tab?.url !== undefined &&
+			isWebPage(state.tab.url) &&
+			pageInFront(c, state.tab.url) !== undefined;
 		// A mark of another page than the one drawn on is not looked for
 		// there: "on another page", whatever the page (DEC-057).
 		const items = sorted.map((a) => {
@@ -3268,16 +4304,27 @@ function renderCase(state: PanelState, actions: Actions): void {
 				match: elsewhere ? undefined : match,
 				tabUrl: state.tab?.url,
 				elsewhere,
+				linkTab: elsewhere || caseTab ? state.tab?.url : undefined,
+				unread:
+					state.tab?.url === "" ? verifyHereWay(wordsOf(state)) : undefined,
 				edit: edit?.markId === a.id ? edit : undefined,
 				armed: markArmed === a.id,
-				findingArmed:
-					findingArmed?.markId === a.id ? findingArmed.findingId : undefined,
 				imageArmed:
 					imageArmed?.markId === a.id ? imageArmed.imageId : undefined,
 				notSent,
 				actions,
 				thread: threadContext,
 				canReach: ok,
+				// What "Show marks" would do here; a mark of another page, or of
+				// a kind this version cannot show, has nothing to go to.
+				busy:
+					state.showingMark?.caseId === c.id &&
+					state.showingMark.markId === a.id,
+				loadFirst:
+					!p.loadedHere &&
+					!p.loadButton.hidden &&
+					mayLoadAndShow(c, a, state.tab?.url, true) &&
+					!(a.shape.kind === "unknown" && a.element === null),
 				changed: () => syncToggleAll(),
 			});
 		});
@@ -3372,19 +4419,27 @@ function renderCase(state: PanelState, actions: Actions): void {
 							)
 						: null,
 		);
+		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
+			verifiedNow = undefined;
+		const v = verifiedNow;
+		// Where the focus was before this redraw: a verified row that leaves a
+		// filtered list (Start verifying filters it) hands its focus to the
+		// next row's head (`focusInMarks`); that focus is still the Verify's.
+		const leftBefore =
+			v?.caseId === c.id && focusLeftBy(p.marks, v.markId) === true;
 		const refocus = focusInMarks(p.marks);
 		p.marks.replaceWith(marks);
 		p.marks = marks;
 		if (kept !== undefined && !kept.hidden) kept.focus();
 		refocus?.(marks);
 		// Verified and drawn so: the next mark to verify has the focus.
-		if (verifiedNow && Date.now() - verifiedNow.at > VERIFIED_WAIT_MS)
-			verifiedNow = undefined;
-		const v = verifiedNow;
-		const focusHere = (() => {
-			const at = document.activeElement;
-			return at === null || at === document.body || marks.contains(at);
-		})();
+		// Only a focus that the Verify left behind is moved: nowhere (its button
+		// went with the redraw), still in its row, or where this redraw put it
+		// when the row left the list. A field or a button of another row,
+		// which the person went to meanwhile, is theirs.
+		const movedTo = leftBefore ? focusLeftBy(marks, undefined) : false;
+		const focusHere =
+			focusLeftBy(marks, v?.markId) === true || typeof movedTo === "string";
 		if (
 			v?.caseId === c.id &&
 			focusHere &&
@@ -3393,28 +4448,54 @@ function renderCase(state: PanelState, actions: Actions): void {
 			const done = c.marks.find((m) => m.id === v.markId);
 			if (done && markStatus(done) !== "fixed") {
 				verifiedNow = undefined;
-				const order = [...marks.querySelectorAll<HTMLElement>("li.mark")].map(
-					(li) => ({
-						id: li.dataset["mark"] ?? "",
-						status: li.dataset["status"] ?? "",
-					}),
-				);
-				const to = afterVerify(order, v.markId);
-				const head = (id: string) =>
-					marks.querySelector<HTMLElement>(
-						`li.mark[data-mark="${quoted(id)}"] .mark-toggle`,
-					);
-				// The next mark to verify where it is on screen; one out of
-				// sight would scroll the list away from the row just verified
-				// (nothing jumps): then the closed row's head.
-				const next = to ? head(to.markId) : null;
-				const r = next?.getBoundingClientRect();
-				const seen =
-					r !== undefined &&
-					r.top >= 0 &&
-					r.bottom <= document.documentElement.clientHeight;
-				(seen ? next : head(v.markId))?.focus({ preventScroll: true });
+				const order = rowOrder(marks);
+				// The next mark to verify opens by itself, in view, so that
+				// verifying a row of them is one press each (the owner). The
+				// one known at the click, which a filtered list still has
+				// when the verified mark has left it; else the list as it is.
+				// Held until the verified row has collapsed (runPending).
+				const to = opensAfterVerify(order, v.markId, v.next);
+				pending = {
+					caseId: c.id,
+					verified: v.markId,
+					movedTo: typeof movedTo === "string" ? movedTo : undefined,
+					to,
+					number: c.marks.find((m) => m.id === to)?.number,
+					// The next step already says it when nothing is open either.
+					say: c.marks.some((m) => markStatus(m) === "open"),
+					opensAt:
+						closing?.caseId === c.id && closing.markId === v.markId
+							? closing.at + COLLAPSE_MS
+							: 0,
+				};
 			}
+		}
+		// The row a Verify is closing, on whichever node draws it now: a
+		// redraw continues the collapse from where it is, not snapping it shut.
+		if (closing?.caseId === c.id) {
+			const elapsed = Date.now() - closing.at;
+			const row = marks.querySelector<HTMLElement>(
+				`li.mark[data-mark="${quoted(closing.markId)}"]`,
+			);
+			if (row && elapsed < COLLAPSE_MS && !row.hasAttribute("data-collapsing"))
+				collapseRow(c.id, row, closing.h, elapsed);
+		}
+		// What the answer decided runs once that collapse is done.
+		runPending();
+		// The cue of the row a Verify opened, on whichever node draws it now,
+		// for its second only: a redraw within it carries the cue on from
+		// where it is (not from the start); later ones, and other cases, not.
+		if (arrived?.caseId === c.id) {
+			const elapsed = Date.now() - arrived.at;
+			const row = marks.querySelector<HTMLElement>(
+				`li.mark[data-mark="${quoted(arrived.markId)}"]`,
+			);
+			if (row && elapsed < ARRIVED_MS) {
+				// Measured again on the node that carries it on.
+				const now = row.querySelector<HTMLElement>(".body")?.offsetHeight;
+				if (now) arrived.h = now;
+				cueRow(row, elapsed, arrived.h);
+			} else if (elapsed >= ARRIVED_MS) arrived = undefined;
 		}
 		if (picked !== undefined) {
 			p.pickedAt = picked.at;
@@ -3424,6 +4505,10 @@ function renderCase(state: PanelState, actions: Actions): void {
 			// The panel's own scroll: a row held after a click lets go.
 			releaseHeld();
 			row?.scrollIntoView?.({ block: "nearest" });
+			if (picked.focus)
+				row
+					?.querySelector<HTMLElement>(".mark-toggle")
+					?.focus({ preventScroll: true });
 		}
 		p.marksKey = marksKey;
 	}
@@ -3460,6 +4545,12 @@ function renderCase(state: PanelState, actions: Actions): void {
 /** Marks shown open (`caseId:markId`); the rest show only their head. */
 const openMarks = new Set<string>();
 
+/**
+ * A drawn row's Show where it shows the mark on the page in front without
+ * leaving it or drawing the marks first: what the row a Verify opens does too.
+ */
+const showsHere = new WeakMap<HTMLElement, () => void>();
+
 function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	const key = `${caseId}:${li.dataset["mark"]}`;
 	if (open) openMarks.add(key);
@@ -3470,6 +4561,14 @@ function setOpen(caseId: string, li: HTMLElement, open: boolean): void {
 	if (body) body.hidden = !open;
 }
 
+/** A row drawn open, without the open set's say: a collapse in progress is only how it looks. */
+function showOpen(li: HTMLElement): void {
+	li.toggleAttribute("data-open", true);
+	li.querySelector(".mark-toggle")?.setAttribute("aria-expanded", "true");
+	const body = li.querySelector<HTMLElement>(".body");
+	if (body) body.hidden = false;
+}
+
 /** A value inside a quoted attribute selector. */
 const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
 
@@ -3477,9 +4576,9 @@ const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
  * The button in the marks list that has the focus, as something to find
  * again once the list is drawn anew: a Delete or Remove clicked once redraws
  * the list, and the second press from the keyboard must find the armed
- * control where the first left it (mark Delete, a finding's Delete, an added
- * image's Remove). A control that went with its finding or image leaves the
- * focus on the next picture's, the way to add one, or the mark's head.
+ * control where the first left it (mark Delete, an added image's Remove, a
+ * comment's Delete). A control that went with its image leaves the focus on
+ * the next picture's, the way to add one, or the mark's head.
  */
 function focusInMarks(
 	list: HTMLElement,
@@ -3494,12 +4593,7 @@ function focusInMarks(
 	const markId = at.closest<HTMLElement>("li.mark")?.dataset["mark"];
 	// The row's head is found again by its class (a second redraw, when
 	// the pictures come, must not drop the focus the first one put there).
-	const which = [
-		"data-mark-action",
-		"data-finding-action",
-		"data-action",
-		"class",
-	].find((name) =>
+	const which = ["data-mark-action", "data-action", "class"].find((name) =>
 		name === "class"
 			? at.classList.contains("mark-toggle")
 			: at.hasAttribute(name),
@@ -3508,7 +4602,6 @@ function focusInMarks(
 	const value =
 		which === "class" ? "mark-toggle" : (at.getAttribute(which) as string);
 	const picture = at.closest("[data-picture]")?.getAttribute("data-picture");
-	const finding = at.closest("[data-finding]")?.getAttribute("data-finding");
 	// A comment's Edit or Delete: that comment's, not the first one's.
 	const comment = at.closest("[data-comment]")?.getAttribute("data-comment");
 	// The marks around it, for when its row goes (a mark deleted).
@@ -3546,11 +4639,9 @@ function focusInMarks(
 		const within =
 			picture != null
 				? `[data-picture="${quoted(picture)}"] `
-				: finding != null
-					? `[data-finding="${quoted(finding)}"] `
-					: comment != null
-						? `[data-comment="${quoted(comment)}"] `
-						: "";
+				: comment != null
+					? `[data-comment="${quoted(comment)}"] `
+					: "";
 		const same = row.querySelector<HTMLElement>(
 			which === "class"
 				? ".mark-toggle"
@@ -3574,7 +4665,7 @@ function focusInMarks(
 			if (next !== null) return next.focus();
 		}
 		// Gone with its picture: the next picture's control, else the way to
-		// add one; gone with its finding: the mark's head.
+		// add one; else the mark's head.
 		const after =
 			picture == null ? [] : pictures.slice(pictures.indexOf(picture) + 1);
 		const fallback =
@@ -3642,17 +4733,30 @@ interface MarkContext {
 	tabUrl: string | undefined;
 	/** It is of another page of the case than the tab in front shows. */
 	elsewhere: boolean;
+	/**
+	 * The tab's address for a mark's page link to take its host from: only a
+	 * tab on a page of the case (another environment) or where the case is
+	 * drawn; else none, and the link goes where the mark was made (DEC-079).
+	 */
+	linkTab: string | undefined;
+	/** The tab's address is not known (no access): the way onto it, in words. */
+	unread: string | undefined;
 	edit: PanelState["markEdit"];
 	armed: boolean;
-	/** The finding of this mark whose Delete was clicked once. */
-	findingArmed: string | undefined;
 	/** The added image of this mark whose Remove was clicked once. */
 	imageArmed: string | undefined;
 	/** The case's added images the team does not have, and why. */
 	notSent: Readonly<Record<string, string>> | undefined;
 	actions: Actions;
-	/** Sitegloss may run on the tab in front: Show can scroll it. */
+	/** Sitegloss may run on the tab in front: Show can scroll it; else no Show. */
 	canReach: boolean;
+	/**
+	 * The case's marks are not drawn on the tab in front, which can take
+	 * them, and this mark is of its page: Show draws them, then shows it.
+	 */
+	loadFirst: boolean;
+	/** This mark's Show is drawing the marks now. */
+	busy: boolean;
 	/** A mark opened or closed by its own head. */
 	changed: () => void;
 	/** Who may write a mark's comments (DEC-061). */
@@ -3667,10 +4771,14 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 	const { match: m, edit, actions } = x;
 	const bodyId = `mark-body-${a.id}`;
 	const status = markStatus(a);
+	// A mark to verify that is not on the page in front: no Verify, its page
+	// named and offered instead (DEC-079).
+	const away = status === "fixed" && !verifiesHere(c, a, x.tabUrl);
 	const li: HTMLElement = h("li", {
 		class: "mark",
 		"data-mark": a.id,
 		"data-status": status,
+		...(away ? { "data-away": "" } : {}),
 		...(m ? { "data-colour": colourOf(m) } : {}),
 		// Verified and dismissed step back; a mark to verify is to be looked at.
 		...(a.resolution && status !== "fixed"
@@ -3700,23 +4808,43 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 		a.author === "ai" ? h("span", { class: "tag" }, "AI") : null,
 	);
 	// A mark of an unknown kind with no element is nowhere this version can
-	// show (DEC-066).
-	const show =
-		canShow(m) && !(a.shape.kind === "unknown" && m.status === "no-element")
+	// show (DEC-066). On a tab without access none: the tool bar says why
+	// (DEC-076; "Show marks" is not there either, so `loadFirst` is false).
+	const here =
+		!x.loadFirst &&
+		canShow(m) &&
+		x.canReach &&
+		!(a.shape.kind === "unknown" && m.status === "no-element")
+			? () => actions.showMatch(c.id, a, m.current)
+			: undefined;
+	if (here) showsHere.set(li, here);
+	const show = x.loadFirst
+		? h(
+				"button",
+				{
+					type: "button",
+					class: "show icon-only",
+					"data-action": "show",
+					"data-loads": "",
+					"aria-busy": x.busy ? "true" : "false",
+					"aria-label": `Show the marks on this page and go to mark ${a.number}`,
+					title: `Show this case's marks on this page, scroll to mark ${a.number} and outline it`,
+					onclick: () => actions.loadAndShow(c, a),
+				},
+				icon("show-mark"),
+			)
+		: here
 			? h(
 					"button",
 					{
 						type: "button",
-						class: "small show",
+						class: "show icon-only",
 						"data-action": "show",
 						"aria-label": `Show mark ${a.number} on the page`,
-						title: x.canReach
-							? "Scroll the page to this mark and outline it"
-							: NEEDS_ACCESS,
-						disabled: !x.canReach,
-						onclick: () => actions.showMatch(c.id, a, m.current),
+						title: `Show mark ${a.number} on the page: scroll to it and outline it`,
+						onclick: here,
 					},
-					"Show",
+					icon("show-mark"),
 				)
 			: showElsewhere(c, a, x, actions);
 	const body = h(
@@ -3727,7 +4855,6 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			? h("p", { class: "hint newer-kind" }, newerKindText(a.shape.given.kind))
 			: null,
 		historyList(a),
-		findingsList(c, a, x.findingArmed, actions),
 		markPlace(c, a, x.tabUrl, actions),
 		byline(a.createdBy, a.createdVia)
 			? h(
@@ -3745,21 +4872,31 @@ function markItem(c: Case, a: Mark, x: MarkContext): HTMLElement {
 			: null,
 		a.element ? h("p", { class: "meta" }, summarize(a.element)) : null,
 		m ? matchView(c.id, a, m, actions) : null,
+		// What a mark to verify of another page offers, and why no Verify.
+		away && edit === undefined
+			? h("p", { class: "meta away-hint" }, x.unread ?? AWAY_HINT)
+			: null,
 		edit
 			? edit.mode === "resolve"
 				? resolveForm(c, a, edit.kind, edit.text, actions)
 				: edit.mode === "reopen"
 					? reopenForm(c, a, edit.text, actions)
 					: commentForm(c, a, edit.text, actions)
-			: markActions(c, a, x.armed, actions),
+			: markActions(
+					c,
+					a,
+					x.armed,
+					actions,
+					away ? { linkTab: x.linkTab, unread: x.unread } : null,
+				),
 		// Its comments, at the mark, after what can be done with it (DEC-061).
 		markThreadView(c, a, x.thread, actions),
 	);
-	const sub = markSubline(c, a, m, actions, x.elsewhere, x.tabUrl);
+	const sub = markSubline(c, a, m, actions, x.elsewhere || away, x.linkTab);
 	// A mark to verify: Verify in its title line, small, so a closed row is
 	// two lines like every other (DEC-064); Reopen… and the rest when open.
 	const headVerify =
-		markStatus(a) === "fixed" && edit === undefined
+		status === "fixed" && !away && edit === undefined
 			? (() => {
 					const b = verifyButton(c, a, actions);
 					b.className = "small head-verify";
@@ -3900,9 +5037,10 @@ function otherPage(
  * it): it opens the mark's page in this tab and shows the mark there, as the
  * page's link in the second row does. "Every mark" holds while the case is
  * drawn on the tab: with its marks hidden no mark has Show, here or there.
- * Never disabled, unlike the page's own Show (`canReach`): opening a page
- * needs no access to the page in front, and `openMarkPage` asks for the
- * site's access itself where it needs it.
+ * There without access too, unlike the page's own Show (`canReach`): opening a page
+ * needs no access to the page in front. In Chrome `openMarkPage` asks for the
+ * site's access itself; in Firefox it cannot (`asksForSite`), and the tab's
+ * notice offers the ways on (DEC-076).
  */
 function showElsewhere(
 	c: Case,
@@ -3917,19 +5055,19 @@ function showElsewhere(
 		"button",
 		{
 			type: "button",
-			class: "small show",
+			class: "show icon-only",
 			"data-action": "show-elsewhere",
 			"aria-label": `Show mark ${a.number}: open ${to.name} in this tab`,
-			title: `Open ${to.name} in this tab and show the mark there\n${to.address}`,
+			title: `Show mark ${a.number}: open ${to.name} in this tab and show the mark there\n${to.address}`,
 			onclick: () => actions.openMarkPage(c, a, to.where),
 		},
-		"Show",
+		icon("show-mark"),
 	);
 }
 
 /**
  * A mark's head, second row: its status, where it is on the tab in front,
- * its AI findings; why it came back, for a reopened one. A mark of another
+ * its added images and comments; why it came back, for a reopened one. A mark of another
  * page names that page as a link. (A mark to verify has Verify in its
  * title line, DEC-064.)
  */
@@ -3945,7 +5083,6 @@ function markSubline(
 	const pill = PILL[status];
 	const last = a.reopens?.at(-1);
 	const where = elsewhere ? null : matchWord(m);
-	const findings = a.findings?.length ?? 0;
 	// The thread's comments about this mark (DEC-046).
 	const talk = commentCount(c, a.id);
 	const parts = [
@@ -3978,13 +5115,6 @@ function markSubline(
 			: null,
 		elsewhere ? otherPage(c, a, tabUrl, actions) : null,
 		where ? h("span", { class: "state" }, where) : null,
-		findings > 0
-			? h(
-					"span",
-					{ class: "tag findings-count" },
-					`${findings} AI finding${findings === 1 ? "" : "s"}`,
-				)
-			: null,
 		// Only what was added: the screenshot every mark has is not counted.
 		(a.images?.length ?? 0) + (a.heldImages?.length ?? 0) > 0
 			? ((n: number) =>
@@ -4003,71 +5133,6 @@ function markSubline(
 			: null,
 	].filter((x) => x !== null);
 	return parts.length > 0 ? h("div", { class: "mark-sub" }, ...parts) : null;
-}
-
-/** When a finding was written, and last changed. */
-function findingTime(at: string, editedAt: string | undefined): string {
-	return editedAt
-		? `${formatDate(at)}, edited ${formatDate(editedAt)}`
-		: formatDate(at);
-}
-
-/**
- * The AI apps' findings on a mark, under the user's comment and apart from
- * it: each with its app and time, and a Delete that asks once more.
- */
-function findingsList(
-	c: Case,
-	a: Mark,
-	armed: string | undefined,
-	actions: Actions,
-): HTMLElement | null {
-	const findings = a.findings ?? [];
-	if (findings.length === 0) return null;
-	return h(
-		"section",
-		{ class: "findings", "aria-label": `AI findings on mark ${a.number}` },
-		h("h3", {}, "AI findings"),
-		h(
-			"ul",
-			{},
-			...findings.map((f) =>
-				h(
-					"li",
-					{ "data-finding": f.id },
-					h("p", { class: "finding-text" }, f.text),
-					h(
-						"div",
-						{ class: "finding-meta" },
-						h(
-							"span",
-							{ class: "meta" },
-							`${f.user ? byline(f.user, f.app) : appLabel(f.app)}${f.imported ? ", as the file says" : ""}, ${findingTime(f.at, f.editedAt)}`,
-						),
-						h(
-							"button",
-							{
-								type: "button",
-								class: "small danger",
-								"data-finding-action": "delete",
-								"aria-label":
-									armed === f.id
-										? `Really delete this finding on mark ${a.number}?`
-										: `Delete this finding on mark ${a.number}`,
-								title:
-									armed === f.id
-										? "Click again to delete this finding"
-										: "Delete this AI finding (click twice); the mark and your comment stay",
-								...(armed === f.id ? { "data-armed": true } : {}),
-								onclick: () => actions.deleteFinding(c, a, f.id),
-							},
-							armed === f.id ? "Really delete?" : "Delete finding",
-						),
-					),
-				),
-			),
-		),
-	);
 }
 
 // --- the AI app ------------------------------------------------------------------
@@ -4251,6 +5316,7 @@ function renderBack(state: PanelState, actions: Actions): void {
 		act();
 	};
 	back.hidden = !state.settings && !onCase;
+	renderCopyId(onCase && !state.settings ? state.current?.id : undefined);
 	if (state.settings) {
 		backLabel.textContent = "Back";
 		back.setAttribute(
@@ -4272,6 +5338,66 @@ function renderBack(state: PanelState, actions: Actions): void {
 
 /** Draw the panel from `state`. */
 export function render(state: PanelState, actions: Actions): void {
+	const had = document.activeElement as HTMLElement | null;
+	renderViews(state, actions);
+	keepAccessFocus(had);
+}
+
+/** Can take the focus now: in the page, shown, not disabled. */
+function focusable(el: HTMLElement | null): boolean {
+	return (
+		el !== null &&
+		el.isConnected &&
+		el.closest("[hidden]") === null &&
+		!(el as HTMLButtonElement).disabled
+	);
+}
+
+/**
+ * The focus never falls to the page's body when access changes what is
+ * shown (DEC-076): a control that removed itself (Not now, Allow on all
+ * sites once allowed) or that the notice replaced (New case, Add marks,
+ * Show marks, a mark's Show) hands it on, in reading order, to what now
+ * stands there: the notice's button, else the control the notice had
+ * replaced, else the view's heading.
+ */
+function keepAccessFocus(had: HTMLElement | null): void {
+	if (had === null || had === document.body || focusable(had)) return;
+	// Only where the person is: a panel whose document has no focus (they
+	// work in the page) takes none, or keys meant for the page would land
+	// on a button here.
+	if (!document.hasFocus()) return;
+	// Only what access shows or hides: other focus has its own rules.
+	const accessBound =
+		had.closest("#all-sites-offer, #access-notice, #case-access") !== null ||
+		["new-case", "add-marks", "load-case"].includes(had.id) ||
+		had.dataset["action"] === "show";
+	if (!accessBound) return;
+	if (
+		document.activeElement !== had &&
+		document.activeElement !== document.body
+	)
+		return;
+	const id = (x: string) => document.getElementById(x);
+	const button = (notice: string) =>
+		id(notice)?.querySelector<HTMLElement>("button") ?? null;
+	const onCase = !caseView.hidden && caseView.contains(had);
+	const onHome = !home.hidden && home.contains(had);
+	if (!onCase && !onHome) return;
+	const next = (
+		onCase
+			? [button("case-access"), id("add-marks"), id("load-case")]
+			: [
+					button("access-notice"),
+					id("new-case"),
+					id("open-here"),
+					id("page-heading"),
+				]
+	).find((el): el is HTMLElement => focusable(el));
+	next?.focus();
+}
+
+function renderViews(state: PanelState, actions: Actions): void {
 	lastActions = actions;
 	// A mark's comment opened for editing, or a Delete asked: drawn again.
 	onThreadChange(() => render(state, actions));
@@ -4289,6 +5415,7 @@ export function render(state: PanelState, actions: Actions): void {
 		renderCase(state, actions);
 	} else {
 		parts = undefined;
+		clearCue();
 		holdDelete(undefined);
 		caseView.replaceChildren();
 	}

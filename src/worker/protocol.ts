@@ -133,6 +133,11 @@ export interface AiState {
 	code?: string;
 	/** `code` was typed in, and its AI app has not connected yet: not to be typed again. */
 	codeUsed?: true;
+	/**
+	 * Why AI access went off by itself (DEC-072): information, not a problem.
+	 * Gone once it is turned on again.
+	 */
+	wentOff?: "idle" | "expired" | "restart";
 	/** Another tab or program took Sitegloss's connection over (it connects with Sitegloss's secret). */
 	replaced?: { sibling: boolean };
 	lastCall?: CallView;
@@ -216,6 +221,7 @@ export function isPanelSender(
 			url.pathname === PANEL_PATH
 		);
 	} catch {
+		// Not an address.
 		return false;
 	}
 }

@@ -48,8 +48,10 @@ import {
 	stillPaired,
 	switchShown,
 	type TurnedOn,
+	wentOffSentence,
 } from "./card.ts";
 import { byId, h } from "./dom.ts";
+import { setCopyLabel, setLabel, withIcon } from "./icons.ts";
 import { copyText, startSetup } from "./setup.ts";
 import type { PanelState } from "./state.ts";
 import { panelWindow } from "./window.ts";
@@ -98,6 +100,7 @@ export function keepOnAnswered(): boolean {
 	try {
 		return localStorage.getItem(KEEP_ON_ASKED) !== null;
 	} catch {
+		// No storage (a private window that refuses it): not answered.
 		return false;
 	}
 }
@@ -116,7 +119,7 @@ export function rememberKeepOnAnswer(
 /**
  * The question in `box` while `asking`, nothing otherwise. Drawn once: the
  * box is a status region, which would say it again on every redraw. It
- * takes no focus and scrolls nothing; neither button is the amber one.
+ * takes no focus and scrolls nothing; neither button is the primary one.
  * Taken away while one of its buttons has the focus, the focus goes to
  * `focusAfter` (the switch it was about), not to the page's start.
  */
@@ -205,9 +208,15 @@ export function statusText(a: AiState): string {
 		`Not connected: ${a.problem}${a.retrying ? " Trying again…" : ""}`;
 	const replaced =
 		a.replaced && "Not connected: Sitegloss's connection is in use elsewhere.";
+	// Information, not a problem (`problemOf` says nothing of it): why it went off.
+	const wentOff = wentOffSentence(a);
 	return (
-		[a.relayNote, replaced ?? problem].filter(Boolean).join(" ") ||
-		"Not connected"
+		[
+			a.relayNote,
+			replaced ?? problem ?? (wentOff && `Not connected: ${wentOff}`),
+		]
+			.filter(Boolean)
+			.join(" ") || "Not connected"
 	);
 }
 
@@ -238,6 +247,17 @@ export async function startAi(
 	const relayInput = byId<HTMLInputElement>("relay");
 	const keepOn = byId<HTMLInputElement>("keep-on");
 	const blurForms = byId<HTMLInputElement>("blur-forms");
+	const blurNote = byId<HTMLParagraphElement>("blur-forms-note");
+	/**
+	 * The worker keeps the setting (DEC-016): without it the box is off, and
+	 * says why under it, on Home, where the AI card that said it is not
+	 * (DEC-076).
+	 */
+	const blurOff = (why: string | undefined) => {
+		blurForms.disabled = why !== undefined;
+		blurNote.hidden = why === undefined;
+		if (blurNote.textContent !== (why ?? "")) blurNote.textContent = why ?? "";
+	};
 	const aiSwitch = byId<HTMLInputElement>("ai-switch");
 	const buttons = [
 		byId<HTMLButtonElement>("ai-button"),
@@ -268,7 +288,9 @@ export async function startAi(
 		for (const b of buttons) b.disabled = true;
 		keepOn.disabled = true;
 		relayInput.disabled = true;
-		blurForms.disabled = true;
+		blurOff(
+			`Kept by Sitegloss's ${PANEL}: open the ${PANEL} from the Sitegloss icon to change it.`,
+		);
 		aiSwitch.disabled = true;
 		blurSettled();
 		return;
@@ -398,7 +420,9 @@ export async function startAi(
 		for (const b of buttons) b.disabled = true;
 		keepOn.disabled = true;
 		relayInput.disabled = true;
-		blurForms.disabled = true;
+		blurOff(
+			"Cannot be changed now: Sitegloss's background did not start (the AI pill at the top says more).",
+		);
 		aiSwitch.disabled = true;
 		update(
 			(s) =>
@@ -433,8 +457,9 @@ export async function startAi(
 			};
 		});
 		// A worker that failed before may have started since.
-		for (const control of [...buttons, keepOn, relayInput, blurForms, aiSwitch])
+		for (const control of [...buttons, keepOn, relayInput, aiSwitch])
 			control.disabled = false;
+		blurOff(undefined);
 		blurForms.checked = a.blurForms;
 		blurValue = a.blurForms;
 		blurSettled();
@@ -670,6 +695,9 @@ export async function startAi(
 	}
 
 	const copyAddress = byId<HTMLButtonElement>("pair-copy");
+	// The Copy buttons of index.html, with their icon (DEC-078).
+	for (const id of ["pair-copy", "pair-copy-code"])
+		setCopyLabel(byId<HTMLButtonElement>(id), "Copy");
 	copyAddress.addEventListener("click", () =>
 		copy(copyAddress, current?.address, "address", byId("pair-address")),
 	);
@@ -693,8 +721,12 @@ export async function startAi(
 		"pair-replaced-new-address",
 	].map((id) => byId<HTMLButtonElement>(id));
 	const newAddressText = (text: string) => {
-		for (const b of newAddressButtons) b.textContent = text;
+		// In the takeover notice without its icon: beside Connect again it
+		// would take a line more at 340 px (DEC-078).
+		for (const b of newAddressButtons)
+			setLabel(b, b.id === "pair-new-address" ? "disconnect" : undefined, text);
 	};
+	newAddressText(DISCONNECT_ALL);
 	for (const button of newAddressButtons)
 		button.addEventListener("click", () => {
 			const armed =
@@ -756,7 +788,10 @@ export async function startAi(
 					if (current) showCard(current);
 				},
 			},
-			armed ? "Disconnect? Click again" : "Disconnect",
+			...withIcon(
+				"disconnect",
+				armed ? "Disconnect? Click again" : "Disconnect",
+			),
 		);
 	}
 
@@ -928,7 +963,10 @@ export async function startAi(
 			beforePairing ??= new Set(a.grants.map((g) => g.grantId));
 		else if (a.state === "connected") beforePairing = undefined;
 		byId("ai-state").dataset["state"] = view.status;
-		byId("ai-state-text").textContent = view.stateText;
+		// Only when it changes: a live region says it again at every assignment.
+		const stateText = byId("ai-state-text");
+		if (stateText.textContent !== view.stateText)
+			stateText.textContent = view.stateText;
 		// Also while connecting or retrying, so the user can stop it.
 		const shown = switchShown(view.switchOn, switchIntent, Date.now());
 		switchIntent = shown.intent;

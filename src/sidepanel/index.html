@@ -11,14 +11,20 @@
 		     top bar (DEC-023): the way back, and the AI app. -->
 		<header id="bar">
 			<h1 class="visually-hidden">Sitegloss</h1>
-			<!-- No space between the parts: the buttons' text is their words alone. -->
-			<button id="back" type="button" class="back" hidden><svg class="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg><span id="back-label">All cases</span></button>
+			<!-- No space between the parts: the buttons' text is their words alone. The icons are
+			     icons.ts's (heroicons, DEC-078). -->
+			<button id="back" type="button" class="back" hidden><svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-icon="back"><path d="M15.75 19.5 8.25 12l7.5-7.5" /></svg><span id="back-label">All cases</span></button>
+			<!-- The open case's id on the clipboard, to name the case to an AI app. -->
+			<button id="copy-case-id" type="button" class="bar-icon" hidden><svg class="icon copy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-icon="copy"><path d="M8.25 7.5V6.108c0-1.135.845-2.098 1.976-2.192.373-.03.748-.057 1.123-.08M15.75 18H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5A3.375 3.375 0 0 0 6.375 7.5H5.25m11.9-3.664A2.251 2.251 0 0 0 15 2.25h-1.5a2.251 2.251 0 0 0-2.15 1.586m5.8 0c.065.21.1.433.1.664v.75h-6V4.5c0-.231.035-.454.1-.664M6.75 7.5H4.875c-.621 0-1.125.504-1.125 1.125v12c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V16.5a9 9 0 0 0-9-9Z" /></svg><svg class="icon done" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-icon="check"><path d="m4.5 12.75 6 6 9-13.5" /></svg></button>
+			<span id="copy-case-said" class="visually-hidden" role="status"></span>
 			<!-- The pill says the state in two or three words; the whole of it and what a
 			     click does are in its name and tooltip (view.ts). -->
 			<button id="ai-button" type="button" class="ai-pill"><span class="dot" aria-hidden="true"></span><span id="ai-label">AI off</span><span id="ai-status" class="visually-hidden">Not connected</span><span id="ai-action" class="visually-hidden">Turn on</span></button>
 		</header>
 		<!-- What is wrong with the AI connection, in words, on every view (DEC-024). -->
 		<div id="ai-problem" class="ai-problem" role="status" hidden><p id="ai-problem-text"></p></div>
+		<!-- The browser refused the clipboard: the case's id, selected, to copy by hand (view.ts). -->
+		<div id="copy-case-failed" class="ai-problem" hidden><p>Copying did not work. This case's id is <code id="copy-case-shown"></code></p></div>
 		<!-- An AI app opened the relay's pairing page in this browser: fill in the code there? (DEC-044; ai.ts) -->
 		<section id="pair-fill-ask" class="pair-fill-ask" aria-labelledby="pair-fill-ask-text" hidden>
 			<p id="pair-fill-ask-text"></p>
@@ -41,11 +47,10 @@
 		<div id="cloud-banner" class="sync-banner" role="status" hidden></div>
 		<main id="home">
 			<section aria-labelledby="page-heading">
-				<h2 id="page-heading">This page</h2>
+				<h2 id="page-heading" tabindex="-1">This page</h2>
 				<p id="page" class="page">…</p>
-				<p id="hint" class="hint" hidden></p>
+				<p id="hint" class="hint" role="status" hidden></p>
 				<!-- The tab in front is the signed-in server's own web app (DEC-045). -->
-				<p id="web-app-note" class="meta" hidden></p>
 				<!-- The page has a case already: that is said, and opening it is the first thing offered (view.ts). -->
 				<div id="here" class="here" hidden>
 					<p id="here-text" class="here-text"></p>
@@ -53,6 +58,8 @@
 					<button id="open-here" type="button" class="primary wide" hidden>Open this case</button>
 				</div>
 				<button id="new-case" type="button" class="primary wide">New case for this page</button>
+				<!-- The page's closed cases, folded, under the main action (view.ts). -->
+				<div id="here-closed"></div>
 			</section>
 			<section aria-labelledby="cases-heading">
 				<h2 id="cases-heading">Cases</h2>
@@ -67,7 +74,7 @@
 				<h2 id="files-heading">Files</h2>
 				<div class="row import">
 					<button id="import" type="button" title="Choose a Sitegloss .zip file: one exported case, or a file of all cases. For a case that is here already, Sitegloss asks first whether to replace it or keep both.">Import a case…</button>
-					<button id="export-all" type="button" title="Save every case in one .zip file, a folder per case with its marks, comments, findings, summary, thread and screenshots. Import a case… reads it back, in this browser or another.">Export all cases</button>
+					<button id="export-all" type="button" title="Save every case in one .zip file, a folder per case with its marks, comments, summary, thread and screenshots. Import a case… reads it back, in this browser or another.">Export all cases</button>
 					<input id="import-file" type="file" accept=".zip,application/zip" hidden />
 				</div>
 				<div id="export-all-saved" hidden></div>
@@ -82,9 +89,27 @@
 					<div id="sync" aria-live="polite"></div>
 				</section>
 			</section>
+			<!-- How Sitegloss works on pages (DEC-076): on Home, last, as it is set once.
+			     Access to all sites first: without it, each tab needs the icon's click. The
+			     note under it names the browser's prompt (view.ts). -->
+			<section id="options" class="options" aria-labelledby="options-heading">
+				<h2 id="options-heading">Options</h2>
+				<label class="check">
+					<input id="all-sites" type="checkbox" aria-describedby="all-sites-note" />
+					Allow on all sites (highly recommended)
+				</label>
+				<p id="all-sites-note" class="meta check-note"></p>
+				<label class="check" title="Blur every form field and text editor in the screenshots Sitegloss takes. Password fields are always blurred.">
+					<input id="blur-forms" type="checkbox" aria-describedby="blur-forms-note" />
+					Blur form fields in screenshots
+				</label>
+				<!-- Why it cannot be changed, while it cannot (ai.ts). -->
+				<p id="blur-forms-note" class="meta check-note" hidden></p>
+			</section>
 		</main>
 		<main id="case-view" hidden></main>
-		<!-- Settings (DEC-023): opened by the AI pill, over Home or an open case. -->
+		<!-- Settings (DEC-023): opened by the AI pill, over Home or an open case; only the
+		     AI connection (the options are on Home, DEC-076). -->
 		<main id="settings" hidden>
 			<section id="ai-card" class="ai-card" aria-labelledby="ai-heading">
 				<div class="card-head">
@@ -161,17 +186,6 @@
 				<label class="field">
 					Relay
 					<input id="relay" type="url" spellcheck="false" autocomplete="off" />
-				</label>
-			</section>
-			<section aria-labelledby="options-heading">
-				<h2 id="options-heading">Options</h2>
-				<label class="check" title="Blur every form field and text editor in the screenshots Sitegloss takes. Password fields are always blurred.">
-					<input id="blur-forms" type="checkbox" />
-					Blur form fields in screenshots
-				</label>
-				<label class="check">
-					<input id="all-sites" type="checkbox" />
-					Allow on all sites, without clicking the icon on each tab
 				</label>
 			</section>
 		</main>

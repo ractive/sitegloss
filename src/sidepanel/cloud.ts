@@ -20,10 +20,12 @@ import {
 	type CloudStatus,
 	casesForgotten,
 	KEYS,
+	membersOf,
 	type SyncMode,
 } from "../lib/cloud/book.ts";
 import { chosenServer, scopedKv, serverProblem } from "../lib/cloud/servers.ts";
 import { listen } from "../lib/cloud/sse.ts";
+import { debugLog } from "../lib/debug.ts";
 import { type Kv, kvWhenOpen, openKv } from "../lib/kv.ts";
 import type { CloudAnswer, CloudRequest } from "../lib/messages.ts";
 import type { CloudActions } from "./cloud-view.ts";
@@ -169,7 +171,7 @@ export function startCloud(
 			// (DEC-051): until then they may be a build before this one's.
 			const ours = await casesForgotten(kv);
 			for (const key of ours
-				? [KEYS.account, KEYS.status, KEYS.modes]
+				? [KEYS.account, KEYS.status, KEYS.modes, KEYS.atTeam, KEYS.members]
 				: [KEYS.account])
 				all[key] = await mine.get(key);
 		} catch (error) {
@@ -192,6 +194,7 @@ export function startCloud(
 							teams: account.teams.map((t) => ({
 								id: t.id,
 								name: t.name,
+								...(t.slug ? { slug: t.slug } : {}),
 								permissions: [...(t.permissions ?? [])],
 							})),
 							teamId: account.teamId,
@@ -199,6 +202,8 @@ export function startCloud(
 						};
 			s.cloud.status = all[KEYS.status] as CloudStatus | undefined;
 			s.cloud.modes = (all[KEYS.modes] as Record<string, SyncMode>) ?? {};
+			s.cloud.atTeam = (all[KEYS.atTeam] as Record<string, string>) ?? {};
+			s.cloud.members = membersOf(all[KEYS.members], account?.teamId);
 		});
 		follow(account);
 	}
@@ -224,7 +229,12 @@ export function startCloud(
 			s.cloud.problem = undefined;
 		});
 		void (async () => {
-			if (!(await consent.catch(() => false))) {
+			if (
+				!(await consent.catch((error: unknown) => {
+					debugLog("cloud consent", error);
+					return false;
+				}))
+			) {
 				problem(
 					`${BROWSER} did not allow it: without that consent nothing is sent, and Sitegloss cannot sync. Click Sign in to ask again.`,
 				);
@@ -265,7 +275,9 @@ export function startCloud(
 		if (now - checkedAt < SHOWN_CHECK_MS) return;
 		checkedAt = now;
 		// A change comes back as the worker's news, as any other.
-		void send({ type: "cloud:check" }).catch(() => undefined);
+		void send({ type: "cloud:check" }).catch((error: unknown) =>
+			debugLog("cloud check", error),
+		);
 	}
 
 	return {

@@ -97,6 +97,10 @@ inFullSet("what a drawn mark records, on the demo page", () => {
 			{ x: amount.x + amount.width / 2, y: amount.y + amount.height / 2 },
 		);
 		await comment(page, "Arrow");
+		// The arrow in the case first: a mark whose screenshot is taken again
+		// scrolls the page back to it (DEC-026), and a box measured before
+		// that is drawn somewhere else.
+		await marksIn(page);
 		// 4. A box round the gravel bike's picture.
 		await tool(page, "box");
 		const bike = await boxOf(page, "[data-testid=card-gravel] svg");
@@ -105,6 +109,7 @@ inFullSet("what a drawn mark records, on the demo page", () => {
 			{ x: bike.x + bike.width + 6, y: bike.y + bike.height + 6 },
 		);
 		await comment(page, "Box");
+		await marksIn(page);
 		// 5. The city bike's price underlined.
 		await tool(page, "pen");
 		const price = await boxOf(page, "[data-testid=card-city-price]");

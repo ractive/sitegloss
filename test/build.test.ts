@@ -306,7 +306,86 @@ describe("build", () => {
 				"tldts\n\nCopyright (c) 2017 Thomas Parisot, 2018 Rémi Berson",
 			);
 			expect(text).not.toContain("CDN build");
+			// The side panel's icons, the web app's (DEC-078).
+			expect(text).toContain(
+				"Heroicons (the side panel's icons, heroicons 2.2.0)\n\nMIT License\n\nCopyright (c) Tailwind Labs, Inc.",
+			);
 		}
+	});
+
+	test("the fonts: one copy at the root for the extension's own pages, none for a web page, their licences in every build", async () => {
+		for (const options of [
+			{},
+			{ store: true },
+			{ test: true },
+			{ firefox: true },
+			{ firefox: true, store: true },
+		]) {
+			const outdir = tempDir();
+			await build({ outdir, ...options });
+			const names = [...new Bun.Glob("**/*").scanSync({ cwd: outdir })];
+			expect(names.filter((n) => n.endsWith(".woff2")).sort()).toEqual([
+				"fonts/inter-latin-wght-normal.woff2",
+				"fonts/manrope-latin-wght-normal.woff2",
+			]);
+			// Copied as they are: the files the source holds.
+			for (const file of [
+				"inter-latin-wght-normal.woff2",
+				"manrope-latin-wght-normal.woff2",
+			])
+				expect(
+					Bun.hash(await Bun.file(join(outdir, "fonts", file)).arrayBuffer()),
+				).toBe(
+					Bun.hash(
+						await Bun.file(
+							join(import.meta.dir, "..", "src/fonts", file),
+						).arrayBuffer(),
+					),
+				);
+			const css = async (dir: string) =>
+				(
+					await Promise.all(
+						names
+							.filter((n) => n.startsWith(`${dir}/`) && n.endsWith(".css"))
+							.map((n) => Bun.file(join(outdir, n)).text()),
+					)
+				).join("");
+			for (const page of ["sidepanel", "viewer"])
+				expect(await css(page)).toMatch(
+					/url\("?\/fonts\/inter-latin-wght-normal\.woff2"?\)/,
+				);
+			// The comment field sits in a page's dialog, in the page's face.
+			expect(await css("field")).not.toContain("woff2");
+			const content = await Bun.file(join(outdir, "content.js")).text();
+			expect(content).not.toContain("woff2");
+			const licences = await Bun.file(join(outdir, NOTICES_FILE)).text();
+			expect(licences).toContain("Copyright 2016 The Inter Project Authors");
+			expect(licences).toContain("Copyright 2019 The Manrope Project Authors");
+			expect(licences).toContain("SIL Open Font License, Version 1.1");
+		}
+	});
+
+	test("only the development build's panel offers the development server (DEC-041)", async () => {
+		const panelText = async (options: Parameters<typeof build>[0]) => {
+			const outdir = mkdtempSync(join(tmpdir(), "sitegloss-devserver-"));
+			try {
+				await build({ outdir, ...options });
+				let text = "";
+				for await (const file of new Bun.Glob("sidepanel/**/*.js").scan(outdir))
+					text += await Bun.file(join(outdir, file)).text();
+				return text;
+			} finally {
+				rmSync(outdir, { recursive: true, force: true });
+			}
+		};
+		// The chooser reads one constant, the build's define; the label stays in
+		// the code of every build (a stored development server is named).
+		const dev = await panelText({ minify: false });
+		const store = await panelText({ minify: false, store: true });
+		const zipped = await panelText({ minify: false, forPeople: true });
+		expect(dev).toContain("DEV_SERVER_OFFERED = true");
+		expect(store).toContain("DEV_SERVER_OFFERED = false");
+		expect(zipped).toContain("DEV_SERVER_OFFERED = false");
 	});
 
 	test("a package has no test switch left for a page to answer", async () => {
@@ -341,6 +420,11 @@ describe("build", () => {
 				expect(text).not.toContain("SITEGLOSS_TEST_BUILD");
 			}
 			expect(scripts).toBeGreaterThan(0);
+			// Nor the debug log of handled failures (debug.ts), in any script.
+			for (const file of new Bun.Glob("**/*.js").scanSync({ cwd: outdir }))
+				expect(await Bun.file(join(outdir, file)).text()).not.toContain(
+					"console.debug",
+				);
 		} finally {
 			rmSync(outdir, { recursive: true, force: true });
 		}
@@ -393,6 +477,9 @@ describe("build", () => {
 			// The panel's page in a tab is no panel there (`window.ts`).
 			if (file.startsWith("sidepanel/"))
 				expect(text).not.toContain("location.search");
+			// The debug log of handled failures is there, readable, and off.
+			if (text.includes("console.debug(`Sitegloss: "))
+				expect(text).toContain("var ON = false;");
 		}
 		const target = join(tempDir(), "x.zip");
 		await zipBuild(outdir, target);

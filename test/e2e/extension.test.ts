@@ -176,11 +176,15 @@ inBothSets("marking and saving", () => {
 			`${shadow('[data-role="status"]')}?.textContent === "Mark 3 added to “Krankenkasse vergleichen (v1)”"`,
 			20_000,
 		);
-		expect(
-			await page.eval<string[]>(
-				`[...new Set([...${shadow("svg.marks")}.querySelectorAll("g[data-number], [data-review]")].map((g) => g.dataset.number ?? g.dataset.review))].sort()`,
-			),
-		).toEqual(["1", "2", "3"]);
+		// Each drawn where its element shows (DEC-075), by the loaded case or,
+		// until the panel's copy reaches the page, by the toolbar itself: the
+		// marks drawn are those whose element is in the window, as the page
+		// measures it now (1 and 2 are scrolled away above).
+		const inView = `["submit", "tip", "contact"].flatMap((truth, i) => { const r = document.querySelector("[data-truth=" + truth + "]").getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth ? [String(i + 1)] : []; }).join()`;
+		const drawn = `[...new Set([...${shadow("svg.marks")}.querySelectorAll("g[data-number], [data-review]")].map((g) => g.dataset.number ?? g.dataset.review))].sort().join()`;
+		await page.waitFor(`${drawn} === ${inView}`);
+		// Some are out of the window, so not drawn is what this shows.
+		expect(await page.eval<string>(inView)).not.toBe("1,2,3");
 
 		// The title, as a person types it in the panel's Rename.
 		await saveAs(page, "Prämienrechner");
@@ -256,22 +260,44 @@ inBothSets("marking and saving", () => {
 
 	fullTest("the toolbar stays on one line in a normal window", async () => {
 		const { page, tabId } = await h.open("v1");
-		await page.send("Emulation.setDeviceMetricsOverride", {
-			width: 1000,
-			height: 700,
-			deviceScaleFactor: 1,
-			mobile: false,
-		});
+		// A 1000 px window with a classic scrollbar (15 px, Windows and Linux):
+		// the page is 985 px wide, whatever scrollbar the machine has.
+		const metrics = (width: number) =>
+			page.send("Emulation.setDeviceMetricsOverride", {
+				width,
+				height: 700,
+				deviceScaleFactor: 1,
+				mobile: false,
+			});
+		await metrics(1000);
+		const scrollbar = await page.eval<number>(
+			"innerWidth - document.documentElement.clientWidth",
+		);
+		await metrics(985 + scrollbar);
 		// A page's own styles do not reach it, not even on the host element.
 		await page.eval(`(() => {
 			document.documentElement.dir = "rtl";
 			document.head.insertAdjacentHTML("beforeend", "<style>div { text-transform: uppercase; letter-spacing: 0.3em; }</style>");
 		})()`);
-		await showToolbar(h, page, tabId);
+		const caseId = await showToolbar(h, page, tabId);
+		// A long title, as the bug needed: 29 characters need 987 px in one row in
+		// CI's Linux font (a longer one wraps in the status, and the bar is taller).
+		await h.control.eval(
+			`chrome.tabs.sendMessage(${tabId}, ${JSON.stringify({
+				type: "overlay:title",
+				caseId,
+				title: "Krankenkasse vergleichen (v1)",
+			})})`,
+		);
+		await page.waitFor(`${shadow(".status")}.textContent.includes("(v1)")`);
 		const height = await page.eval<number>(
 			`${shadow(".toolbar")}.getBoundingClientRect().height`,
 		);
 		expect(height).toBeLessThan(60);
+		// Beside the tools: the buttons closer if need be, the status not under them.
+		expect(
+			await page.eval<string>(`${shadow(".toolbar")}.dataset.fit`),
+		).not.toContain("rows");
 		const style = await page.eval<string[]>(
 			`(() => { const s = getComputedStyle(${shadow('[data-action="tool-box"]')}); return [s.textTransform, s.letterSpacing, s.direction]; })()`,
 		);
@@ -488,6 +514,8 @@ inBothSets("marking and saving", () => {
 					`${row("m2")}.querySelector(".history").textContent`,
 				),
 			).toMatch(/^Won't fix .+ · Legal wants it$/);
+			// Marks 1 and 2 at the top: a mark is drawn only in view (DEC-075).
+			await v1.page.eval("window.scrollTo(0, 0)");
 			await v1.page.waitFor(`${review(2)}?.hasAttribute("data-resolved")`);
 			// Its outline fades; its pin stays solid, to be found.
 			expect(
@@ -548,7 +576,9 @@ inBothSets("marking and saving", () => {
 					`document.getElementById("case-hint").textContent`,
 				),
 			).not.toContain("Not saved");
-			await v1.page.waitFor(`${review(3)} === null`);
+			await v1.page.waitFor(
+				`${shadow("svg.marks")}.dataset.found === "1,2" && ${review(3)} === null`,
+			);
 			expect(await v1.page.eval<string>(bar)).toBe("1 of 1 found");
 			const db = await h.control.eval<Db>(READ_DB);
 			const saved = db.cases.find((c) => c.title === "Settled marks");
@@ -866,11 +896,10 @@ inFullSet("loading in another environment", () => {
 					),
 				).toBe(truth);
 			}
+			// Found, drawn where in view (DEC-075).
 			expect(
-				await v2.page.eval<number>(
-					`${shadow("svg.marks")}.querySelectorAll("[data-review]").length`,
-				),
-			).toBe(3);
+				await v2.page.eval<string>(`${shadow("svg.marks")}.dataset.found`),
+			).toBe("1,2,3");
 
 			// "Show" scrolls the page to the contact paragraph.
 			await h.control.eval(
@@ -883,11 +912,10 @@ inFullSet("loading in another environment", () => {
 			// Marks drawn while a case is loaded: its outlines stay out of the screenshot.
 			await showToolbar(h, v2.page, v2.tabId);
 			await markElement(v2.page, "[data-truth=tip]", "Still unclear");
+			// Found, drawn where in view (DEC-075).
 			expect(
-				await v2.page.eval<number>(
-					`${shadow("svg.marks")}.querySelectorAll("[data-review]").length`,
-				),
-			).toBe(3);
+				await v2.page.eval<string>(`${shadow("svg.marks")}.dataset.found`),
+			).toBe("1,2,3");
 			// The panel shows the loaded case, not this toolbar's: named as setup.
 			await nameCase(
 				h,
@@ -949,19 +977,30 @@ inBothSets("an AI app through a relay", () => {
 				name: "list_cases",
 				arguments: {},
 			});
-			const [listed] = JSON.parse(
-				(cases.content as { text: string }[])[0]?.text ?? "[]",
-			) as { caseId: string; title: string }[];
+			// One case per line, as JSON (DEC-081).
+			const listed = JSON.parse(
+				((cases.content as { text: string }[])[0]?.text ?? "{}").split(
+					"\n",
+				)[0] ?? "{}",
+			) as { caseId: string; title: string };
 			expect(listed?.title).toBe("AI test");
 
+			// The case in text; a mark's crop comes with get_mark.
 			const read = await client.callTool({
 				name: "get_case",
 				arguments: { caseId: listed?.caseId },
 			});
+			expect((read.content as { text: string }[])[0]?.text).toContain(
+				'"AI test"',
+			);
+			const mark = await client.callTool({
+				name: "get_mark",
+				arguments: { caseId: listed?.caseId, mark: 1 },
+			});
 			const images = (
-				read.content as { type: string; data?: string; mimeType?: string }[]
+				mark.content as { type: string; data?: string; mimeType?: string }[]
 			).filter((c) => c.type === "image");
-			expect(images).toHaveLength(2);
+			expect(images).toHaveLength(1);
 			const bytes = Buffer.from(images[0]?.data ?? "", "base64");
 			expect(images[0]?.mimeType).toBe("image/webp");
 			expect(bytes.subarray(8, 12).toString()).toBe("WEBP");
