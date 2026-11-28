@@ -12,10 +12,21 @@
 export const PANEL_PORT = "ai";
 
 /**
- * The MCP server's name, which Sitegloss registers with the relay: the side
- * panel's setup steps name the server by it in their commands.
+ * The MCP server's name, which Sitegloss registers with the relay and sends
+ * as its `serverInfo`. It stays "sitegloss": the library keeps the address
+ * secret under a key made from it, so a new name would make every paired AI
+ * app pair again (DEC-042).
  */
 export const SERVER_NAME = "sitegloss";
+
+/**
+ * The name the side panel's setup steps give Sitegloss in an AI app's
+ * configuration (`claude mcp add … sitegloss-browser …`). Not `SERVER_NAME`:
+ * sitegloss.dev's help and web app name the service's own MCP server
+ * "sitegloss", and one AI app with both would refuse the second as taken
+ * (DEC-042).
+ */
+export const SETUP_NAME = "sitegloss-browser";
 
 /**
  * Sitegloss's app id: its MCP address is `<relay>/s/sitegloss/mcp`, the same

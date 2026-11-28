@@ -341,7 +341,7 @@ inBothSets("the AI connection without the side panel", () => {
 				await panel.eval<string>(
 					`${byId("setup-steps")}.querySelector('li[data-app="claude-code"] pre').textContent`,
 				),
-			).toBe(`claude mcp add --transport http sitegloss ${address}`);
+			).toBe(`claude mcp add --transport http sitegloss-browser ${address}`);
 			if (paired) {
 				await panel.eval(`${byId("pair-done")}.click()`);
 				expect(await panel.eval(`${byId("pairing")}.hidden`)).toBe(true);
