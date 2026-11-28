@@ -2061,7 +2061,8 @@ numbers stay unique once both lines meet.)
   server as `sitegloss`; the side panel's steps named the extension `sitegloss` too, so
   whoever added both was told the second already exists. The service keeps `sitegloss`;
   the steps' commands name the extension `sitegloss-browser` (`SETUP_NAME` in
-  `src/worker/protocol.ts`), as the web app does since its pull request 90. The server's
+  `src/worker/protocol.ts`), as the web app does since sitegloss.dev's pull request 90
+  (https://github.com/ractive/sitegloss.dev/pull/90). The server's
   own name (`SERVER_NAME`: the library's `server.name` and the `serverInfo` sent to AI
   apps) stays `sitegloss`: the library keeps the address secret under a key made from
   it, so a new name would make every paired AI app pair again; and Claude Code and Codex

@@ -113,6 +113,13 @@ describe("How do I add it?", () => {
 		expect(step("claude-code")?.querySelector("pre")?.textContent).toBe(
 			`claude mcp add --transport http sitegloss-browser ${ADDRESS}`,
 		);
+		expect(step("codex")?.querySelector("pre")?.textContent).toBe(
+			[
+				"codex features enable mcp_2026_07_28",
+				`codex mcp add sitegloss-browser --url ${ADDRESS}`,
+				"codex mcp login sitegloss-browser",
+			].join("\n"),
+		);
 	});
 
 	test("a note's code as code, its text as text", () => {
