@@ -83,7 +83,7 @@ describe("How do I add it?", () => {
 		).toBe(1);
 	});
 
-	test("each AI app with its text; commands for Claude Code and Codex, naming sitegloss", () => {
+	test("each AI app with its text; commands for Claude Code and Codex, naming sitegloss-browser", () => {
 		setup.show(ADDRESS);
 		expect(
 			steps().map((li) => li.querySelector("strong")?.textContent),
@@ -103,12 +103,16 @@ describe("How do I add it?", () => {
 		] as const) {
 			const pre = step(app)?.querySelector("pre");
 			expect(pre?.getAttribute("dir")).toBe("ltr");
-			expect(pre?.textContent).toContain("sitegloss");
+			expect(pre?.textContent).toContain(` sitegloss-browser `);
 			expect(pre?.textContent).toContain(ADDRESS);
 			const copy = step(app)?.querySelector("button");
 			expect(copy?.textContent).toBe("Copy");
 			expect(copy?.getAttribute("aria-label")).toBe(`Copy ${name} command`);
 		}
+		// Not "sitegloss": sitegloss.dev's own MCP server has that name in the same app.
+		expect(step("claude-code")?.querySelector("pre")?.textContent).toBe(
+			`claude mcp add --transport http sitegloss-browser ${ADDRESS}`,
+		);
 	});
 
 	test("a note's code as code, its text as text", () => {

@@ -344,7 +344,7 @@ command with its own Copy, and a link to the step-by-step guide. Add the address
 Claude Code, then run `/mcp` there and choose Authenticate:
 
 ```sh
-claude mcp add --transport http sitegloss <address>
+claude mcp add --transport http sitegloss-browser <address>
 ```
 
 Your browser opens the relay's page; type the code from the side panel.

@@ -9,7 +9,7 @@ import {
 	SETUP_GUIDE,
 	setupInstructions,
 } from "@ractive-ch/tab-mcp-client/setup";
-import { SERVER_NAME } from "../worker/protocol.ts";
+import { SETUP_NAME } from "../worker/protocol.ts";
 import { byId, h } from "./dom.ts";
 import { setCopyLabel } from "./icons.ts";
 
@@ -72,7 +72,7 @@ export function setupSteps(
 	address: string,
 	announce: (message: string) => void,
 ): HTMLLIElement[] {
-	return setupInstructions(SERVER_NAME, address).map(
+	return setupInstructions(SETUP_NAME, address).map(
 		({ id, app, text, command, note }) => {
 			const parts: Node[] = [h("strong", {}, app), h("span", {}, text)];
 			if (command !== undefined) {
